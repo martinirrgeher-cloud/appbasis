@@ -327,5 +327,25 @@ Die alte Trainingsplanung bleibt Referenz für den nächsten Bereich:
   scheinbar wieder fehlgeschlagen;
 - keine zusätzliche Datenbankmigration ist erforderlich.
 
-Nach E7B8 bleibt als fachlicher E7B-Abschluss die isolierte Preview-Abnahme
-offen.
+### E7B9 – Isolierte Preview-Abnahme der Trainingsplanung
+
+- der Repository-Vertrag prüft die dedizierte ULC-Preview fail-closed auf
+  Trainingsblöcke Schema v2 und Trainingsplanung Schema v2;
+- Migration, Deployment und die eigentliche Remote-Abnahme bleiben getrennte,
+  main-only Workflow-Operationen und benötigen jeweils `apply=true`;
+- der Deploy-Pfad verwendet weiterhin den bestehenden Standardmodul-Runtime-
+  Pfad und verbietet automatisches Provider-Provisioning;
+- der Acceptance-Smoke arbeitet ausschließlich über öffentliche HTTP-Verträge
+  und erzeugt eindeutige Preview-Testdaten statt Produktionsdaten zu kopieren;
+- geprüft werden Login, Wochenansicht, Anwesenheit, Autosave,
+  Blockvorlagen-Übernahme, unabhängiger Snapshot, Save-back,
+  Nutzungsmetadaten und Optimistic Concurrency;
+- ältere D4-/E7A-Akzeptanzbelege gelten nicht als E7B9-Nachweis;
+- Repository-/Readiness-Vorbereitung und read-only Inspect sind von den
+  mutierenden Preview-Schritten getrennt;
+- Preview-Migration, Secret-Synchronisierung, Deployment und Preview-Testdaten
+  werden erst nach ausdrücklicher Freigabe ausgeführt;
+- Produktionsressourcen bleiben außerhalb dieses Gates.
+
+Mit erfolgreicher E7B9-Preview-Abnahme ist der fachliche E7B-Scope
+abgeschlossen.

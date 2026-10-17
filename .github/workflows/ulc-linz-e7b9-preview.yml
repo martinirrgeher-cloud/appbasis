@@ -1,0 +1,413 @@
+name: ULC E7B9 Training Plans Preview
+
+run-name: ULC E7B9 Preview · ${{ inputs.operation }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Explicit E7B9 isolated-preview operation
+        required: true
+        type: choice
+        options:
+          - inspect
+          - migrate
+          - deploy
+          - accept
+      apply:
+        description: Explicitly authorize the selected mutating preview operation
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-preview-ulc-linz
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    name: E7B9 isolated preview ${{ inputs.operation }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: generated-preview-ulc-linz
+    env:
+      APPBASIS_GENERATED_APP_ID: ulc-linz
+
+    steps:
+      - name: Require exact main preview scope
+        shell: bash
+        env:
+          APPBASIS_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_REF" = 'refs/heads/main' || {
+            echo 'ULC E7B9 preview operations are main-only.' >&2
+            exit 1
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Render E7B9 repository plan
+        run: node ./tooling/ulc-linz-training-plans-preview.mjs plan
+
+      - name: Require explicit authorization for mutation
+        if: inputs.operation != 'inspect'
+        shell: bash
+        env:
+          APPBASIS_APPLY: ${{ inputs.apply && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          test "$APPBASIS_APPLY" = '1' || {
+            echo 'ULC E7B9 preview mutation was not explicitly authorized.' >&2
+            exit 1
+          }
+
+      - name: Validate and mask isolated preview database credentials
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          for name in APPBASIS_MIGRATION_DATABASE_URL APPBASIS_DATABASE_URL APPBASIS_SECURITY_LOG_DATABASE_URL; do
+            value="${!name:-}"
+            test -n "$value" || {
+              echo "Missing protected input: $name" >&2
+              exit 1
+            }
+            echo "::add-mask::$value"
+          done
+          node --input-type=module <<'NODE'
+          import { validateUlcLinzD4PreviewDatabaseCredentials } from "./tooling/ulc-linz-d4-preview-hyperdrive.mjs";
+          const credentials = validateUlcLinzD4PreviewDatabaseCredentials({
+            migrationDatabaseUrl: process.env.APPBASIS_MIGRATION_DATABASE_URL,
+            applicationDatabaseUrl: process.env.APPBASIS_DATABASE_URL,
+            securityLogDatabaseUrl: process.env.APPBASIS_SECURITY_LOG_DATABASE_URL,
+          });
+          if (
+            credentials.migration.database !== "appbasis_ulc_linz_preview" ||
+            credentials.migration.user !== "appbasis_ulc_linz_preview_migration"
+          ) {
+            throw new Error("E7B9 database credential does not identify the exact isolated preview target.");
+          }
+          NODE
+
+      - name: Inspect current training-blocks-v2 preview state
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-training-blocks-parity-preview.mjs inspect
+
+      - name: Require current training-blocks-v2 baseline before mutation
+        if: inputs.operation != 'inspect'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-training-blocks-parity-preview.mjs verify
+
+      - name: Inspect current training-plans preview state
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-training-plans-preview.mjs inspect
+
+      - name: Apply training-plans schema v2
+        if: inputs.operation == 'migrate'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_MIGRATIONS: "1"
+          APPBASIS_APPLY_TRAINING_PLANS_PREVIEW: "1"
+        run: node ./tooling/ulc-linz-training-plans-preview.mjs apply
+
+      - name: Reconcile preview runtime database access after migration
+        if: inputs.operation == 'migrate'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_DATABASE_ACCESS: "1"
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs reconcile
+
+      - name: Verify training-plans schema after migration
+        if: inputs.operation == 'migrate'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-training-plans-preview.mjs verify
+
+      - name: Verify exact preview runtime database access
+        if: inputs.operation != 'inspect'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs preflight-existing
+
+      - name: Require current training-plans schema before runtime operation
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-training-plans-preview.mjs verify
+
+      - name: Validate and mask preview runtime inputs
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+          APPBASIS_PREVIEW_USER_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN; do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing protected E7B9 runtime input: $name" >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+          if [ "${{ inputs.operation }}" = "deploy" ]; then
+            test -n "${APPBASIS_BETTER_AUTH_SECRET:-}" || {
+              echo 'Missing protected E7B9 deploy input: APPBASIS_BETTER_AUTH_SECRET' >&2
+              exit 1
+            }
+            echo "::add-mask::$APPBASIS_BETTER_AUTH_SECRET"
+          fi
+          if [ "${{ inputs.operation }}" = "accept" ]; then
+            test -n "${APPBASIS_PREVIEW_USER_PASSWORD:-}" || {
+              echo 'Missing protected E7B9 acceptance input: APPBASIS_PREVIEW_USER_PASSWORD' >&2
+              exit 1
+            }
+            echo "::add-mask::$APPBASIS_PREVIEW_USER_PASSWORD"
+          fi
+
+      - name: Resolve isolated preview worker and URL
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        id: preview
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          PLAN="$(node ./tooling/ulc-linz-d4-preview-plan.mjs)"
+          WORKER_NAME="$(jq -r '.workerName' <<<"$PLAN")"
+          RESPONSE="$(curl --fail-with-body --silent --show-error             --header 'Accept: application/json'             --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"             "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/subdomain")"
+          SUBDOMAIN="$(jq -r 'if .success == true then (.result.subdomain // "") else "" end' <<<"$RESPONSE")"
+          [[ "$WORKER_NAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]
+          [[ "$SUBDOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]
+          printf 'worker_name=%s\nbase_url=https://%s.%s.workers.dev\n'             "$WORKER_NAME" "$WORKER_NAME" "$SUBDOMAIN" >> "$GITHUB_OUTPUT"
+
+      - name: Require existing isolated preview worker
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_GENERATED_WORKER_NAME: ${{ steps.preview.outputs.worker_name }}
+        run: pnpm exec wrangler deployments list --name "$APPBASIS_GENERATED_WORKER_NAME" --json >/dev/null
+
+      - name: Verify existing preview standard-module runtime
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        env:
+          APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_EXPECTED_MODE: standard-module
+        run: node ./tooling/ulc-linz-exercise-catalog-preview-runtime-smoke.mjs
+
+      - name: Resolve isolated ULC preview Hyperdrives
+        if: inputs.operation == 'deploy'
+        id: hyperdrives
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          TARGETS="$(node ./tooling/ulc-linz-d4-preview-hyperdrive.mjs resolve)"
+          APPLICATION_ID="$(jq -r '.applicationId' <<<"$TARGETS")"
+          SECURITY_LOG_ID="$(jq -r '.securityLogId' <<<"$TARGETS")"
+          test -n "$APPLICATION_ID"
+          test -n "$SECURITY_LOG_ID"
+          test "$APPLICATION_ID" != "$SECURITY_LOG_ID"
+          echo "::add-mask::$APPLICATION_ID"
+          echo "::add-mask::$SECURITY_LOG_ID"
+          printf 'application_id=%s\nsecurity_log_id=%s\n' "$APPLICATION_ID" "$SECURITY_LOG_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Render current E7B9 preview config
+        if: inputs.operation == 'deploy'
+        env:
+          APPBASIS_HYPERDRIVE_ID: ${{ steps.hyperdrives.outputs.application_id }}
+          APPBASIS_SECURITY_LOG_HYPERDRIVE_ID: ${{ steps.hyperdrives.outputs.security_log_id }}
+          APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { writeGeneratedPreviewWranglerConfig } from "./tooling/generated-preview-deploy-config.mjs";
+          await writeGeneratedPreviewWranglerConfig({
+            appId: "ulc-linz",
+            hyperdriveId: process.env.APPBASIS_HYPERDRIVE_ID,
+            securityLogHyperdriveId: process.env.APPBASIS_SECURITY_LOG_HYPERDRIVE_ID,
+            baseURL: process.env.APPBASIS_BASE_URL,
+            buildSha: process.env.GITHUB_SHA,
+            entrypoint: "./worker/preview-exercise-catalog-standard.ts",
+            r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
+            r2Jurisdiction: "eu",
+            outputPath: "./apps/ulc-linz/wrangler.preview.e7b9.generated.json",
+          });
+          NODE
+
+      - name: Validate E7B9 preview bundle without provisioning
+        if: inputs.operation == 'deploy'
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          pnpm exec wrangler deploy
+          --cwd "../ulc-linz"
+          --config wrangler.preview.e7b9.generated.json
+          --dry-run
+          --experimental-provision=false
+          --experimental-auto-create=false
+
+      - name: Synchronize preview identity secret
+        if: inputs.operation == 'deploy'
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_GENERATED_WORKER_NAME: ${{ steps.preview.outputs.worker_name }}
+          APPBASIS_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_BETTER_AUTH_SECRET }}
+        run: |
+          printf '%s' "$APPBASIS_BETTER_AUTH_SECRET"             | pnpm exec wrangler secret put BETTER_AUTH_SECRET                 --name "$APPBASIS_GENERATED_WORKER_NAME" >/dev/null
+
+      - name: Deploy E7B9 standard-module preview runtime
+        if: inputs.operation == 'deploy'
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          pnpm exec wrangler deploy
+          --cwd "../ulc-linz"
+          --config wrangler.preview.e7b9.generated.json
+          --experimental-provision=false
+          --experimental-auto-create=false
+
+      - name: Require exact deployed E7B9 build
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        shell: bash
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_EXPECTED_GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          READY=0
+          for attempt in $(seq 1 20); do
+            STATUS="$(curl --silent --show-error               --output "$RUNNER_TEMP/e7b9-build.json"               --write-out '%{http_code}'               "$APPBASIS_GENERATED_PREVIEW_URL/api/health/build" || true)"
+            if [ "$STATUS" = '200' ]               && jq -e --arg sha "$APPBASIS_EXPECTED_GIT_SHA"                 '.status == "ok" and .appId == "ulc-linz" and .gitSha == $sha'                 "$RUNNER_TEMP/e7b9-build.json" >/dev/null; then
+              READY=1
+              break
+            fi
+            if [ "$attempt" -lt 20 ]; then sleep 2; fi
+          done
+          test "$READY" = '1' || {
+            echo 'The deployed ULC preview is not bound to the exact current E7B9 Git SHA.' >&2
+            exit 1
+          }
+
+      - name: Verify deployed preview runtime and database
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        env:
+          APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_EXPECTED_MODE: standard-module
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+        run: |
+          node ./tooling/ulc-linz-exercise-catalog-preview-runtime-smoke.mjs
+          node ./tooling/generated-preview-database-smoke.mjs
+
+      - name: Verify E7B9 UI and anonymous API boundary
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        shell: bash
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          READY=0
+          for attempt in $(seq 1 20); do
+            if HTML="$(curl --fail-with-body --silent --show-error "$APPBASIS_GENERATED_PREVIEW_URL/" 2>/dev/null)"; then
+              if grep -F 'id="training-plan-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-attendance-filter"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-block-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-save-template"' <<<"$HTML" >/dev/null; then
+                READY=1
+                break
+              fi
+            fi
+            if [ "$attempt" -lt 20 ]; then sleep 2; fi
+          done
+          test "$READY" = '1' || {
+            echo 'The deployed preview did not converge to the E7B9 training-planning UI.' >&2
+            exit 1
+          }
+
+          STATUS="$(curl --silent --show-error --output "$RUNNER_TEMP/e7b9-training-plans-api.json"             --write-out '%{http_code}'             "$APPBASIS_GENERATED_PREVIEW_URL/api/modules/training-plans")"
+          case "$STATUS" in
+            401|403) ;;
+            *)
+              echo "Unauthenticated training-plans API returned unexpected HTTP $STATUS." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Run authenticated E7B9 training-planning acceptance
+        if: inputs.operation == 'accept'
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_PREVIEW_USER_USERNAME: preview.admin
+          APPBASIS_PREVIEW_USER_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_PASSWORD }}
+        run: node ./tooling/ulc-linz-training-plans-preview-acceptance.mjs
+
+      - name: Record E7B9 preview operation
+        run: |
+          {
+            echo "ULC E7B9 operation: ${{ inputs.operation }}."
+            echo 'Target is the isolated generated-preview-ulc-linz environment only.'
+            echo 'Every preview mutation requires apply=true and a dedicated workflow run.'
+            echo 'Production was not changed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove generated E7B9 config
+        if: always()
+        run: rm -f ./apps/ulc-linz/wrangler.preview.e7b9.generated.json

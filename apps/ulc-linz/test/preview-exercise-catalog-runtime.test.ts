@@ -104,4 +104,45 @@ describe("ULC exercise catalog preview cutover gate", () => {
       ),
     ).toBe(false);
   });
+
+  it("publishes the exact preview build SHA without changing the runtime-mode health contract", async () => {
+    const sha = "a".repeat(40);
+    const worker = createExerciseCatalogRuntimePreviewWorker(
+      "standard-module",
+      {
+        async fetch() {
+          return new Response("delegated", { status: 202 });
+        },
+      },
+    );
+
+    const build = await worker.fetch(
+      new Request("https://ulc.example.test/api/health/build"),
+      { APPBASIS_BUILD_SHA: sha },
+    );
+    expect(build.status).toBe(200);
+    await expect(build.json()).resolves.toEqual({
+      status: "ok",
+      appId: "ulc-linz",
+      gitSha: sha,
+    });
+
+    const missing = await worker.fetch(
+      new Request("https://ulc.example.test/api/health/build"),
+      {},
+    );
+    expect(missing.status).toBe(503);
+    await expect(missing.json()).resolves.toMatchObject({
+      error: { code: "BUILD_SHA_UNAVAILABLE" },
+    });
+
+    const method = await worker.fetch(
+      new Request("https://ulc.example.test/api/health/build", {
+        method: "POST",
+      }),
+      { APPBASIS_BUILD_SHA: sha },
+    );
+    expect(method.status).toBe(405);
+  });
+
 });

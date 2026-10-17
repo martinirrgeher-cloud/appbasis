@@ -111,6 +111,46 @@ test("supports an explicit repository-local preview entrypoint without changing 
   assert.equal(defaultConfig.main, "./worker/index.ts");
 });
 
+test("binds an optional exact Git SHA without changing default preview vars", () => {
+  const sha = "a".repeat(40);
+  const config = renderGeneratedPreviewWranglerConfig({
+    appId: "ulc-linz",
+    hyperdriveId: "provider-hyperdrive-id",
+    baseURL: "https://ulc-preview.example.test",
+    buildSha: sha,
+  });
+  assert.deepEqual(config.vars, {
+    APPBASIS_BASE_URL: "https://ulc-preview.example.test",
+    APPBASIS_BUILD_SHA: sha,
+  });
+
+  const defaultConfig = renderGeneratedPreviewWranglerConfig({
+    appId: "ulc-linz",
+    hyperdriveId: "provider-hyperdrive-id",
+    baseURL: "https://ulc-preview.example.test",
+  });
+  assert.deepEqual(defaultConfig.vars, {
+    APPBASIS_BASE_URL: "https://ulc-preview.example.test",
+  });
+
+  for (const invalid of [
+    "A".repeat(40),
+    "a".repeat(39),
+    "g".repeat(40),
+  ]) {
+    assert.throws(
+      () =>
+        renderGeneratedPreviewWranglerConfig({
+          appId: "ulc-linz",
+          hyperdriveId: "provider-hyperdrive-id",
+          baseURL: "https://ulc-preview.example.test",
+          buildSha: invalid,
+        }),
+      /buildSha must be a lowercase 40-character Git SHA/,
+    );
+  }
+});
+
 test("adds an explicitly configured R2 binding without changing the default", () => {
   const config = renderGeneratedPreviewWranglerConfig({
     appId: "ulc-linz",
