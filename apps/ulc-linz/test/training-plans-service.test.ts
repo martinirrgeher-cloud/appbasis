@@ -916,6 +916,40 @@ describe("ULC training plan block usage booking", () => {
     ]);
   });
 
+  it("does not book usage when the plan write itself is rejected as stale", async () => {
+    const block = blockSnapshot();
+    const base = createService({
+      blocks: [block],
+      ids: ["usage-stale-plan", "usage-stale-item"],
+    });
+    const created = await base.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-12",
+      items: [],
+    });
+    await base.plans.update("org-1", created.id, 1, {
+      note: "Parallel geändert",
+      items: [],
+    });
+
+    await expect(
+      base.service.update("org-1", created.id, 1, {
+        items: [
+          {
+            kind: "block",
+            sourceBlockId: block.id,
+            sourceBlockRevision: block.currentRevision,
+            name: "Sprintblock",
+            durationMinutes: 25,
+            note: "Blocknotiz",
+            exercises: [],
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(TrainingPlanConflictError);
+    expect(base.getUsageAttempts()).toEqual([]);
+  });
+
   it("retries the same idempotent usage event once without failing an already saved plan", async () => {
     const block = blockSnapshot();
     const base = createService({
