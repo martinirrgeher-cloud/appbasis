@@ -119,7 +119,15 @@ jobs:
           }
           NODE
 
-      - name: Require current training-blocks-v2 preview baseline
+      - name: Inspect current training-blocks-v2 preview state
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-training-blocks-parity-preview.mjs inspect
+
+      - name: Require current training-blocks-v2 baseline before mutation
+        if: inputs.operation != 'inspect'
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
