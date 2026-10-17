@@ -798,7 +798,8 @@ function refreshTrainingPlanTemplateControls() {
     !trainingPlansCanEdit ||
     trainingPlanConflict ||
     trainingPlanSaveBusy ||
-    trainingPlanTemplateBusy;
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy;
   if (trainingPlanElements.blockTemplate) {
     trainingPlanElements.blockTemplate.disabled =
       blocked || trainingPlanBlockTemplates.length === 0;
@@ -1266,7 +1267,11 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
   add.textContent = "Übung im Block hinzufügen";
   add.disabled = !structural;
   add.addEventListener("click", () => {
-    if (trainingPlanSaveBusy || trainingPlanTemplateBusy) return;
+    if (
+      trainingPlanSaveBusy ||
+      trainingPlanTemplateBusy ||
+      trainingPlanSaveBackBusy
+    ) return;
     item.exercises.push(newTrainingPlanExerciseDraft());
     markTrainingPlanDirty(true);
   });
@@ -1660,7 +1665,8 @@ async function addTrainingPlanBlockTemplate() {
     !trainingPlansCanEdit ||
     trainingPlanConflict ||
     trainingPlanSaveBusy ||
-    trainingPlanTemplateBusy
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
   ) return;
 
   const summary = selectedTrainingPlanBlockTemplate();
