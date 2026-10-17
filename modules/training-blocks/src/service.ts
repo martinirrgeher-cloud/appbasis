@@ -321,6 +321,58 @@ export class TrainingBlockService {
     return event;
   }
 
+  async recordUsageOnce(
+    organizationId: string,
+    blockId: string,
+    eventId: string,
+    input: RecordTrainingBlockUsageInput,
+  ): Promise<TrainingBlockUsageEvent | undefined> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const id = normalizeTrainingBlockIdentifier(blockId, "Training block id");
+    const usageId = normalizeTrainingBlockIdentifier(
+      eventId,
+      "Training block usage id",
+    );
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TrainingBlockValidationError(
+        "Training block usage input is invalid.",
+      );
+    }
+    const block = await this.findCurrent(organization, id);
+    if (block === undefined) return undefined;
+    const event = Object.freeze({
+      id: usageId,
+      organizationId: organization,
+      blockId: id,
+      occurredAt: normalizedUsageTimestamp(input.occurredAt),
+      sourceKind: normalizedUsageSourceKind(input.sourceKind),
+      sourceRef: optionalUsageText(
+        input.sourceRef,
+        "Training block usage source reference",
+        500,
+      ),
+      note: optionalUsageText(
+        input.note,
+        "Training block usage note",
+        2_000,
+      ),
+    });
+    const stored = validateUsageEvent(
+      await this.#repository.recordUsageIfAbsent(event),
+      organization,
+      id,
+    );
+    if (!sameUsageEvent(stored, event)) {
+      throw new TrainingBlockValidationError(
+        "Training block usage id already represents a different event.",
+      );
+    }
+    return stored;
+  }
+
   async create(
     organizationId: string,
     input: CreateTrainingBlockDraftInput,
@@ -758,6 +810,21 @@ function validatedUsageSummaryMap(
     );
   }
   return result;
+}
+
+function sameUsageEvent(
+  left: TrainingBlockUsageEvent,
+  right: TrainingBlockUsageEvent,
+): boolean {
+  return (
+    left.id === right.id &&
+    left.organizationId === right.organizationId &&
+    left.blockId === right.blockId &&
+    left.occurredAt === right.occurredAt &&
+    left.sourceKind === right.sourceKind &&
+    left.sourceRef === right.sourceRef &&
+    left.note === right.note
+  );
 }
 
 function validateUsageEvent(
