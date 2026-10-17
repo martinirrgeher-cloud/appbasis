@@ -1461,6 +1461,7 @@ function closeTrainingPlanSaveTemplate(force) {
   }
   renderTrainingPlanSaveBackAudiences();
   showMessage(trainingPlanElements.saveTemplateMessage, "");
+  refreshTrainingPlanTemplateControls();
   refreshTrainingPlanSaveBackButtons();
   return true;
 }
