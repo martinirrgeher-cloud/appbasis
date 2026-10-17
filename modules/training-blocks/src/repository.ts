@@ -99,7 +99,7 @@ export interface TrainingBlockRepository {
   recordUsage(event: TrainingBlockUsageEvent): Promise<void>;
   recordUsageIfAbsent(
     event: TrainingBlockUsageEvent,
-  ): Promise<TrainingBlockUsageEvent>;
+  ): Promise<TrainingBlockUsageEvent | undefined>;
   listRevisions(
     organizationId: string,
     blockId: string,
