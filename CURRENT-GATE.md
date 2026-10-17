@@ -9,6 +9,65 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
+**ULC-E7B9 – Trainingsplanung in der isolierten ULC-Preview abnehmen.**
+
+E7B wird mit einer neuen, exakt an den aktuellen App-/Schema-Stand gebundenen
+Preview-Abnahme abgeschlossen. Die vorhandene D4-/E7A-Preview-Infrastruktur
+wird wiederverwendet; alte D4- oder E7A-Akzeptanzbelege gelten nicht als
+Nachweis für die inzwischen erweiterte Trainingsplanung.
+
+Dieser Gate-Scope ist bewusst zweiphasig:
+
+1. Repository-Vertrag, read-only Inspect und automatisierbarer Acceptance-Smoke
+   werden vollständig vorbereitet und durch normale CI geprüft.
+2. Preview-Migration, Secret-Synchronisierung, Deployment,
+   Preview-Testdaten-/Benutzerwrites und die eigentliche Remote-Abnahme werden
+   erst nach **ausdrücklicher Nutzerfreigabe für genau diese isolierten
+   Preview-Mutationen** ausgeführt.
+
+Abnahme für diesen Slice:
+
+- Ziel bleibt ausschließlich das geschützte GitHub Environment
+  `generated-preview-ulc-linz`, Worker `appbasis-ulc-linz` und die
+  dedizierte Datenbank `appbasis_ulc_linz_preview`; Produktionsressourcen
+  sind ausgeschlossen;
+- ein read-only Preflight klassifiziert Training-Blocks Schema v2 und
+  Training-Plans Schema v2 fail-closed als aktuell, migrationsbedürftig oder
+  drifted und prüft die bestehenden getrennten Preview-Datenbankrollen;
+- Training-Plans-Migrationen werden nur über den Modul-Owner-Vertrag und nur
+  bei explizitem `apply=true` aus `main` zugelassen; keine direkte
+  Fremdmodul-Schemaänderung;
+- der Deploy-Pfad verwendet weiterhin den aktuellen Standardmodul-Runtime-Pfad,
+  prüft Bundle/Bindings ohne Auto-Provisioning und benötigt eine getrennte
+  explizite Freigabe;
+- der Acceptance-Smoke arbeitet ausschließlich über öffentliche App-/HTTP-
+  Verträge und verifiziert mindestens Login/Zugriff, Trainingswochenansicht,
+  Attendance-Anzeige, manuellen Plan-Autosave, Blockvorlagen-Übernahme,
+  unabhängigen Snapshot, Save-back als neue Vorlage und sichtbare
+  Nutzungsmetadaten;
+- Smoke-Testdaten sind eindeutig preview-spezifisch und werden nicht aus
+  Produktionsdaten kopiert;
+- Optimistic-Concurrency wird mit einem kontrollierten Konfliktfall geprüft;
+- Browser-/HTTP-Requests dürfen weiterhin keinen Organisationsscope
+  autorisieren;
+- erfolgreiche Abnahme wird an exakten `main`-SHA, Workflow-Run(s),
+  App-Definition und die definierte Checkliste gebunden; ältere D4-Belege
+  bleiben historisch, können E7B9 aber nicht erfüllen;
+- ein fehlgeschlagener oder nur teilweise ausgeführter Preview-Lauf erzeugt
+  keinen Acceptance-Beleg;
+- Repository-Vorbereitung und read-only Inspect verändern weder Preview noch
+  Produktion;
+- **ohne ausdrückliche Nutzerfreigabe werden in diesem Gate keine
+  Preview-Migration, kein Deployment, kein Secret-/Provider-Write und keine
+  Preview-Benutzer-/Testdatenmutation gestartet.**
+
+Bis zu dieser Freigabe arbeitet ChatGPT autonom bis zum grünen
+Repository-/Readiness-Gate weiter. Für diesen Abschluss-Slice bleiben gezielte
+Tests und vollständige CI die primäre technische Abnahme; ein zusätzlicher
+breiter M5-Zyklus ist nicht Teil des Scopes.
+
+## Abgeschlossener Gate-Scope: ULC-E7B8 Nutzungsmetadaten
+
 **ULC-E7B8 – Nutzungsmetadaten bei persistierter Blockvorlagen-Verwendung buchen.**
 
 Nach Übernahme und Save-back wird jetzt der bereits in `training-blocks`
