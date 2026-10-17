@@ -208,7 +208,7 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
     );
     if (existing !== undefined) return cloneUsageEvent(existing);
     if (!this.#blocks.has(blockKey(event.organizationId, event.blockId))) {
-      throw new Error("Training block usage references an unknown block.");
+      return undefined;
     }
     const stored = cloneUsageEvent(event);
     this.#usageEvents.push(stored);
