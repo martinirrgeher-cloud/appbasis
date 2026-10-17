@@ -324,6 +324,50 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
     }
   }
 
+  async recordUsageIfAbsent(
+    event: TrainingBlockUsageEvent,
+  ): Promise<TrainingBlockUsageEvent | undefined> {
+    const inserted = await this.#client.unsafe(
+      `INSERT INTO appbasis_training_block_usage (
+         organization_id, id, block_id, occurred_at,
+         source_kind, source_ref, note
+       )
+       SELECT $1, $2, $3, $4::timestamptz, $5, $6, $7
+       WHERE EXISTS (
+         SELECT 1
+         FROM appbasis_training_block
+         WHERE organization_id = $1
+           AND id = $3
+       )
+       ON CONFLICT (organization_id, id) DO NOTHING
+       RETURNING id, organization_id, block_id,
+                 occurred_at::text AS occurred_at,
+                 source_kind, source_ref, note`,
+      [
+        event.organizationId,
+        event.id,
+        event.blockId,
+        event.occurredAt,
+        event.sourceKind,
+        event.sourceRef,
+        event.note,
+      ],
+    );
+    if (inserted.length === 1) return usageFromRow(inserted[0]!);
+
+    const existing = await this.#client.unsafe(
+      `SELECT id, organization_id, block_id,
+              occurred_at::text AS occurred_at,
+              source_kind, source_ref, note
+       FROM appbasis_training_block_usage
+       WHERE organization_id = $1
+         AND id = $2`,
+      [event.organizationId, event.id],
+    );
+    if (existing.length === 1) return usageFromRow(existing[0]!);
+    return undefined;
+  }
+
   async listRevisions(
     organizationId: string,
     blockId: string,

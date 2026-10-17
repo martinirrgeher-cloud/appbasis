@@ -198,6 +198,23 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
     this.#usageEvents.push(cloneUsageEvent(event));
   }
 
+  async recordUsageIfAbsent(
+    event: TrainingBlockUsageEvent,
+  ): Promise<TrainingBlockUsageEvent | undefined> {
+    const existing = this.#usageEvents.find(
+      (stored) =>
+        stored.organizationId === event.organizationId &&
+        stored.id === event.id,
+    );
+    if (existing !== undefined) return cloneUsageEvent(existing);
+    if (!this.#blocks.has(blockKey(event.organizationId, event.blockId))) {
+      return undefined;
+    }
+    const stored = cloneUsageEvent(event);
+    this.#usageEvents.push(stored);
+    return cloneUsageEvent(stored);
+  }
+
   async listRevisions(
     organizationId: string,
     blockId: string,

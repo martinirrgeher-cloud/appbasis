@@ -10,6 +10,7 @@ import {
   TrainingBlockConflictError,
   TrainingBlockInactiveError,
   TrainingBlockService,
+  TrainingBlockValidationError,
   type TrainingBlockPostgresClient,
 } from "../src/index";
 
@@ -365,6 +366,58 @@ describe("training-blocks PostgreSQL repository", () => {
     ]);
     await expect(orgA.findCurrent("org-a", "block-b")).resolves.toBeUndefined();
     await expect(orgB.findCurrent("org-b", "block-a")).resolves.toBeUndefined();
+  });
+
+  it("deduplicates concurrent idempotent usage appends by the existing usage primary key", async () => {
+    const seed = serviceFor(requiredConnection(), ["block-once"]);
+    await seed.create("org-once", { name: "Idempotent" });
+
+    const leftConnection = createPostgresDatabase(isolatedDatabaseUrl);
+    const rightConnection = createPostgresDatabase(isolatedDatabaseUrl);
+    try {
+      const left = serviceFor(leftConnection, []);
+      const right = serviceFor(rightConnection, []);
+      const input = {
+        occurredAt: "2026-10-10T11:00:00.000Z",
+        sourceKind: "training_plan",
+        sourceRef: "plan-1:item-1",
+      };
+      const [leftResult, rightResult] = await Promise.all([
+        left.recordUsageOnce(
+          "org-once",
+          "block-once",
+          "usage-once",
+          input,
+        ),
+        right.recordUsageOnce(
+          "org-once",
+          "block-once",
+          "usage-once",
+          input,
+        ),
+      ]);
+      expect(leftResult).toEqual(rightResult);
+      await expect(
+        seed.listUsage("org-once", "block-once"),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          id: "usage-once",
+          sourceRef: "plan-1:item-1",
+        }),
+      ]);
+
+      await expect(
+        seed.recordUsageOnce(
+          "org-once",
+          "block-once",
+          "usage-once",
+          { ...input, sourceRef: "plan-1:item-other" },
+        ),
+      ).rejects.toBeInstanceOf(TrainingBlockValidationError);
+    } finally {
+      await leftConnection.client.end();
+      await rightConnection.client.end();
+    }
   });
 
   it("persists principal favorites and usage summaries in the module owner", async () => {

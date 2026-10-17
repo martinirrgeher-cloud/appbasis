@@ -11,7 +11,7 @@
     "authorization": [
       {
         "path": "modules/training-blocks/test/service.test.ts",
-        "gitBlobSha": "058e3b7a3164e32d2273453dc57574719bdd6a4a"
+        "gitBlobSha": "e26c8adfbeb9a53624a501202c38ed394c9cc368"
       },
       {
         "path": "modules/training-blocks/test/training-block.test.ts",
@@ -29,7 +29,7 @@
       },
       {
         "path": "modules/training-blocks/test/postgres-repository.postgres.e2e.ts",
-        "gitBlobSha": "86ab2a6809f7b2d40e1a3ada8f131b7161fecb26"
+        "gitBlobSha": "da380cc1b3ef73e35aaf3f894e035f2f1536fd46"
       }
     ],
     "lifecycle": []

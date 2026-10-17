@@ -77,6 +77,17 @@ export interface UlcTrainingPlanBlockReader {
     organizationId: string,
     input: CreateTrainingBlockDraftInput,
   ): PromiseLike<TrainingBlockSnapshot>;
+  recordUsageOnce(
+    organizationId: string,
+    blockId: string,
+    eventId: string,
+    input: Readonly<{
+      occurredAt: string;
+      sourceKind: string;
+      sourceRef?: string | null;
+      note?: string | null;
+    }>,
+  ): PromiseLike<unknown>;
 }
 
 export interface UlcTrainingPlanBlockTemplateSummary {
@@ -538,6 +549,88 @@ export function createUlcTrainingPlanService({
     });
   }
 
+  async function bookNewBlockTemplateUsage(
+    organizationId: string,
+    previous: TrainingPlanSnapshot | null,
+    saved: TrainingPlanSnapshot,
+  ): Promise<void> {
+    const previousBlockItemIds = new Set(
+      previous === null
+        ? []
+        : previous.revision.items
+            .filter((item) => item.kind === "block")
+            .map((item) => item.itemId),
+    );
+    const newSourcedBlocks = saved.revision.items.filter(
+      (item) =>
+        item.kind === "block" &&
+        item.sourceBlockId !== null &&
+        !previousBlockItemIds.has(item.itemId),
+    );
+    if (newSourcedBlocks.length === 0) return;
+
+    let failedBookings = 0;
+    let nextIndex = 0;
+    const workerCount = Math.min(8, newSourcedBlocks.length);
+
+    async function bookNext(): Promise<void> {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+        if (index >= newSourcedBlocks.length) return;
+        const item = newSourcedBlocks[index];
+        if (item === undefined || item.kind !== "block") continue;
+        if (item.sourceBlockId === null) continue;
+
+        const sourceRef = saved.id + ":" + item.itemId;
+        let eventId: string;
+        try {
+          eventId = await trainingPlanUsageEventId(
+            organizationId,
+            saved.id,
+            item.itemId,
+          );
+        } catch {
+          failedBookings += 1;
+          continue;
+        }
+
+        let booked = false;
+        for (let attempt = 0; attempt < 2 && !booked; attempt += 1) {
+          try {
+            const recorded = await blocks.recordUsageOnce(
+              organizationId,
+              item.sourceBlockId,
+              eventId,
+              {
+                occurredAt: saved.updatedAt,
+                sourceKind: "training_plan",
+                sourceRef,
+              },
+            );
+            if (recorded === undefined) {
+              throw new Error(
+                "Training block usage target disappeared.",
+              );
+            }
+            booked = true;
+          } catch {
+            if (attempt === 1) failedBookings += 1;
+          }
+        }
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: workerCount }, () => bookNext()),
+    );
+    if (failedBookings > 0) {
+      console.error(
+        "[ulc-linz] one or more training block usage bookings failed",
+      );
+    }
+  }
+
   return Object.freeze({
     listSubjects,
     listForSubjectDateRange(
@@ -632,7 +725,9 @@ export function createUlcTrainingPlanService({
         draft.items,
         null,
       );
-      return plans.create(organizationId, input);
+      const saved = await plans.create(organizationId, input);
+      await bookNewBlockTemplateUsage(organizationId, null, saved);
+      return saved;
     },
     async update(
       organizationId: string,
@@ -672,12 +767,20 @@ export function createUlcTrainingPlanService({
         draft.items,
         rawItems,
       );
-      return plans.update(
+      const saved = await plans.update(
         organizationId,
         planId,
         expected,
         input,
       );
+      if (saved !== undefined) {
+        await bookNewBlockTemplateUsage(
+          organizationId,
+          current,
+          saved,
+        );
+      }
+      return saved;
     },
     async copyCurrentTo(
       organizationId: string,
@@ -688,12 +791,20 @@ export function createUlcTrainingPlanService({
       const source = await plans.findCurrent(organizationId, sourcePlanId);
       if (source === undefined) return undefined;
       await assertActiveSubject(organizationId, targetSubjectId);
-      return plans.copyCurrentTo(
+      const saved = await plans.copyCurrentTo(
         organizationId,
         sourcePlanId,
         targetSubjectId,
         targetDate,
       );
+      if (saved !== undefined) {
+        await bookNewBlockTemplateUsage(
+          organizationId,
+          null,
+          saved,
+        );
+      }
+      return saved;
     },
     listRevisions(organizationId: string, planId: string) {
       return plans.listRevisions(organizationId, planId);
@@ -706,6 +817,22 @@ export function createUlcTrainingPlanService({
       return plans.findRevision(organizationId, planId, revision);
     },
   });
+}
+
+async function trainingPlanUsageEventId(
+  organizationId: string,
+  planId: string,
+  itemId: string,
+): Promise<string> {
+  const bytes = new TextEncoder().encode(
+    organizationId + "\u0000" + planId + "\u0000" + itemId,
+  );
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const hex = Array.from(
+    new Uint8Array(digest),
+    (value) => value.toString(16).padStart(2, "0"),
+  ).join("");
+  return "training-plan-" + hex;
 }
 
 function trainingBlockExerciseFromPlan(
