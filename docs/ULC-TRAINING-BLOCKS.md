@@ -295,5 +295,21 @@ Die alte Trainingsplanung bleibt Referenz für den nächsten Bereich:
   nicht rückwirkend ungültig;
 - Rückspeichern eines Planblocks als neue Vorlage bleibt ein eigener Folgeslice.
 
-Nach E7B6 bleiben damit insbesondere Rückspeicherung und isolierte
-Preview-Abnahme als fachliche E7B-Folgeslices offen.
+### E7B7 – Planblock als neue Blockvorlage speichern
+
+- gespeichert wird ausschließlich ein serverseitig gelesener Block aus der
+  aktuell gespeicherten Planrevision;
+- der Write benötigt gleichzeitig Bearbeitungsrecht für Trainingsplanung und
+  Blockvorlagen in derselben Organisation und für denselben Actor;
+- Save-back erzeugt immer eine neue Blockidentität mit Revision 1 und
+  aktualisiert eine vorhandene Quellvorlage niemals implizit;
+- nur aktive Katalogübungen können zurückgespeichert werden; manuelle Übungen
+  bleiben bewusst nicht als wiederverwendbare Vorlage exportierbar;
+- strukturierte Planwerte werden nur bei eindeutiger Katalogparameter-Zuordnung
+  zurückgeführt; Freitext wird nicht als versteckte Parameterquelle geparst;
+- nach erfolgreichem Anlegen steht die neue Vorlage sofort wieder im
+  Trainingsplan-Picker zur Verfügung.
+
+Nach E7B7 bleiben insbesondere die Nutzungsmetadaten der tatsächlich
+übernommenen Quellvorlage und die isolierte Preview-Abnahme als fachliche
+E7B-Folgeslices offen.

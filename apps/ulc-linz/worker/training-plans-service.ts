@@ -6,7 +6,10 @@ import type {
   ExerciseCatalogItem,
   ExerciseCatalogRepository,
 } from "@appbasis/exercise-catalog";
-import type { TrainingBlockSnapshot } from "@appbasis/training-blocks";
+import type {
+  CreateTrainingBlockDraftInput,
+  TrainingBlockSnapshot,
+} from "@appbasis/training-blocks";
 import {
   normalizeTrainingPlanDraft,
   TrainingPlanConflictError,
@@ -15,6 +18,7 @@ import {
   type TrainingPlanBlockDraft,
   type TrainingPlanBlockInput,
   type TrainingPlanDraft,
+  type TrainingPlanExerciseRevision,
   type TrainingPlanItemDraft,
   type TrainingPlanRevision,
   type TrainingPlanService,
@@ -60,6 +64,19 @@ export interface UlcTrainingPlanBlockReader {
     organizationId: string,
     blockId: string,
   ): PromiseLike<TrainingBlockSnapshot | undefined>;
+  listAudiences(
+    organizationId: string,
+  ): PromiseLike<
+    readonly Readonly<{
+      id: string;
+      name: string;
+      shortName: string | null;
+    }>[]
+  >;
+  create(
+    organizationId: string,
+    input: CreateTrainingBlockDraftInput,
+  ): PromiseLike<TrainingBlockSnapshot>;
 }
 
 export interface UlcTrainingPlanBlockTemplateSummary {
@@ -75,6 +92,55 @@ export interface UlcTrainingPlanBlockTemplate {
   readonly id: string;
   readonly currentRevision: number;
   readonly item: TrainingPlanBlockInput;
+}
+
+export interface UlcTrainingPlanBlockTemplateAudience {
+  readonly id: string;
+  readonly name: string;
+  readonly shortName: string | null;
+}
+
+export interface SaveTrainingPlanBlockTemplateInput {
+  readonly planId: string;
+  readonly blockItemId: string;
+  readonly expectedRevision: number;
+  readonly audienceId: string;
+  readonly name?: string;
+}
+
+export interface UlcTrainingPlanSavedBlockTemplate {
+  readonly id: string;
+  readonly currentRevision: number;
+  readonly name: string;
+  readonly audienceId: string;
+  readonly audienceName: string;
+  readonly durationMinutes: number | null;
+  readonly exerciseCount: number;
+}
+
+export type UlcTrainingPlanTemplateSaveErrorReason =
+  | "plan-block-not-found"
+  | "manual-exercise"
+  | "exercise-unavailable"
+  | "audience-unavailable"
+  | "parameter-unavailable"
+  | "parameter-ambiguous"
+  | "required-parameter-missing";
+
+export class UlcTrainingPlanTemplateSaveError extends Error {
+  readonly code = "ULC_TRAINING_PLAN_TEMPLATE_SAVE_INVALID";
+  readonly reason: UlcTrainingPlanTemplateSaveErrorReason;
+  readonly referenceId: string | null;
+
+  constructor(
+    reason: UlcTrainingPlanTemplateSaveErrorReason,
+    referenceId: string | null = null,
+  ) {
+    super("Training plan block cannot be saved as a reusable template.");
+    this.name = "UlcTrainingPlanTemplateSaveError";
+    this.reason = reason;
+    this.referenceId = referenceId;
+  }
 }
 
 export class UlcTrainingPlanReferenceError extends Error {
@@ -123,6 +189,13 @@ export interface UlcTrainingPlanService {
     blockId: string,
     revision: number,
   ): Promise<UlcTrainingPlanBlockTemplate | undefined>;
+  listBlockTemplateAudiences(
+    organizationId: string,
+  ): Promise<readonly UlcTrainingPlanBlockTemplateAudience[]>;
+  saveBlockAsTemplate(
+    organizationId: string,
+    input: SaveTrainingPlanBlockTemplateInput,
+  ): Promise<UlcTrainingPlanSavedBlockTemplate | undefined>;
   findCurrent(
     organizationId: string,
     planId: string,
@@ -364,6 +437,107 @@ export function createUlcTrainingPlanService({
     }
   }
 
+  async function listBlockTemplateAudiences(
+    organizationId: string,
+  ): Promise<readonly UlcTrainingPlanBlockTemplateAudience[]> {
+    const audiences = await blocks.listAudiences(organizationId);
+    return Object.freeze(
+      audiences
+        .map((audience) =>
+          Object.freeze({
+            id: audience.id,
+            name: audience.name,
+            shortName: audience.shortName,
+          }),
+        )
+        .sort(
+          (left, right) =>
+            left.name.localeCompare(right.name, "de", {
+              sensitivity: "base",
+            }) || left.id.localeCompare(right.id),
+        ),
+    );
+  }
+
+  async function saveBlockAsTemplate(
+    organizationId: string,
+    input: SaveTrainingPlanBlockTemplateInput,
+  ): Promise<UlcTrainingPlanSavedBlockTemplate | undefined> {
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TrainingPlanValidationError(
+        "Training plan template save input is invalid.",
+      );
+    }
+    const expected = requiredRevision(input.expectedRevision);
+    const current = await plans.findCurrent(organizationId, input.planId);
+    if (current === undefined) return undefined;
+    if (current.currentRevision !== expected) {
+      throw new TrainingPlanConflictError(
+        expected,
+        current.currentRevision,
+      );
+    }
+
+    const planBlock = current.revision.items.find(
+      (item) =>
+        item.kind === "block" &&
+        item.itemId === input.blockItemId,
+    );
+    if (planBlock === undefined || planBlock.kind !== "block") {
+      throw new UlcTrainingPlanTemplateSaveError(
+        "plan-block-not-found",
+        input.blockItemId,
+      );
+    }
+
+    const [catalogItems, audiences] = await Promise.all([
+      exerciseCatalog.listItems(organizationId),
+      listBlockTemplateAudiences(organizationId),
+    ]);
+    const catalogById = new Map(
+      catalogItems
+        .filter(
+          (item) =>
+            item.organizationId === organizationId &&
+            item.isActive === true,
+        )
+        .map((item) => [item.id, item] as const),
+    );
+    const audience = audiences.find(
+      (candidate) => candidate.id === input.audienceId,
+    );
+    if (audience === undefined) {
+      throw new UlcTrainingPlanTemplateSaveError(
+        "audience-unavailable",
+        input.audienceId,
+      );
+    }
+
+    const exercises = planBlock.exercises.map((exercise) =>
+      trainingBlockExerciseFromPlan(
+        exercise,
+        catalogById,
+      ),
+    );
+    const created = await blocks.create(organizationId, {
+      name: input.name ?? planBlock.name,
+      audienceId: audience.id,
+      durationMinutes: planBlock.durationMinutes,
+      note: planBlock.note,
+      exercises,
+    });
+
+    return Object.freeze({
+      id: created.id,
+      currentRevision: created.currentRevision,
+      name: created.revision.name,
+      audienceId: audience.id,
+      audienceName: audience.name,
+      durationMinutes: created.revision.durationMinutes,
+      exerciseCount: created.revision.exercises.length,
+    });
+  }
+
   return Object.freeze({
     listSubjects,
     listForSubjectDateRange(
@@ -426,6 +600,8 @@ export function createUlcTrainingPlanService({
       );
     },
     findBlockTemplate,
+    listBlockTemplateAudiences,
+    saveBlockAsTemplate,
     findCurrent(organizationId: string, planId: string) {
       return plans.findCurrent(organizationId, planId);
     },
@@ -530,6 +706,125 @@ export function createUlcTrainingPlanService({
       return plans.findRevision(organizationId, planId, revision);
     },
   });
+}
+
+function trainingBlockExerciseFromPlan(
+  exercise: TrainingPlanExerciseRevision,
+  catalogById: ReadonlyMap<string, ExerciseCatalogItem>,
+): NonNullable<CreateTrainingBlockDraftInput["exercises"]>[number] {
+  if (exercise.sourceExerciseId === null) {
+    throw new UlcTrainingPlanTemplateSaveError(
+      "manual-exercise",
+      exercise.itemId ?? null,
+    );
+  }
+  const catalog = catalogById.get(exercise.sourceExerciseId);
+  if (catalog === undefined) {
+    throw new UlcTrainingPlanTemplateSaveError(
+      "exercise-unavailable",
+      exercise.sourceExerciseId,
+    );
+  }
+
+  const byKey = new Map(
+    catalog.parameters.map((parameter) => [parameter.key, parameter] as const),
+  );
+  const overrides: Array<{ key: string; value: string }> = [];
+
+  addNamedPlanOverride(
+    overrides,
+    byKey,
+    "sets",
+    exercise.sets,
+    catalog.id,
+  );
+  addNamedPlanOverride(
+    overrides,
+    byKey,
+    "repetitions",
+    exercise.repetitions,
+    catalog.id,
+  );
+
+  if (exercise.amount === null) {
+    if (exercise.unit !== null) {
+      throw new UlcTrainingPlanTemplateSaveError(
+        "parameter-unavailable",
+        catalog.id,
+      );
+    }
+  } else {
+    const expectedUnit = exercise.unit ?? "";
+    const candidates = catalog.parameters.filter(
+      (parameter) =>
+        parameter.key !== "sets" &&
+        parameter.key !== "repetitions" &&
+        parameter.inputType === "number" &&
+        parameter.unit === expectedUnit,
+    );
+    if (candidates.length === 0) {
+      throw new UlcTrainingPlanTemplateSaveError(
+        "parameter-unavailable",
+        catalog.id,
+      );
+    }
+    if (candidates.length !== 1) {
+      throw new UlcTrainingPlanTemplateSaveError(
+        "parameter-ambiguous",
+        catalog.id,
+      );
+    }
+    const parameter = candidates[0];
+    if (parameter === undefined) {
+      throw new UlcTrainingPlanTemplateSaveError(
+        "parameter-unavailable",
+        catalog.id,
+      );
+    }
+    overrides.push({
+      key: parameter.key,
+      value: exercise.amount,
+    });
+  }
+
+  for (const parameter of catalog.parameters) {
+    if (
+      parameter.isRequired &&
+      parameter.defaultValue === null &&
+      !overrides.some((override) => override.key === parameter.key)
+    ) {
+      throw new UlcTrainingPlanTemplateSaveError(
+        "required-parameter-missing",
+        parameter.key,
+      );
+    }
+  }
+
+  return Object.freeze({
+    exerciseId: catalog.id,
+    note: exercise.comment,
+    parameterOverrides: Object.freeze(
+      overrides.map((override) => Object.freeze(override)),
+    ),
+  });
+}
+
+function addNamedPlanOverride(
+  overrides: Array<{ key: string; value: string }>,
+  byKey: ReadonlyMap<string, ExerciseCatalogItem["parameters"][number]>,
+  key: "sets" | "repetitions",
+  value: string | null,
+  exerciseId: string,
+): void {
+  if (value === null) return;
+  const parameter = byKey.get(key);
+  if (parameter === undefined) {
+    throw new UlcTrainingPlanTemplateSaveError(
+      "parameter-unavailable",
+      exerciseId,
+    );
+  }
+  overrides.push({ key, value });
 }
 
 function isCompactTrainingPlanValue(value: string): boolean {

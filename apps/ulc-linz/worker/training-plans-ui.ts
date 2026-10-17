@@ -83,6 +83,31 @@ export const ULC_TRAINING_PLANS_HTML = `
                 </footer>
               </section>
             </div>
+
+            <div class="training-plan-backdrop training-plan-save-template-backdrop" id="training-plan-save-template" hidden>
+              <section class="training-plan-dialog training-plan-save-template-dialog" role="dialog" aria-modal="true" aria-labelledby="training-plan-save-template-title">
+                <header class="training-plan-header">
+                  <div>
+                    <p class="eyebrow">Blockvorlage</p>
+                    <h2 id="training-plan-save-template-title">Als neue Vorlage speichern</h2>
+                  </div>
+                  <button class="button button--secondary" id="training-plan-save-template-cancel" type="button">Abbrechen</button>
+                </header>
+                <div class="training-plan-body">
+                  <p class="message message--error" id="training-plan-save-template-message" role="alert" hidden></p>
+                  <div class="training-plan-grid">
+                    <label>Name
+                      <input id="training-plan-save-template-name" type="text" maxlength="120" autocomplete="off">
+                    </label>
+                    <label>Trainingsgruppe
+                      <select id="training-plan-save-template-audience"></select>
+                    </label>
+                  </div>
+                  <p class="settings-note">Es wird immer eine neue Blockvorlage angelegt. Eine bestehende Quellvorlage wird nicht überschrieben.</p>
+                  <button class="button" id="training-plan-save-template-confirm" type="button">Neue Vorlage anlegen</button>
+                </div>
+              </section>
+            </div>
           </section>
 `;
 
@@ -253,6 +278,13 @@ export const ULC_TRAINING_PLANS_CSS = `
 }
 .training-plan-template-picker label { min-width: 0; }
 .training-plan-template-picker select { width: 100%; }
+.training-plan-save-template-backdrop { z-index: 95; }
+.training-plan-save-template-dialog { width: min(100%, 520px); }
+.training-plan-save-template-action {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-start;
+}
 .training-plan-items { display: grid; gap: 10px; }
 .training-plan-item {
   display: grid;
@@ -354,6 +386,12 @@ const trainingPlanElements = Object.freeze({
   addBlock: document.querySelector("#training-plan-add-block"),
   blockTemplate: document.querySelector("#training-plan-block-template"),
   addTemplate: document.querySelector("#training-plan-add-template"),
+  saveTemplate: document.querySelector("#training-plan-save-template"),
+  saveTemplateMessage: document.querySelector("#training-plan-save-template-message"),
+  saveTemplateName: document.querySelector("#training-plan-save-template-name"),
+  saveTemplateAudience: document.querySelector("#training-plan-save-template-audience"),
+  saveTemplateConfirm: document.querySelector("#training-plan-save-template-confirm"),
+  saveTemplateCancel: document.querySelector("#training-plan-save-template-cancel"),
   itemCount: document.querySelector("#training-plan-item-count"),
   items: document.querySelector("#training-plan-items"),
   meta: document.querySelector("#training-plan-editor-meta"),
@@ -377,6 +415,10 @@ let trainingPlanDirty = false;
 let trainingPlanConflict = false;
 let trainingPlanSaveBusy = false;
 let trainingPlanTemplateBusy = false;
+let trainingPlanSaveBackBusy = false;
+let trainingPlanSaveBackItemId = null;
+let trainingPlanSaveBackAudiences = [];
+let trainingPlanSaveBackOperation = 0;
 let trainingPlanSavePending = false;
 let trainingPlanSaveTimer = null;
 let trainingPlanChangeVersion = 0;
@@ -442,6 +484,34 @@ function isTrainingPlanBlockTemplate(value) {
     (item.note === null || typeof item.note === "string") &&
     Array.isArray(item.exercises) &&
     item.exercises.every(isTrainingPlanTemplateExercise);
+}
+
+function isTrainingPlanBlockTemplateAudience(value) {
+  return value !== null &&
+    typeof value === "object" &&
+    typeof value.id === "string" &&
+    value.id.length > 0 &&
+    typeof value.name === "string" &&
+    value.name.length > 0 &&
+    (value.shortName === null || typeof value.shortName === "string");
+}
+
+function isTrainingPlanSavedBlockTemplate(value) {
+  return value !== null &&
+    typeof value === "object" &&
+    typeof value.id === "string" &&
+    value.id.length > 0 &&
+    value.currentRevision === 1 &&
+    typeof value.name === "string" &&
+    value.name.length > 0 &&
+    typeof value.audienceId === "string" &&
+    value.audienceId.length > 0 &&
+    typeof value.audienceName === "string" &&
+    value.audienceName.length > 0 &&
+    (value.durationMinutes === null ||
+      (Number.isSafeInteger(value.durationMinutes) && value.durationMinutes >= 1)) &&
+    Number.isSafeInteger(value.exerciseCount) &&
+    value.exerciseCount >= 0;
 }
 
 function isTrainingPlanExercise(value) {
@@ -524,6 +594,9 @@ async function bootstrapTrainingPlans() {
   trainingPlansCanEdit = false;
   trainingPlanSubjects = [];
   trainingPlanBlockTemplates = [];
+  trainingPlanSaveBackBusy = false;
+  trainingPlanSaveBackItemId = null;
+  trainingPlanSaveBackAudiences = [];
   trainingPlanWeekPlans = [];
   trainingPlanWeekAttendance = [];
   trainingPlanWeekLoaded = false;
@@ -544,6 +617,7 @@ async function bootstrapTrainingPlans() {
       features?.attendanceSummary !== true ||
       features?.attendanceFilter !== true ||
       features?.blockTemplateAdoption !== true ||
+      features?.blockTemplateSaveBack !== true ||
       payload?.access?.view !== true ||
       typeof payload?.access?.edit !== "boolean" ||
       !Array.isArray(payload?.subjects) ||
@@ -724,7 +798,8 @@ function refreshTrainingPlanTemplateControls() {
     !trainingPlansCanEdit ||
     trainingPlanConflict ||
     trainingPlanSaveBusy ||
-    trainingPlanTemplateBusy;
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy;
   if (trainingPlanElements.blockTemplate) {
     trainingPlanElements.blockTemplate.disabled =
       blocked || trainingPlanBlockTemplates.length === 0;
@@ -980,6 +1055,9 @@ function openTrainingPlanEditor(date) {
   trainingPlanConflict = false;
   trainingPlanSaveBusy = false;
   trainingPlanTemplateBusy = false;
+  trainingPlanSaveBackBusy = false;
+  trainingPlanSaveBackItemId = null;
+  trainingPlanSaveBackAudiences = [];
   trainingPlanSavePending = false;
   trainingPlanChangeVersion = 0;
   clearTimeout(trainingPlanSaveTimer);
@@ -1010,12 +1088,17 @@ function populateTrainingPlanEditor() {
 
 function closeTrainingPlanEditor(force) {
   if (!force) {
-    if (trainingPlanSaveBusy || trainingPlanTemplateBusy) return false;
+    if (
+      trainingPlanSaveBusy ||
+      trainingPlanTemplateBusy ||
+      trainingPlanSaveBackBusy
+    ) return false;
     if (
       (trainingPlanDirty || trainingPlanConflict) &&
       !window.confirm("Ungespeicherte Änderungen verwerfen?")
     ) return false;
   }
+  closeTrainingPlanSaveTemplate(true);
   clearTimeout(trainingPlanSaveTimer);
   trainingPlanSaveTimer = null;
   trainingPlanEditorDate = null;
@@ -1079,7 +1162,10 @@ function renderTrainingPlanItems() {
   container.replaceChildren();
   const editable = trainingPlansCanEdit && !trainingPlanConflict;
   const structural =
-    editable && !trainingPlanSaveBusy && !trainingPlanTemplateBusy;
+    editable &&
+    !trainingPlanSaveBusy &&
+    !trainingPlanTemplateBusy &&
+    !trainingPlanSaveBackBusy;
 
   if (trainingPlanElements.itemCount) {
     trainingPlanElements.itemCount.textContent = String(
@@ -1181,11 +1267,30 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
   add.textContent = "Übung im Block hinzufügen";
   add.disabled = !structural;
   add.addEventListener("click", () => {
-    if (trainingPlanSaveBusy || trainingPlanTemplateBusy) return;
+    if (
+      trainingPlanSaveBusy ||
+      trainingPlanTemplateBusy ||
+      trainingPlanSaveBackBusy
+    ) return;
     item.exercises.push(newTrainingPlanExerciseDraft());
     markTrainingPlanDirty(true);
   });
   wrapper.append(add);
+
+  const saveTemplateAction = document.createElement("div");
+  saveTemplateAction.className = "training-plan-save-template-action";
+  const saveTemplate = document.createElement("button");
+  saveTemplate.type = "button";
+  saveTemplate.className = "button button--secondary";
+  saveTemplate.dataset.trainingPlanSaveTemplate = item.itemId || "";
+  saveTemplate.dataset.trainingPlanSaveTemplateIndex = String(itemIndex);
+  saveTemplate.textContent = "Als Vorlage speichern";
+  saveTemplate.disabled = !trainingPlanCanSaveBlockTemplate(item);
+  saveTemplate.addEventListener("click", () => {
+    void openTrainingPlanSaveTemplate(item);
+  });
+  saveTemplateAction.append(saveTemplate);
+  wrapper.append(saveTemplateAction);
 
   const children = document.createElement("div");
   children.className = "training-plan-child-list";
@@ -1281,6 +1386,265 @@ function trainingPlanNumberField(label, value, editable, onInput) {
   return wrapper;
 }
 
+function trainingPlanCanSaveBlockTemplate(item) {
+  return trainingPlansCanEdit &&
+    !trainingPlanDirty &&
+    !trainingPlanConflict &&
+    !trainingPlanSaveBusy &&
+    !trainingPlanTemplateBusy &&
+    !trainingPlanSaveBackBusy &&
+    trainingPlanSelected !== null &&
+    item?.kind === "block" &&
+    typeof item.itemId === "string" &&
+    item.itemId.length > 0;
+}
+
+function refreshTrainingPlanSaveBackButtons() {
+  const buttons =
+    trainingPlanElements.items?.querySelectorAll?.(
+      "[data-training-plan-save-template]",
+    ) || [];
+  for (const button of buttons) {
+    const itemIndex = Number(
+      button.dataset.trainingPlanSaveTemplateIndex,
+    );
+    const item =
+      Number.isSafeInteger(itemIndex) && itemIndex >= 0
+        ? trainingPlanDraft?.items[itemIndex]
+        : undefined;
+    if (item?.kind === "block" && item.itemId) {
+      button.dataset.trainingPlanSaveTemplate = item.itemId;
+    }
+    button.disabled = !trainingPlanCanSaveBlockTemplate(item);
+  }
+}
+
+function renderTrainingPlanSaveBackAudiences() {
+  const select = trainingPlanElements.saveTemplateAudience;
+  if (!select) return;
+  select.replaceChildren();
+  if (trainingPlanSaveBackAudiences.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Keine aktive Trainingsgruppe verfügbar";
+    select.append(option);
+    select.value = "";
+    return;
+  }
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Trainingsgruppe auswählen";
+  select.append(placeholder);
+  for (const audience of trainingPlanSaveBackAudiences) {
+    const option = document.createElement("option");
+    option.value = audience.id;
+    option.textContent =
+      audience.shortName && audience.shortName !== audience.name
+        ? audience.name + " (" + audience.shortName + ")"
+        : audience.name;
+    select.append(option);
+  }
+  select.value = "";
+}
+
+function closeTrainingPlanSaveTemplate(force) {
+  if (!force && trainingPlanSaveBackBusy) return false;
+  trainingPlanSaveBackOperation += 1;
+  trainingPlanSaveBackBusy = false;
+  trainingPlanSaveBackItemId = null;
+  trainingPlanSaveBackAudiences = [];
+  if (trainingPlanElements.saveTemplate) {
+    trainingPlanElements.saveTemplate.hidden = true;
+  }
+  if (trainingPlanElements.saveTemplateName) {
+    trainingPlanElements.saveTemplateName.value = "";
+  }
+  renderTrainingPlanSaveBackAudiences();
+  showMessage(trainingPlanElements.saveTemplateMessage, "");
+  refreshTrainingPlanTemplateControls();
+  refreshTrainingPlanSaveBackButtons();
+  return true;
+}
+
+async function openTrainingPlanSaveTemplate(item) {
+  if (!trainingPlanCanSaveBlockTemplate(item)) return;
+  trainingPlanSaveBackItemId = item.itemId;
+  trainingPlanSaveBackBusy = true;
+  const operation = ++trainingPlanSaveBackOperation;
+  trainingPlanSaveBackAudiences = [];
+  refreshTrainingPlanTemplateControls();
+  if (trainingPlanElements.saveTemplate) {
+    trainingPlanElements.saveTemplate.hidden = false;
+  }
+  if (trainingPlanElements.saveTemplateName) {
+    trainingPlanElements.saveTemplateName.value = item.name;
+  }
+  renderTrainingPlanSaveBackAudiences();
+  showMessage(trainingPlanElements.saveTemplateMessage, "");
+  if (trainingPlanElements.saveTemplateConfirm) {
+    trainingPlanElements.saveTemplateConfirm.disabled = true;
+  }
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/training-plans/block-template-save-options",
+    );
+    if (
+      !Array.isArray(payload?.audiences) ||
+      !payload.audiences.every(isTrainingPlanBlockTemplateAudience)
+    ) {
+      throw new Error("INVALID_TRAINING_PLAN_TEMPLATE_AUDIENCES");
+    }
+    if (
+      operation !== trainingPlanSaveBackOperation ||
+      trainingPlanSaveBackItemId !== item.itemId
+    ) return;
+    trainingPlanSaveBackAudiences = payload.audiences.slice();
+    renderTrainingPlanSaveBackAudiences();
+    if (trainingPlanSaveBackAudiences.length === 0) {
+      showMessage(
+        trainingPlanElements.saveTemplateMessage,
+        "Es ist keine aktive Trainingsgruppe für eine Blockvorlage verfügbar.",
+      );
+    }
+  } catch (error) {
+    if (operation !== trainingPlanSaveBackOperation) return;
+    trainingPlanSaveBackAudiences = [];
+    renderTrainingPlanSaveBackAudiences();
+    showMessage(
+      trainingPlanElements.saveTemplateMessage,
+      error?.status === 403
+        ? "Du hast keine Berechtigung, Blockvorlagen anzulegen."
+        : "Die Trainingsgruppen konnten nicht geladen werden.",
+    );
+  } finally {
+    if (operation === trainingPlanSaveBackOperation) {
+      trainingPlanSaveBackBusy = false;
+      refreshTrainingPlanTemplateControls();
+      refreshTrainingPlanSaveBackControls();
+      refreshTrainingPlanSaveBackButtons();
+    }
+  }
+}
+
+function refreshTrainingPlanSaveBackControls() {
+  const audienceId =
+    trainingPlanElements.saveTemplateAudience?.value || "";
+  const name = (trainingPlanElements.saveTemplateName?.value || "").trim();
+  const blocked =
+    trainingPlanSaveBackBusy ||
+    trainingPlanSaveBackItemId === null ||
+    audienceId.length === 0 ||
+    name.length === 0;
+  if (trainingPlanElements.saveTemplateName) {
+    trainingPlanElements.saveTemplateName.disabled =
+      trainingPlanSaveBackBusy;
+  }
+  if (trainingPlanElements.saveTemplateAudience) {
+    trainingPlanElements.saveTemplateAudience.disabled =
+      trainingPlanSaveBackBusy ||
+      trainingPlanSaveBackAudiences.length === 0;
+  }
+  if (trainingPlanElements.saveTemplateConfirm) {
+    trainingPlanElements.saveTemplateConfirm.disabled = blocked;
+  }
+  if (trainingPlanElements.saveTemplateCancel) {
+    trainingPlanElements.saveTemplateCancel.disabled =
+      trainingPlanSaveBackBusy;
+  }
+}
+
+async function saveTrainingPlanBlockTemplate() {
+  if (
+    trainingPlanSaveBackBusy ||
+    trainingPlanSaveBackItemId === null ||
+    trainingPlanDirty ||
+    trainingPlanConflict ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSelected === null
+  ) return;
+
+  const audienceId =
+    trainingPlanElements.saveTemplateAudience?.value || "";
+  const name = (trainingPlanElements.saveTemplateName?.value || "").trim();
+  if (audienceId.length === 0 || name.length === 0) return;
+
+  const itemId = trainingPlanSaveBackItemId;
+  const selectedPlan = trainingPlanSelected;
+  const operation = ++trainingPlanSaveBackOperation;
+  trainingPlanSaveBackBusy = true;
+  refreshTrainingPlanTemplateControls();
+  refreshTrainingPlanSaveBackControls();
+  refreshTrainingPlanSaveBackButtons();
+  showMessage(trainingPlanElements.saveTemplateMessage, "");
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/training-plans/block-templates",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          planId: selectedPlan.id,
+          blockItemId: itemId,
+          expectedRevision: selectedPlan.currentRevision,
+          audienceId,
+          name,
+        }),
+      },
+    );
+    const template = payload?.template;
+    if (!isTrainingPlanSavedBlockTemplate(template)) {
+      throw new Error("INVALID_TRAINING_PLAN_SAVED_TEMPLATE");
+    }
+    if (operation !== trainingPlanSaveBackOperation) return;
+
+    trainingPlanBlockTemplates = trainingPlanBlockTemplates
+      .filter((candidate) => candidate.id !== template.id)
+      .concat([
+        {
+          id: template.id,
+          currentRevision: template.currentRevision,
+          name: template.name,
+          audienceName: template.audienceName,
+          durationMinutes: template.durationMinutes,
+          exerciseCount: template.exerciseCount,
+        },
+      ])
+      .sort(
+        (left, right) =>
+          left.name.localeCompare(right.name, "de", {
+            sensitivity: "base",
+          }) || left.id.localeCompare(right.id),
+      );
+    renderTrainingPlanBlockTemplates();
+    closeTrainingPlanSaveTemplate(true);
+    trainingPlanSetSaveState("saved", "Vorlage angelegt");
+  } catch (error) {
+    if (operation !== trainingPlanSaveBackOperation) return;
+    let message = "Die Blockvorlage konnte nicht angelegt werden.";
+    if (error?.status === 403) {
+      message = "Du hast keine Berechtigung, Blockvorlagen anzulegen.";
+    } else if (error?.status === 409) {
+      message =
+        "Der Trainingsplan wurde inzwischen geändert. Bitte zuerst neu laden.";
+    } else if (error?.status === 404) {
+      message =
+        "Der gespeicherte Planblock ist nicht mehr verfügbar. Bitte neu laden.";
+    } else if (error?.status === 400) {
+      message =
+        "Dieser Planblock lässt sich nicht eindeutig als Blockvorlage abbilden. Prüfe Katalogübungen und Planwerte.";
+    }
+    showMessage(trainingPlanElements.saveTemplateMessage, message);
+  } finally {
+    if (operation === trainingPlanSaveBackOperation) {
+      trainingPlanSaveBackBusy = false;
+      refreshTrainingPlanSaveBackControls();
+      refreshTrainingPlanSaveBackButtons();
+    }
+  }
+}
+
 function trainingPlanBlockDraftFromTemplate(template) {
   return {
     kind: "block",
@@ -1310,7 +1674,8 @@ async function addTrainingPlanBlockTemplate() {
     !trainingPlansCanEdit ||
     trainingPlanConflict ||
     trainingPlanSaveBusy ||
-    trainingPlanTemplateBusy
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
   ) return;
 
   const summary = selectedTrainingPlanBlockTemplate();
@@ -1414,7 +1779,12 @@ function newTrainingPlanBlockDraft() {
 }
 
 function trainingPlanMoveItem(index, delta) {
-  if (!trainingPlanDraft || trainingPlanSaveBusy) return;
+  if (
+    !trainingPlanDraft ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
   const target = index + delta;
   if (target < 0 || target >= trainingPlanDraft.items.length) return;
   const values = trainingPlanDraft.items;
@@ -1423,13 +1793,23 @@ function trainingPlanMoveItem(index, delta) {
 }
 
 function trainingPlanRemoveItem(index) {
-  if (!trainingPlanDraft || trainingPlanSaveBusy) return;
+  if (
+    !trainingPlanDraft ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
   trainingPlanDraft.items.splice(index, 1);
   markTrainingPlanDirty(true);
 }
 
 function trainingPlanMoveChild(itemIndex, childIndex, delta) {
-  if (!trainingPlanDraft || trainingPlanSaveBusy) return;
+  if (
+    !trainingPlanDraft ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
   const block = trainingPlanDraft.items[itemIndex];
   if (block?.kind !== "block") return;
   const target = childIndex + delta;
@@ -1440,7 +1820,12 @@ function trainingPlanMoveChild(itemIndex, childIndex, delta) {
 }
 
 function trainingPlanRemoveChild(itemIndex, childIndex) {
-  if (!trainingPlanDraft || trainingPlanSaveBusy) return;
+  if (
+    !trainingPlanDraft ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
   const block = trainingPlanDraft.items[itemIndex];
   if (block?.kind !== "block") return;
   block.exercises.splice(childIndex, 1);
@@ -1456,6 +1841,7 @@ function markTrainingPlanDirty(render) {
   trainingPlanDirty = true;
   trainingPlanChangeVersion += 1;
   trainingPlanSetSaveState("dirty", "Ungespeichert");
+  refreshTrainingPlanSaveBackButtons();
   if (render) renderTrainingPlanItems();
   scheduleTrainingPlanSave();
 }
@@ -1482,7 +1868,11 @@ async function saveTrainingPlan() {
     !trainingPlansCanEdit ||
     trainingPlanConflict
   ) return;
-  if (trainingPlanSaveBusy || trainingPlanTemplateBusy) {
+  if (
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) {
     trainingPlanSavePending = true;
     return;
   }
@@ -1711,6 +2101,7 @@ function refreshTrainingPlanEditorState() {
       readonly || trainingPlanConflict;
   }
   refreshTrainingPlanTemplateControls();
+  refreshTrainingPlanSaveBackButtons();
   if (trainingPlanElements.meta) {
     trainingPlanElements.meta.textContent = trainingPlanSelected
       ? "Version " + String(trainingPlanSelected.currentRevision)
@@ -1839,12 +2230,22 @@ trainingPlanElements.note?.addEventListener("input", () => {
   markTrainingPlanDirty();
 });
 trainingPlanElements.addExercise?.addEventListener("click", () => {
-  if (!trainingPlanDraft || trainingPlanSaveBusy || trainingPlanTemplateBusy) return;
+  if (
+    !trainingPlanDraft ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
   trainingPlanDraft.items.push(newTrainingPlanExerciseDraft());
   markTrainingPlanDirty(true);
 });
 trainingPlanElements.addBlock?.addEventListener("click", () => {
-  if (!trainingPlanDraft || trainingPlanSaveBusy || trainingPlanTemplateBusy) return;
+  if (
+    !trainingPlanDraft ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
   trainingPlanDraft.items.push(newTrainingPlanBlockDraft());
   markTrainingPlanDirty(true);
 });
@@ -1854,8 +2255,33 @@ trainingPlanElements.blockTemplate?.addEventListener("change", () => {
 trainingPlanElements.addTemplate?.addEventListener("click", () => {
   void addTrainingPlanBlockTemplate();
 });
+trainingPlanElements.saveTemplateName?.addEventListener("input", () => {
+  refreshTrainingPlanSaveBackControls();
+});
+trainingPlanElements.saveTemplateAudience?.addEventListener("change", () => {
+  refreshTrainingPlanSaveBackControls();
+});
+trainingPlanElements.saveTemplateCancel?.addEventListener("click", () => {
+  closeTrainingPlanSaveTemplate(false);
+});
+trainingPlanElements.saveTemplateConfirm?.addEventListener("click", () => {
+  void saveTrainingPlanBlockTemplate();
+});
+document.addEventListener("keydown", (event) => {
+  if (
+    event.key === "Escape" &&
+    trainingPlanElements.saveTemplate &&
+    !trainingPlanElements.saveTemplate.hidden
+  ) {
+    closeTrainingPlanSaveTemplate(false);
+  }
+});
 window.addEventListener("beforeunload", (event) => {
-  if (!trainingPlanDirty && !trainingPlanSaveBusy) return;
+  if (
+    !trainingPlanDirty &&
+    !trainingPlanSaveBusy &&
+    !trainingPlanSaveBackBusy
+  ) return;
   event.preventDefault();
   event.returnValue = "";
 });

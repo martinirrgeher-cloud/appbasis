@@ -132,6 +132,12 @@ const EMPTY_BLOCK_READER = Object.freeze({
   async findCurrent() {
     return undefined;
   },
+  async listAudiences() {
+    return [];
+  },
+  async create() {
+    throw new Error("Unexpected training block create.");
+  },
 });
 
 function catalogItem(
@@ -172,6 +178,8 @@ function createService(input: {
   let idIndex = 0;
   let catalogReadCount = 0;
   let attendanceReadCount = 0;
+  const createdBlockInputs: unknown[] = [];
+  let createdBlockIndex = 0;
   const ids = input.ids ?? [
     "plan-1",
     "item-1",
@@ -211,6 +219,7 @@ function createService(input: {
     plans,
     getCatalogReadCount: () => catalogReadCount,
     getAttendanceReadCount: () => attendanceReadCount,
+    getCreatedBlockInputs: () => createdBlockInputs.slice(),
     service: createUlcTrainingPlanService({
       plans,
       masterdata: {
@@ -236,6 +245,58 @@ function createService(input: {
         },
         async findCurrent(_organizationId, blockId) {
           return blockRows.find((block) => block.id === blockId);
+        },
+        async listAudiences(organizationId) {
+          return groups
+            .filter(
+              (group) =>
+                group.organizationId === organizationId &&
+                group.isActive,
+            )
+            .map((group) => ({
+              id: group.id,
+              name: group.name,
+              shortName: group.shortName,
+            }));
+        },
+        async create(organizationId, input) {
+          createdBlockInputs.push({ organizationId, input });
+          createdBlockIndex += 1;
+          const id = "saved-block-" + String(createdBlockIndex);
+          const exercises = (input.exercises ?? []).map(
+            (exercise, index) => ({
+              itemId: id + "-item-" + String(index + 1),
+              exerciseId: exercise.exerciseId,
+              note: exercise.note ?? null,
+              parameterOverrides: (exercise.parameterOverrides ?? []).map(
+                (override, overrideIndex) => ({
+                  key: override.key,
+                  value: override.value,
+                  sortOrder: overrideIndex,
+                }),
+              ),
+              sortOrder: index,
+            }),
+          );
+          return Object.freeze({
+            id,
+            organizationId,
+            isActive: true,
+            currentRevision: 1,
+            createdAt: "2026-10-16T20:00:00.000Z",
+            updatedAt: "2026-10-16T20:00:00.000Z",
+            revision: Object.freeze({
+              organizationId,
+              blockId: id,
+              revision: 1,
+              name: input.name,
+              audienceId: input.audienceId ?? null,
+              durationMinutes: input.durationMinutes ?? null,
+              note: input.note ?? null,
+              exercises: Object.freeze(exercises),
+              createdAt: "2026-10-16T20:00:00.000Z",
+            }),
+          });
         },
       },
     }),
@@ -581,14 +642,7 @@ describe("ULC training plan block template adoption", () => {
           return [];
         },
       },
-      blocks: {
-        async list() {
-          return [];
-        },
-        async findCurrent() {
-          return undefined;
-        },
-      },
+      blocks: EMPTY_BLOCK_READER,
     });
 
     await expect(
@@ -623,6 +677,249 @@ describe("ULC training plan block template adoption", () => {
       referenceType: "block",
       referenceId: "block-other",
     });
+  });
+});
+
+describe("ULC training plan block template save-back", () => {
+  it("creates a new template from the exact persisted plan block and maps unambiguous plan values", async () => {
+    const exercise = catalogItem("exercise-1", {
+      parameters: Object.freeze([
+        parameter("sets", {
+          label: "Sätze",
+          sortOrder: 10,
+        }),
+        parameter("repetitions", {
+          label: "Wiederholungen",
+          sortOrder: 20,
+        }),
+        parameter("distance_m", {
+          label: "Distanz",
+          unit: "m",
+          sortOrder: 30,
+        }),
+      ]),
+    });
+    const base = createService({
+      exercises: [exercise],
+      ids: ["plan-save-back", "plan-block", "plan-exercise"],
+    });
+    const plan = await base.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-16",
+      items: [
+        {
+          kind: "block",
+          name: "Planblock",
+          durationMinutes: 35,
+          note: "Blocknotiz",
+          exercises: [
+            {
+              sourceExerciseId: "exercise-1",
+              name: "30 m",
+              sets: "4",
+              repetitions: "3",
+              amount: "40",
+              unit: "m",
+              comment: "Locker anlaufen",
+            },
+          ],
+        },
+      ],
+    });
+    const block = plan.revision.items[0];
+    if (block?.kind !== "block") {
+      throw new Error("Expected persisted plan block.");
+    }
+
+    await expect(
+      base.service.saveBlockAsTemplate("org-1", {
+        planId: plan.id,
+        blockItemId: block.itemId,
+        expectedRevision: 1,
+        audienceId: ACTIVE_GROUP.id,
+        name: "Neue Sprintvorlage",
+      }),
+    ).resolves.toEqual({
+      id: "saved-block-1",
+      currentRevision: 1,
+      name: "Neue Sprintvorlage",
+      audienceId: ACTIVE_GROUP.id,
+      audienceName: ACTIVE_GROUP.name,
+      durationMinutes: 35,
+      exerciseCount: 1,
+    });
+    expect(base.getCreatedBlockInputs()).toEqual([
+      {
+        organizationId: "org-1",
+        input: {
+          name: "Neue Sprintvorlage",
+          audienceId: ACTIVE_GROUP.id,
+          durationMinutes: 35,
+          note: "Blocknotiz",
+          exercises: [
+            {
+              exerciseId: "exercise-1",
+              note: "Locker anlaufen",
+              parameterOverrides: [
+                { key: "sets", value: "4" },
+                { key: "repetitions", value: "3" },
+                { key: "distance_m", value: "40" },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("uses the persisted block name by default and never updates source provenance", async () => {
+    const exercise = catalogItem("exercise-1");
+    const base = createService({
+      exercises: [exercise],
+      ids: ["plan-manual-block", "plan-block"],
+    });
+    const plan = await base.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-16",
+      items: [
+        {
+          kind: "block",
+          name: "Eigener Planblock",
+          exercises: [],
+        },
+      ],
+    });
+    const block = plan.revision.items[0];
+    if (block?.kind !== "block") throw new Error("Expected block.");
+
+    const saved = await base.service.saveBlockAsTemplate("org-1", {
+      planId: plan.id,
+      blockItemId: block.itemId,
+      expectedRevision: plan.currentRevision,
+      audienceId: ACTIVE_GROUP.id,
+    });
+    expect(saved).toMatchObject({
+      id: "saved-block-1",
+      currentRevision: 1,
+      name: "Eigener Planblock",
+    });
+    expect(base.getCreatedBlockInputs()[0]).toMatchObject({
+      input: {
+        name: "Eigener Planblock",
+      },
+    });
+  });
+
+  it("fails closed for manual exercises and ambiguous amount/unit mappings", async () => {
+    const manual = createService({
+      ids: ["plan-manual", "block-manual", "exercise-manual"],
+    });
+    const manualPlan = await manual.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-16",
+      items: [
+        {
+          kind: "block",
+          name: "Nicht wiederverwendbar",
+          exercises: [
+            {
+              name: "Manuell",
+              amount: "10",
+              unit: "m",
+            },
+          ],
+        },
+      ],
+    });
+    const manualBlock = manualPlan.revision.items[0];
+    if (manualBlock?.kind !== "block") throw new Error("Expected block.");
+    await expect(
+      manual.service.saveBlockAsTemplate("org-1", {
+        planId: manualPlan.id,
+        blockItemId: manualBlock.itemId,
+        expectedRevision: 1,
+        audienceId: ACTIVE_GROUP.id,
+      }),
+    ).rejects.toMatchObject({
+      reason: "manual-exercise",
+    });
+    expect(manual.getCreatedBlockInputs()).toEqual([]);
+
+    const ambiguousExercise = catalogItem("exercise-ambiguous", {
+      parameters: Object.freeze([
+        parameter("work_s", { unit: "s", sortOrder: 10 }),
+        parameter("rest_s", { unit: "s", sortOrder: 20 }),
+      ]),
+    });
+    const ambiguous = createService({
+      exercises: [ambiguousExercise],
+      ids: ["plan-ambiguous", "block-ambiguous", "exercise-ambiguous-item"],
+    });
+    const ambiguousPlan = await ambiguous.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-17",
+      items: [
+        {
+          kind: "block",
+          name: "Mehrdeutig",
+          exercises: [
+            {
+              sourceExerciseId: "exercise-ambiguous",
+              name: "Intervall",
+              amount: "30",
+              unit: "s",
+            },
+          ],
+        },
+      ],
+    });
+    const ambiguousBlock = ambiguousPlan.revision.items[0];
+    if (ambiguousBlock?.kind !== "block") throw new Error("Expected block.");
+    await expect(
+      ambiguous.service.saveBlockAsTemplate("org-1", {
+        planId: ambiguousPlan.id,
+        blockItemId: ambiguousBlock.itemId,
+        expectedRevision: 1,
+        audienceId: ACTIVE_GROUP.id,
+      }),
+    ).rejects.toMatchObject({
+      reason: "parameter-ambiguous",
+      referenceId: "exercise-ambiguous",
+    });
+    expect(ambiguous.getCreatedBlockInputs()).toEqual([]);
+  });
+
+  it("rejects stale plan revisions before creating a template", async () => {
+    const base = createService({
+      ids: ["plan-stale-save", "block-stale-save"],
+    });
+    const plan = await base.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-16",
+      items: [{ kind: "block", name: "Block", exercises: [] }],
+    });
+    const block = plan.revision.items[0];
+    if (block?.kind !== "block") throw new Error("Expected block.");
+    await base.plans.update("org-1", plan.id, 1, {
+      items: [
+        {
+          kind: "block",
+          itemId: block.itemId,
+          name: "Geändert",
+          exercises: [],
+        },
+      ],
+    });
+
+    await expect(
+      base.service.saveBlockAsTemplate("org-1", {
+        planId: plan.id,
+        blockItemId: block.itemId,
+        expectedRevision: 1,
+        audienceId: ACTIVE_GROUP.id,
+      }),
+    ).rejects.toBeInstanceOf(TrainingPlanConflictError);
+    expect(base.getCreatedBlockInputs()).toEqual([]);
   });
 });
 
