@@ -1283,6 +1283,7 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
   saveTemplate.type = "button";
   saveTemplate.className = "button button--secondary";
   saveTemplate.dataset.trainingPlanSaveTemplate = item.itemId || "";
+  saveTemplate.dataset.trainingPlanSaveTemplateIndex = String(itemIndex);
   saveTemplate.textContent = "Als Vorlage speichern";
   saveTemplate.disabled = !trainingPlanCanSaveBlockTemplate(item);
   saveTemplate.addEventListener("click", () => {
@@ -1404,12 +1405,16 @@ function refreshTrainingPlanSaveBackButtons() {
       "[data-training-plan-save-template]",
     ) || [];
   for (const button of buttons) {
-    const itemId = button.dataset.trainingPlanSaveTemplate || "";
-    const item = trainingPlanDraft?.items.find(
-      (candidate) =>
-        candidate.kind === "block" &&
-        candidate.itemId === itemId,
+    const itemIndex = Number(
+      button.dataset.trainingPlanSaveTemplateIndex,
     );
+    const item =
+      Number.isSafeInteger(itemIndex) && itemIndex >= 0
+        ? trainingPlanDraft?.items[itemIndex]
+        : undefined;
+    if (item?.kind === "block" && item.itemId) {
+      button.dataset.trainingPlanSaveTemplate = item.itemId;
+    }
     button.disabled = !trainingPlanCanSaveBlockTemplate(item);
   }
 }
