@@ -200,7 +200,7 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
 
   async recordUsageIfAbsent(
     event: TrainingBlockUsageEvent,
-  ): Promise<TrainingBlockUsageEvent> {
+  ): Promise<TrainingBlockUsageEvent | undefined> {
     const existing = this.#usageEvents.find(
       (stored) =>
         stored.organizationId === event.organizationId &&
