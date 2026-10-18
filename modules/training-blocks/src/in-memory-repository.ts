@@ -272,6 +272,7 @@ function cloneBlock(block: TrainingBlockSnapshot): TrainingBlockSnapshot {
 function cloneRevision(revision: TrainingBlockRevision): TrainingBlockRevision {
   return Object.freeze({
     ...revision,
+    audienceIds: Object.freeze([...revision.audienceIds]),
     exercises: Object.freeze(
       revision.exercises.map((exercise) =>
         Object.freeze({
