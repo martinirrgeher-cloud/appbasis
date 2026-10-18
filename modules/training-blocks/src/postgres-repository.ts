@@ -412,7 +412,8 @@ async function readCurrentBlocks(
     `SELECT block.id, block.organization_id, block.is_active,
             block.current_revision, block.created_at::text AS block_created_at,
             block.updated_at::text AS block_updated_at,
-            revision.name, revision.audience_id, revision.duration_minutes,
+            revision.name, revision.audience_id, revision.audience_ids,
+            revision.duration_minutes,
             revision.note, revision.created_at::text AS revision_created_at
      FROM appbasis_training_block AS block
      INNER JOIN appbasis_training_block_revision AS revision
@@ -458,7 +459,7 @@ async function readRevisions(
   const filter = revision === undefined ? "" : " AND revision = $3";
   if (revision !== undefined) parameters.push(revision);
   const rows = await client.unsafe(
-    `SELECT organization_id, block_id, revision, name, audience_id,
+    `SELECT organization_id, block_id, revision, name, audience_id, audience_ids,
             duration_minutes, note, created_at::text AS revision_created_at
      FROM appbasis_training_block_revision
      WHERE organization_id = $1
@@ -588,10 +589,10 @@ async function insertRevision(
 ): Promise<void> {
   const rows = await transaction.unsafe(
     `INSERT INTO appbasis_training_block_revision (
-       organization_id, block_id, revision, name, audience_id,
+       organization_id, block_id, revision, name, audience_id, audience_ids,
        duration_minutes, note, created_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz)
+     VALUES ($1, $2, $3, $4, $5, $6::text[], $7, $8, $9::timestamptz)
      RETURNING revision`,
     [
       revision.organizationId,
@@ -599,6 +600,7 @@ async function insertRevision(
       revision.revision,
       revision.name,
       revision.audienceId,
+      [...revision.audienceIds],
       revision.durationMinutes,
       revision.note,
       revision.createdAt,
@@ -686,6 +688,7 @@ function revisionFromRow(
     revision,
     name: requiredString(row.name, "revision name"),
     audienceId: optionalString(row.audience_id, "audience id"),
+    audienceIds: stringArray(row.audience_ids, "audience ids"),
     durationMinutes: optionalInteger(row.duration_minutes, "duration"),
     note: optionalString(row.note, "revision note"),
     exercises: Object.freeze(exercises.map(cloneExercise)),
@@ -696,6 +699,7 @@ function revisionFromRow(
 function cloneRevision(revision: TrainingBlockRevision): TrainingBlockRevision {
   return Object.freeze({
     ...revision,
+    audienceIds: Object.freeze([...revision.audienceIds]),
     exercises: Object.freeze(revision.exercises.map(cloneExercise)),
   });
 }
@@ -738,6 +742,17 @@ function optionalString(value: unknown, label: string): string | null {
     throw new Error(`Training block ${label} has an invalid shape.`);
   }
   return value;
+}
+
+function stringArray(value: unknown, label: string): readonly string[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Training block ${label} has an invalid shape.`);
+  }
+  const result = value.map((item) => requiredString(item, label));
+  if (new Set(result).size !== result.length) {
+    throw new Error(`Training block ${label} has an invalid shape.`);
+  }
+  return Object.freeze(result);
 }
 
 function requiredInteger(value: unknown, label: string): number {
