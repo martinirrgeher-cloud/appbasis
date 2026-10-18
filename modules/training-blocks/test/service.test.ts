@@ -100,6 +100,90 @@ describe("training-blocks service", () => {
     });
   });
 
+  it("duplicates current content as an independent revision-1 block without metadata carry-over", async () => {
+    const repository = new InMemoryTrainingBlockRepository();
+    const service = new TrainingBlockService({
+      repository,
+      createId: deterministicIds(
+        "block-source",
+        "item-source",
+        "usage-source",
+        "block-copy",
+        "item-copy",
+      ),
+      now: deterministicClock(
+        "2026-10-10T10:00:00.000Z",
+        "2026-10-10T10:05:00.000Z",
+      ),
+    });
+
+    await service.create("org-a", {
+      name: "Sprint",
+      audienceId: "group-a",
+      durationMinutes: 25,
+      note: "Quelle",
+      exercises: [
+        {
+          exerciseId: "exercise-1",
+          note: "Hinweis",
+          parameterOverrides: [{ key: "sets", value: "3" }],
+        },
+      ],
+    });
+    await service.setFavorite("org-a", "principal-a", "block-source", true);
+    await service.recordUsage("org-a", "block-source", {
+      occurredAt: "2026-10-10T10:02:00.000Z",
+      sourceKind: "training_plan",
+      sourceRef: "plan-1",
+    });
+
+    const copy = await service.duplicate(
+      "org-a",
+      "block-source",
+      { name: "Sprint Kopie" },
+    );
+
+    expect(copy).toMatchObject({
+      id: "block-copy",
+      currentRevision: 1,
+      isActive: true,
+      revision: {
+        revision: 1,
+        name: "Sprint Kopie",
+        audienceId: "group-a",
+        durationMinutes: 25,
+        note: "Quelle",
+        exercises: [
+          {
+            itemId: "item-copy",
+            exerciseId: "exercise-1",
+            note: "Hinweis",
+            parameterOverrides: [{ key: "sets", value: "3" }],
+          },
+        ],
+      },
+    });
+    expect(copy?.revision.exercises[0]?.itemId).not.toBe("item-source");
+
+    await expect(
+      service.listOverview("org-a", "principal-a"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        block: expect.objectContaining({ id: "block-copy" }),
+        isFavorite: false,
+        usageCount: 0,
+      }),
+      expect.objectContaining({
+        block: expect.objectContaining({ id: "block-source" }),
+        isFavorite: true,
+        usageCount: 1,
+      }),
+    ]);
+    await expect(
+      service.duplicate("org-a", "missing", { name: "Kopie" }),
+    ).resolves.toBeUndefined();
+  });
+
   it("fails stale updates and stale deactivation with optimistic concurrency", async () => {
     const service = new TrainingBlockService({
       repository: new InMemoryTrainingBlockRepository(),
