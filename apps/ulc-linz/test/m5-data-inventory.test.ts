@@ -212,12 +212,12 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "training-blocks",
       ),
     ).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       lifecycleStatus: "training-block-data-lifecycle-pending",
       notes: expect.arrayContaining([
         "training-block-template-revision-favorite-usage-lifecycle-pending",
         "training-block-notes-may-contain-user-entered-content",
-        "ulc-preview-schema-v1-live-v2-upgrade-pending",
+        "ulc-preview-schema-v2-live-v3-upgrade-pending",
         "production-lifecycle-activation-not-authorized",
       ]),
     });
@@ -281,7 +281,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(52);
+    expect(inventory.persistentTables).toHaveLength(53);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
