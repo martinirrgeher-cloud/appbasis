@@ -210,25 +210,27 @@ export function createUlcTrainingBlockService({
     input: CreateTrainingBlockDraftInput | UpdateTrainingBlockDraftInput,
   ): Promise<void> {
     const draft = normalizeTrainingBlockDraft(input);
-    if (draft.audienceId === null) {
-      throw new UlcTrainingBlockReferenceError("audience", null);
-    }
 
     const [snapshot, catalogItems] = await Promise.all([
       masterdata.readOrganizationSnapshot(organizationId),
       exerciseCatalog.listItems(organizationId),
     ]);
-    const audience = snapshot.trainingGroups.find(
-      (group) =>
-        group.id === draft.audienceId &&
-        group.organizationId === organizationId &&
-        group.isActive === true,
+    const activeAudienceIds = new Set(
+      snapshot.trainingGroups
+        .filter(
+          (group) =>
+            group.organizationId === organizationId &&
+            group.isActive === true,
+        )
+        .map((group) => group.id),
     );
-    if (audience === undefined) {
-      throw new UlcTrainingBlockReferenceError(
-        "audience",
-        draft.audienceId,
-      );
+    for (const audienceId of draft.audienceIds) {
+      if (!activeAudienceIds.has(audienceId)) {
+        throw new UlcTrainingBlockReferenceError(
+          "audience",
+          audienceId,
+        );
+      }
     }
 
     const byId = new Map(
@@ -310,7 +312,7 @@ export function createUlcTrainingBlockService({
       if (source === undefined) return undefined;
       await assertReferences(organizationId, {
         name: input.name ?? source.revision.name,
-        audienceId: source.revision.audienceId,
+        audienceIds: source.revision.audienceIds,
         durationMinutes: source.revision.durationMinutes,
         note: source.revision.note,
         exercises: source.revision.exercises.map((exercise) => ({
