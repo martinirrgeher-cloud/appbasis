@@ -39,6 +39,10 @@ beforeAll(async () => {
       new URL("../migrations/0001_appbasis_training_blocks_parity_metadata.sql", import.meta.url),
       "utf8",
     ),
+    readFile(
+      new URL("../migrations/0002_appbasis_training_block_multi_audience.sql", import.meta.url),
+      "utf8",
+    ),
   ]);
   for (const migration of migrations) {
     await requiredConnection().client.unsafe(migration);
@@ -132,6 +136,45 @@ describe("training-blocks PostgreSQL repository", () => {
     await expect(service.listRevisions("org-a", "block-1")).resolves.toHaveLength(2);
   });
 
+  it("persists club-wide and multi-group audience sets without losing the compatibility audience", async () => {
+    const service = serviceFor(requiredConnection(), ["block-multi"]);
+    const created = await service.create("org-multi", {
+      name: "Mehrgruppen",
+      audienceIds: ["group-a", "group-b"],
+    });
+    expect(created.revision).toMatchObject({
+      audienceId: "group-a",
+      audienceIds: ["group-a", "group-b"],
+    });
+
+    const updated = await service.update("org-multi", "block-multi", 1, {
+      name: "Vereinsweit",
+      audienceIds: [],
+    });
+    expect(updated?.revision).toMatchObject({
+      audienceId: null,
+      audienceIds: [],
+    });
+
+    const rows = await requiredConnection().client.unsafe(
+      `SELECT audience_id, audience_ids
+       FROM appbasis_training_block_revision
+       WHERE organization_id = 'org-multi'
+         AND block_id = 'block-multi'
+       ORDER BY revision ASC`,
+    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        audience_id: "group-a",
+        audience_ids: ["group-a", "group-b"],
+      }),
+      expect.objectContaining({
+        audience_id: null,
+        audience_ids: [],
+      }),
+    ]);
+  });
+
   it("rejects direct PostgreSQL creation that violates the shared revision-one contract", async () => {
     const repository = new PostgresTrainingBlockRepository(
       postgresClient(requiredConnection().client),
@@ -149,6 +192,7 @@ describe("training-blocks PostgreSQL repository", () => {
         revision: 2,
         name: "Invalid",
         audienceId: null,
+        audienceIds: Object.freeze([]),
         durationMinutes: null,
         note: null,
         exercises: Object.freeze([]),
