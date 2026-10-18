@@ -40,6 +40,22 @@ test("E7B9 workflow keeps inspect read-only and gates every preview mutation exp
   );
   assert.match(
     workflow,
+    /ulc-linz-athletes-v3-preview\.mjs inspect/,
+  );
+  assert.match(
+    workflow,
+    /APPBASIS_APPLY_ATHLETES_V3_PREVIEW: "1"/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-athletes-v3-preview\.mjs apply/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-athletes-v3-preview\.mjs verify/,
+  );
+  assert.match(
+    workflow,
     /ulc-linz-training-blocks-v3-preview\.mjs inspect/,
   );
   assert.match(
