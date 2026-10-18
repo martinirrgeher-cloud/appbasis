@@ -4702,6 +4702,96 @@ describe("U12 runtime API", () => {
     });
   });
 
+  it("serves the training-plan group week overview from server-owned organization scope", async () => {
+    let received: unknown = null;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertViewAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async groupWeekOverview(organizationId, groupId, weekStart) {
+          received = { organizationId, groupId, weekStart };
+          return {
+            group: { id: groupId, name: "U16", shortName: "U16" },
+            weekStart,
+            weekEnd: "2026-10-18",
+            dates: [
+              "2026-10-12",
+              "2026-10-13",
+              "2026-10-14",
+              "2026-10-15",
+              "2026-10-16",
+              "2026-10-17",
+              "2026-10-18",
+            ],
+            rows: [
+              {
+                subject: {
+                  id: "athlete-1",
+                  firstName: "Anna",
+                  lastName: "Sprint",
+                  displayName: "Sprint, Anna",
+                },
+                cells: [
+                  {
+                    planDate: "2026-10-12",
+                    planId: "plan-1",
+                    durationMinutes: 45,
+                    exerciseCount: 3,
+                  },
+                ],
+              },
+            ],
+          };
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/overview?groupId=group-u16&weekStart=2026-10-12",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      groupId: "group-u16",
+      weekStart: "2026-10-12",
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      overview: {
+        group: { id: "group-u16" },
+        weekStart: "2026-10-12",
+        weekEnd: "2026-10-18",
+        rows: [
+          {
+            subject: { id: "athlete-1" },
+            cells: [
+              {
+                planId: "plan-1",
+                durationMinutes: 45,
+                exerciseCount: 3,
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
   it("lists E7B7 save-back audiences only after both edit authorizations agree on scope", async () => {
     const base = runtime();
     let listOrganization = "";
