@@ -150,18 +150,29 @@ export class TrainingPlanService {
     }
     if (subjects.length === 0) return Object.freeze([]);
 
-    const plans = (
-      await Promise.all(
-        subjects.map((subjectId) =>
-          this.listForSubjectDateRange(
-            organizationId,
-            subjectId,
-            fromDate,
-            toDate,
-          ),
-        ),
-      )
-    ).flat();
+    const groupedPlans: Array<readonly TrainingPlanSnapshot[]> =
+      new Array(subjects.length);
+    let nextSubjectIndex = 0;
+    const workerCount = Math.min(4, subjects.length);
+
+    async function loadNext(this: TrainingPlanService): Promise<void> {
+      while (true) {
+        const index = nextSubjectIndex;
+        nextSubjectIndex += 1;
+        if (index >= subjects.length) return;
+        groupedPlans[index] = await this.listForSubjectDateRange(
+          organizationId,
+          subjects[index],
+          fromDate,
+          toDate,
+        );
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: workerCount }, () => loadNext.call(this)),
+    );
+    const plans = groupedPlans.flat();
 
     return Object.freeze(
       plans.slice().sort(
