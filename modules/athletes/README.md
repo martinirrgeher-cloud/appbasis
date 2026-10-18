@@ -7,7 +7,7 @@ AppBasis module for shared athlete master data.
 - Package: `@appbasis/athletes`
 - Capabilities: `athletes:view`, `athletes:edit`
 - Database owner: `modules/athletes`
-- Schema version: 2
+- Schema version: 3
 
 ## Foundation scope
 
@@ -15,11 +15,12 @@ The first schema owns only the shared master-data foundation:
 
 - training groups,
 - athletes,
+- athlete emergency/contact records,
 - trainers,
 - historical athlete-to-group memberships,
 - trainer-to-group memberships.
 
-Every row is organization-scoped. User accounts, parent/athlete identity links,
+Every row is organization-scoped. Athlete contacts are master data only and carry no user-account or training-session semantics. User accounts, parent/athlete identity links,
 realtime collaboration, edit locks and training-specific settings remain outside
 this foundation slice.
 
