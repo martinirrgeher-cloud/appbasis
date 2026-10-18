@@ -2,6 +2,7 @@ import {
   assertTrainingBlockCreationInvariant,
   compareTrainingBlockSnapshots,
   type TrainingBlockDeactivateResult,
+  type TrainingBlockDeleteUnusedResult,
   type TrainingBlockRepository,
   type TrainingBlockRevision,
   type TrainingBlockRevisionAppendResult,
@@ -102,6 +103,45 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
     const stored = cloneBlock({ ...current, isActive: false, updatedAt });
     this.#blocks.set(key, stored);
     return Object.freeze({ status: "updated", block: cloneBlock(stored) });
+  }
+
+  async deleteUnused(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+  ): Promise<TrainingBlockDeleteUnusedResult> {
+    const key = blockKey(organizationId, blockId);
+    const current = this.#blocks.get(key);
+    if (current === undefined) return Object.freeze({ status: "not-found" });
+    if (current.currentRevision !== expectedRevision) {
+      return Object.freeze({
+        status: "conflict",
+        currentRevision: current.currentRevision,
+      });
+    }
+    if (
+      this.#usageEvents.some(
+        (event) =>
+          event.organizationId === organizationId &&
+          event.blockId === blockId,
+      )
+    ) {
+      return Object.freeze({ status: "in-use" });
+    }
+
+    this.#blocks.delete(key);
+    this.#blockIds.delete(blockId);
+    this.#revisions.delete(key);
+    for (const favorite of [...this.#favorites]) {
+      const parts = favorite.split("\u0000");
+      if (
+        parts[0] === organizationId &&
+        parts[2] === blockId
+      ) {
+        this.#favorites.delete(favorite);
+      }
+    }
+    return Object.freeze({ status: "deleted" });
   }
 
   async listFavoriteBlockIds(
