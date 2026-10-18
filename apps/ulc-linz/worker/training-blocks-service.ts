@@ -51,7 +51,7 @@ export class UlcTrainingBlockReferenceError extends Error {
   ) {
     super(
       referenceType === "audience"
-        ? "Training block requires one active ULC training group."
+        ? "Training block references an unavailable ULC training group."
         : "Training block references an unavailable exercise.",
     );
     this.name = "UlcTrainingBlockReferenceError";
@@ -135,6 +135,11 @@ export interface UlcTrainingBlockService {
     blockId: string,
     expectedRevision: number,
   ): Promise<TrainingBlockSnapshot | undefined>;
+  deleteUnused(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+  ): ReturnType<TrainingBlockService["deleteUnused"]>;
   listRevisions(
     organizationId: string,
     blockId: string,
@@ -352,6 +357,13 @@ export function createUlcTrainingBlockService({
       expectedRevision: number,
     ) {
       return blocks.deactivate(organizationId, blockId, expectedRevision);
+    },
+    deleteUnused(
+      organizationId: string,
+      blockId: string,
+      expectedRevision: number,
+    ) {
+      return blocks.deleteUnused(organizationId, blockId, expectedRevision);
     },
     listRevisions(organizationId: string, blockId: string) {
       return blocks.listRevisions(organizationId, blockId);
