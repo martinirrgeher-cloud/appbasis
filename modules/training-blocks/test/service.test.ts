@@ -170,14 +170,14 @@ describe("training-blocks service", () => {
       service.listOverview("org-a", "principal-a"),
     ).resolves.toEqual([
       expect.objectContaining({
-        block: expect.objectContaining({ id: "block-copy" }),
-        isFavorite: false,
-        usageCount: 0,
-      }),
-      expect.objectContaining({
         block: expect.objectContaining({ id: "block-source" }),
         isFavorite: true,
         usageCount: 1,
+      }),
+      expect.objectContaining({
+        block: expect.objectContaining({ id: "block-copy" }),
+        isFavorite: false,
+        usageCount: 0,
       }),
     ]);
     await expect(
