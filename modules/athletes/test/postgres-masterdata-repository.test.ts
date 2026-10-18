@@ -69,10 +69,11 @@ describe('PostgresAthleteMasterdataRepository', () => {
 
     expect(snapshot.trainingGroups).toHaveLength(1);
     expect(snapshot.athletes[0]?.firstName).toBe('Anna');
+    expect(snapshot.athleteContacts).toEqual([]);
     expect(snapshot.trainers[0]?.email).toBe('max@example.test');
     expect(snapshot.athleteGroupMemberships[0]?.startedOn).toBe('2026-09-01');
     expect(snapshot.trainerGroupMemberships).toHaveLength(1);
-    expect(calls).toHaveLength(5);
+    expect(calls).toHaveLength(6);
     for (const call of calls) {
       expect(call.query).toContain('WHERE organization_id = $1');
       expect(call.parameters).toEqual(['verein-1']);
@@ -158,6 +159,91 @@ describe('PostgresAthleteMasterdataRepository', () => {
     expect(calls[0]?.parameters?.slice(0, 2)).toEqual([
       'athlete-server-1',
       'verein-1',
+    ]);
+  });
+
+  it('creates, updates and deletes athlete contacts inside the athlete organization boundary', async () => {
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    const repository = new PostgresAthleteMasterdataRepository(
+      {
+        async unsafe(query, parameters) {
+          calls.push({ query, parameters });
+          if (query.includes('INSERT INTO appbasis_athlete_contact')) {
+            return [{
+              id: 'contact-1',
+              organization_id: 'verein-1',
+              athlete_id: 'athlete-1',
+              contact_name: 'Maria Muster',
+              relationship: 'Mutter',
+              phone: '+43 660 123',
+              is_emergency: true,
+              priority: 1,
+              notes: null,
+            }];
+          }
+          if (query.includes('UPDATE appbasis_athlete_contact')) {
+            return [{
+              id: 'contact-1',
+              organization_id: 'verein-1',
+              athlete_id: 'athlete-1',
+              contact_name: 'Maria Beispiel',
+              relationship: 'Mutter',
+              phone: '+43 660 456',
+              is_emergency: false,
+              priority: 2,
+              notes: 'neu',
+            }];
+          }
+          if (query.includes('DELETE FROM appbasis_athlete_contact')) {
+            return [{ id: 'contact-1' }];
+          }
+          return [];
+        },
+      },
+      () => 'contact-1',
+    );
+
+    await expect(
+      repository.createAthleteContact('verein-1', 'athlete-1', {
+        contactName: ' Maria Muster ',
+        relationship: ' Mutter ',
+        phone: ' +43 660 123 ',
+      }),
+    ).resolves.toMatchObject({
+      id: 'contact-1',
+      athleteId: 'athlete-1',
+      contactName: 'Maria Muster',
+      isEmergency: true,
+      priority: 1,
+    });
+
+    await expect(
+      repository.updateAthleteContact('verein-1', 'athlete-1', 'contact-1', {
+        contactName: ' Maria Beispiel ',
+        relationship: ' Mutter ',
+        phone: ' +43 660 456 ',
+        isEmergency: false,
+        priority: 2,
+        notes: ' neu ',
+      }),
+    ).resolves.toMatchObject({
+      contactName: 'Maria Beispiel',
+      phone: '+43 660 456',
+      isEmergency: false,
+      priority: 2,
+      notes: 'neu',
+    });
+
+    await expect(
+      repository.deleteAthleteContact('verein-1', 'athlete-1', 'contact-1'),
+    ).resolves.toBe(true);
+
+    expect(calls[0]?.query).toContain('athlete.organization_id = $2');
+    expect(calls[1]?.query).toContain('athlete.is_active = true');
+    expect(calls[2]?.parameters).toEqual([
+      'verein-1',
+      'athlete-1',
+      'contact-1',
     ]);
   });
 
