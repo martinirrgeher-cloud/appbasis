@@ -61,6 +61,7 @@ export interface TrainingBlockRevisionComparison {
   readonly changedFields: readonly (
     | "name"
     | "audienceId"
+    | "audienceIds"
     | "durationMinutes"
     | "note"
   )[];
@@ -399,6 +400,7 @@ export class TrainingBlockService {
       revision: 1,
       name: draft.name,
       audienceId: draft.audienceId,
+      audienceIds: draft.audienceIds,
       durationMinutes: draft.durationMinutes,
       note: draft.note,
       exercises: Object.freeze(
@@ -442,7 +444,7 @@ export class TrainingBlockService {
 
     return this.create(organization, {
       name: input.name ?? source.revision.name,
-      audienceId: source.revision.audienceId,
+      audienceIds: source.revision.audienceIds,
       durationMinutes: source.revision.durationMinutes,
       note: source.revision.note,
       exercises: source.revision.exercises.map((exercise) => ({
@@ -531,6 +533,7 @@ export class TrainingBlockService {
       revision: expected + 1,
       name: draft.name,
       audienceId: draft.audienceId,
+      audienceIds: draft.audienceIds,
       durationMinutes: draft.durationMinutes,
       note: draft.note,
       exercises: Object.freeze(nextExercises),
@@ -694,6 +697,7 @@ export class TrainingBlockService {
     const normalized = normalizeTrainingBlockDraft({
       name: revision.name,
       audienceId: revision.audienceId,
+      audienceIds: revision.audienceIds,
       durationMinutes: revision.durationMinutes,
       note: revision.note,
       exercises: revision.exercises.map((exercise) => ({
@@ -734,6 +738,7 @@ export class TrainingBlockService {
       revision: revision.revision,
       name: normalized.name,
       audienceId: normalized.audienceId,
+      audienceIds: normalized.audienceIds,
       durationMinutes: normalized.durationMinutes,
       note: normalized.note,
       exercises: Object.freeze(exercises),
@@ -749,6 +754,9 @@ function compareRevisionSnapshots(
   const changedFields: TrainingBlockRevisionComparison["changedFields"][number][] = [];
   if (from.name !== to.name) changedFields.push("name");
   if (from.audienceId !== to.audienceId) changedFields.push("audienceId");
+  if (JSON.stringify(from.audienceIds) !== JSON.stringify(to.audienceIds)) {
+    changedFields.push("audienceIds");
+  }
   if (from.durationMinutes !== to.durationMinutes) changedFields.push("durationMinutes");
   if (from.note !== to.note) changedFields.push("note");
 
