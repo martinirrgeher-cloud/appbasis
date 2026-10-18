@@ -64,7 +64,12 @@ describe("training-blocks schema", () => {
 
   it("adds a backward-compatible audience set for club-wide and multi-group blocks", () => {
     expect(multiAudienceMigration).toContain("ADD COLUMN audience_ids text[]");
-    expect(multiAudienceMigration).toContain("ELSE ARRAY[audience_id]");
+    expect(multiAudienceMigration).not.toContain(
+      "UPDATE appbasis_training_block_revision",
+    );
+    expect(multiAudienceMigration).toContain(
+      "audience_ids IS NULL OR",
+    );
     expect(multiAudienceMigration).toContain(
       "audience_id IS NOT DISTINCT FROM audience_ids[1]",
     );
