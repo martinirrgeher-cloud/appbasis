@@ -126,6 +126,53 @@ export class TrainingPlanService {
     this.#now = options.now ?? (() => new Date());
   }
 
+  async listForSubjectsDateRange(
+    organizationId: string,
+    subjectIds: readonly string[],
+    fromDate: string,
+    toDate: string,
+  ): Promise<readonly TrainingPlanSnapshot[]> {
+    if (!Array.isArray(subjectIds) || subjectIds.length > 500) {
+      throw new TrainingPlanValidationError(
+        "Training plan subjects must contain at most 500 entries.",
+      );
+    }
+    const subjects = subjectIds.map((subjectId) =>
+      normalizeTrainingPlanIdentifier(
+        subjectId,
+        "Training plan subject",
+      ),
+    );
+    if (new Set(subjects).size !== subjects.length) {
+      throw new TrainingPlanValidationError(
+        "Training plan subjects contain a duplicate entry.",
+      );
+    }
+    if (subjects.length === 0) return Object.freeze([]);
+
+    const plans = (
+      await Promise.all(
+        subjects.map((subjectId) =>
+          this.listForSubjectDateRange(
+            organizationId,
+            subjectId,
+            fromDate,
+            toDate,
+          ),
+        ),
+      )
+    ).flat();
+
+    return Object.freeze(
+      plans.slice().sort(
+        (left, right) =>
+          left.subjectId.localeCompare(right.subjectId) ||
+          left.planDate.localeCompare(right.planDate) ||
+          left.id.localeCompare(right.id),
+      ),
+    );
+  }
+
   async listForSubjectDateRange(
     organizationId: string,
     subjectId: string,
