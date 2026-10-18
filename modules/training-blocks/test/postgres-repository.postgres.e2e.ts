@@ -176,6 +176,30 @@ describe("training-blocks PostgreSQL repository", () => {
     ]);
   });
 
+  it("reads legacy single-audience revisions whose new audience array is still null", async () => {
+    const service = serviceFor(requiredConnection(), ["block-legacy"]);
+    await service.create("org-legacy", {
+      name: "Legacy",
+      audienceId: "group-legacy",
+    });
+    await requiredConnection().client.unsafe(
+      `UPDATE appbasis_training_block_revision
+       SET audience_ids = NULL
+       WHERE organization_id = 'org-legacy'
+         AND block_id = 'block-legacy'
+         AND revision = 1`,
+    );
+
+    await expect(
+      service.findCurrent("org-legacy", "block-legacy"),
+    ).resolves.toMatchObject({
+      revision: {
+        audienceId: "group-legacy",
+        audienceIds: ["group-legacy"],
+      },
+    });
+  });
+
   it("rejects direct PostgreSQL creation that violates the shared revision-one contract", async () => {
     const repository = new PostgresTrainingBlockRepository(
       postgresClient(requiredConnection().client),
