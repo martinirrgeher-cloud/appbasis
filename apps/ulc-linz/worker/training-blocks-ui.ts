@@ -47,8 +47,9 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                       <label class="training-block-wide">Name
                         <input id="training-block-name" minlength="1" maxlength="120" />
                       </label>
-                      <label>Trainingsgruppe
-                        <select id="training-block-audience"></select>
+                      <label>Trainingsgruppen
+                        <select id="training-block-audience" multiple size="4"></select>
+                        <small>Keine Auswahl = vereinsweit.</small>
                       </label>
                       <label>Dauer (Min.)
                         <input id="training-block-duration" type="number" min="1" max="2147483647" step="1" inputmode="numeric" placeholder="Optional" />
@@ -423,6 +424,9 @@ function isTrainingBlockRevision(value) {
     typeof value.name !== "string" ||
     value.name.length < 1 ||
     (value.audienceId !== null && typeof value.audienceId !== "string") ||
+    !Array.isArray(value.audienceIds) ||
+    !value.audienceIds.every((id) => typeof id === "string" && id.length > 0) ||
+    (value.audienceIds[0] ?? null) !== value.audienceId ||
     (value.durationMinutes !== null &&
       (!Number.isSafeInteger(value.durationMinutes) || value.durationMinutes < 1)) ||
     (value.note !== null && typeof value.note !== "string") ||
@@ -479,6 +483,8 @@ async function bootstrapTrainingBlocks() {
       features?.revisionComparison !== true ||
       features?.favorites !== true ||
       features?.usageSummary !== true ||
+      features?.duplicate !== true ||
+      features?.multipleAudiences !== true ||
       payload?.access?.view !== true ||
       typeof payload?.access?.edit !== "boolean" ||
       !Array.isArray(blocks) ||
@@ -568,8 +574,7 @@ function refreshTrainingBlockControls() {
     trainingBlockElements.newButton.disabled =
       !trainingBlocksCanEdit ||
       trainingBlockDeactivateBusy ||
-      trainingBlockReloadBusy ||
-      trainingBlockAudiences.length === 0;
+      trainingBlockReloadBusy;
   }
 }
 
@@ -579,6 +584,11 @@ function trainingBlockAudienceLabel(id) {
   return audience.shortName
     ? audience.name + " (" + audience.shortName + ")"
     : audience.name;
+}
+
+function trainingBlockAudienceSetLabel(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return "Vereinsweit";
+  return ids.map(trainingBlockAudienceLabel).join(", ");
 }
 
 function trainingBlockExerciseItem(id) {
@@ -600,7 +610,7 @@ function renderTrainingBlocks() {
     if (!query) return true;
     return (
       block.revision.name.toLocaleLowerCase("de").includes(query) ||
-      trainingBlockAudienceLabel(block.revision.audienceId)
+      trainingBlockAudienceSetLabel(block.revision.audienceIds)
         .toLocaleLowerCase("de")
         .includes(query)
     );
@@ -619,7 +629,7 @@ function renderTrainingBlocks() {
 
   const grouped = new Map();
   for (const block of filtered) {
-    const key = trainingBlockAudienceLabel(block.revision.audienceId);
+    const key = trainingBlockAudienceSetLabel(block.revision.audienceIds);
     const values = grouped.get(key) || [];
     values.push(block);
     grouped.set(key, values);
@@ -689,7 +699,7 @@ function renderTrainingBlocks() {
 function trainingBlockDraftFromSnapshot(block) {
   return {
     name: block.revision.name,
-    audienceId: block.revision.audienceId || "",
+    audienceIds: block.revision.audienceIds.slice(),
     durationMinutes: block.revision.durationMinutes,
     note: block.revision.note || "",
     exercises: block.revision.exercises.map((exercise) => ({
@@ -724,8 +734,7 @@ function newTrainingBlock() {
   trainingBlockSelected = null;
   trainingBlockDraft = {
     name: "",
-    audienceId:
-      trainingBlockAudiences.length === 1 ? trainingBlockAudiences[0].id : "",
+    audienceIds: [],
     durationMinutes: null,
     note: "",
     exercises: [],
@@ -949,17 +958,14 @@ function renderTrainingBlockAudienceOptions() {
   const select = trainingBlockElements.audience;
   if (!select || !trainingBlockDraft) return;
   select.replaceChildren();
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Trainingsgruppe wählen";
-  select.append(placeholder);
+  const selected = new Set(trainingBlockDraft.audienceIds || []);
   for (const audience of trainingBlockAudiences) {
     const option = document.createElement("option");
     option.value = audience.id;
     option.textContent = trainingBlockAudienceLabel(audience.id);
+    option.selected = selected.has(audience.id);
     select.append(option);
   }
-  select.value = trainingBlockDraft.audienceId || "";
   select.disabled =
     !trainingBlocksCanEdit ||
     trainingBlockDeactivateBusy ||
@@ -1179,7 +1185,11 @@ function markTrainingBlockDirty() {
 function syncTrainingBlockDraftFromFields() {
   if (!trainingBlockDraft) return;
   trainingBlockDraft.name = (trainingBlockElements.name?.value || "").trim();
-  trainingBlockDraft.audienceId = trainingBlockElements.audience?.value || "";
+  trainingBlockDraft.audienceIds = trainingBlockElements.audience
+    ? [...trainingBlockElements.audience.selectedOptions].map(
+        (option) => option.value,
+      )
+    : [];
   const duration = trainingBlockElements.duration?.value || "";
   trainingBlockDraft.durationMinutes =
     duration === "" ? null : Number(duration);
@@ -1202,7 +1212,7 @@ function trainingBlockDraftPayload() {
   if (!trainingBlockDraft) return null;
   return {
     name: trainingBlockDraft.name,
-    audienceId: trainingBlockDraft.audienceId || null,
+    audienceIds: trainingBlockDraft.audienceIds.slice(),
     durationMinutes: trainingBlockDraft.durationMinutes,
     note: trainingBlockDraft.note.trim() || null,
     exercises: trainingBlockDraft.exercises.map((exercise) => {
@@ -1331,8 +1341,11 @@ function trainingBlockDraftReady(payload) {
   return payload &&
     typeof payload.name === "string" &&
     payload.name.length >= 1 &&
-    typeof payload.audienceId === "string" &&
-    payload.audienceId.length > 0 &&
+    Array.isArray(payload.audienceIds) &&
+    payload.audienceIds.length <= 100 &&
+    payload.audienceIds.every(
+      (value) => typeof value === "string" && value.length > 0,
+    ) &&
     (payload.durationMinutes === null ||
       (Number.isSafeInteger(payload.durationMinutes) &&
         payload.durationMinutes >= 1 &&
