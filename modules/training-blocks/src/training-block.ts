@@ -24,7 +24,12 @@ export interface TrainingBlockExerciseDraft {
 
 export interface CreateTrainingBlockDraftInput {
   readonly name: string;
+  /**
+   * Compatibility primary audience. New callers should prefer audienceIds.
+   * When both are supplied, audienceId must equal the first audienceIds entry.
+   */
   readonly audienceId?: string | null;
+  readonly audienceIds?: readonly string[];
   readonly durationMinutes?: number | null;
   readonly note?: string | null;
   readonly exercises?: readonly TrainingBlockExerciseInput[];
@@ -33,6 +38,7 @@ export interface CreateTrainingBlockDraftInput {
 export interface TrainingBlockDraft {
   readonly name: string;
   readonly audienceId: string | null;
+  readonly audienceIds: readonly string[];
   readonly durationMinutes: number | null;
   readonly note: string | null;
   readonly exercises: readonly TrainingBlockExerciseDraft[];
@@ -61,9 +67,12 @@ export function normalizeTrainingBlockDraft(
     );
   }
 
+  const audiences = normalizeAudiences(input.audienceId, input.audienceIds);
+
   return Object.freeze({
     name: requiredText(input.name, "Training block name", 120),
-    audienceId: optionalIdentifier(input.audienceId, "Training block audience"),
+    audienceId: audiences[0] ?? null,
+    audienceIds: audiences,
     durationMinutes: optionalDuration(input.durationMinutes),
     note: optionalText(input.note, "Training block note", 3000),
     exercises: Object.freeze(
@@ -126,6 +135,50 @@ function normalizeParameterOverride(
     value: requiredText(input.value, "Training block parameter value", 500),
     sortOrder,
   });
+}
+
+function normalizeAudiences(
+  compatibilityAudienceId: unknown,
+  audienceIds: unknown,
+): readonly string[] {
+  const compatibility =
+    compatibilityAudienceId === undefined
+      ? undefined
+      : optionalIdentifier(
+          compatibilityAudienceId,
+          "Training block audience",
+        );
+
+  if (audienceIds === undefined) {
+    return Object.freeze(
+      compatibility === undefined || compatibility === null
+        ? []
+        : [compatibility],
+    );
+  }
+  if (!Array.isArray(audienceIds) || audienceIds.length > 100) {
+    throw new TrainingBlockValidationError(
+      "Training block audiences must contain at most 100 entries.",
+    );
+  }
+  const normalized = audienceIds.map((value) =>
+    requiredIdentifier(value, "Training block audience"),
+  );
+  if (new Set(normalized).size !== normalized.length) {
+    throw new TrainingBlockValidationError(
+      "Training block audiences contain a duplicate entry.",
+    );
+  }
+  const primary = normalized[0] ?? null;
+  if (
+    compatibility !== undefined &&
+    compatibility !== primary
+  ) {
+    throw new TrainingBlockValidationError(
+      "Training block compatibility audience must match the first audience.",
+    );
+  }
+  return Object.freeze(normalized);
 }
 
 function optionalDuration(value: unknown): number | null {
