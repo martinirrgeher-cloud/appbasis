@@ -207,6 +207,15 @@ export interface UlcTrainingPlanService {
   listSubjects(
     organizationId: string,
   ): Promise<readonly UlcTrainingPlanSubject[]>;
+  listOverviewGroups(
+    organizationId: string,
+  ): Promise<
+    readonly Readonly<{
+      id: string;
+      name: string;
+      shortName: string | null;
+    }>[]
+  >;
   groupWeekOverview(
     organizationId: string,
     groupId: string,
@@ -304,6 +313,39 @@ export function createUlcTrainingPlanService({
     );
   }
 
+  async function listOverviewGroups(
+    organizationId: string,
+  ): Promise<
+    readonly Readonly<{
+      id: string;
+      name: string;
+      shortName: string | null;
+    }>[]
+  > {
+    const snapshot = await masterdata.readOrganizationSnapshot(organizationId);
+    return Object.freeze(
+      snapshot.trainingGroups
+        .filter(
+          (group) =>
+            group.organizationId === organizationId &&
+            group.isActive === true,
+        )
+        .map((group) =>
+          Object.freeze({
+            id: group.id,
+            name: group.name,
+            shortName: group.shortName,
+          }),
+        )
+        .sort(
+          (left, right) =>
+            left.name.localeCompare(right.name, "de", {
+              sensitivity: "base",
+            }) || left.id.localeCompare(right.id),
+        ),
+    );
+  }
+
   async function groupWeekOverview(
     organizationId: string,
     groupId: string,
@@ -322,7 +364,9 @@ export function createUlcTrainingPlanService({
         candidate.isActive === true,
     );
     if (group === undefined) {
-      throw new UlcTrainingPlanReferenceError("subject", groupId);
+      throw new TrainingPlanValidationError(
+        "Training plan overview group is unavailable.",
+      );
     }
 
     const memberIds = new Set(
@@ -749,6 +793,7 @@ export function createUlcTrainingPlanService({
 
   return Object.freeze({
     listSubjects,
+    listOverviewGroups,
     groupWeekOverview,
     listForSubjectDateRange(
       organizationId: string,
