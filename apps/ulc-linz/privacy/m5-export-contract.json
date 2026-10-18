@@ -131,6 +131,11 @@
     },
     {
       "owner": "athletes",
+      "table": "appbasis_athlete_contact",
+      "privacyClass": "athlete-contact-data"
+    },
+    {
+      "owner": "athletes",
       "table": "appbasis_trainer",
       "privacyClass": "trainer-master-data"
     },
@@ -319,6 +324,7 @@
     "minimal-delete-reconciliation-state",
     "training-group-configuration",
     "athlete-master-data",
+    "athlete-contact-data",
     "trainer-master-data",
     "athlete-training-membership",
     "trainer-training-membership",
