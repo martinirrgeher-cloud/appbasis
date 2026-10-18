@@ -471,6 +471,9 @@ function runtime(
       async create() {
         throw new Error("training-block mock create is not wired to an E7A3 HTTP route");
       },
+      async duplicate() {
+        return undefined;
+      },
       async update() {
         throw new Error("training-block mock update is not wired to an E7A3 HTTP route");
       },
@@ -2253,6 +2256,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
                 isActive: true,
               },
             ],
+            athleteContacts: [],
             trainers: [],
             athleteGroupMemberships: [
               {
@@ -2326,6 +2330,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
               },
             ],
             athletes: [],
+            athleteContacts: [],
             trainers: [],
             athleteGroupMemberships: [],
             trainerGroupMemberships: [],
@@ -2408,6 +2413,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         },
       ],
       athletes: [],
+      athleteContacts: [],
       trainers: [],
       athleteGroupMemberships: [],
       trainerGroupMemberships: [],
@@ -2528,6 +2534,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         },
       ],
       athletes: [],
+      athleteContacts: [],
       trainers: [],
       athleteGroupMemberships: [],
       trainerGroupMemberships: [],
@@ -2650,6 +2657,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         },
       ],
       athletes: [],
+      athleteContacts: [],
       trainers: [],
       athleteGroupMemberships: [],
       trainerGroupMemberships: [],
@@ -2823,6 +2831,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
           },
         ],
         athletes: [],
+        athleteContacts: [],
         trainers: [],
         athleteGroupMemberships: [],
         trainerGroupMemberships: [],
