@@ -394,6 +394,79 @@ describe("training-plans service", () => {
     ).rejects.toBeInstanceOf(TrainingPlanValidationError);
   });
 
+  it("lists a deterministic date range for multiple subjects without leaking organization scope", async () => {
+    const service = new TrainingPlanService({
+      repository: new InMemoryTrainingPlanRepository(),
+      createId: deterministicIds(
+        "b-13",
+        "a-13",
+        "a-12",
+        "other-org",
+      ),
+      now: () => new Date("2026-10-12T10:00:00.000Z"),
+    });
+
+    await service.create("org-a", {
+      subjectId: "athlete-b",
+      planDate: "2026-10-13",
+    });
+    await service.create("org-a", {
+      subjectId: "athlete-a",
+      planDate: "2026-10-13",
+    });
+    await service.create("org-a", {
+      subjectId: "athlete-a",
+      planDate: "2026-10-12",
+    });
+    await service.create("org-b", {
+      subjectId: "athlete-a",
+      planDate: "2026-10-12",
+    });
+
+    await expect(
+      service.listForSubjectsDateRange(
+        "org-a",
+        ["athlete-b", "athlete-a"],
+        "2026-10-12",
+        "2026-10-13",
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "a-12",
+        subjectId: "athlete-a",
+        planDate: "2026-10-12",
+      }),
+      expect.objectContaining({
+        id: "a-13",
+        subjectId: "athlete-a",
+        planDate: "2026-10-13",
+      }),
+      expect.objectContaining({
+        id: "b-13",
+        subjectId: "athlete-b",
+        planDate: "2026-10-13",
+      }),
+    ]);
+
+    await expect(
+      service.listForSubjectsDateRange(
+        "org-a",
+        [],
+        "2026-10-12",
+        "2026-10-13",
+      ),
+    ).resolves.toEqual([]);
+
+    await expect(
+      service.listForSubjectsDateRange(
+        "org-a",
+        ["athlete-a", "athlete-a"],
+        "2026-10-12",
+        "2026-10-13",
+      ),
+    ).rejects.toBeInstanceOf(TrainingPlanValidationError);
+  });
+
   it("rejects item kind changes and unknown persisted item ids", async () => {
     const service = new TrainingPlanService({
       repository: new InMemoryTrainingPlanRepository(),
