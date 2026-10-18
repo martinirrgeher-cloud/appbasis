@@ -387,33 +387,34 @@ export function createUlcTrainingPlanService({
       )
       .sort(compareAthletes);
 
-    const planRows = await Promise.all(
-      athletes.map(async (athlete) => {
-        const plansForAthlete = await plans.listForSubjectDateRange(
-          organizationId,
-          athlete.id,
-          start,
-          weekEnd,
-        );
-        const byDate = new Map(
-          plansForAthlete.map((plan) => [plan.planDate, plan] as const),
-        );
-        return Object.freeze({
-          subject: subjectFromAthlete(athlete),
-          cells: Object.freeze(
-            dates.map((date) => {
-              const plan = byDate.get(date) ?? null;
-              return Object.freeze({
-                planDate: date,
-                planId: plan?.id ?? null,
-                durationMinutes:
-                  plan === null ? 0 : trainingPlanTotalDuration(plan),
-                exerciseCount:
-                  plan === null ? 0 : trainingPlanExerciseTotal(plan),
-              });
-            }),
-          ),
-        });
+    const groupPlans = await plans.listForSubjectsDateRange(
+      organizationId,
+      athletes.map((athlete) => athlete.id),
+      start,
+      weekEnd,
+    );
+    const plansBySubjectDate = new Map(
+      groupPlans.map(
+        (plan) => [plan.subjectId + "\u0000" + plan.planDate, plan] as const,
+      ),
+    );
+    const planRows = athletes.map((athlete) =>
+      Object.freeze({
+        subject: subjectFromAthlete(athlete),
+        cells: Object.freeze(
+          dates.map((date) => {
+            const plan =
+              plansBySubjectDate.get(athlete.id + "\u0000" + date) ?? null;
+            return Object.freeze({
+              planDate: date,
+              planId: plan?.id ?? null,
+              durationMinutes:
+                plan === null ? 0 : trainingPlanTotalDuration(plan),
+              exerciseCount:
+                plan === null ? 0 : trainingPlanExerciseTotal(plan),
+            });
+          }),
+        ),
       }),
     );
 
