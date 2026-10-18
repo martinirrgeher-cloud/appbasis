@@ -42,6 +42,16 @@ export class TrainingBlockConflictError extends Error {
   }
 }
 
+export class TrainingBlockInUseError extends Error {
+  readonly blockId: string;
+
+  constructor(blockId: string) {
+    super(`Training block ${blockId} is already in use.`);
+    this.name = "TrainingBlockInUseError";
+    this.blockId = blockId;
+  }
+}
+
 export class TrainingBlockInactiveError extends Error {
   readonly blockId: string;
   readonly currentRevision: number;
@@ -577,6 +587,35 @@ export class TrainingBlockService {
       throw new TrainingBlockConflictError(expected, result.currentRevision);
     }
     return this.#assertBlock(result.block, organization, id);
+  }
+
+  async deleteUnused(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+  ): Promise<boolean> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const id = normalizeTrainingBlockIdentifier(blockId, "Training block id");
+    const expected = requiredRevision(
+      expectedRevision,
+      "Expected training block revision",
+    );
+    const result = await this.#repository.deleteUnused(
+      organization,
+      id,
+      expected,
+    );
+    if (result.status === "not-found") return false;
+    if (result.status === "conflict") {
+      throw new TrainingBlockConflictError(expected, result.currentRevision);
+    }
+    if (result.status === "in-use") {
+      throw new TrainingBlockInUseError(id);
+    }
+    return true;
   }
 
   async listRevisions(
