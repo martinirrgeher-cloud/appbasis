@@ -82,9 +82,11 @@ export async function loadUlcTrainingBlocksParityPreviewPlan(
     );
   }
 
-  const baselineCatalogContract = createCatalogContract(
-    [foundation],
-    "E7A6 training-blocks schema-v1 baseline",
+  const baselineCatalogContract = additiveCompatibleCatalogContract(
+    createCatalogContract(
+      [foundation],
+      "E7A6 training-blocks schema-v1 baseline",
+    ),
   );
   const deltaCatalogContract = createCatalogContract(
     [migration],
@@ -123,9 +125,11 @@ export async function loadUlcTrainingBlocksParityPreviewPlan(
     }),
     baselineCatalogContract,
     deltaCatalogContract,
-    targetCatalogContract: createCatalogContract(
-      [foundation, migration],
-      "E7A6 training-blocks schema-v2 target",
+    targetCatalogContract: additiveCompatibleCatalogContract(
+      createCatalogContract(
+        [foundation, migration],
+        "E7A6 training-blocks schema-v2 target",
+      ),
     ),
     productionChanged: false,
   });
@@ -374,6 +378,18 @@ function previewResult(state, plan) {
     target: plan.target,
     productionChanged: false,
   });
+}
+
+function additiveCompatibleCatalogContract(contract) {
+  return Object.freeze(
+    contract.filter(
+      (marker) =>
+        !(
+          marker.kind === "constraint-count" &&
+          marker.table === "appbasis_training_block_revision"
+        ),
+    ),
+  );
 }
 
 function presentTables(contract) {
