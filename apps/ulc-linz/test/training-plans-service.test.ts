@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type {
   Athlete,
+  AthleteGroupMembership,
   AthleteMasterdataSnapshot,
   TrainingGroup,
 } from "@appbasis/athletes";
@@ -108,6 +109,7 @@ function blockSnapshot(
     revision: overrides.currentRevision ?? 3,
     name: "Sprintblock",
     audienceId: "group-active",
+    audienceIds: Object.freeze(["group-active"]),
     durationMinutes: 25,
     note: "Blocknotiz",
     exercises: Object.freeze([]),
@@ -175,6 +177,7 @@ function createService(input: {
   ids?: readonly string[];
   attendance?: readonly UlcTrainingAttendanceSummary[];
   groups?: readonly TrainingGroup[];
+  memberships?: readonly AthleteGroupMembership[];
   blocks?: readonly TrainingBlockSnapshot[];
   usageFailureCount?: number;
   usageDelayMs?: number;
@@ -214,12 +217,14 @@ function createService(input: {
   ];
   const groups = input.groups ?? [ACTIVE_GROUP, INACTIVE_GROUP];
   const blockRows = input.blocks ?? [];
+  const memberships = input.memberships ?? [];
   const snapshot: Pick<
     AthleteMasterdataSnapshot,
-    "athletes" | "trainingGroups"
+    "athletes" | "trainingGroups" | "athleteGroupMemberships"
   > = {
     athletes,
     trainingGroups: groups,
+    athleteGroupMemberships: memberships,
   };
 
   const attendanceRows = input.attendance ?? [];
@@ -356,6 +361,105 @@ function createService(input: {
     }),
   };
 }
+
+describe("ULC training plan group week overview", () => {
+  it("lists active groups and builds one seven-day row per active member", async () => {
+    const memberships: readonly AthleteGroupMembership[] = [
+      Object.freeze({
+        organizationId: "org-1",
+        athleteId: ACTIVE_ATHLETE.id,
+        groupId: ACTIVE_GROUP.id,
+        startedOn: "2026-01-01",
+        endedOn: null,
+      }),
+      Object.freeze({
+        organizationId: "org-1",
+        athleteId: SECOND_ATHLETE.id,
+        groupId: ACTIVE_GROUP.id,
+        startedOn: "2026-01-01",
+        endedOn: null,
+      }),
+    ];
+    const base = createService({
+      memberships,
+      ids: [
+        "overview-plan",
+        "overview-block-item",
+        "overview-exercise-item",
+      ],
+    });
+
+    await base.plans.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-12",
+      items: [
+        {
+          kind: "block",
+          name: "Sprint",
+          durationMinutes: 30,
+          exercises: [
+            {
+              name: "30 m",
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(base.service.listOverviewGroups("org-1")).resolves.toEqual([
+      {
+        id: ACTIVE_GROUP.id,
+        name: ACTIVE_GROUP.name,
+        shortName: ACTIVE_GROUP.shortName,
+      },
+    ]);
+
+    const overview = await base.service.groupWeekOverview(
+      "org-1",
+      ACTIVE_GROUP.id,
+      "2026-10-12",
+    );
+
+    expect(overview.weekEnd).toBe("2026-10-18");
+    expect(overview.dates).toHaveLength(7);
+    expect(overview.rows.map((row) => row.subject.id)).toEqual([
+      SECOND_ATHLETE.id,
+      ACTIVE_ATHLETE.id,
+    ]);
+    const anna = overview.rows.find(
+      (row) => row.subject.id === ACTIVE_ATHLETE.id,
+    );
+    expect(anna?.cells[0]).toEqual({
+      planDate: "2026-10-12",
+      planId: "overview-plan",
+      durationMinutes: 30,
+      exerciseCount: 1,
+    });
+    expect(anna?.cells.slice(1).every((cell) => cell.planId === null)).toBe(
+      true,
+    );
+  });
+
+  it("rejects non-Monday overview starts and unavailable groups", async () => {
+    const base = createService();
+
+    await expect(
+      base.service.groupWeekOverview(
+        "org-1",
+        ACTIVE_GROUP.id,
+        "2026-10-13",
+      ),
+    ).rejects.toThrow(/Monday/);
+
+    await expect(
+      base.service.groupWeekOverview(
+        "org-1",
+        "missing-group",
+        "2026-10-12",
+      ),
+    ).rejects.toThrow(/unavailable/);
+  });
+});
 
 describe("ULC training plan block template adoption", () => {
   it("lists only current active adoptable templates and materializes plan-owned values", async () => {
