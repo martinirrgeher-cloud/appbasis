@@ -932,6 +932,7 @@ function prepareTrainingPlansView() {
   renderTrainingPlanBlockTemplates();
   renderTrainingPlanWeek();
   renderTrainingPlanOverview();
+  void refreshTrainingPlanDependencies();
   if (
     trainingPlanSelectedSubjectId &&
     !trainingPlanWeekLoaded &&
@@ -945,6 +946,55 @@ function prepareTrainingPlansView() {
     !trainingPlanOverviewLoading
   ) {
     void loadTrainingPlanOverview();
+  }
+}
+
+async function refreshTrainingPlanDependencies() {
+  try {
+    const payload = await requestJson("/api/modules/training-plans");
+    if (
+      payload?.module?.moduleId !== "training_planning" ||
+      payload?.access?.view !== true ||
+      typeof payload?.access?.edit !== "boolean" ||
+      !Array.isArray(payload?.subjects) ||
+      !payload.subjects.every(isTrainingPlanSubject) ||
+      !Array.isArray(payload?.overviewGroups) ||
+      !payload.overviewGroups.every(isTrainingPlanOverviewGroup) ||
+      !Array.isArray(payload?.blockTemplates) ||
+      !payload.blockTemplates.every(isTrainingPlanBlockTemplateSummary)
+    ) {
+      throw new Error("INVALID_TRAINING_PLAN_DEPENDENCY_REFRESH");
+    }
+    trainingPlansCanEdit = payload.access.edit;
+    trainingPlanSubjects = payload.subjects.slice();
+    trainingPlanOverviewGroups = payload.overviewGroups.slice();
+    trainingPlanBlockTemplates = payload.blockTemplates.slice();
+
+    if (
+      !trainingPlanSubjects.some(
+        (subject) => subject.id === trainingPlanSelectedSubjectId,
+      )
+    ) {
+      trainingPlanSelectedSubjectId = trainingPlanSubjects[0]?.id || "";
+      trainingPlanWeekPlans = [];
+      trainingPlanWeekAttendance = [];
+      trainingPlanWeekLoaded = false;
+    }
+    if (
+      !trainingPlanOverviewGroups.some(
+        (group) => group.id === trainingPlanSelectedOverviewGroupId,
+      )
+    ) {
+      trainingPlanSelectedOverviewGroupId =
+        trainingPlanOverviewGroups[0]?.id || "";
+      trainingPlanOverview = null;
+    }
+    renderTrainingPlanSubjects();
+    renderTrainingPlanOverviewGroups();
+    renderTrainingPlanBlockTemplates();
+    if (trainingPlanPickerMode === "block") renderTrainingPlanPicker();
+  } catch {
+    // Keep the last valid dependency snapshot visible.
   }
 }
 
@@ -1070,7 +1120,7 @@ async function loadTrainingPlanOverview() {
       trainingPlanElements.message,
       error?.status === 400
         ? "Die Gruppenübersicht ist für diese Woche nicht verfügbar."
-        : "Die Gruppenübersicht konnte nicht geladen werden.",
+        : "Die Gruppenübersicht konnte nicht geladen werden. Bitte Gruppe oder Woche erneut wählen.",
     );
     return false;
   } finally {
@@ -1545,6 +1595,7 @@ function populateTrainingPlanEditor() {
 }
 
 function closeTrainingPlanEditor(force) {
+  closeTrainingPlanPicker();
   if (!force) {
     if (
       trainingPlanSaveBusy ||
@@ -2209,6 +2260,251 @@ async function addTrainingPlanBlockTemplate() {
   }
 }
 
+async function openTrainingPlanPicker(mode) {
+  if (
+    !trainingPlanDraft ||
+    !trainingPlansCanEdit ||
+    trainingPlanConflict ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
+  trainingPlanPickerMode = mode;
+  if (trainingPlanElements.picker) trainingPlanElements.picker.hidden = false;
+  document.body.classList.add("training-plan-picker-open");
+  if (trainingPlanElements.pickerSearch) trainingPlanElements.pickerSearch.value = "";
+  if (trainingPlanElements.pickerManual) {
+    trainingPlanElements.pickerManual.hidden = mode !== "exercise";
+  }
+  if (trainingPlanElements.pickerTitle) {
+    trainingPlanElements.pickerTitle.textContent =
+      mode === "exercise" ? "Übung aus Katalog" : "Trainingsblock auswählen";
+  }
+
+  if (mode === "exercise") {
+    trainingPlanPickerLoading = true;
+    renderTrainingPlanPicker();
+    try {
+      const payload = await requestJson("/api/modules/exercise-catalog");
+      const items = payload?.catalog?.items;
+      if (
+        payload?.module?.moduleId !== "exercise_catalog" ||
+        payload?.access?.view !== true ||
+        !Array.isArray(items) ||
+        !items.every(isExerciseCatalogItem)
+      ) {
+        throw new Error("INVALID_TRAINING_PLAN_EXERCISE_PICKER");
+      }
+      exerciseCatalogItems = items.slice();
+    } catch {
+      showMessage(
+        trainingPlanElements.editorMessage,
+        "Der Übungskatalog konnte nicht aktualisiert werden. Der zuletzt geladene Stand bleibt verfügbar.",
+      );
+    } finally {
+      trainingPlanPickerLoading = false;
+      renderTrainingPlanPicker();
+    }
+  } else {
+    await refreshTrainingPlanDependencies();
+    renderTrainingPlanPicker();
+  }
+  trainingPlanElements.pickerSearch?.focus();
+}
+
+function closeTrainingPlanPicker() {
+  trainingPlanPickerMode = null;
+  trainingPlanPickerLoading = false;
+  if (trainingPlanElements.picker) trainingPlanElements.picker.hidden = true;
+  document.body.classList.remove("training-plan-picker-open");
+  if (trainingPlanElements.pickerList) trainingPlanElements.pickerList.replaceChildren();
+}
+
+function renderTrainingPlanPicker() {
+  const container = trainingPlanElements.pickerList;
+  if (!container || trainingPlanPickerMode === null) return;
+  container.replaceChildren();
+
+  const query = (trainingPlanElements.pickerSearch?.value || "")
+    .trim()
+    .toLocaleLowerCase("de");
+
+  if (trainingPlanPickerLoading) {
+    const loading = document.createElement("div");
+    loading.className = "card";
+    loading.textContent = "Wird geladen …";
+    container.append(loading);
+    return;
+  }
+
+  if (trainingPlanPickerMode === "exercise") {
+    const items = exerciseCatalogItems
+      .filter((item) => item.isActive)
+      .filter((item) => {
+        if (!query) return true;
+        return [
+          item.name,
+          categoryLabel(item.categoryKey),
+          ...(item.equipment || []),
+        ].join(" ").toLocaleLowerCase("de").includes(query);
+      })
+      .slice()
+      .sort((left, right) =>
+        left.name.localeCompare(right.name, "de", { sensitivity: "base" }),
+      );
+
+    if (trainingPlanElements.pickerHint) {
+      trainingPlanElements.pickerHint.textContent =
+        "Katalogübung auswählen; Planwerte können danach im Tagesplan angepasst werden.";
+    }
+    if (items.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "card";
+      empty.textContent = "Keine passende Katalogübung gefunden.";
+      container.append(empty);
+      return;
+    }
+    for (const item of items) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "training-plan-picker-option";
+      button.dataset.trainingPlanPickExercise = item.id;
+      const main = document.createElement("span");
+      const title = document.createElement("strong");
+      title.textContent = item.name;
+      const meta = document.createElement("span");
+      meta.textContent = [
+        categoryLabel(item.categoryKey),
+        item.isFavorite ? "★ Favorit" : null,
+        item.equipment?.length ? item.equipment.join(", ") : null,
+      ].filter(Boolean).join(" · ");
+      main.append(title, meta);
+      const icon = document.createElement("span");
+      icon.className = "training-plan-picker-option__icon";
+      icon.textContent = "＋";
+      button.append(main, icon);
+      container.append(button);
+    }
+    return;
+  }
+
+  const templates = trainingPlanBlockTemplates
+    .filter((template) =>
+      !query ||
+      (template.name + " " + template.audienceName)
+        .toLocaleLowerCase("de")
+        .includes(query),
+    )
+    .slice()
+    .sort((left, right) =>
+      left.name.localeCompare(right.name, "de", { sensitivity: "base" }),
+    );
+  if (trainingPlanElements.pickerHint) {
+    trainingPlanElements.pickerHint.textContent =
+      "Aktuelle gespeicherte Blockversionen; neue Blöcke werden beim Öffnen dieser Auswahl nachgeladen.";
+  }
+  if (templates.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "card";
+    empty.textContent = "Keine passende Blockvorlage verfügbar.";
+    container.append(empty);
+    return;
+  }
+  for (const template of templates) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "training-plan-picker-option";
+    button.dataset.trainingPlanPickBlock =
+      template.id + "::" + String(template.currentRevision);
+    const main = document.createElement("span");
+    const title = document.createElement("strong");
+    title.textContent = template.name;
+    const meta = document.createElement("span");
+    meta.textContent = [
+      template.audienceName,
+      template.durationMinutes === null
+        ? null
+        : String(template.durationMinutes) + " Min.",
+      String(template.exerciseCount) + " Übung" +
+        (template.exerciseCount === 1 ? "" : "en"),
+    ].filter(Boolean).join(" · ");
+    main.append(title, meta);
+    const icon = document.createElement("span");
+    icon.className = "training-plan-picker-option__icon";
+    icon.textContent = "＋";
+    button.append(main, icon);
+    container.append(button);
+  }
+}
+
+function trainingPlanExerciseDraftFromCatalog(item) {
+  const defaults = new Map(
+    (item.parameters || [])
+      .filter((parameter) => parameter.defaultValue !== null)
+      .map((parameter) => [parameter.key, parameter.defaultValue]),
+  );
+  const sets = defaults.get("sets") || "";
+  const repetitions = defaults.get("repetitions") || "";
+  const primary = (item.parameters || []).find(
+    (parameter) =>
+      parameter.key !== "sets" &&
+      parameter.key !== "repetitions" &&
+      parameter.inputType === "number" &&
+      defaults.has(parameter.key),
+  );
+  const additional = (item.parameters || [])
+    .filter(
+      (parameter) =>
+        parameter.key !== "sets" &&
+        parameter.key !== "repetitions" &&
+        parameter !== primary &&
+        defaults.has(parameter.key),
+    )
+    .map((parameter) =>
+      parameter.label + ": " + defaults.get(parameter.key) +
+      (parameter.unit ? " " + parameter.unit : ""),
+    )
+    .join(" · ");
+
+  return {
+    kind: "exercise",
+    itemId: null,
+    sourceExerciseId: item.id,
+    name: item.name,
+    sets,
+    repetitions,
+    amount: primary ? defaults.get(primary.key) || "" : "",
+    unit: primary?.unit || "",
+    comment: additional ? "Planwerte: " + additional : "",
+  };
+}
+
+function handleTrainingPlanPickerClick(event) {
+  const exerciseButton = event.target.closest("[data-training-plan-pick-exercise]");
+  if (exerciseButton) {
+    const item = exerciseCatalogItems.find(
+      (candidate) =>
+        candidate.id === exerciseButton.dataset.trainingPlanPickExercise &&
+        candidate.isActive,
+    );
+    if (!item || !trainingPlanDraft) return;
+    trainingPlanDraft.items.push(trainingPlanExerciseDraftFromCatalog(item));
+    closeTrainingPlanPicker();
+    markTrainingPlanDirty(true);
+    return;
+  }
+
+  const blockButton = event.target.closest("[data-training-plan-pick-block]");
+  if (blockButton) {
+    const value = blockButton.dataset.trainingPlanPickBlock || "";
+    if (trainingPlanElements.blockTemplate) {
+      trainingPlanElements.blockTemplate.value = value;
+    }
+    closeTrainingPlanPicker();
+    void addTrainingPlanBlockTemplate();
+  }
+}
+
 function newTrainingPlanExerciseDraft() {
   return {
     kind: "exercise",
@@ -2720,23 +3016,18 @@ trainingPlanElements.note?.addEventListener("input", () => {
   markTrainingPlanDirty();
 });
 trainingPlanElements.addExercise?.addEventListener("click", () => {
-  if (
-    !trainingPlanDraft ||
-    trainingPlanSaveBusy ||
-    trainingPlanTemplateBusy ||
-    trainingPlanSaveBackBusy
-  ) return;
-  trainingPlanDraft.items.push(newTrainingPlanExerciseDraft());
-  markTrainingPlanDirty(true);
+  void openTrainingPlanPicker("exercise");
 });
 trainingPlanElements.addBlock?.addEventListener("click", () => {
-  if (
-    !trainingPlanDraft ||
-    trainingPlanSaveBusy ||
-    trainingPlanTemplateBusy ||
-    trainingPlanSaveBackBusy
-  ) return;
-  trainingPlanDraft.items.push(newTrainingPlanBlockDraft());
+  void openTrainingPlanPicker("block");
+});
+trainingPlanElements.pickerClose?.addEventListener("click", closeTrainingPlanPicker);
+trainingPlanElements.pickerSearch?.addEventListener("input", renderTrainingPlanPicker);
+trainingPlanElements.pickerList?.addEventListener("click", handleTrainingPlanPickerClick);
+trainingPlanElements.pickerManual?.addEventListener("click", () => {
+  if (!trainingPlanDraft) return;
+  trainingPlanDraft.items.push(newTrainingPlanExerciseDraft());
+  closeTrainingPlanPicker();
   markTrainingPlanDirty(true);
 });
 trainingPlanElements.blockTemplate?.addEventListener("change", () => {
@@ -2758,6 +3049,14 @@ trainingPlanElements.saveTemplateConfirm?.addEventListener("click", () => {
   void saveTrainingPlanBlockTemplate();
 });
 document.addEventListener("keydown", (event) => {
+  if (
+    event.key === "Escape" &&
+    trainingPlanElements.picker &&
+    !trainingPlanElements.picker.hidden
+  ) {
+    closeTrainingPlanPicker();
+    return;
+  }
   if (
     event.key === "Escape" &&
     trainingPlanElements.saveTemplate &&
