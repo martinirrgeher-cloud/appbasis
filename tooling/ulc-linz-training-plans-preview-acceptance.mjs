@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 
 const DEFAULT_USERNAME = "preview.admin";
+export const PREVIEW_EXERCISE_CATEGORY_KEY = "acceleration";
 const REQUEST_TIMEOUT_MS = 15_000;
 
 export class UlcTrainingPlansPreviewAcceptanceError extends Error {
@@ -126,7 +127,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
       cookie,
       body: {
         name: exerciseName,
-        categoryKey: "speed",
+        categoryKey: PREVIEW_EXERCISE_CATEGORY_KEY,
         groupIds: [group.id],
       },
       expectedStatus: 201,

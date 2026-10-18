@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  PREVIEW_EXERCISE_CATEGORY_KEY,
   readUlcTrainingPlansPreviewAcceptanceEnvironment,
   UlcTrainingPlansPreviewAcceptanceError,
 } from "./ulc-linz-training-plans-preview-acceptance.mjs";
@@ -44,6 +45,24 @@ test("E7B9 acceptance requires only the isolated preview origin and protected pr
         APPBASIS_PREVIEW_USER_PASSWORD: "x",
       }),
     /canonical HTTPS origin/,
+  );
+});
+
+
+test("E7B9 acceptance fixture uses a configured ULC exercise category", async () => {
+  const domainSource = await readFile(
+    resolve(
+      repositoryRoot,
+      "apps/ulc-linz/worker/exercise-catalog-domain.ts",
+    ),
+    "utf8",
+  );
+
+  assert.ok(
+    domainSource.includes(
+      `{ key: "${PREVIEW_EXERCISE_CATEGORY_KEY}", label:`,
+    ),
+    "Acceptance exercise category must exist in the ULC catalog definition.",
   );
 });
 
