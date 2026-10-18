@@ -4,6 +4,7 @@ import {
   ATHLETE_CAPABILITIES,
   MasterdataValidationError,
   createAthlete,
+  createAthleteContact,
   createAthleteGroupMembership,
   createTrainer,
   createTrainerGroupMembership,
@@ -143,6 +144,39 @@ describe("Stammdaten domain contract", () => {
       sortOrder: 20,
       isActive: true,
     });
+  });
+
+  it("normalizes athlete emergency contacts without identity or training coupling", () => {
+    expect(
+      createAthleteContact(
+        {
+          contactName: " Maria Muster ",
+          relationship: " Mutter ",
+          phone: " +43 660 123 ",
+          isEmergency: true,
+          priority: 2,
+          notes: " nur abends ",
+        },
+        { ...context, athleteId: "athlete-1" },
+      ),
+    ).toEqual({
+      id: "entity-1",
+      organizationId: "ulc-linz",
+      athleteId: "athlete-1",
+      contactName: "Maria Muster",
+      relationship: "Mutter",
+      phone: "+43 660 123",
+      isEmergency: true,
+      priority: 2,
+      notes: "nur abends",
+    });
+
+    expect(() =>
+      createAthleteContact(
+        { contactName: "Kontakt", phone: "1" },
+        { ...context, athleteId: "athlete-1" },
+      ),
+    ).toThrow(MasterdataValidationError);
   });
 
   it("keeps athlete group membership history explicit", () => {
