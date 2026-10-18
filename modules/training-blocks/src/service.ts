@@ -84,6 +84,10 @@ export interface RecordTrainingBlockUsageInput {
   readonly note?: string | null;
 }
 
+export interface DuplicateTrainingBlockInput {
+  readonly name?: string;
+}
+
 export class TrainingBlockService {
   readonly #repository: TrainingBlockRepository;
   readonly #createId: () => string;
@@ -416,6 +420,40 @@ export class TrainingBlockService {
     });
     const stored = await this.#repository.create(block);
     return this.#assertBlock(stored, organization, id);
+  }
+
+  async duplicate(
+    organizationId: string,
+    blockId: string,
+    input: DuplicateTrainingBlockInput = {},
+  ): Promise<TrainingBlockSnapshot | undefined> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const id = normalizeTrainingBlockIdentifier(blockId, "Training block id");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TrainingBlockValidationError(
+        "Training block duplicate input is invalid.",
+      );
+    }
+    const source = await this.findCurrent(organization, id);
+    if (source === undefined) return undefined;
+
+    return this.create(organization, {
+      name: input.name ?? source.revision.name,
+      audienceId: source.revision.audienceId,
+      durationMinutes: source.revision.durationMinutes,
+      note: source.revision.note,
+      exercises: source.revision.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        note: exercise.note,
+        parameterOverrides: exercise.parameterOverrides.map((override) => ({
+          key: override.key,
+          value: override.value,
+        })),
+      })),
+    });
   }
 
   async update(
