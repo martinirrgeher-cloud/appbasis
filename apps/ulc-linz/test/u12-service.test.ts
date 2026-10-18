@@ -70,6 +70,7 @@ function masterdataSnapshot(): AthleteMasterdataSnapshot {
         isActive: false,
       },
     ],
+    athleteContacts: [],
     trainers: [],
     athleteGroupMemberships: [
       {
