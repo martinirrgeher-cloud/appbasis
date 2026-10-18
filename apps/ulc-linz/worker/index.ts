@@ -293,6 +293,7 @@ class InvalidTrainingBlockRequestError extends Error {}
 const TRAINING_BLOCK_DRAFT_FIELDS = Object.freeze([
   "name",
   "audienceId",
+  "audienceIds",
   "durationMinutes",
   "note",
   "exercises",
@@ -340,6 +341,7 @@ async function trainingBlocksModuleResponse(
               favorites: true,
               usageSummary: true,
               duplicate: true,
+              multipleAudiences: true,
             },
           },
           access: { view: true, edit: access.canEdit },
@@ -671,6 +673,7 @@ async function trainingBlockDraftBody(
 ): Promise<{
   name: string;
   audienceId?: string | null;
+  audienceIds?: readonly string[];
   durationMinutes?: number | null;
   note?: string | null;
   exercises?: readonly {
@@ -709,6 +712,15 @@ async function trainingBlockDraftBody(
     ? requiredTrainingBlockRevision(body.expectedRevision)
     : null;
 
+  const audienceIds = body.audienceIds;
+  if (
+    audienceIds !== undefined &&
+    (!Array.isArray(audienceIds) ||
+      audienceIds.some((value) => typeof value !== "string"))
+  ) {
+    throw new InvalidTrainingBlockRequestError();
+  }
+
   const exercises = body.exercises;
   if (exercises !== undefined) {
     if (!Array.isArray(exercises)) {
@@ -724,6 +736,9 @@ async function trainingBlockDraftBody(
     ...(body.audienceId === undefined
       ? {}
       : { audienceId: body.audienceId as string | null }),
+    ...(audienceIds === undefined
+      ? {}
+      : { audienceIds: audienceIds as readonly string[] }),
     ...(body.durationMinutes === undefined
       ? {}
       : { durationMinutes: body.durationMinutes as number | null }),
@@ -912,6 +927,7 @@ function trainingBlockClientRevision(revision: {
   revision: number;
   name: string;
   audienceId: string | null;
+  audienceIds: readonly string[];
   durationMinutes: number | null;
   note: string | null;
   exercises: readonly unknown[];
@@ -921,6 +937,7 @@ function trainingBlockClientRevision(revision: {
     revision: revision.revision,
     name: revision.name,
     audienceId: revision.audienceId,
+    audienceIds: revision.audienceIds,
     durationMinutes: revision.durationMinutes,
     note: revision.note,
     exercises: revision.exercises,
