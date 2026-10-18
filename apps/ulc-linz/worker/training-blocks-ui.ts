@@ -95,6 +95,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                   <div class="training-block-footer__actions">
                     <button class="button button--secondary" id="training-block-duplicate" type="button" hidden>Duplizieren</button>
                     <button class="button button--secondary" id="training-block-favorite" type="button" hidden>☆ Favorit</button>
+                    <button class="button button--danger" id="training-block-delete-unused" type="button" hidden>Unbenutzten Block löschen</button>
                     <button class="button button--danger" id="training-block-deactivate" type="button" hidden>Deaktivieren</button>
                   </div>
                   <div class="training-block-footer__meta">
@@ -355,6 +356,7 @@ const trainingBlockElements = Object.freeze({
   duplicate: document.querySelector("#training-block-duplicate"),
   favorite: document.querySelector("#training-block-favorite"),
   usageInfo: document.querySelector("#training-block-usage-info"),
+  deleteUnused: document.querySelector("#training-block-delete-unused"),
   deactivate: document.querySelector("#training-block-deactivate"),
   info: document.querySelector("#training-block-exercise-info"),
   infoTitle: document.querySelector("#training-block-info-title"),
@@ -882,6 +884,21 @@ function refreshTrainingBlockParityMetadata() {
       block?.isFavorite ? "true" : "false",
     );
   }
+  if (trainingBlockElements.deleteUnused) {
+    trainingBlockElements.deleteUnused.hidden =
+      !block ||
+      !trainingBlocksCanEdit ||
+      block.usageCount !== 0;
+    trainingBlockElements.deleteUnused.disabled =
+      !block ||
+      !trainingBlocksCanEdit ||
+      block.usageCount !== 0 ||
+      trainingBlockSaveBusy ||
+      trainingBlockFavoriteBusy ||
+      trainingBlockDeactivateBusy ||
+      trainingBlockDuplicateBusy ||
+      trainingBlockReloadBusy;
+  }
   if (trainingBlockElements.usageInfo) {
     if (!block) {
       trainingBlockElements.usageInfo.textContent = "";
@@ -925,6 +942,13 @@ function refreshTrainingBlockEditorLock() {
       locked ||
       !trainingBlocksCanEdit ||
       !trainingBlockSelected;
+  }
+  if (trainingBlockElements.deleteUnused) {
+    trainingBlockElements.deleteUnused.disabled =
+      locked ||
+      !trainingBlocksCanEdit ||
+      !trainingBlockSelected ||
+      trainingBlockSelected.usageCount !== 0;
   }
   if (trainingBlockElements.deactivate) {
     trainingBlockElements.deactivate.disabled =
@@ -1969,6 +1993,93 @@ async function duplicateTrainingBlock() {
   }
 }
 
+async function deleteUnusedTrainingBlock() {
+  if (
+    trainingBlockSaveBusy ||
+    trainingBlockFavoriteBusy ||
+    trainingBlockDeactivateBusy ||
+    trainingBlockDuplicateBusy ||
+    trainingBlockReloadBusy ||
+    !trainingBlockSelected ||
+    trainingBlockSelected.usageCount !== 0 ||
+    !trainingBlocksCanEdit ||
+    trainingBlockConflict ||
+    trainingBlockCreateUncertain
+  ) return;
+
+  if (trainingBlockDirty) {
+    await saveTrainingBlock();
+    if (
+      trainingBlockDirty ||
+      trainingBlockSaveBusy ||
+      trainingBlockConflict ||
+      trainingBlockCreateUncertain
+    ) return;
+  }
+
+  if (!window.confirm(
+    "Diesen unbenutzten Trainingsblock endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+  )) return;
+
+  const id = trainingBlockSelected.id;
+  const expectedRevision = trainingBlockSelected.currentRevision;
+  trainingBlockDeactivateBusy = true;
+  refreshTrainingBlockParityMetadata();
+  refreshTrainingBlockEditorLock();
+  setTrainingBlockSaveState("saving", "Löscht …");
+  showMessage(trainingBlockElements.editorMessage, "");
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/training-blocks/" +
+        encodeURIComponent(id) +
+        "/delete-unused",
+      {
+        method: "POST",
+        body: JSON.stringify({ expectedRevision }),
+      },
+    );
+    if (payload?.deleted !== true) {
+      throw new Error("INVALID_TRAINING_BLOCK_DELETE");
+    }
+    invalidateTrainingBlockOverviewRefresh();
+    trainingBlocks = trainingBlocks.filter((block) => block.id !== id);
+    trainingBlockDeactivateBusy = false;
+    closeTrainingBlockEditor(true);
+    renderTrainingBlocks();
+  } catch (error) {
+    if (error?.status === 409 && error?.code === "TRAINING_BLOCK_IN_USE") {
+      setTrainingBlockSaveState("error", "Bereits verwendet");
+      showMessage(
+        trainingBlockElements.editorMessage,
+        "Der Trainingsblock wurde inzwischen verwendet und kann deshalb nicht mehr gelöscht werden. Du kannst ihn stattdessen archivieren.",
+      );
+    } else if (error?.status === 409) {
+      trainingBlockConflict = true;
+      setTrainingBlockSaveState("conflict", "Konflikt – neuer Stand vorhanden");
+      if (trainingBlockElements.reload) trainingBlockElements.reload.hidden = false;
+      showMessage(
+        trainingBlockElements.editorMessage,
+        "Der Trainingsblock wurde inzwischen geändert. Bitte aktuellen Stand neu laden.",
+      );
+    } else {
+      setTrainingBlockSaveState("error", "Löschen fehlgeschlagen");
+      showMessage(
+        trainingBlockElements.editorMessage,
+        error?.status === 404
+          ? "Der Trainingsblock wurde nicht gefunden."
+          : "Der Trainingsblock konnte nicht gelöscht werden.",
+      );
+    }
+  } finally {
+    if (trainingBlockElements.editor && !trainingBlockElements.editor.hidden) {
+      trainingBlockDeactivateBusy = false;
+      refreshTrainingBlockParityMetadata();
+      refreshTrainingBlockEditorLock();
+    }
+  }
+}
+
 async function deactivateTrainingBlock() {
   if (
     trainingBlockSaveBusy ||
@@ -2266,6 +2377,7 @@ trainingBlockElements.exercises?.addEventListener("click", handleTrainingBlockEx
 trainingBlockElements.exercises?.addEventListener("input", handleTrainingBlockExerciseInput);
 trainingBlockElements.duplicate?.addEventListener("click", () => void duplicateTrainingBlock());
 trainingBlockElements.favorite?.addEventListener("click", () => void toggleTrainingBlockFavorite());
+trainingBlockElements.deleteUnused?.addEventListener("click", () => void deleteUnusedTrainingBlock());
 trainingBlockElements.deactivate?.addEventListener("click", () => void deactivateTrainingBlock());
 trainingBlockElements.historyLoad?.addEventListener("click", () => void loadTrainingBlockHistory());
 trainingBlockElements.compare?.addEventListener("click", () => void compareTrainingBlockRevisions());
