@@ -335,8 +335,10 @@ Die alte Trainingsplanung bleibt Referenz für den nächsten Bereich:
   main-only Workflow-Operationen und benötigen jeweils `apply=true`;
 - der Deploy-Pfad verwendet weiterhin den bestehenden Standardmodul-Runtime-
   Pfad und verbietet automatisches Provider-Provisioning;
-- der Acceptance-Smoke arbeitet ausschließlich über öffentliche HTTP-Verträge
-  und erzeugt eindeutige Preview-Testdaten statt Produktionsdaten zu kopieren;
+- der Acceptance-Smoke arbeitet ausschließlich über öffentliche HTTP-Verträge,
+  erzeugt für jeden Lauf eine eigene Preview-Trainingsgruppe und weitere
+  eindeutige Preview-Testdaten statt Produktionsdaten zu kopieren oder von
+  vorhandenen Preview-Gruppen abhängig zu sein;
 - geprüft werden Login, Wochenansicht, Anwesenheit, Autosave,
   Blockvorlagen-Übernahme, unabhängiger Snapshot, Save-back,
   Nutzungsmetadaten und Optimistic Concurrency;
