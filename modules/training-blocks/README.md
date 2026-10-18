@@ -11,21 +11,20 @@ training sessions, attendance and later athlete/day planning.
 - Package: `@appbasis/training-blocks`
 - Capabilities: `training-blocks:view`, `training-blocks:edit`
 - Database owner: this module only
-- Current schema version: 1
+- Current schema version: 3
 
 The foundation is revision-ready from the first schema:
 
 - one current block identity with active/inactive lifecycle;
 - numbered immutable revision rows for block metadata with optimistic concurrency;
-- one opaque audience/group reference per revision;
+- zero, one or multiple opaque audience/group references per revision (zero means club-wide);
 - optional duration;
 - ordered exercise occurrences, including repeated use of the same exercise;
 - ordered parameter overrides per exercise occurrence.
 
 There are intentionally no foreign keys into `athletes` or
 `exercise-catalog`. Apps resolve audience and exercise references through
-their public module contracts. ULC Linz will require one valid training group
-per block at its adapter boundary.
+their public module contracts. ULC Linz resolves every selected group at its adapter boundary; an empty audience set remains club-wide.
 
 E7A2 adds the reusable persistence/service contract on that schema:
 
