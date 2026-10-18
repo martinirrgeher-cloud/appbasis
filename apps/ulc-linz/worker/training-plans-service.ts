@@ -63,10 +63,8 @@ export interface UlcTrainingPlanMasterdataReader {
   readOrganizationSnapshot(
     organizationId: string,
   ): PromiseLike<
-    Pick<
-      AthleteMasterdataSnapshot,
-      "athletes" | "trainingGroups" | "athleteGroupMemberships"
-    >
+    Pick<AthleteMasterdataSnapshot, "athletes" | "trainingGroups"> &
+      Partial<Pick<AthleteMasterdataSnapshot, "athleteGroupMemberships">>
   >;
 }
 
@@ -370,7 +368,7 @@ export function createUlcTrainingPlanService({
     }
 
     const memberIds = new Set(
-      snapshot.athleteGroupMemberships
+      (snapshot.athleteGroupMemberships ?? [])
         .filter(
           (membership) =>
             membership.organizationId === organizationId &&
