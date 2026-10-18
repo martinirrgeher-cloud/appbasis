@@ -721,7 +721,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
   });
 
 
-  it("ships E7A6 training-block mobile UI with autosave, history and parity metadata", () => {
+  it("ships training-block mobile UI with explicit version commits, group filter, history and parity metadata", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="4" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain("<h1>Trainingsblöcke</h1>");
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-editor"');
@@ -729,6 +729,9 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain('maxlength="3000"');
     expect(ULC_LINZ_APP_HTML).toContain('max="2147483647"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-save-state"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-save"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-audience-filter"');
+    expect(ULC_LINZ_APP_HTML).toContain("Eine neue Version entsteht erst beim Speichern.");
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-retry"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-exercise-picker"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-history-load"');
@@ -736,9 +739,12 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-usage-info"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('requestJson("/api/modules/training-blocks")');
     expect(ULC_LINZ_APP_SCRIPT).toContain('"/update"');
-    expect(ULC_LINZ_APP_SCRIPT).toContain("scheduleTrainingBlockSave");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("function scheduleTrainingBlockSave()");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockChangeVersion !== saveVersion");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("saveSucceeded &&");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('trainingBlockElements.save?.addEventListener("click"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('setTrainingBlockSaveState("draft", "Ungespeichert")');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('audience === "clubwide"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('block.revision.audienceIds.includes(audience)');
     expect(ULC_LINZ_APP_SCRIPT).toContain("if (!force && trainingBlockSaveBusy)");
     expect(ULC_LINZ_APP_SCRIPT).toContain("retryTrainingBlockSave");
     expect(ULC_LINZ_APP_SCRIPT).toContain("!trainingBlockDirty && !trainingBlockSaveBusy");
