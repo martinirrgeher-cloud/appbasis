@@ -1001,14 +1001,19 @@ function materializeBlockTemplate(
     block.isActive !== true ||
     block.revision.organizationId !== organizationId ||
     block.revision.blockId !== block.id ||
-    block.revision.revision !== block.currentRevision ||
-    block.revision.audienceId === null
+    block.revision.revision !== block.currentRevision
   ) {
     return null;
   }
 
-  const audienceName = activeAudienceNames.get(block.revision.audienceId);
-  if (audienceName === undefined) return null;
+  const audienceNames = block.revision.audienceIds.map(
+    (audienceId) => activeAudienceNames.get(audienceId),
+  );
+  if (audienceNames.some((name) => name === undefined)) return null;
+  const audienceName =
+    audienceNames.length === 0
+      ? "Vereinsweit"
+      : audienceNames.join(", ");
 
   const exercises: Array<
     NonNullable<TrainingPlanBlockInput["exercises"]>[number]
