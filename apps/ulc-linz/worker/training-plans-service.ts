@@ -35,11 +35,38 @@ export interface UlcTrainingPlanSubject {
   readonly displayName: string;
 }
 
+export interface UlcTrainingPlanOverviewCell {
+  readonly planDate: string;
+  readonly planId: string | null;
+  readonly durationMinutes: number;
+  readonly exerciseCount: number;
+}
+
+export interface UlcTrainingPlanOverviewRow {
+  readonly subject: UlcTrainingPlanSubject;
+  readonly cells: readonly UlcTrainingPlanOverviewCell[];
+}
+
+export interface UlcTrainingPlanGroupWeekOverview {
+  readonly group: Readonly<{
+    id: string;
+    name: string;
+    shortName: string | null;
+  }>;
+  readonly weekStart: string;
+  readonly weekEnd: string;
+  readonly dates: readonly string[];
+  readonly rows: readonly UlcTrainingPlanOverviewRow[];
+}
+
 export interface UlcTrainingPlanMasterdataReader {
   readOrganizationSnapshot(
     organizationId: string,
   ): PromiseLike<
-    Pick<AthleteMasterdataSnapshot, "athletes" | "trainingGroups">
+    Pick<
+      AthleteMasterdataSnapshot,
+      "athletes" | "trainingGroups" | "athleteGroupMemberships"
+    >
   >;
 }
 
@@ -180,6 +207,11 @@ export interface UlcTrainingPlanService {
   listSubjects(
     organizationId: string,
   ): Promise<readonly UlcTrainingPlanSubject[]>;
+  groupWeekOverview(
+    organizationId: string,
+    groupId: string,
+    weekStart: string,
+  ): Promise<UlcTrainingPlanGroupWeekOverview>;
   listForSubjectDateRange(
     organizationId: string,
     subjectId: string,
@@ -270,6 +302,90 @@ export function createUlcTrainingPlanService({
         .sort(compareAthletes)
         .map(subjectFromAthlete),
     );
+  }
+
+  async function groupWeekOverview(
+    organizationId: string,
+    groupId: string,
+    weekStart: string,
+  ): Promise<UlcTrainingPlanGroupWeekOverview> {
+    const start = requiredOverviewMonday(weekStart);
+    const weekEnd = addOverviewDays(start, 6);
+    const dates = Object.freeze(
+      Array.from({ length: 7 }, (_, index) => addOverviewDays(start, index)),
+    );
+    const snapshot = await masterdata.readOrganizationSnapshot(organizationId);
+    const group = snapshot.trainingGroups.find(
+      (candidate) =>
+        candidate.id === groupId &&
+        candidate.organizationId === organizationId &&
+        candidate.isActive === true,
+    );
+    if (group === undefined) {
+      throw new UlcTrainingPlanReferenceError("subject", groupId);
+    }
+
+    const memberIds = new Set(
+      snapshot.athleteGroupMemberships
+        .filter(
+          (membership) =>
+            membership.organizationId === organizationId &&
+            membership.groupId === groupId &&
+            membership.startedOn <= weekEnd &&
+            (membership.endedOn === null || membership.endedOn >= start),
+        )
+        .map((membership) => membership.athleteId),
+    );
+    const athletes = snapshot.athletes
+      .filter(
+        (athlete) =>
+          athlete.organizationId === organizationId &&
+          athlete.isActive === true &&
+          memberIds.has(athlete.id),
+      )
+      .sort(compareAthletes);
+
+    const planRows = await Promise.all(
+      athletes.map(async (athlete) => {
+        const plansForAthlete = await plans.listForSubjectDateRange(
+          organizationId,
+          athlete.id,
+          start,
+          weekEnd,
+        );
+        const byDate = new Map(
+          plansForAthlete.map((plan) => [plan.planDate, plan] as const),
+        );
+        return Object.freeze({
+          subject: subjectFromAthlete(athlete),
+          cells: Object.freeze(
+            dates.map((date) => {
+              const plan = byDate.get(date) ?? null;
+              return Object.freeze({
+                planDate: date,
+                planId: plan?.id ?? null,
+                durationMinutes:
+                  plan === null ? 0 : trainingPlanTotalDuration(plan),
+                exerciseCount:
+                  plan === null ? 0 : trainingPlanExerciseTotal(plan),
+              });
+            }),
+          ),
+        });
+      }),
+    );
+
+    return Object.freeze({
+      group: Object.freeze({
+        id: group.id,
+        name: group.name,
+        shortName: group.shortName,
+      }),
+      weekStart: start,
+      weekEnd,
+      dates,
+      rows: Object.freeze(planRows),
+    });
   }
 
   async function assertActiveSubject(
@@ -633,6 +749,7 @@ export function createUlcTrainingPlanService({
 
   return Object.freeze({
     listSubjects,
+    groupWeekOverview,
     listForSubjectDateRange(
       organizationId: string,
       subjectId: string,
@@ -1304,6 +1421,50 @@ function collectChangedSource(
   if (currentSource !== nextSourceExerciseId) {
     result.add(nextSourceExerciseId);
   }
+}
+
+function requiredOverviewMonday(value: string): string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new TrainingPlanValidationError(
+      "Training plan overview week start is invalid.",
+    );
+  }
+  const parsed = new Date(value + "T00:00:00.000Z");
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value ||
+    parsed.getUTCDay() !== 1
+  ) {
+    throw new TrainingPlanValidationError(
+      "Training plan overview week start must be a Monday.",
+    );
+  }
+  return value;
+}
+
+function addOverviewDays(value: string, days: number): string {
+  const date = new Date(value + "T00:00:00.000Z");
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function trainingPlanTotalDuration(plan: TrainingPlanSnapshot): number {
+  return plan.revision.items.reduce(
+    (total, item) =>
+      total +
+      (item.kind === "block" && item.durationMinutes !== null
+        ? item.durationMinutes
+        : 0),
+    0,
+  );
+}
+
+function trainingPlanExerciseTotal(plan: TrainingPlanSnapshot): number {
+  return plan.revision.items.reduce(
+    (total, item) =>
+      total + (item.kind === "exercise" ? 1 : item.exercises.length),
+    0,
+  );
 }
 
 function compareAthletes(left: Athlete, right: Athlete): number {
