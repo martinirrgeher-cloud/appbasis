@@ -1932,15 +1932,7 @@ async function toggleTrainingBlockFavorite() {
       trainingBlockFavoriteBusy = false;
       refreshTrainingBlockParityMetadata();
       refreshTrainingBlockEditorLock();
-      if (
-        trainingBlockSavePending &&
-        trainingBlockDirty &&
-        !trainingBlockConflict &&
-        !trainingBlockCreateUncertain
-      ) {
-        trainingBlockSavePending = false;
-        scheduleTrainingBlockSave();
-      }
+      trainingBlockSavePending = false;
     }
   }
 }
