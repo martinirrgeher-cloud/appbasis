@@ -127,6 +127,7 @@ function runtime(
       return {
         trainingGroups: [],
         athletes: [],
+        athleteContacts: [],
         trainers: [],
         athleteGroupMemberships: [],
         trainerGroupMemberships: [],
@@ -153,6 +154,35 @@ function runtime(
         notes: input.notes ?? null,
         isActive: true,
       };
+    },
+    async createAthleteContact(organizationId, athleteId, input) {
+      return {
+        id: "contact-test",
+        organizationId,
+        athleteId,
+        contactName: input.contactName,
+        relationship: input.relationship ?? null,
+        phone: input.phone,
+        isEmergency: input.isEmergency ?? true,
+        priority: input.priority ?? 1,
+        notes: input.notes ?? null,
+      };
+    },
+    async updateAthleteContact(organizationId, athleteId, contactId, input) {
+      return {
+        id: contactId,
+        organizationId,
+        athleteId,
+        contactName: input.contactName,
+        relationship: input.relationship ?? null,
+        phone: input.phone,
+        isEmergency: input.isEmergency ?? true,
+        priority: input.priority ?? 1,
+        notes: input.notes ?? null,
+      };
+    },
+    async deleteAthleteContact() {
+      return true;
     },
     async createTrainer(organizationId, input) {
       return {
@@ -447,6 +477,9 @@ function runtime(
       async deactivate() {
         return undefined;
       },
+      async deleteUnused() {
+        return false;
+      },
       async listRevisions() {
         return [];
       },
@@ -460,6 +493,18 @@ function runtime(
     trainingPlans: {
       async listSubjects() {
         return [];
+      },
+      async listOverviewGroups() {
+        return [];
+      },
+      async groupWeekOverview(_organizationId, groupId, weekStart) {
+        return {
+          group: { id: groupId, name: groupId, shortName: null },
+          weekStart,
+          weekEnd: weekStart,
+          dates: [],
+          rows: [],
+        };
       },
       async listForSubjectDateRange() {
         return [];
