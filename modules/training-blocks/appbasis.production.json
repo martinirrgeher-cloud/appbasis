@@ -11,7 +11,7 @@
     "authorization": [
       {
         "path": "modules/training-blocks/test/service.test.ts",
-        "gitBlobSha": "e26c8adfbeb9a53624a501202c38ed394c9cc368"
+        "gitBlobSha": "cb8118f597773efa12730a158723394332d2df30"
       },
       {
         "path": "modules/training-blocks/test/training-block.test.ts",
