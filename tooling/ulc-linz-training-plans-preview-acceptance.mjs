@@ -131,7 +131,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
       cookie,
       body: {
         athleteId,
-        groupId: groupId,
+        groupId,
         startedOn: planDate,
       },
       expectedStatus: 201,
@@ -246,7 +246,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
     baseURL,
     cookie,
     fetchImpl,
-    groupId: groupId,
+    groupId,
     athleteId,
     sessionDate: planDate,
   });
@@ -440,7 +440,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
     sourceBlockId: blockId,
     savedTemplateId,
     athleteId,
-    groupId: groupId,
+    groupId,
     planDate,
     checks: Object.freeze([
       "login",
