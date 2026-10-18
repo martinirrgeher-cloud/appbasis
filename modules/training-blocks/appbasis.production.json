@@ -29,11 +29,11 @@
       },
       {
         "path": "modules/training-blocks/migrations/0002_appbasis_training_block_multi_audience.sql",
-        "gitBlobSha": "4e0bec4ae342f5da3ce2ea403827bc550d1f94ba"
+        "gitBlobSha": "02d5f59ad7af1156c1fdef22e9b19a13d68a20db"
       },
       {
         "path": "modules/training-blocks/test/postgres-repository.postgres.e2e.ts",
-        "gitBlobSha": "e196faa93d7b34ca0eb86a2e36cffb3eeeedaaf6"
+        "gitBlobSha": "2ffd9677d0e8707af767efe4459fed26efd2367e"
       }
     ],
     "lifecycle": []
