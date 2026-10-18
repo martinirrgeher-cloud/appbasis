@@ -81,9 +81,11 @@ export async function loadUlcTrainingBlocksV3PreviewPlan(
     );
   }
 
-  const baselineCatalogContract = createCatalogContract(
-    [foundation, parity],
-    "training-blocks schema-v2 preview baseline",
+  const baselineCatalogContract = additiveCompatibleCatalogContract(
+    createCatalogContract(
+      [foundation, parity],
+      "training-blocks schema-v2 preview baseline",
+    ),
   );
   const deltaCatalogContract = createCatalogContract(
     [migration],
@@ -362,6 +364,18 @@ function previewResult(state, plan) {
     target: plan.target,
     productionChanged: false,
   });
+}
+
+function additiveCompatibleCatalogContract(contract) {
+  return Object.freeze(
+    contract.filter(
+      (marker) =>
+        !(
+          marker.kind === "constraint-count" &&
+          marker.table === "appbasis_training_block_revision"
+        ),
+    ),
+  );
 }
 
 async function readV3Shape(client) {
