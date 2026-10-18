@@ -17,6 +17,8 @@ const FOUNDATION_MIGRATION =
   "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql";
 const TARGET_MIGRATION =
   "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql";
+const V3_MIGRATION =
+  "modules/training-blocks/migrations/0002_appbasis_training_block_multi_audience.sql";
 const BASELINE_TABLES = Object.freeze([
   "appbasis_training_block",
   "appbasis_training_block_revision",
@@ -49,18 +51,22 @@ export async function loadUlcTrainingBlocksParityPreviewPlan(
     { appId: APP_ID, moduleId: MODULE_ID },
     { repositoryRoot: resolve(repositoryRoot) },
   );
-  const expectedMigrations = [FOUNDATION_MIGRATION, TARGET_MIGRATION];
+  const expectedMigrations = [
+    FOUNDATION_MIGRATION,
+    TARGET_MIGRATION,
+    V3_MIGRATION,
+  ];
   if (
     executionPlan.application !== APP_ID ||
     executionPlan.moduleId !== MODULE_ID ||
     executionPlan.repositoryState !== "published-target" ||
-    executionPlan.targetOwner?.schemaVersion !== 2 ||
+    executionPlan.targetOwner?.schemaVersion !== 3 ||
     JSON.stringify(executionPlan.targetOwner?.migrations) !==
       JSON.stringify(expectedMigrations) ||
-    executionPlan.migrations.length !== 2
+    executionPlan.migrations.length !== 3
   ) {
     throw new UlcTrainingBlocksParityPreviewConfigurationError(
-      "E7A6 requires the canonical published training-blocks schema-v2 repository contract.",
+      "E7A6 requires the canonical published training-blocks repository with the historical schema-v2 parity delta.",
     );
   }
 
@@ -117,7 +123,10 @@ export async function loadUlcTrainingBlocksParityPreviewPlan(
     }),
     baselineCatalogContract,
     deltaCatalogContract,
-    targetCatalogContract: executionPlan.targetCatalogContract,
+    targetCatalogContract: createCatalogContract(
+      [foundation, migration],
+      "E7A6 training-blocks schema-v2 target",
+    ),
     productionChanged: false,
   });
 }
