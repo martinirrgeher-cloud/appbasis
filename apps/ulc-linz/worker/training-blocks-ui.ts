@@ -13,7 +13,13 @@ export const ULC_TRAINING_BLOCKS_HTML = `
 
             <section class="card training-block-commandbar">
               <label>Suche
-                <input id="training-block-search" type="search" maxlength="160" placeholder="Block oder Trainingsgruppe …" autocomplete="off" />
+                <input id="training-block-search" type="search" maxlength="160" placeholder="Block suchen …" autocomplete="off" />
+              </label>
+              <label>Gruppe
+                <select id="training-block-audience-filter">
+                  <option value="all">Alle Gruppen</option>
+                  <option value="clubwide">Generell gültig</option>
+                </select>
               </label>
               <label>Status
                 <select id="training-block-status-filter">
@@ -93,6 +99,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
 
                 <footer class="training-block-footer">
                   <div class="training-block-footer__actions">
+                    <button class="button button--primary" id="training-block-save" type="button">Speichern</button>
                     <button class="button button--secondary" id="training-block-duplicate" type="button" hidden>Duplizieren</button>
                     <button class="button button--secondary" id="training-block-favorite" type="button" hidden>☆ Favorit</button>
                     <button class="button button--danger" id="training-block-delete-unused" type="button" hidden>Unbenutzten Block löschen</button>
@@ -100,7 +107,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                   </div>
                   <div class="training-block-footer__meta">
                     <span id="training-block-usage-info"></span>
-                    <span>Änderungen werden automatisch gespeichert.</span>
+                    <span>Eine neue Version entsteht erst beim Speichern.</span>
                   </div>
                 </footer>
               </section>
@@ -127,7 +134,7 @@ export const ULC_TRAINING_BLOCKS_CSS = `
 }
 .training-block-commandbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(120px, .35fr);
+  grid-template-columns: minmax(0, 1fr) minmax(150px, .4fr) minmax(110px, .3fr);
   gap: 10px;
   margin-bottom: 14px;
   padding: 12px;
@@ -164,7 +171,8 @@ export const ULC_TRAINING_BLOCKS_CSS = `
 .training-block-row:last-child { border-bottom: 0; }
 .training-block-row__main { min-width: 0; }
 .training-block-row__main strong { display: block; }
-.training-block-row__meta { margin-top: 3px; color: var(--secondary); font-size: .8rem; }
+.training-block-row__audience { display: block; margin-top: 3px; color: var(--text); font-size: .78rem; font-weight: 600; }
+.training-block-row__meta { display: block; margin-top: 2px; color: var(--secondary); font-size: .75rem; }
 .training-block-row__badge {
   border-radius: 999px;
   padding: 3px 8px;
@@ -310,7 +318,8 @@ body.training-block-editor-open { overflow: hidden; }
 .training-block-reload { width: 100%; }
 @media (max-width: 480px) {
   .training-blocks-hero { align-items: stretch; flex-direction: column; }
-  .training-block-commandbar { grid-template-columns: 1fr 120px; }
+  .training-block-commandbar { grid-template-columns: 1fr 1fr; }
+  .training-block-commandbar label:first-child { grid-column: 1 / -1; }
   .training-block-form-grid,
   .training-block-parameters { grid-template-columns: 1fr; }
   .training-block-wide { grid-column: auto; }
@@ -326,6 +335,7 @@ const trainingBlockElements = Object.freeze({
   message: document.querySelector("#training-block-message"),
   list: document.querySelector("#training-block-list"),
   search: document.querySelector("#training-block-search"),
+  audienceFilter: document.querySelector("#training-block-audience-filter"),
   statusFilter: document.querySelector("#training-block-status-filter"),
   newButton: document.querySelector("#training-block-new"),
   editor: document.querySelector("#training-block-editor"),
@@ -353,6 +363,7 @@ const trainingBlockElements = Object.freeze({
   compare: document.querySelector("#training-block-compare"),
   revisionPreview: document.querySelector("#training-block-revision-preview"),
   comparison: document.querySelector("#training-block-comparison"),
+  save: document.querySelector("#training-block-save"),
   duplicate: document.querySelector("#training-block-duplicate"),
   favorite: document.querySelector("#training-block-favorite"),
   usageInfo: document.querySelector("#training-block-usage-info"),
@@ -500,6 +511,7 @@ async function bootstrapTrainingBlocks() {
     trainingBlocksCanEdit = payload.access.edit;
     trainingBlocks = blocks.slice();
     trainingBlockAudiences = audiences.slice();
+    renderTrainingBlockAudienceFilter();
     renderTrainingBlocks();
   } catch (error) {
     showMessage(
@@ -539,6 +551,7 @@ async function refreshTrainingBlockAudienceDependency() {
     trainingBlocksCanEdit = payload.access.edit;
     trainingBlocks = payload.blocks.slice();
     trainingBlockAudiences = payload.audiences.slice();
+    renderTrainingBlockAudienceFilter();
     renderTrainingBlocks();
     refreshTrainingBlockControls();
     if (trainingBlockDraft) {
@@ -597,6 +610,36 @@ function trainingBlockExerciseItem(id) {
   return exerciseCatalogItems.find((item) => item.id === id) || null;
 }
 
+function renderTrainingBlockAudienceFilter() {
+  const select = trainingBlockElements.audienceFilter;
+  if (!select) return;
+  const previous = select.value || "all";
+  select.replaceChildren();
+
+  const all = document.createElement("option");
+  all.value = "all";
+  all.textContent = "Alle Gruppen";
+  select.append(all);
+
+  const clubwide = document.createElement("option");
+  clubwide.value = "clubwide";
+  clubwide.textContent = "Generell gültig";
+  select.append(clubwide);
+
+  for (const audience of trainingBlockAudiences.slice().sort((left, right) =>
+    left.name.localeCompare(right.name, "de", { sensitivity: "base" }),
+  )) {
+    const option = document.createElement("option");
+    option.value = audience.id;
+    option.textContent = audience.name;
+    select.append(option);
+  }
+
+  select.value = [...select.options].some((option) => option.value === previous)
+    ? previous
+    : "all";
+}
+
 function renderTrainingBlocks() {
   const container = trainingBlockElements.list;
   if (!container) return;
@@ -606,9 +649,20 @@ function renderTrainingBlocks() {
     .trim()
     .toLocaleLowerCase("de");
   const status = trainingBlockElements.statusFilter?.value || "active";
+  const audience = trainingBlockElements.audienceFilter?.value || "all";
   const filtered = trainingBlocks.filter((block) => {
     if (status === "active" && !block.isActive) return false;
     if (status === "archived" && block.isActive) return false;
+    if (audience === "clubwide" && block.revision.audienceIds.length !== 0) {
+      return false;
+    }
+    if (
+      audience !== "all" &&
+      audience !== "clubwide" &&
+      !block.revision.audienceIds.includes(audience)
+    ) {
+      return false;
+    }
     if (!query) return true;
     return (
       block.revision.name.toLocaleLowerCase("de").includes(query) ||
@@ -629,73 +683,50 @@ function renderTrainingBlocks() {
     return;
   }
 
-  const grouped = new Map();
-  for (const block of filtered) {
-    const key = trainingBlockAudienceSetLabel(block.revision.audienceIds);
-    const values = grouped.get(key) || [];
-    values.push(block);
-    grouped.set(key, values);
-  }
-
-  const groups = [...grouped.entries()].sort((a, b) =>
-    a[0].localeCompare(b[0], "de", { sensitivity: "base" }),
-  );
-  for (const entry of groups) {
-    const details = document.createElement("details");
-    details.className = "training-block-group";
-    details.open = true;
-    const summary = document.createElement("summary");
-    const title = document.createElement("span");
-    title.textContent = entry[0];
-    const count = document.createElement("span");
-    count.textContent = String(entry[1].length);
-    summary.append(title, count);
-    const items = document.createElement("div");
-    items.className = "training-block-group__items";
-
-    entry[1]
-      .slice()
-      .sort((a, b) =>
-        a.revision.name.localeCompare(b.revision.name, "de", {
-          sensitivity: "base",
-        }),
-      )
-      .forEach((block) => {
-        const row = document.createElement("button");
-        row.type = "button";
-        row.className = "training-block-row";
-        row.dataset.trainingBlockOpen = block.id;
-        const main = document.createElement("span");
-        main.className = "training-block-row__main";
-        const strong = document.createElement("strong");
-        strong.textContent = block.revision.name;
-        const meta = document.createElement("span");
-        meta.className = "training-block-row__meta";
-        meta.textContent = [
-          block.revision.durationMinutes === null
-            ? null
-            : String(block.revision.durationMinutes) + " Min.",
-          String(block.revision.exercises.length) + " Übung(en)",
-          block.isFavorite ? "★ Favorit" : null,
-          block.usageCount === 0
-            ? "Noch nicht verwendet"
-            : String(block.usageCount) + "× verwendet",
-          block.lastUsedAt
-            ? "Zuletzt " + new Date(block.lastUsedAt).toLocaleDateString("de-AT")
-            : null,
-          "Version " + String(block.currentRevision),
-        ].filter(Boolean).join(" · ");
-        main.append(strong, meta);
-        const badge = document.createElement("span");
-        badge.className = "training-block-row__badge";
-        badge.textContent = block.isActive ? "Aktiv" : "Archiv";
-        row.append(main, badge);
-        items.append(row);
-      });
-
-    details.append(summary, items);
-    container.append(details);
-  }
+  filtered
+    .slice()
+    .sort((left, right) =>
+      left.revision.name.localeCompare(right.revision.name, "de", {
+        sensitivity: "base",
+      }),
+    )
+    .forEach((block) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "training-block-row";
+      row.dataset.trainingBlockOpen = block.id;
+      const main = document.createElement("span");
+      main.className = "training-block-row__main";
+      const strong = document.createElement("strong");
+      strong.textContent = block.revision.name;
+      const audienceLabel = document.createElement("span");
+      audienceLabel.className = "training-block-row__audience";
+      audienceLabel.textContent = trainingBlockAudienceSetLabel(
+        block.revision.audienceIds,
+      );
+      const meta = document.createElement("span");
+      meta.className = "training-block-row__meta";
+      meta.textContent = [
+        block.revision.durationMinutes === null
+          ? null
+          : String(block.revision.durationMinutes) + " Min.",
+        String(block.revision.exercises.length) + " Übung(en)",
+        block.isFavorite ? "★ Favorit" : null,
+        block.usageCount === 0
+          ? "Noch nicht verwendet"
+          : String(block.usageCount) + "× verwendet",
+        block.lastUsedAt
+          ? "Zuletzt " + new Date(block.lastUsedAt).toLocaleDateString("de-AT")
+          : null,
+        "Version " + String(block.currentRevision),
+      ].filter(Boolean).join(" · ");
+      main.append(strong, audienceLabel, meta);
+      const badge = document.createElement("span");
+      badge.className = "training-block-row__badge";
+      badge.textContent = block.isActive ? "Aktiv" : "Archiv";
+      row.append(main, badge);
+      container.append(row);
+    });
 }
 
 function trainingBlockDraftFromSnapshot(block) {
@@ -840,7 +871,8 @@ function populateTrainingBlockEditor() {
     trainingBlockElements.deactivate.hidden =
       !trainingBlocksCanEdit ||
       !trainingBlockSelected ||
-      !trainingBlockSelected.isActive;
+      !trainingBlockSelected.isActive ||
+      trainingBlockDirty;
   }
   refreshTrainingBlockParityMetadata();
   showMessage(trainingBlockElements.editorMessage, "");
@@ -866,7 +898,8 @@ function refreshTrainingBlockParityMetadata() {
       trainingBlockFavoriteBusy ||
       trainingBlockSaveBusy ||
       trainingBlockDeactivateBusy ||
-      trainingBlockReloadBusy;
+      trainingBlockReloadBusy ||
+      trainingBlockDirty;
   }
   if (trainingBlockElements.favorite) {
     trainingBlockElements.favorite.hidden = !block;
@@ -876,7 +909,8 @@ function refreshTrainingBlockParityMetadata() {
       trainingBlockSaveBusy ||
       trainingBlockDeactivateBusy ||
       trainingBlockDuplicateBusy ||
-      trainingBlockReloadBusy;
+      trainingBlockReloadBusy ||
+      trainingBlockDirty;
     trainingBlockElements.favorite.textContent =
       block?.isFavorite ? "★ Favorit" : "☆ Favorit";
     trainingBlockElements.favorite.setAttribute(
@@ -897,7 +931,8 @@ function refreshTrainingBlockParityMetadata() {
       trainingBlockFavoriteBusy ||
       trainingBlockDeactivateBusy ||
       trainingBlockDuplicateBusy ||
-      trainingBlockReloadBusy;
+      trainingBlockReloadBusy ||
+      trainingBlockDirty;
   }
   if (trainingBlockElements.usageInfo) {
     if (!block) {
@@ -920,7 +955,8 @@ function refreshTrainingBlockEditorLock() {
     trainingBlockDeactivateBusy ||
     trainingBlockDuplicateBusy ||
     trainingBlockReloadBusy ||
-    trainingBlockFavoriteBusy;
+    trainingBlockFavoriteBusy ||
+    trainingBlockSaveBusy;
   const editable =
     trainingBlocksCanEdit &&
     !locked &&
@@ -937,18 +973,28 @@ function refreshTrainingBlockEditorLock() {
   if (trainingBlockElements.close) {
     trainingBlockElements.close.disabled = locked;
   }
+  if (trainingBlockElements.save) {
+    trainingBlockElements.save.disabled =
+      locked ||
+      !trainingBlocksCanEdit ||
+      !trainingBlockDraft ||
+      !trainingBlockDirty ||
+      trainingBlockSelected?.isActive === false;
+  }
   if (trainingBlockElements.duplicate) {
     trainingBlockElements.duplicate.disabled =
       locked ||
       !trainingBlocksCanEdit ||
-      !trainingBlockSelected;
+      !trainingBlockSelected ||
+      trainingBlockDirty;
   }
   if (trainingBlockElements.deleteUnused) {
     trainingBlockElements.deleteUnused.disabled =
       locked ||
       !trainingBlocksCanEdit ||
       !trainingBlockSelected ||
-      trainingBlockSelected.usageCount !== 0;
+      trainingBlockSelected.usageCount !== 0 ||
+      trainingBlockDirty;
   }
   if (trainingBlockElements.deactivate) {
     trainingBlockElements.deactivate.disabled =
@@ -1194,7 +1240,8 @@ function markTrainingBlockDirty() {
     !trainingBlocksCanEdit ||
     trainingBlockConflict ||
     trainingBlockDeactivateBusy ||
-    trainingBlockReloadBusy
+    trainingBlockReloadBusy ||
+    trainingBlockSaveBusy
   ) return;
   trainingBlockChangeVersion += 1;
   trainingBlockDirty = true;
@@ -1202,8 +1249,9 @@ function markTrainingBlockDirty() {
     setTrainingBlockSaveState("error", "Anlagezustand unklar");
     return;
   }
-  setTrainingBlockSaveState("saving", "Änderung vorgemerkt …");
-  scheduleTrainingBlockSave();
+  setTrainingBlockSaveState("draft", "Ungespeichert");
+  refreshTrainingBlockParityMetadata();
+  refreshTrainingBlockEditorLock();
 }
 
 function syncTrainingBlockDraftFromFields() {
@@ -1222,14 +1270,6 @@ function syncTrainingBlockDraftFromFields() {
     trainingBlockElements.editorTitle.textContent =
       trainingBlockDraft.name || "Neuer Trainingsblock";
   }
-}
-
-function scheduleTrainingBlockSave() {
-  if (trainingBlockSaveTimer !== null) clearTimeout(trainingBlockSaveTimer);
-  trainingBlockSaveTimer = setTimeout(() => {
-    trainingBlockSaveTimer = null;
-    void saveTrainingBlock();
-  }, 650);
 }
 
 function trainingBlockDraftPayload() {
@@ -1451,15 +1491,12 @@ async function saveTrainingBlock() {
     replaceTrainingBlockInList(response.block);
     if (trainingBlockElements.retry) trainingBlockElements.retry.hidden = true;
     if (trainingBlockElements.reload) trainingBlockElements.reload.hidden = true;
-    if (trainingBlockDirty) {
-      trainingBlockSavePending = true;
-      setTrainingBlockSaveState("saving", "Weitere Änderung wartet …");
-    } else {
-      setTrainingBlockSaveState(
-        "saved",
-        "Gespeichert · Version " + String(response.block.currentRevision),
-      );
-    }
+    setTrainingBlockSaveState(
+      trainingBlockDirty ? "draft" : "saved",
+      trainingBlockDirty
+        ? "Ungespeichert"
+        : "Gespeichert · Version " + String(response.block.currentRevision),
+    );
     if (trainingBlockElements.deactivate) {
       trainingBlockElements.deactivate.hidden =
         !trainingBlocksCanEdit || !response.block.isActive;
@@ -1517,18 +1554,9 @@ async function saveTrainingBlock() {
     }
   } finally {
     trainingBlockSaveBusy = false;
+    trainingBlockSavePending = false;
     refreshTrainingBlockParityMetadata();
-    if (
-      saveSucceeded &&
-      (trainingBlockSavePending || trainingBlockDirty) &&
-      !trainingBlockConflict
-    ) {
-      trainingBlockSavePending = false;
-      trainingBlockDirty = true;
-      scheduleTrainingBlockSave();
-    } else if (!saveSucceeded) {
-      trainingBlockSavePending = false;
-    }
+    refreshTrainingBlockEditorLock();
   }
 }
 
@@ -1904,15 +1932,7 @@ async function toggleTrainingBlockFavorite() {
       trainingBlockFavoriteBusy = false;
       refreshTrainingBlockParityMetadata();
       refreshTrainingBlockEditorLock();
-      if (
-        trainingBlockSavePending &&
-        trainingBlockDirty &&
-        !trainingBlockConflict &&
-        !trainingBlockCreateUncertain
-      ) {
-        trainingBlockSavePending = false;
-        scheduleTrainingBlockSave();
-      }
+      trainingBlockSavePending = false;
     }
   }
 }
@@ -2367,8 +2387,10 @@ async function compareTrainingBlockRevisions() {
 }
 
 trainingBlockElements.search?.addEventListener("input", renderTrainingBlocks);
+trainingBlockElements.audienceFilter?.addEventListener("change", renderTrainingBlocks);
 trainingBlockElements.statusFilter?.addEventListener("change", renderTrainingBlocks);
 trainingBlockElements.newButton?.addEventListener("click", newTrainingBlock);
+trainingBlockElements.save?.addEventListener("click", () => void saveTrainingBlock());
 trainingBlockElements.close?.addEventListener("click", () => closeTrainingBlockEditor());
 trainingBlockElements.reload?.addEventListener("click", () => void reloadTrainingBlock());
 trainingBlockElements.retry?.addEventListener("click", retryTrainingBlockSave);
