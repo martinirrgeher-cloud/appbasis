@@ -4,6 +4,7 @@ import {
   InMemoryTrainingBlockRepository,
   TrainingBlockConflictError,
   TrainingBlockInactiveError,
+  TrainingBlockInUseError,
   TrainingBlockService,
   TrainingBlockValidationError,
 } from "../src/index";
@@ -182,6 +183,44 @@ describe("training-blocks service", () => {
     await expect(
       service.duplicate("org-a", "missing", { name: "Kopie" }),
     ).resolves.toBeUndefined();
+  });
+
+  it("deletes only unused blocks and removes their personal metadata", async () => {
+    const service = new TrainingBlockService({
+      repository: new InMemoryTrainingBlockRepository(),
+      createId: deterministicIds("unused", "used", "usage-1"),
+      now: () => new Date("2026-10-10T10:00:00.000Z"),
+    });
+    await service.create("org-a", { name: "Unused" });
+    await service.create("org-a", { name: "Used" });
+    await service.setFavorite("org-a", "principal-a", "unused", true);
+    await service.recordUsage("org-a", "used", {
+      occurredAt: "2026-10-10T11:00:00.000Z",
+      sourceKind: "training_plan",
+    });
+
+    await expect(
+      service.deleteUnused("org-a", "unused", 1),
+    ).resolves.toBe(true);
+    await expect(
+      service.findCurrent("org-a", "unused"),
+    ).resolves.toBeUndefined();
+    await expect(
+      service.listOverview("org-a", "principal-a"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        block: expect.objectContaining({ id: "used" }),
+        isFavorite: false,
+        usageCount: 1,
+      }),
+    ]);
+
+    await expect(
+      service.deleteUnused("org-a", "used", 1),
+    ).rejects.toBeInstanceOf(TrainingBlockInUseError);
+    await expect(
+      service.deleteUnused("org-a", "missing", 1),
+    ).resolves.toBe(false);
   });
 
   it("fails stale updates and stale deactivation with optimistic concurrency", async () => {
