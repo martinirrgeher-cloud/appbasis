@@ -773,7 +773,10 @@ function revisionFromRow(
     revision,
     name: requiredString(row.name, "revision name"),
     audienceId: optionalString(row.audience_id, "audience id"),
-    audienceIds: stringArray(row.audience_ids, "audience ids"),
+    audienceIds: audienceArray(
+      row.audience_ids,
+      optionalString(row.audience_id, "audience id"),
+    ),
     durationMinutes: optionalInteger(row.duration_minutes, "duration"),
     note: optionalString(row.note, "revision note"),
     exercises: Object.freeze(exercises.map(cloneExercise)),
@@ -827,6 +830,18 @@ function optionalString(value: unknown, label: string): string | null {
     throw new Error(`Training block ${label} has an invalid shape.`);
   }
   return value;
+}
+
+function audienceArray(
+  value: unknown,
+  compatibilityAudienceId: string | null,
+): readonly string[] {
+  if (value === null || value === undefined) {
+    return Object.freeze(
+      compatibilityAudienceId === null ? [] : [compatibilityAudienceId],
+    );
+  }
+  return stringArray(value, "audience ids");
 }
 
 function stringArray(value: unknown, label: string): readonly string[] {
