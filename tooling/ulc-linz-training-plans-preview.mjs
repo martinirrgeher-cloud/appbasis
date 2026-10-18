@@ -24,7 +24,7 @@ const EXPECTED_TABLES = Object.freeze([
   "appbasis_training_plan_revision_item",
   "appbasis_training_plan_subject_deletion",
 ]);
-const REQUIRED_TRAINING_BLOCKS_V2_TABLES = Object.freeze([
+const REQUIRED_TRAINING_BLOCKS_V3_TABLES = Object.freeze([
   "appbasis_training_block",
   "appbasis_training_block_revision",
   "appbasis_training_block_revision_item",
@@ -70,12 +70,12 @@ export async function loadUlcTrainingPlansPreviewPlan(
       JSON.stringify(EXPECTED_MIGRATIONS) ||
     JSON.stringify(targetTables) !==
       JSON.stringify([...EXPECTED_TABLES].sort()) ||
-    REQUIRED_TRAINING_BLOCKS_V2_TABLES.some(
+    REQUIRED_TRAINING_BLOCKS_V3_TABLES.some(
       (table) => !baselineTables.has(table),
     )
   ) {
     throw new UlcTrainingPlansPreviewConfigurationError(
-      "E7B9 requires the canonical published training-plans schema-v2 contract on the training-blocks-v2 baseline.",
+      "E7B9 requires the canonical published training-plans schema-v2 contract on the training-blocks-v3 baseline.",
     );
   }
 
@@ -95,7 +95,7 @@ export async function loadUlcTrainingPlansPreviewPlan(
       tables: Object.freeze([...EXPECTED_TABLES]),
     }),
     requiredTrainingBlocksTables: Object.freeze([
-      ...REQUIRED_TRAINING_BLOCKS_V2_TABLES,
+      ...REQUIRED_TRAINING_BLOCKS_V3_TABLES,
     ]),
     executionPlan,
     productionChanged: false,
@@ -153,7 +153,7 @@ export async function inspectUlcTrainingPlansPreview(
     for (const table of context.plan.requiredTrainingBlocksTables) {
       if (!tables.has(table)) {
         throw new UlcTrainingPlansPreviewExecutionError(
-          "E7B9 requires the complete training-blocks-v2 preview baseline.",
+          "E7B9 requires the complete training-blocks-v3 preview baseline.",
         );
       }
     }
@@ -180,7 +180,7 @@ export async function inspectUlcTrainingPlansPreview(
       moduleId: MODULE_ID,
       preview: context.plan.preview,
       target: context.plan.target,
-      trainingBlocksSchemaVersion: 2,
+      trainingBlocksSchemaVersion: 3,
       productionChanged: false,
     });
   } finally {
