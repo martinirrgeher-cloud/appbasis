@@ -309,7 +309,14 @@ function createService(input: {
               blockId: id,
               revision: 1,
               name: input.name,
-              audienceId: input.audienceId ?? null,
+              audienceId:
+                input.audienceIds?.[0] ?? input.audienceId ?? null,
+              audienceIds: Object.freeze(
+                input.audienceIds ??
+                  (input.audienceId === undefined || input.audienceId === null
+                    ? []
+                    : [input.audienceId]),
+              ),
               durationMinutes: input.durationMinutes ?? null,
               note: input.note ?? null,
               exercises: Object.freeze(exercises),
@@ -497,6 +504,7 @@ describe("ULC training plan block template adoption", () => {
         revision: 3,
         name: "Sprintblock",
         audienceId: "group-active",
+        audienceIds: Object.freeze(["group-active"]),
         durationMinutes: 25,
         note: "Blocknotiz",
         exercises: Object.freeze([
@@ -534,6 +542,7 @@ describe("ULC training plan block template adoption", () => {
             blockId: "block-inactive-group",
             name: "Falsche Gruppe",
             audienceId: "group-inactive",
+            audienceIds: Object.freeze(["group-inactive"]),
           }),
         }),
       ],
@@ -603,6 +612,7 @@ describe("ULC training plan block template adoption", () => {
         revision: 3,
         name: "Textblock",
         audienceId: "group-active",
+        audienceIds: Object.freeze(["group-active"]),
         durationMinutes: null,
         note: null,
         exercises: Object.freeze([
@@ -652,6 +662,7 @@ describe("ULC training plan block template adoption", () => {
         revision: 4,
         name: "Aktuell",
         audienceId: "group-active",
+        audienceIds: Object.freeze(["group-active"]),
         durationMinutes: null,
         note: null,
         exercises: Object.freeze([
