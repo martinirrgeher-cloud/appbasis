@@ -2798,6 +2798,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
                 },
               ],
               athletes: [],
+              athleteContacts: [],
               trainers: [],
               athleteGroupMemberships: [],
               trainerGroupMemberships: [],
