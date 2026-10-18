@@ -56,7 +56,7 @@ export const ULC_TRAINING_PLANS_HTML = `
                     <h2 id="training-plan-editor-title">Training bearbeiten</h2>
                     <span class="training-plan-save-state" id="training-plan-save-state" data-state="saved">Gespeichert</span>
                   </div>
-                  <button class="button button--secondary" id="training-plan-close" type="button">Schließen</button>
+                  <button class="button button--secondary training-plan-icon-close" id="training-plan-close" type="button" aria-label="Tagesplan schließen" title="Schließen"><span aria-hidden="true">✕</span><span class="training-plan-close-label">Schließen</span></button>
                 </header>
 
                 <div class="training-plan-body">
@@ -78,10 +78,10 @@ export const ULC_TRAINING_PLANS_HTML = `
                       <span id="training-plan-item-count">0</span>
                     </div>
                     <div class="training-plan-add-actions">
-                      <button class="button button--secondary" id="training-plan-add-exercise" type="button">Übung hinzufügen</button>
-                      <button class="button button--secondary" id="training-plan-add-block" type="button">Block hinzufügen</button>
+                      <button class="button button--secondary training-plan-add-button" id="training-plan-add-exercise" type="button"><span aria-hidden="true">＋</span> Übung</button>
+                      <button class="button button--secondary training-plan-add-button" id="training-plan-add-block" type="button"><span aria-hidden="true">＋</span> Block</button>
                     </div>
-                    <div class="training-plan-template-picker">
+                    <div class="training-plan-template-picker" hidden>
                       <label>Blockvorlage
                         <select id="training-plan-block-template"></select>
                       </label>
@@ -95,6 +95,27 @@ export const ULC_TRAINING_PLANS_HTML = `
                   <span id="training-plan-editor-meta"></span>
                   <span>Änderungen werden automatisch gespeichert.</span>
                 </footer>
+              </section>
+            </div>
+
+
+            <div class="training-plan-picker-backdrop" id="training-plan-picker" hidden>
+              <section class="training-plan-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="training-plan-picker-title">
+                <header class="training-plan-header">
+                  <div>
+                    <p class="eyebrow">Hinzufügen</p>
+                    <h2 id="training-plan-picker-title">Auswählen</h2>
+                  </div>
+                  <button class="button button--secondary training-plan-icon-close" id="training-plan-picker-close" type="button" aria-label="Auswahl schließen" title="Schließen">✕</button>
+                </header>
+                <div class="training-plan-picker-body">
+                  <label class="training-plan-picker-search">Suchen
+                    <input id="training-plan-picker-search" type="search" maxlength="160" placeholder="Name, Kategorie oder Gruppe …" autocomplete="off" />
+                  </label>
+                  <p class="settings-note" id="training-plan-picker-hint"></p>
+                  <div class="training-plan-picker-list" id="training-plan-picker-list" aria-live="polite"></div>
+                  <button class="button button--secondary" id="training-plan-picker-manual" type="button" hidden>Freie Übung ohne Katalogbezug</button>
+                </div>
               </section>
             </div>
 
@@ -352,7 +373,13 @@ export const ULC_TRAINING_PLANS_CSS = `
 .training-plan-items-card { padding: 12px; }
 .training-plan-note-card textarea { width: 100%; }
 .training-plan-recovery { display: flex; gap: 8px; flex-wrap: wrap; }
-.training-plan-add-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.training-plan-add-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.training-plan-add-button { min-height: 42px; }
 .training-plan-template-picker {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -362,6 +389,53 @@ export const ULC_TRAINING_PLANS_CSS = `
 }
 .training-plan-template-picker label { min-width: 0; }
 .training-plan-template-picker select { width: 100%; }
+.training-plan-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  align-items: end;
+  background: rgb(15 23 42 / 48%);
+  backdrop-filter: blur(6px);
+}
+.training-plan-picker-backdrop[hidden] { display: none; }
+.training-plan-picker-dialog {
+  width: min(760px, 100%);
+  max-height: min(88vh, 820px);
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 22px 22px 0 0;
+  background: var(--page);
+  box-shadow: 0 -18px 50px rgb(15 23 42 / 18%);
+}
+.training-plan-picker-body {
+  display: grid;
+  gap: 10px;
+  max-height: calc(88vh - 76px);
+  padding: 12px 12px max(16px, env(safe-area-inset-bottom));
+  overflow: auto;
+}
+.training-plan-picker-list { display: grid; gap: 7px; }
+.training-plan-picker-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 9px 10px;
+  background: var(--card);
+  color: inherit;
+  text-align: left;
+}
+.training-plan-picker-option strong,
+.training-plan-picker-option span { display: block; }
+.training-plan-picker-option span { margin-top: 2px; color: var(--secondary); font-size: .76rem; }
+.training-plan-picker-option__icon { color: var(--secondary); font-size: 1rem; }
+.training-plan-icon-close { white-space: nowrap; }
+body.training-plan-picker-open { overflow: hidden; }
 .training-plan-save-template-backdrop { z-index: 95; }
 .training-plan-save-template-dialog { width: min(100%, 520px); }
 .training-plan-save-template-action {
@@ -434,11 +508,29 @@ export const ULC_TRAINING_PLANS_CSS = `
   }
 }
 @media (max-width: 480px) {
-  .training-plan-toolbar { grid-template-columns: 1fr; }
-  .training-plan-week-nav { justify-content: space-between; }
-  .training-plan-grid { grid-template-columns: 1fr 1fr; }
+  .training-plan-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 9px;
+  }
+  .training-plan-toolbar > label:first-child { grid-column: 1 / -1; }
+  .training-plan-toolbar > strong { margin-top: -2px; font-size: .78rem; }
+  .training-plan-week-nav { justify-content: end; gap: 4px; }
+  .training-plan-week-nav .button { min-width: 40px; min-height: 40px; padding: 7px 9px; }
+  .training-plan-week { grid-auto-columns: minmax(124px, 42vw); gap: 7px; }
+  .training-plan-day,
+  .training-plan-day__button { min-height: 128px; }
+  .training-plan-day__button { padding: 9px; }
+  .training-plan-grid { grid-template-columns: 1fr; }
   .training-plan-template-picker { grid-template-columns: 1fr; }
-  .training-plan-dialog { max-height: 96vh; }
+  .training-plan-dialog { max-height: 96vh; border-radius: 18px 18px 0 0; }
+  .training-plan-body { gap: 8px; padding: 8px; }
+  .training-plan-note-card,
+  .training-plan-items-card { padding: 10px; }
+  .training-plan-close-label { display: none; }
+  .training-plan-icon-close { min-width: 40px; width: 40px; padding-inline: 0; }
+  .training-plan-overview-card > .settings-note { display: none; }
+  .training-plan-overview-card { padding: 10px; }
 }
 @media (max-width: 359px) {
   .training-plan-grid { grid-template-columns: 1fr; }
@@ -470,6 +562,13 @@ const trainingPlanElements = Object.freeze({
   note: document.querySelector("#training-plan-note"),
   addExercise: document.querySelector("#training-plan-add-exercise"),
   addBlock: document.querySelector("#training-plan-add-block"),
+  picker: document.querySelector("#training-plan-picker"),
+  pickerTitle: document.querySelector("#training-plan-picker-title"),
+  pickerClose: document.querySelector("#training-plan-picker-close"),
+  pickerSearch: document.querySelector("#training-plan-picker-search"),
+  pickerHint: document.querySelector("#training-plan-picker-hint"),
+  pickerList: document.querySelector("#training-plan-picker-list"),
+  pickerManual: document.querySelector("#training-plan-picker-manual"),
   blockTemplate: document.querySelector("#training-plan-block-template"),
   addTemplate: document.querySelector("#training-plan-add-template"),
   saveTemplate: document.querySelector("#training-plan-save-template"),
@@ -512,6 +611,8 @@ let trainingPlanSaveBackOperation = 0;
 let trainingPlanSavePending = false;
 let trainingPlanSaveTimer = null;
 let trainingPlanChangeVersion = 0;
+let trainingPlanPickerMode = null;
+let trainingPlanPickerLoading = false;
 
 function isTrainingPlanSubject(value) {
   return value !== null &&
