@@ -1,4 +1,4 @@
-export type PostgresRuntimeParameter = string | number | boolean | null;
+export type PostgresRuntimeParameter = string | number | boolean | readonly string[] | null;
 
 export interface PostgresRuntimeSqlClient {
   unsafe(
