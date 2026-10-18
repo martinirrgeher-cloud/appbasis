@@ -339,6 +339,7 @@ async function trainingBlocksModuleResponse(
               revisionComparison: true,
               favorites: true,
               usageSummary: true,
+              duplicate: true,
             },
           },
           access: { view: true, edit: access.canEdit },
@@ -382,6 +383,7 @@ async function trainingBlocksItemResponse(
   const route = url.pathname.slice(base.length);
   const detail = /^([^/]+)$/.exec(route);
   const update = /^([^/]+)\/update$/.exec(route);
+  const duplicate = /^([^/]+)\/duplicate$/.exec(route);
   const deactivate = /^([^/]+)\/deactivate$/.exec(route);
   const favorite = /^([^/]+)\/favorite$/.exec(route);
   const revisions = /^([^/]+)\/revisions$/.exec(route);
@@ -399,7 +401,7 @@ async function trainingBlocksItemResponse(
     action = "view";
   } else if (
     request.method === "POST" &&
-    (update !== null || deactivate !== null)
+    (update !== null || duplicate !== null || deactivate !== null)
   ) {
     action = "edit";
   } else if (
@@ -468,6 +470,35 @@ async function trainingBlocksItemResponse(
           }),
         },
         { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    if (duplicate !== null) {
+      const id = decodeTrainingBlockPathIdentifier(duplicate[1]);
+      const body = await trainingBlockJsonObject(request, ["name"], []);
+      const name = body.name;
+      if (name !== undefined && typeof name !== "string") {
+        throw new InvalidTrainingBlockRequestError();
+      }
+      const block = await runtime.trainingBlocks.duplicate(
+        access.organizationId,
+        id,
+        name === undefined ? {} : { name },
+      );
+      if (block === undefined) return trainingBlockNotFound();
+      return Response.json(
+        {
+          block: trainingBlockClientOverview({
+            block,
+            isFavorite: false,
+            usageCount: 0,
+            lastUsedAt: null,
+          }),
+        },
+        {
+          status: 201,
+          headers: { "cache-control": "private, no-store" },
+        },
       );
     }
 
