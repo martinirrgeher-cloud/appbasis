@@ -160,9 +160,11 @@ export class TrainingPlanService {
         const index = nextSubjectIndex;
         nextSubjectIndex += 1;
         if (index >= subjects.length) return;
+        const subjectId = subjects[index];
+        if (subjectId === undefined) return;
         groupedPlans[index] = await this.listForSubjectDateRange(
           organizationId,
-          subjects[index],
+          subjectId,
           fromDate,
           toDate,
         );
