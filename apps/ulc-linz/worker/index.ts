@@ -23,6 +23,7 @@ import {
   TRAINING_BLOCK_CAPABILITIES,
   TrainingBlockConflictError,
   TrainingBlockInactiveError,
+  TrainingBlockInUseError,
   TrainingBlockValidationError,
 } from "@appbasis/training-blocks";
 import { createIdentityHttpHandlers } from "@appbasis/identity/http";
@@ -293,6 +294,7 @@ class InvalidTrainingBlockRequestError extends Error {}
 const TRAINING_BLOCK_DRAFT_FIELDS = Object.freeze([
   "name",
   "audienceId",
+  "audienceIds",
   "durationMinutes",
   "note",
   "exercises",
@@ -339,6 +341,8 @@ async function trainingBlocksModuleResponse(
               revisionComparison: true,
               favorites: true,
               usageSummary: true,
+              duplicate: true,
+              multipleAudiences: true,
             },
           },
           access: { view: true, edit: access.canEdit },
@@ -382,6 +386,8 @@ async function trainingBlocksItemResponse(
   const route = url.pathname.slice(base.length);
   const detail = /^([^/]+)$/.exec(route);
   const update = /^([^/]+)\/update$/.exec(route);
+  const duplicate = /^([^/]+)\/duplicate$/.exec(route);
+  const deleteUnused = /^([^/]+)\/delete-unused$/.exec(route);
   const deactivate = /^([^/]+)\/deactivate$/.exec(route);
   const favorite = /^([^/]+)\/favorite$/.exec(route);
   const revisions = /^([^/]+)\/revisions$/.exec(route);
@@ -399,7 +405,10 @@ async function trainingBlocksItemResponse(
     action = "view";
   } else if (
     request.method === "POST" &&
-    (update !== null || deactivate !== null)
+    (update !== null ||
+      duplicate !== null ||
+      deleteUnused !== null ||
+      deactivate !== null)
   ) {
     action = "edit";
   } else if (
@@ -468,6 +477,52 @@ async function trainingBlocksItemResponse(
           }),
         },
         { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    if (duplicate !== null) {
+      const id = decodeTrainingBlockPathIdentifier(duplicate[1]);
+      const body = await trainingBlockJsonObject(request, ["name"], []);
+      const name = body.name;
+      if (name !== undefined && typeof name !== "string") {
+        throw new InvalidTrainingBlockRequestError();
+      }
+      const block = await runtime.trainingBlocks.duplicate(
+        access.organizationId,
+        id,
+        name === undefined ? {} : { name },
+      );
+      if (block === undefined) return trainingBlockNotFound();
+      return Response.json(
+        {
+          block: trainingBlockClientOverview({
+            block,
+            isFavorite: false,
+            usageCount: 0,
+            lastUsedAt: null,
+          }),
+        },
+        {
+          status: 201,
+          headers: { "cache-control": "private, no-store" },
+        },
+      );
+    }
+
+    if (deleteUnused !== null) {
+      const id = decodeTrainingBlockPathIdentifier(deleteUnused[1]);
+      const expectedRevision = await trainingBlockExpectedRevisionBody(request);
+      const deleted = await runtime.trainingBlocks.deleteUnused(
+        access.organizationId,
+        id,
+        expectedRevision,
+      );
+      if (!deleted) return trainingBlockNotFound();
+      return Response.json(
+        { deleted: true },
+        {
+          headers: { "cache-control": "private, no-store" },
+        },
       );
     }
 
@@ -640,6 +695,7 @@ async function trainingBlockDraftBody(
 ): Promise<{
   name: string;
   audienceId?: string | null;
+  audienceIds?: readonly string[];
   durationMinutes?: number | null;
   note?: string | null;
   exercises?: readonly {
@@ -678,6 +734,15 @@ async function trainingBlockDraftBody(
     ? requiredTrainingBlockRevision(body.expectedRevision)
     : null;
 
+  const audienceIds = body.audienceIds;
+  if (
+    audienceIds !== undefined &&
+    (!Array.isArray(audienceIds) ||
+      audienceIds.some((value) => typeof value !== "string"))
+  ) {
+    throw new InvalidTrainingBlockRequestError();
+  }
+
   const exercises = body.exercises;
   if (exercises !== undefined) {
     if (!Array.isArray(exercises)) {
@@ -693,6 +758,9 @@ async function trainingBlockDraftBody(
     ...(body.audienceId === undefined
       ? {}
       : { audienceId: body.audienceId as string | null }),
+    ...(audienceIds === undefined
+      ? {}
+      : { audienceIds: audienceIds as readonly string[] }),
     ...(body.durationMinutes === undefined
       ? {}
       : { durationMinutes: body.durationMinutes as number | null }),
@@ -881,6 +949,7 @@ function trainingBlockClientRevision(revision: {
   revision: number;
   name: string;
   audienceId: string | null;
+  audienceIds: readonly string[];
   durationMinutes: number | null;
   note: string | null;
   exercises: readonly unknown[];
@@ -890,6 +959,7 @@ function trainingBlockClientRevision(revision: {
     revision: revision.revision,
     name: revision.name,
     audienceId: revision.audienceId,
+    audienceIds: revision.audienceIds,
     durationMinutes: revision.durationMinutes,
     note: revision.note,
     exercises: revision.exercises,
@@ -906,6 +976,17 @@ function trainingBlockErrorResponse(error: unknown): Response {
           message: "The training block changed since it was loaded.",
           expectedRevision: error.expectedRevision,
           currentRevision: error.currentRevision,
+        },
+      },
+      { status: 409 },
+    );
+  }
+  if (error instanceof TrainingBlockInUseError) {
+    return Response.json(
+      {
+        error: {
+          code: "TRAINING_BLOCK_IN_USE",
+          message: "The training block is already in use.",
         },
       },
       { status: 409 },
@@ -3430,6 +3511,44 @@ async function athletesMasterdataMutationResponse(
       return Response.json({ trainer }, { status: 201 });
     }
 
+    if (route === "athlete-contacts") {
+      const body = await athletesJsonBody(
+        request,
+        [
+          "athleteId",
+          "contactName",
+          "relationship",
+          "phone",
+          "isEmergency",
+          "priority",
+          "notes",
+        ],
+        ["athleteId", "contactName", "phone"],
+      );
+      const contact = await runtime.athleteMasterdata.createAthleteContact(
+        access.organizationId,
+        body.athleteId as string,
+        {
+          contactName: body.contactName as string,
+          ...(body.relationship === undefined
+            ? {}
+            : { relationship: body.relationship as string | null }),
+          phone: body.phone as string,
+          ...(body.isEmergency === undefined
+            ? {}
+            : { isEmergency: body.isEmergency as boolean }),
+          ...(body.priority === undefined
+            ? {}
+            : { priority: body.priority as number }),
+          ...(body.notes === undefined
+            ? {}
+            : { notes: body.notes as string | null }),
+        },
+      );
+      if (contact === null) return athletesNotFound();
+      return Response.json({ contact }, { status: 201 });
+    }
+
     if (route === "athlete-group-memberships") {
       const body = await athletesJsonBody(request, [
         "athleteId",
@@ -3466,6 +3585,64 @@ async function athletesMasterdataMutationResponse(
           },
         );
       return Response.json({ membership }, { status: 201 });
+    }
+
+    const contactUpdate = /^athlete-contacts\/([^/]+)\/update$/.exec(route);
+    if (contactUpdate !== null) {
+      const id = decodePathIdentifier(contactUpdate[1]);
+      const body = await athletesJsonBody(
+        request,
+        [
+          "athleteId",
+          "contactName",
+          "relationship",
+          "phone",
+          "isEmergency",
+          "priority",
+          "notes",
+        ],
+        [
+          "athleteId",
+          "contactName",
+          "relationship",
+          "phone",
+          "isEmergency",
+          "priority",
+          "notes",
+        ],
+      );
+      const contact = await runtime.athleteMasterdata.updateAthleteContact(
+        access.organizationId,
+        body.athleteId as string,
+        id,
+        {
+          contactName: body.contactName as string,
+          relationship: body.relationship as string | null,
+          phone: body.phone as string,
+          isEmergency: body.isEmergency as boolean,
+          priority: body.priority as number,
+          notes: body.notes as string | null,
+        },
+      );
+      if (contact === null) return athletesNotFound();
+      return Response.json({ contact });
+    }
+
+    const contactDelete = /^athlete-contacts\/([^/]+)\/delete$/.exec(route);
+    if (contactDelete !== null) {
+      const id = decodePathIdentifier(contactDelete[1]);
+      const body = await athletesJsonBody(
+        request,
+        ["athleteId"],
+        ["athleteId"],
+      );
+      const changed = await runtime.athleteMasterdata.deleteAthleteContact(
+        access.organizationId,
+        body.athleteId as string,
+        id,
+      );
+      if (!changed) return athletesNotFound();
+      return Response.json({ deleted: true });
     }
 
     const update = /^(athletes|trainers|training-groups)\/([^/]+)\/update$/.exec(route);

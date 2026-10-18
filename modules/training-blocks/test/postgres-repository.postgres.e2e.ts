@@ -9,6 +9,7 @@ import {
   PostgresTrainingBlockRepository,
   TrainingBlockConflictError,
   TrainingBlockInactiveError,
+  TrainingBlockInUseError,
   TrainingBlockService,
   TrainingBlockValidationError,
   type TrainingBlockPostgresClient,
@@ -37,6 +38,10 @@ beforeAll(async () => {
     ),
     readFile(
       new URL("../migrations/0001_appbasis_training_blocks_parity_metadata.sql", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../migrations/0002_appbasis_training_block_multi_audience.sql", import.meta.url),
       "utf8",
     ),
   ]);
@@ -132,6 +137,69 @@ describe("training-blocks PostgreSQL repository", () => {
     await expect(service.listRevisions("org-a", "block-1")).resolves.toHaveLength(2);
   });
 
+  it("persists club-wide and multi-group audience sets without losing the compatibility audience", async () => {
+    const service = serviceFor(requiredConnection(), ["block-multi"]);
+    const created = await service.create("org-multi", {
+      name: "Mehrgruppen",
+      audienceIds: ["group-a", "group-b"],
+    });
+    expect(created.revision).toMatchObject({
+      audienceId: "group-a",
+      audienceIds: ["group-a", "group-b"],
+    });
+
+    const updated = await service.update("org-multi", "block-multi", 1, {
+      name: "Vereinsweit",
+      audienceIds: [],
+    });
+    expect(updated?.revision).toMatchObject({
+      audienceId: null,
+      audienceIds: [],
+    });
+
+    const rows = await requiredConnection().client.unsafe(
+      `SELECT audience_id, audience_ids
+       FROM appbasis_training_block_revision
+       WHERE organization_id = 'org-multi'
+         AND block_id = 'block-multi'
+       ORDER BY revision ASC`,
+    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        audience_id: "group-a",
+        audience_ids: ["group-a", "group-b"],
+      }),
+      expect.objectContaining({
+        audience_id: null,
+        audience_ids: [],
+      }),
+    ]);
+  });
+
+  it("reads legacy single-audience revisions whose new audience array is still null", async () => {
+    const service = serviceFor(requiredConnection(), ["block-legacy"]);
+    await service.create("org-legacy", {
+      name: "Legacy",
+      audienceId: "group-legacy",
+    });
+    await requiredConnection().client.unsafe(
+      `UPDATE appbasis_training_block_revision
+       SET audience_ids = NULL
+       WHERE organization_id = 'org-legacy'
+         AND block_id = 'block-legacy'
+         AND revision = 1`,
+    );
+
+    await expect(
+      service.findCurrent("org-legacy", "block-legacy"),
+    ).resolves.toMatchObject({
+      revision: {
+        audienceId: "group-legacy",
+        audienceIds: ["group-legacy"],
+      },
+    });
+  });
+
   it("rejects direct PostgreSQL creation that violates the shared revision-one contract", async () => {
     const repository = new PostgresTrainingBlockRepository(
       postgresClient(requiredConnection().client),
@@ -149,6 +217,7 @@ describe("training-blocks PostgreSQL repository", () => {
         revision: 2,
         name: "Invalid",
         audienceId: null,
+        audienceIds: Object.freeze([]),
         durationMinutes: null,
         note: null,
         exercises: Object.freeze([]),
@@ -173,6 +242,61 @@ describe("training-blocks PostgreSQL repository", () => {
       "Training block revision escaped its block scope.",
     );
     await expect(repository.listCurrent("org-direct")).resolves.toEqual([]);
+  });
+
+  it("physically deletes only unused blocks and keeps used blocks protected", async () => {
+    const service = serviceFor(requiredConnection(), [
+      "block-unused",
+      "block-used",
+      "usage-used",
+    ]);
+    await service.create("org-delete", { name: "Unused" });
+    await service.create("org-delete", { name: "Used" });
+    await service.setFavorite(
+      "org-delete",
+      "principal-a",
+      "block-unused",
+      true,
+    );
+    await service.recordUsage("org-delete", "block-used", {
+      occurredAt: "2026-10-10T11:00:00.000Z",
+      sourceKind: "training_plan",
+    });
+
+    await expect(
+      service.deleteUnused("org-delete", "block-unused", 1),
+    ).resolves.toBe(true);
+    await expect(
+      service.findCurrent("org-delete", "block-unused"),
+    ).resolves.toBeUndefined();
+
+    const deletedCounts = await requiredConnection().client.unsafe(
+      `SELECT
+         (SELECT count(*)::int
+            FROM appbasis_training_block
+           WHERE organization_id = 'org-delete'
+             AND id = 'block-unused') AS block_count,
+         (SELECT count(*)::int
+            FROM appbasis_training_block_revision
+           WHERE organization_id = 'org-delete'
+             AND block_id = 'block-unused') AS revision_count,
+         (SELECT count(*)::int
+            FROM appbasis_training_block_favorite
+           WHERE organization_id = 'org-delete'
+             AND block_id = 'block-unused') AS favorite_count`,
+    );
+    expect(deletedCounts[0]).toMatchObject({
+      block_count: 0,
+      revision_count: 0,
+      favorite_count: 0,
+    });
+
+    await expect(
+      service.deleteUnused("org-delete", "block-used", 1),
+    ).rejects.toBeInstanceOf(TrainingBlockInUseError);
+    await expect(
+      service.findCurrent("org-delete", "block-used"),
+    ).resolves.toBeDefined();
   });
 
   it("serializes concurrent updates so exactly one expected revision wins", async () => {

@@ -14,6 +14,7 @@ export const ATHLETE_CAPABILITIES = Object.freeze({
 export {
   MasterdataValidationError,
   createAthlete,
+  createAthleteContact,
   createAthleteGroupMembership,
   createTrainer,
   createTrainerGroupMembership,
@@ -65,6 +66,9 @@ export { PostgresAthleteMasterdataRepository } from "./postgres-masterdata-repos
 export { reconcileAthleteMasterdataRestoredDatabase } from "./restore-reconciliation";
 export type {
   Athlete,
+  AthleteContact,
+  AthleteContactContext,
+  AthleteContactInput,
   AthleteGroupMembership,
   CreateAthleteGroupMembershipInput,
   CreateAthleteInput,

@@ -35,6 +35,7 @@ function snapshot(): AthleteMasterdataSnapshot {
       group("group-2", false),
     ],
     athletes: [],
+    athleteContacts: [],
     trainers: [],
     athleteGroupMemberships: [],
     trainerGroupMemberships: [],

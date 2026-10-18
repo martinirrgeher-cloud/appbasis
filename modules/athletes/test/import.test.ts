@@ -46,6 +46,7 @@ const anna = {
 const baseSnapshot = {
   trainingGroups: groups,
   athletes: [anna],
+  athleteContacts: [],
   trainers: [],
   athleteGroupMemberships: [
     {
@@ -340,6 +341,7 @@ describe("athletes XLSX import", () => {
         },
       ],
       athletes: [],
+      athleteContacts: [],
       trainers: [],
       athleteGroupMemberships: [],
       trainerGroupMemberships: [],
@@ -399,6 +401,7 @@ describe("athletes XLSX import", () => {
       {
         trainingGroups: [],
         athletes,
+        athleteContacts: [],
         trainers: [],
         athleteGroupMemberships: [],
         trainerGroupMemberships: [],
@@ -410,6 +413,7 @@ describe("athletes XLSX import", () => {
       previewAthletesImport(workbook, {
         trainingGroups: [],
         athletes: [],
+        athleteContacts: [],
         trainers: [],
         athleteGroupMemberships: [],
         trainerGroupMemberships: [],

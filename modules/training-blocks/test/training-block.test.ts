@@ -27,6 +27,7 @@ describe("training-blocks domain", () => {
     ).toEqual({
       name: "Beschleunigung A",
       audienceId: "group-sprint",
+      audienceIds: ["group-sprint"],
       durationMinutes: 35,
       note: "Technik vor Intensität",
       exercises: [
@@ -41,6 +42,43 @@ describe("training-blocks domain", () => {
         },
       ],
     });
+  });
+
+  it("supports club-wide and multiple audience assignments while preserving compatibility", () => {
+    expect(
+      normalizeTrainingBlockDraft({
+        name: "Vereinsweit",
+        audienceIds: [],
+      }),
+    ).toMatchObject({
+      audienceId: null,
+      audienceIds: [],
+    });
+
+    expect(
+      normalizeTrainingBlockDraft({
+        name: "Mehrere Gruppen",
+        audienceIds: ["group-u16", "group-u18"],
+      }),
+    ).toMatchObject({
+      audienceId: "group-u16",
+      audienceIds: ["group-u16", "group-u18"],
+    });
+
+    expect(() =>
+      normalizeTrainingBlockDraft({
+        name: "Widerspruch",
+        audienceId: "group-u16",
+        audienceIds: ["group-u18"],
+      }),
+    ).toThrow(/compatibility audience/);
+
+    expect(() =>
+      normalizeTrainingBlockDraft({
+        name: "Doppelt",
+        audienceIds: ["group-u16", "group-u16"],
+      }),
+    ).toThrow(/duplicate entry/);
   });
 
   it("keeps duration empty when it has not been planned yet", () => {

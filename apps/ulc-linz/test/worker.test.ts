@@ -127,6 +127,7 @@ function runtime(
       return {
         trainingGroups: [],
         athletes: [],
+        athleteContacts: [],
         trainers: [],
         athleteGroupMemberships: [],
         trainerGroupMemberships: [],
@@ -153,6 +154,35 @@ function runtime(
         notes: input.notes ?? null,
         isActive: true,
       };
+    },
+    async createAthleteContact(organizationId, athleteId, input) {
+      return {
+        id: "contact-test",
+        organizationId,
+        athleteId,
+        contactName: input.contactName,
+        relationship: input.relationship ?? null,
+        phone: input.phone,
+        isEmergency: input.isEmergency ?? true,
+        priority: input.priority ?? 1,
+        notes: input.notes ?? null,
+      };
+    },
+    async updateAthleteContact(organizationId, athleteId, contactId, input) {
+      return {
+        id: contactId,
+        organizationId,
+        athleteId,
+        contactName: input.contactName,
+        relationship: input.relationship ?? null,
+        phone: input.phone,
+        isEmergency: input.isEmergency ?? true,
+        priority: input.priority ?? 1,
+        notes: input.notes ?? null,
+      };
+    },
+    async deleteAthleteContact() {
+      return true;
     },
     async createTrainer(organizationId, input) {
       return {
@@ -441,11 +471,17 @@ function runtime(
       async create() {
         throw new Error("training-block mock create is not wired to an E7A3 HTTP route");
       },
+      async duplicate() {
+        return undefined;
+      },
       async update() {
         throw new Error("training-block mock update is not wired to an E7A3 HTTP route");
       },
       async deactivate() {
         return undefined;
+      },
+      async deleteUnused() {
+        return false;
       },
       async listRevisions() {
         return [];
@@ -460,6 +496,18 @@ function runtime(
     trainingPlans: {
       async listSubjects() {
         return [];
+      },
+      async listOverviewGroups() {
+        return [];
+      },
+      async groupWeekOverview(_organizationId, groupId, weekStart) {
+        return {
+          group: { id: groupId, name: groupId, shortName: null },
+          weekStart,
+          weekEnd: weekStart,
+          dates: [],
+          rows: [],
+        };
       },
       async listForSubjectDateRange() {
         return [];
@@ -763,7 +811,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockSavePending &&\n        trainingBlockDirty");
     expect(ULC_LINZ_APP_SCRIPT).toContain("invalidateTrainingBlockOverviewRefresh();\n    trainingBlockSelected = {");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockSaveBusy ||\n    trainingBlockFavoriteBusy ||");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDeactivateBusy ||\n    trainingBlockReloadBusy ||\n    trainingBlockFavoriteBusy");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDeactivateBusy ||\n    trainingBlockDuplicateBusy ||\n    trainingBlockReloadBusy ||\n    trainingBlockFavoriteBusy");
     expect(ULC_LINZ_APP_SCRIPT).toContain("!trainingBlockFavoriteBusy &&\n    trainingBlockSelected?.isActive !== false");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("actorPrincipalId:");
@@ -1039,6 +1087,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
                 revision: 2,
                 name: "Sprint U16",
                 audienceId: "group-u16",
+                audienceIds: ["group-u16"],
                 durationMinutes: 30,
                 note: null,
                 exercises: [],
@@ -1085,7 +1134,11 @@ describe("generated identity+permissions Worker entrypoint", () => {
         isFavorite: true,
         usageCount: 3,
         lastUsedAt: "2026-10-10T12:00:00.000Z",
-        revision: { name: "Sprint U16", audienceId: "group-u16" },
+        revision: {
+          name: "Sprint U16",
+          audienceId: "group-u16",
+          audienceIds: ["group-u16"],
+        },
       }],
     });
     expect(JSON.stringify(payload)).not.toContain("organizationId");
@@ -1108,6 +1161,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         revision,
         name,
         audienceId: "group-u16",
+        audienceIds: ["group-u16"],
         durationMinutes: 25,
         note: null,
         exercises: [],
@@ -1286,6 +1340,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         revision: 1,
         name: "Favorit",
         audienceId: "group-u16",
+        audienceIds: ["group-u16"],
         durationMinutes: null,
         note: null,
         exercises: [],
@@ -1366,6 +1421,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       revision: number,
       name: "Sprint v" + String(number),
       audienceId: "group-u16",
+      audienceIds: ["group-u16"],
       durationMinutes: 30,
       note: null,
       exercises: [],
@@ -2200,6 +2256,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
                 isActive: true,
               },
             ],
+            athleteContacts: [],
             trainers: [],
             athleteGroupMemberships: [
               {
@@ -2273,6 +2330,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
               },
             ],
             athletes: [],
+            athleteContacts: [],
             trainers: [],
             athleteGroupMemberships: [],
             trainerGroupMemberships: [],
@@ -2355,6 +2413,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         },
       ],
       athletes: [],
+      athleteContacts: [],
       trainers: [],
       athleteGroupMemberships: [],
       trainerGroupMemberships: [],
@@ -2475,6 +2534,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         },
       ],
       athletes: [],
+      athleteContacts: [],
       trainers: [],
       athleteGroupMemberships: [],
       trainerGroupMemberships: [],
@@ -2597,6 +2657,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         },
       ],
       athletes: [],
+      athleteContacts: [],
       trainers: [],
       athleteGroupMemberships: [],
       trainerGroupMemberships: [],
@@ -2737,6 +2798,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
                 },
               ],
               athletes: [],
+              athleteContacts: [],
               trainers: [],
               athleteGroupMemberships: [],
               trainerGroupMemberships: [],
@@ -2770,6 +2832,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
           },
         ],
         athletes: [],
+        athleteContacts: [],
         trainers: [],
         athleteGroupMemberships: [],
         trainerGroupMemberships: [],
@@ -4646,6 +4709,96 @@ describe("U12 runtime API", () => {
           exerciseCount: 2,
         },
       ],
+    });
+  });
+
+  it("serves the training-plan group week overview from server-owned organization scope", async () => {
+    let received: unknown = null;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertViewAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async groupWeekOverview(organizationId, groupId, weekStart) {
+          received = { organizationId, groupId, weekStart };
+          return {
+            group: { id: groupId, name: "U16", shortName: "U16" },
+            weekStart,
+            weekEnd: "2026-10-18",
+            dates: [
+              "2026-10-12",
+              "2026-10-13",
+              "2026-10-14",
+              "2026-10-15",
+              "2026-10-16",
+              "2026-10-17",
+              "2026-10-18",
+            ],
+            rows: [
+              {
+                subject: {
+                  id: "athlete-1",
+                  firstName: "Anna",
+                  lastName: "Sprint",
+                  displayName: "Sprint, Anna",
+                },
+                cells: [
+                  {
+                    planDate: "2026-10-12",
+                    planId: "plan-1",
+                    durationMinutes: 45,
+                    exerciseCount: 3,
+                  },
+                ],
+              },
+            ],
+          };
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/overview?groupId=group-u16&weekStart=2026-10-12",
+        { headers: { cookie: currentIdentity.sessionToken } },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(200);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      groupId: "group-u16",
+      weekStart: "2026-10-12",
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      overview: {
+        group: { id: "group-u16" },
+        weekStart: "2026-10-12",
+        weekEnd: "2026-10-18",
+        rows: [
+          {
+            subject: { id: "athlete-1" },
+            cells: [
+              {
+                planId: "plan-1",
+                durationMinutes: 45,
+                exerciseCount: 3,
+              },
+            ],
+          },
+        ],
+      },
     });
   });
 

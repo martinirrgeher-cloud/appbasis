@@ -11,7 +11,7 @@
     "authorization": [
       {
         "path": "modules/athletes/test/masterdata.test.ts",
-        "gitBlobSha": "3c9c8d5e112ddc0f5bd4ce90cd19e3112b6a60ce"
+        "gitBlobSha": "dfbc6026acbc3b990f626fd254434f743ab8031b"
       }
     ],
     "database": [
@@ -24,18 +24,22 @@
         "gitBlobSha": "088e29173e17f8d957765f89ea04130778fb31c8"
       },
       {
+        "path": "modules/athletes/migrations/0002_appbasis_athlete_contacts.sql",
+        "gitBlobSha": "5f7014eb1439845d8f3ec967b63c3bb724547e3f"
+      },
+      {
         "path": "modules/athletes/test/postgres-masterdata-repository.test.ts",
-        "gitBlobSha": "41745c8da8a641e304e6807653ec28d8a534cfd1"
+        "gitBlobSha": "8060845ba93b0e3840042c1dd5596ea5e710a926"
       }
     ],
     "lifecycle": [
       {
         "path": "modules/athletes/src/postgres-masterdata-repository.ts",
-        "gitBlobSha": "e05275be8156b06e8b7b1a4a29861a7371fb5040"
+        "gitBlobSha": "8d2aabde690f5c5812a3b09ecf6e3c54b2e326b6"
       },
       {
         "path": "modules/athletes/test/postgres-masterdata-repository.test.ts",
-        "gitBlobSha": "41745c8da8a641e304e6807653ec28d8a534cfd1"
+        "gitBlobSha": "8060845ba93b0e3840042c1dd5596ea5e710a926"
       },
       {
         "path": "modules/athletes/test/restore-reconciliation.test.ts",

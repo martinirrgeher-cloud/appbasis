@@ -61,6 +61,7 @@ const snapshot = {
       isActive: false,
     },
   ],
+  athleteContacts: [],
   trainers: [],
   athleteGroupMemberships: [
     {

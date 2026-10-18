@@ -42,6 +42,16 @@ export class TrainingBlockConflictError extends Error {
   }
 }
 
+export class TrainingBlockInUseError extends Error {
+  readonly blockId: string;
+
+  constructor(blockId: string) {
+    super(`Training block ${blockId} is already in use.`);
+    this.name = "TrainingBlockInUseError";
+    this.blockId = blockId;
+  }
+}
+
 export class TrainingBlockInactiveError extends Error {
   readonly blockId: string;
   readonly currentRevision: number;
@@ -61,6 +71,7 @@ export interface TrainingBlockRevisionComparison {
   readonly changedFields: readonly (
     | "name"
     | "audienceId"
+    | "audienceIds"
     | "durationMinutes"
     | "note"
   )[];
@@ -82,6 +93,10 @@ export interface RecordTrainingBlockUsageInput {
   readonly sourceKind: string;
   readonly sourceRef?: string | null;
   readonly note?: string | null;
+}
+
+export interface DuplicateTrainingBlockInput {
+  readonly name?: string;
 }
 
 export class TrainingBlockService {
@@ -395,6 +410,7 @@ export class TrainingBlockService {
       revision: 1,
       name: draft.name,
       audienceId: draft.audienceId,
+      audienceIds: draft.audienceIds,
       durationMinutes: draft.durationMinutes,
       note: draft.note,
       exercises: Object.freeze(
@@ -416,6 +432,40 @@ export class TrainingBlockService {
     });
     const stored = await this.#repository.create(block);
     return this.#assertBlock(stored, organization, id);
+  }
+
+  async duplicate(
+    organizationId: string,
+    blockId: string,
+    input: DuplicateTrainingBlockInput = {},
+  ): Promise<TrainingBlockSnapshot | undefined> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const id = normalizeTrainingBlockIdentifier(blockId, "Training block id");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TrainingBlockValidationError(
+        "Training block duplicate input is invalid.",
+      );
+    }
+    const source = await this.findCurrent(organization, id);
+    if (source === undefined) return undefined;
+
+    return this.create(organization, {
+      name: input.name ?? source.revision.name,
+      audienceIds: source.revision.audienceIds,
+      durationMinutes: source.revision.durationMinutes,
+      note: source.revision.note,
+      exercises: source.revision.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        note: exercise.note,
+        parameterOverrides: exercise.parameterOverrides.map((override) => ({
+          key: override.key,
+          value: override.value,
+        })),
+      })),
+    });
   }
 
   async update(
@@ -493,6 +543,7 @@ export class TrainingBlockService {
       revision: expected + 1,
       name: draft.name,
       audienceId: draft.audienceId,
+      audienceIds: draft.audienceIds,
       durationMinutes: draft.durationMinutes,
       note: draft.note,
       exercises: Object.freeze(nextExercises),
@@ -536,6 +587,35 @@ export class TrainingBlockService {
       throw new TrainingBlockConflictError(expected, result.currentRevision);
     }
     return this.#assertBlock(result.block, organization, id);
+  }
+
+  async deleteUnused(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+  ): Promise<boolean> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const id = normalizeTrainingBlockIdentifier(blockId, "Training block id");
+    const expected = requiredRevision(
+      expectedRevision,
+      "Expected training block revision",
+    );
+    const result = await this.#repository.deleteUnused(
+      organization,
+      id,
+      expected,
+    );
+    if (result.status === "not-found") return false;
+    if (result.status === "conflict") {
+      throw new TrainingBlockConflictError(expected, result.currentRevision);
+    }
+    if (result.status === "in-use") {
+      throw new TrainingBlockInUseError(id);
+    }
+    return true;
   }
 
   async listRevisions(
@@ -656,6 +736,7 @@ export class TrainingBlockService {
     const normalized = normalizeTrainingBlockDraft({
       name: revision.name,
       audienceId: revision.audienceId,
+      audienceIds: revision.audienceIds,
       durationMinutes: revision.durationMinutes,
       note: revision.note,
       exercises: revision.exercises.map((exercise) => ({
@@ -696,6 +777,7 @@ export class TrainingBlockService {
       revision: revision.revision,
       name: normalized.name,
       audienceId: normalized.audienceId,
+      audienceIds: normalized.audienceIds,
       durationMinutes: normalized.durationMinutes,
       note: normalized.note,
       exercises: Object.freeze(exercises),
@@ -711,6 +793,9 @@ function compareRevisionSnapshots(
   const changedFields: TrainingBlockRevisionComparison["changedFields"][number][] = [];
   if (from.name !== to.name) changedFields.push("name");
   if (from.audienceId !== to.audienceId) changedFields.push("audienceId");
+  if (JSON.stringify(from.audienceIds) !== JSON.stringify(to.audienceIds)) {
+    changedFields.push("audienceIds");
+  }
   if (from.durationMinutes !== to.durationMinutes) changedFields.push("durationMinutes");
   if (from.note !== to.note) changedFields.push("note");
 

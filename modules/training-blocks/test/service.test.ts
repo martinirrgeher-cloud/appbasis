@@ -4,6 +4,7 @@ import {
   InMemoryTrainingBlockRepository,
   TrainingBlockConflictError,
   TrainingBlockInactiveError,
+  TrainingBlockInUseError,
   TrainingBlockService,
   TrainingBlockValidationError,
 } from "../src/index";
@@ -98,6 +99,128 @@ describe("training-blocks service", () => {
       changedItemIds: ["item-a", "item-b"],
       reorderedItemIds: ["item-a", "item-b"],
     });
+  });
+
+  it("duplicates current content as an independent revision-1 block without metadata carry-over", async () => {
+    const repository = new InMemoryTrainingBlockRepository();
+    const service = new TrainingBlockService({
+      repository,
+      createId: deterministicIds(
+        "block-source",
+        "item-source",
+        "usage-source",
+        "block-copy",
+        "item-copy",
+      ),
+      now: deterministicClock(
+        "2026-10-10T10:00:00.000Z",
+        "2026-10-10T10:05:00.000Z",
+      ),
+    });
+
+    await service.create("org-a", {
+      name: "Sprint",
+      audienceId: "group-a",
+      durationMinutes: 25,
+      note: "Quelle",
+      exercises: [
+        {
+          exerciseId: "exercise-1",
+          note: "Hinweis",
+          parameterOverrides: [{ key: "sets", value: "3" }],
+        },
+      ],
+    });
+    await service.setFavorite("org-a", "principal-a", "block-source", true);
+    await service.recordUsage("org-a", "block-source", {
+      occurredAt: "2026-10-10T10:02:00.000Z",
+      sourceKind: "training_plan",
+      sourceRef: "plan-1",
+    });
+
+    const copy = await service.duplicate(
+      "org-a",
+      "block-source",
+      { name: "Sprint Kopie" },
+    );
+
+    expect(copy).toMatchObject({
+      id: "block-copy",
+      currentRevision: 1,
+      isActive: true,
+      revision: {
+        revision: 1,
+        name: "Sprint Kopie",
+        audienceId: "group-a",
+        durationMinutes: 25,
+        note: "Quelle",
+        exercises: [
+          {
+            itemId: "item-copy",
+            exerciseId: "exercise-1",
+            note: "Hinweis",
+            parameterOverrides: [{ key: "sets", value: "3" }],
+          },
+        ],
+      },
+    });
+    expect(copy?.revision.exercises[0]?.itemId).not.toBe("item-source");
+
+    await expect(
+      service.listOverview("org-a", "principal-a"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        block: expect.objectContaining({ id: "block-source" }),
+        isFavorite: true,
+        usageCount: 1,
+      }),
+      expect.objectContaining({
+        block: expect.objectContaining({ id: "block-copy" }),
+        isFavorite: false,
+        usageCount: 0,
+      }),
+    ]);
+    await expect(
+      service.duplicate("org-a", "missing", { name: "Kopie" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("deletes only unused blocks and removes their personal metadata", async () => {
+    const service = new TrainingBlockService({
+      repository: new InMemoryTrainingBlockRepository(),
+      createId: deterministicIds("unused", "used", "usage-1"),
+      now: () => new Date("2026-10-10T10:00:00.000Z"),
+    });
+    await service.create("org-a", { name: "Unused" });
+    await service.create("org-a", { name: "Used" });
+    await service.setFavorite("org-a", "principal-a", "unused", true);
+    await service.recordUsage("org-a", "used", {
+      occurredAt: "2026-10-10T11:00:00.000Z",
+      sourceKind: "training_plan",
+    });
+
+    await expect(
+      service.deleteUnused("org-a", "unused", 1),
+    ).resolves.toBe(true);
+    await expect(
+      service.findCurrent("org-a", "unused"),
+    ).resolves.toBeUndefined();
+    await expect(
+      service.listOverview("org-a", "principal-a"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        block: expect.objectContaining({ id: "used" }),
+        isFavorite: false,
+        usageCount: 1,
+      }),
+    ]);
+
+    await expect(
+      service.deleteUnused("org-a", "used", 1),
+    ).rejects.toBeInstanceOf(TrainingBlockInUseError);
+    await expect(
+      service.deleteUnused("org-a", "missing", 1),
+    ).resolves.toBe(false);
   });
 
   it("fails stale updates and stale deactivation with optimistic concurrency", async () => {

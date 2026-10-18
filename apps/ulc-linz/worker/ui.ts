@@ -199,6 +199,33 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                   <button class="button button--secondary" id="athlete-edit-cancel" type="button" hidden>Abbrechen</button>
                 </div>
               </form>
+              <section class="card masterdata-form">
+                <div class="section-heading">
+                  <div><p class="eyebrow">Kontakte</p><h2>Kontaktpersonen</h2></div>
+                </div>
+                <div class="masterdata-list" id="athlete-contact-list" aria-live="polite"></div>
+              </section>
+              <form class="card masterdata-form" id="athlete-contact-form">
+                <div class="section-heading">
+                  <div><p class="eyebrow">Kontakt</p><h2 id="athlete-contact-form-title">Kontakt anlegen</h2></div>
+                </div>
+                <div class="settings-grid">
+                  <label>Athlet<select id="athlete-contact-athlete" required></select></label>
+                  <label>Name<input id="athlete-contact-name" maxlength="120" required /></label>
+                  <label>Beziehung<input id="athlete-contact-relationship" maxlength="80" placeholder="z. B. Mutter, Vater" /></label>
+                  <label>Telefon<input id="athlete-contact-phone" maxlength="80" minlength="3" inputmode="tel" required /></label>
+                  <label>Priorität<input id="athlete-contact-priority" type="number" min="1" max="1000" value="1" inputmode="numeric" required /></label>
+                  <label class="setting-checkbox">
+                    <input id="athlete-contact-emergency" type="checkbox" checked />
+                    <span>Notfallkontakt</span>
+                  </label>
+                  <label>Notiz<input id="athlete-contact-notes" maxlength="3000" /></label>
+                </div>
+                <div class="masterdata-form-actions">
+                  <button class="button button--primary" id="athlete-contact-submit-button" type="submit">Kontakt anlegen</button>
+                  <button class="button button--secondary" id="athlete-contact-edit-cancel" type="button" hidden>Abbrechen</button>
+                </div>
+              </form>
               <form class="card masterdata-form" id="athlete-group-form">
                 <div class="section-heading"><div><p class="eyebrow">Gruppe</p><h2>Athlet zuordnen</h2></div></div>
                 <div class="settings-grid">
@@ -1113,6 +1140,18 @@ const elements = {
   athleteFormTitle: document.querySelector("#athlete-form-title"),
   athleteSubmitButton: document.querySelector("#athlete-submit-button"),
   athleteEditCancel: document.querySelector("#athlete-edit-cancel"),
+  athleteContactList: document.querySelector("#athlete-contact-list"),
+  athleteContactForm: document.querySelector("#athlete-contact-form"),
+  athleteContactAthlete: document.querySelector("#athlete-contact-athlete"),
+  athleteContactName: document.querySelector("#athlete-contact-name"),
+  athleteContactRelationship: document.querySelector("#athlete-contact-relationship"),
+  athleteContactPhone: document.querySelector("#athlete-contact-phone"),
+  athleteContactEmergency: document.querySelector("#athlete-contact-emergency"),
+  athleteContactPriority: document.querySelector("#athlete-contact-priority"),
+  athleteContactNotes: document.querySelector("#athlete-contact-notes"),
+  athleteContactFormTitle: document.querySelector("#athlete-contact-form-title"),
+  athleteContactSubmitButton: document.querySelector("#athlete-contact-submit-button"),
+  athleteContactEditCancel: document.querySelector("#athlete-contact-edit-cancel"),
   trainerForm: document.querySelector("#trainer-form"),
   trainerFirstName: document.querySelector("#trainer-first-name"),
   trainerLastName: document.querySelector("#trainer-last-name"),
@@ -1211,6 +1250,7 @@ let masterdataImportFileDraft = null;
 let masterdataImportResultData = null;
 let masterdataSnapshot = null;
 let masterdataEdit = null;
+let masterdataContactEdit = null;
 let trainerIdentityAdminReady = false;
 let trainerIdentityLoading = false;
 let trainerIdentityBindings = [];
@@ -1261,6 +1301,8 @@ elements.masterdataExport?.addEventListener("click", () => {
   );
 });
 elements.athleteForm?.addEventListener("submit", (event) => void createMasterdataAthlete(event));
+elements.athleteContactForm?.addEventListener("submit", (event) => void saveMasterdataAthleteContact(event));
+elements.athleteContactEditCancel?.addEventListener("click", cancelMasterdataAthleteContactEdit);
 elements.trainerForm?.addEventListener("submit", (event) => void createMasterdataTrainer(event));
 elements.groupForm?.addEventListener("submit", (event) => void createMasterdataGroup(event));
 elements.athleteEditCancel?.addEventListener("click", cancelMasterdataEdit);
@@ -2592,6 +2634,7 @@ async function loadMasterdata(force = false) {
     const snapshot = payload?.masterdata;
     if (
       !Array.isArray(snapshot?.athletes) ||
+      !Array.isArray(snapshot?.athleteContacts) ||
       !Array.isArray(snapshot?.trainers) ||
       !Array.isArray(snapshot?.trainingGroups) ||
       !Array.isArray(snapshot?.athleteGroupMemberships) ||
@@ -2695,11 +2738,193 @@ function renderMasterdata(snapshot) {
         : null,
     }),
   );
+  renderMasterdataAthleteContacts(snapshot);
   if (elements.athleteCount) elements.athleteCount.textContent = String(snapshot.athletes.length);
   if (elements.trainerCount) elements.trainerCount.textContent = String(snapshot.trainers.length);
   if (elements.groupCount) elements.groupCount.textContent = String(snapshot.trainingGroups.length);
   renderMasterdataAssignmentOptions(snapshot);
   renderTrainerIdentityAdmin();
+}
+
+function renderMasterdataAthleteContacts(snapshot) {
+  const container = elements.athleteContactList;
+  if (!container) return;
+  container.replaceChildren();
+
+  const athletesById = new Map(
+    snapshot.athletes.map((athlete) => [
+      athlete.id,
+      {
+        name:
+          String(athlete.lastName || "") +
+          ", " +
+          String(athlete.firstName || ""),
+        active: athlete.isActive !== false,
+      },
+    ]),
+  );
+  const contacts = [...snapshot.athleteContacts].sort(
+    (left, right) =>
+      String(athletesById.get(left.athleteId)?.name || "").localeCompare(
+        String(athletesById.get(right.athleteId)?.name || ""),
+        "de",
+        { sensitivity: "base" },
+      ) ||
+      Number(left.priority || 1) - Number(right.priority || 1) ||
+      String(left.contactName || "").localeCompare(
+        String(right.contactName || ""),
+        "de",
+        { sensitivity: "base" },
+      ),
+  );
+
+  if (contacts.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "masterdata-empty";
+    empty.textContent = "Noch keine Kontaktpersonen erfasst.";
+    container.append(empty);
+    return;
+  }
+
+  for (const contact of contacts) {
+    const athlete = athletesById.get(contact.athleteId);
+    const row = document.createElement("article");
+    row.className = "masterdata-row";
+    const title = document.createElement("strong");
+    title.textContent = String(contact.contactName || "");
+    const meta = document.createElement("span");
+    meta.textContent = [
+      athlete?.name || "Unbekannter Athlet",
+      contact.relationship || null,
+      contact.phone || null,
+      contact.isEmergency ? "Notfallkontakt" : null,
+      "Priorität " + String(contact.priority ?? 1),
+    ].filter(Boolean).join(" · ");
+    row.append(title, meta);
+
+    if (masterdataCanEdit && athlete?.active) {
+      const actions = document.createElement("div");
+      actions.className = "masterdata-row__actions";
+
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "masterdata-row__action masterdata-row__action--edit";
+      edit.textContent = "Bearbeiten";
+      edit.addEventListener("click", () => beginMasterdataAthleteContactEdit(contact));
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "masterdata-row__action";
+      remove.textContent = "Löschen";
+      remove.addEventListener("click", () => void deleteMasterdataAthleteContact(contact));
+
+      actions.append(edit, remove);
+      row.append(actions);
+    }
+    container.append(row);
+  }
+}
+
+function beginMasterdataAthleteContactEdit(contact) {
+  if (!contact || typeof contact.id !== "string" || !contact.id) return;
+  masterdataContactEdit = {
+    id: contact.id,
+    athleteId: contact.athleteId,
+  };
+  if (elements.athleteContactAthlete) {
+    elements.athleteContactAthlete.value = String(contact.athleteId || "");
+    elements.athleteContactAthlete.disabled = true;
+  }
+  if (elements.athleteContactName) elements.athleteContactName.value = String(contact.contactName || "");
+  if (elements.athleteContactRelationship) elements.athleteContactRelationship.value = String(contact.relationship || "");
+  if (elements.athleteContactPhone) elements.athleteContactPhone.value = String(contact.phone || "");
+  if (elements.athleteContactEmergency) elements.athleteContactEmergency.checked = contact.isEmergency !== false;
+  if (elements.athleteContactPriority) elements.athleteContactPriority.value = String(contact.priority ?? 1);
+  if (elements.athleteContactNotes) elements.athleteContactNotes.value = String(contact.notes || "");
+  if (elements.athleteContactFormTitle) elements.athleteContactFormTitle.textContent = "Kontakt bearbeiten";
+  if (elements.athleteContactSubmitButton) elements.athleteContactSubmitButton.textContent = "Änderungen speichern";
+  if (elements.athleteContactEditCancel) elements.athleteContactEditCancel.hidden = false;
+  elements.athleteContactForm?.scrollIntoView({ block: "start", behavior: "smooth" });
+}
+
+function cancelMasterdataAthleteContactEdit() {
+  masterdataContactEdit = null;
+  elements.athleteContactForm?.reset();
+  if (elements.athleteContactPriority) elements.athleteContactPriority.value = "1";
+  if (elements.athleteContactEmergency) elements.athleteContactEmergency.checked = true;
+  if (elements.athleteContactAthlete) elements.athleteContactAthlete.disabled = false;
+  if (elements.athleteContactFormTitle) elements.athleteContactFormTitle.textContent = "Kontakt anlegen";
+  if (elements.athleteContactSubmitButton) elements.athleteContactSubmitButton.textContent = "Kontakt anlegen";
+  if (elements.athleteContactEditCancel) elements.athleteContactEditCancel.hidden = true;
+  if (masterdataSnapshot) renderMasterdataAssignmentOptions(masterdataSnapshot);
+}
+
+async function saveMasterdataAthleteContact(event) {
+  event.preventDefault();
+  const athleteId =
+    masterdataContactEdit?.athleteId ||
+    elements.athleteContactAthlete?.value ||
+    "";
+  const editId = masterdataContactEdit?.id || null;
+  const priorityRaw = elements.athleteContactPriority?.value.trim() || "1";
+  const saved = await submitMasterdataForm(
+    editId
+      ? "/api/modules/athletes/masterdata/athlete-contacts/" +
+          encodeURIComponent(editId) +
+          "/update"
+      : "/api/modules/athletes/masterdata/athlete-contacts",
+    {
+      athleteId,
+      contactName: elements.athleteContactName?.value ?? "",
+      relationship: emptyToNull(elements.athleteContactRelationship?.value),
+      phone: elements.athleteContactPhone?.value ?? "",
+      isEmergency: elements.athleteContactEmergency?.checked === true,
+      priority: Number(priorityRaw),
+      notes: emptyToNull(elements.athleteContactNotes?.value),
+    },
+    elements.athleteContactForm,
+  );
+  if (saved) cancelMasterdataAthleteContactEdit();
+}
+
+async function deleteMasterdataAthleteContact(contact) {
+  if (
+    !masterdataCanEdit ||
+    masterdataLoading ||
+    typeof contact?.id !== "string" ||
+    typeof contact?.athleteId !== "string"
+  ) return;
+  if (!window.confirm("Diese Kontaktperson wirklich löschen?")) return;
+  setMasterdataFormsDisabled(true);
+  showMessage(elements.masterdataMessage, "");
+  try {
+    await requestJson(
+      "/api/modules/athletes/masterdata/athlete-contacts/" +
+        encodeURIComponent(contact.id) +
+        "/delete",
+      {
+        method: "POST",
+        body: JSON.stringify({ athleteId: contact.athleteId }),
+      },
+    );
+    if (masterdataContactEdit?.id === contact.id) {
+      cancelMasterdataAthleteContactEdit();
+    }
+    masterdataSnapshot = null;
+    await loadMasterdata(true);
+    showMessage(elements.masterdataSuccess, "Kontaktperson wurde gelöscht.");
+  } catch (error) {
+    showMessage(
+      elements.masterdataMessage,
+      error?.status === 403
+        ? "Du darfst Stammdaten ansehen, aber nicht bearbeiten."
+        : error?.status === 404
+          ? "Die Kontaktperson wurde nicht gefunden."
+          : "Die Kontaktperson konnte nicht gelöscht werden.",
+    );
+  } finally {
+    setMasterdataFormsDisabled(false);
+  }
 }
 
 function renderTrainerIdentityAdmin() {
@@ -3130,6 +3355,13 @@ function refreshMasterdataEditMode() {
 function renderMasterdataAssignmentOptions(snapshot) {
   replaceSelectOptions(
     elements.athleteGroupAthlete,
+    snapshot.athletes.filter((item) => item?.isActive !== false),
+    "Athlet auswählen",
+    (item) => String(item?.id || ""),
+    (item) => String(item?.lastName || "") + ", " + String(item?.firstName || ""),
+  );
+  replaceSelectOptions(
+    elements.athleteContactAthlete,
     snapshot.athletes.filter((item) => item?.isActive !== false),
     "Athlet auswählen",
     (item) => String(item?.id || ""),

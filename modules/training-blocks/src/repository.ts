@@ -16,6 +16,7 @@ export interface TrainingBlockRevision {
   readonly revision: number;
   readonly name: string;
   readonly audienceId: string | null;
+  readonly audienceIds: readonly string[];
   readonly durationMinutes: number | null;
   readonly note: string | null;
   readonly exercises: readonly TrainingBlockExerciseRevision[];
@@ -59,6 +60,12 @@ export type TrainingBlockDeactivateResult =
   | Readonly<{ status: "not-found" }>
   | Readonly<{ status: "conflict"; currentRevision: number }>;
 
+export type TrainingBlockDeleteUnusedResult =
+  | Readonly<{ status: "deleted" }>
+  | Readonly<{ status: "not-found" }>
+  | Readonly<{ status: "in-use" }>
+  | Readonly<{ status: "conflict"; currentRevision: number }>;
+
 export interface TrainingBlockRepository {
   listCurrent(organizationId: string): Promise<readonly TrainingBlockSnapshot[]>;
   findCurrent(
@@ -78,6 +85,11 @@ export interface TrainingBlockRepository {
     expectedRevision: number,
     updatedAt: string,
   ): Promise<TrainingBlockDeactivateResult>;
+  deleteUnused(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+  ): Promise<TrainingBlockDeleteUnusedResult>;
   listFavoriteBlockIds(
     organizationId: string,
     principalId: string,

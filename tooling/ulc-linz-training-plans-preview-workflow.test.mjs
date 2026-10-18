@@ -40,6 +40,38 @@ test("E7B9 workflow keeps inspect read-only and gates every preview mutation exp
   );
   assert.match(
     workflow,
+    /ulc-linz-athletes-v3-preview\.mjs inspect/,
+  );
+  assert.match(
+    workflow,
+    /APPBASIS_APPLY_ATHLETES_V3_PREVIEW: "1"/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-athletes-v3-preview\.mjs apply/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-athletes-v3-preview\.mjs verify/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-training-blocks-v3-preview\.mjs inspect/,
+  );
+  assert.match(
+    workflow,
+    /APPBASIS_APPLY_TRAINING_BLOCKS_V3_PREVIEW: "1"/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-training-blocks-v3-preview\.mjs apply/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-training-blocks-v3-preview\.mjs verify/,
+  );
+  assert.match(
+    workflow,
     /ulc-linz-training-plans-preview\.mjs inspect/,
   );
   assert.match(
@@ -93,6 +125,8 @@ test("E7B9 deploy reuses the isolated standard-module runtime without auto-provi
   assert.match(workflow, /wrangler secret put BETTER_AUTH_SECRET/);
   assert.match(workflow, /wrangler deploy/);
   assert.match(workflow, /generated-preview-database-smoke\.mjs/);
+  assert.match(workflow, /id="training-plan-overview-group"/);
+  assert.match(workflow, /id="training-plan-overview"/);
   assert.match(workflow, /Production was not changed\./);
 });
 

@@ -1,10 +1,13 @@
 import {
   createAthlete,
+  createAthleteContact,
   createAthleteGroupMembership,
   createTrainer,
   createTrainerGroupMembership,
   createTrainingGroup,
   type Athlete,
+  type AthleteContact,
+  type AthleteContactInput,
   type AthleteGroupMembership,
   type CreateAthleteGroupMembershipInput,
   type CreateAthleteInput,
@@ -57,6 +60,7 @@ export interface AthleteMasterdataDeletionReplayResult {
 export interface AthleteMasterdataSnapshot {
   readonly trainingGroups: readonly TrainingGroup[];
   readonly athletes: readonly Athlete[];
+  readonly athleteContacts: readonly AthleteContact[];
   readonly trainers: readonly Trainer[];
   readonly athleteGroupMemberships: readonly AthleteGroupMembership[];
   readonly trainerGroupMemberships: readonly TrainerGroupMembership[];
@@ -146,6 +150,150 @@ export class PostgresAthleteMasterdataRepository {
     return singleRow(rows, (row) =>
       athleteFromRow(row, normalizedOrganizationId),
     );
+  }
+
+  async createAthleteContact(
+    organizationId: string,
+    athleteId: string,
+    input: AthleteContactInput,
+  ): Promise<AthleteContact | null> {
+    const normalizedOrganizationId = requiredIdentifier(
+      organizationId,
+      'Organization id',
+    );
+    const normalizedAthleteId = requiredIdentifier(athleteId, 'Athlete id');
+    const contact = createAthleteContact(input, {
+      id: requiredGeneratedId(this.#createId()),
+      organizationId: normalizedOrganizationId,
+      athleteId: normalizedAthleteId,
+    });
+    const rows = await this.#client.unsafe(
+      `INSERT INTO appbasis_athlete_contact (
+         id, organization_id, athlete_id, contact_name, relationship,
+         phone, is_emergency, priority, notes
+       )
+       SELECT $1, athlete.organization_id, athlete.id, $3, $4, $5, $6, $7, $8
+       FROM appbasis_athlete AS athlete
+       WHERE athlete.organization_id = $2
+         AND athlete.id = $9
+         AND athlete.is_active = true
+       RETURNING id, organization_id, athlete_id, contact_name, relationship,
+                 phone, is_emergency, priority, notes`,
+      [
+        contact.id,
+        contact.organizationId,
+        contact.contactName,
+        contact.relationship,
+        contact.phone,
+        contact.isEmergency,
+        contact.priority,
+        contact.notes,
+        contact.athleteId,
+      ],
+    );
+    return optionalSingleRow(rows, (row) =>
+      athleteContactFromRow(
+        row,
+        normalizedOrganizationId,
+        normalizedAthleteId,
+      ),
+    );
+  }
+
+  async updateAthleteContact(
+    organizationId: string,
+    athleteId: string,
+    contactId: string,
+    input: AthleteContactInput,
+  ): Promise<AthleteContact | null> {
+    const normalizedOrganizationId = requiredIdentifier(
+      organizationId,
+      'Organization id',
+    );
+    const normalizedAthleteId = requiredIdentifier(athleteId, 'Athlete id');
+    const normalizedContactId = requiredIdentifier(
+      contactId,
+      'Athlete contact id',
+    );
+    const contact = createAthleteContact(input, {
+      id: normalizedContactId,
+      organizationId: normalizedOrganizationId,
+      athleteId: normalizedAthleteId,
+    });
+    const rows = await this.#client.unsafe(
+      `UPDATE appbasis_athlete_contact AS contact
+       SET contact_name = $4,
+           relationship = $5,
+           phone = $6,
+           is_emergency = $7,
+           priority = $8,
+           notes = $9,
+           updated_at = now()
+       WHERE contact.organization_id = $1
+         AND contact.athlete_id = $2
+         AND contact.id = $3
+         AND EXISTS (
+           SELECT 1
+           FROM appbasis_athlete AS athlete
+           WHERE athlete.organization_id = $1
+             AND athlete.id = $2
+             AND athlete.is_active = true
+         )
+       RETURNING id, organization_id, athlete_id, contact_name, relationship,
+                 phone, is_emergency, priority, notes`,
+      [
+        contact.organizationId,
+        contact.athleteId,
+        contact.id,
+        contact.contactName,
+        contact.relationship,
+        contact.phone,
+        contact.isEmergency,
+        contact.priority,
+        contact.notes,
+      ],
+    );
+    return optionalSingleRow(rows, (row) =>
+      athleteContactFromRow(
+        row,
+        normalizedOrganizationId,
+        normalizedAthleteId,
+      ),
+    );
+  }
+
+  async deleteAthleteContact(
+    organizationId: string,
+    athleteId: string,
+    contactId: string,
+  ): Promise<boolean> {
+    const normalizedOrganizationId = requiredIdentifier(
+      organizationId,
+      'Organization id',
+    );
+    const normalizedAthleteId = requiredIdentifier(athleteId, 'Athlete id');
+    const normalizedContactId = requiredIdentifier(
+      contactId,
+      'Athlete contact id',
+    );
+    const rows = await this.#client.unsafe(
+      `DELETE FROM appbasis_athlete_contact
+       WHERE organization_id = $1
+         AND athlete_id = $2
+         AND id = $3
+       RETURNING id`,
+      [
+        normalizedOrganizationId,
+        normalizedAthleteId,
+        normalizedContactId,
+      ],
+    );
+    if (rows.length > 1) {
+      throw new Error(
+        'Athletes masterdata persistence returned an invalid row count.',
+      );
+    }
+    return rows.length === 1;
   }
 
   async createTrainer(
@@ -852,9 +1000,21 @@ export class PostgresAthleteMasterdataRepository {
       )
     ).map((row) => trainerGroupMembershipFromRow(row, normalizedOrganizationId));
 
+    const athleteContacts = (
+      await this.#client.unsafe(
+        `SELECT id, organization_id, athlete_id, contact_name, relationship,
+                phone, is_emergency, priority, notes
+         FROM appbasis_athlete_contact
+         WHERE organization_id = $1
+         ORDER BY athlete_id ASC, priority ASC, contact_name ASC, id ASC`,
+        [normalizedOrganizationId],
+      )
+    ).map((row) => athleteContactFromRow(row, normalizedOrganizationId));
+
     return Object.freeze({
       trainingGroups: Object.freeze(trainingGroups),
       athletes: Object.freeze(athletes),
+      athleteContacts: Object.freeze(athleteContacts),
       trainers: Object.freeze(trainers),
       athleteGroupMemberships: Object.freeze(athleteGroupMemberships),
       trainerGroupMemberships: Object.freeze(trainerGroupMemberships),
@@ -1011,6 +1171,29 @@ function athleteFromRow(
     birthYear: rowNullableInteger(row, 'birth_year'),
     notes: rowNullableString(row, 'notes'),
     isActive: rowBoolean(row, 'is_active'),
+  };
+}
+
+function athleteContactFromRow(
+  row: Record<string, unknown>,
+  expectedOrganizationId: string,
+  expectedAthleteId?: string,
+): AthleteContact {
+  const organizationId = rowOrganization(row, expectedOrganizationId);
+  const athleteId = rowString(row, 'athlete_id');
+  if (expectedAthleteId !== undefined && athleteId !== expectedAthleteId) {
+    invalidRow();
+  }
+  return {
+    id: rowString(row, 'id'),
+    organizationId,
+    athleteId,
+    contactName: rowString(row, 'contact_name'),
+    relationship: rowNullableString(row, 'relationship'),
+    phone: rowString(row, 'phone'),
+    isEmergency: rowBoolean(row, 'is_emergency'),
+    priority: rowInteger(row, 'priority'),
+    notes: rowNullableString(row, 'notes'),
   };
 }
 

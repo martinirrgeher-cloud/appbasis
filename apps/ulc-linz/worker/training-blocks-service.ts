@@ -13,6 +13,7 @@ import {
   TrainingBlockInactiveError,
   TrainingBlockValidationError,
   type CreateTrainingBlockDraftInput,
+  type DuplicateTrainingBlockInput,
   type RecordTrainingBlockUsageInput,
   type TrainingBlockExerciseDraft,
   type TrainingBlockOverviewItem,
@@ -50,7 +51,7 @@ export class UlcTrainingBlockReferenceError extends Error {
   ) {
     super(
       referenceType === "audience"
-        ? "Training block requires one active ULC training group."
+        ? "Training block references an unavailable ULC training group."
         : "Training block references an unavailable exercise.",
     );
     this.name = "UlcTrainingBlockReferenceError";
@@ -118,6 +119,11 @@ export interface UlcTrainingBlockService {
     organizationId: string,
     input: CreateTrainingBlockDraftInput,
   ): Promise<TrainingBlockSnapshot>;
+  duplicate(
+    organizationId: string,
+    blockId: string,
+    input?: DuplicateTrainingBlockInput,
+  ): Promise<TrainingBlockSnapshot | undefined>;
   update(
     organizationId: string,
     blockId: string,
@@ -129,6 +135,11 @@ export interface UlcTrainingBlockService {
     blockId: string,
     expectedRevision: number,
   ): Promise<TrainingBlockSnapshot | undefined>;
+  deleteUnused(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+  ): ReturnType<TrainingBlockService["deleteUnused"]>;
   listRevisions(
     organizationId: string,
     blockId: string,
@@ -204,25 +215,27 @@ export function createUlcTrainingBlockService({
     input: CreateTrainingBlockDraftInput | UpdateTrainingBlockDraftInput,
   ): Promise<void> {
     const draft = normalizeTrainingBlockDraft(input);
-    if (draft.audienceId === null) {
-      throw new UlcTrainingBlockReferenceError("audience", null);
-    }
 
     const [snapshot, catalogItems] = await Promise.all([
       masterdata.readOrganizationSnapshot(organizationId),
       exerciseCatalog.listItems(organizationId),
     ]);
-    const audience = snapshot.trainingGroups.find(
-      (group) =>
-        group.id === draft.audienceId &&
-        group.organizationId === organizationId &&
-        group.isActive === true,
+    const activeAudienceIds = new Set(
+      snapshot.trainingGroups
+        .filter(
+          (group) =>
+            group.organizationId === organizationId &&
+            group.isActive === true,
+        )
+        .map((group) => group.id),
     );
-    if (audience === undefined) {
-      throw new UlcTrainingBlockReferenceError(
-        "audience",
-        draft.audienceId,
-      );
+    for (const audienceId of draft.audienceIds) {
+      if (!activeAudienceIds.has(audienceId)) {
+        throw new UlcTrainingBlockReferenceError(
+          "audience",
+          audienceId,
+        );
+      }
     }
 
     const byId = new Map(
@@ -295,6 +308,29 @@ export function createUlcTrainingBlockService({
       await assertReferences(organizationId, input);
       return blocks.create(organizationId, input);
     },
+    async duplicate(
+      organizationId: string,
+      blockId: string,
+      input: DuplicateTrainingBlockInput = {},
+    ) {
+      const source = await blocks.findCurrent(organizationId, blockId);
+      if (source === undefined) return undefined;
+      await assertReferences(organizationId, {
+        name: input.name ?? source.revision.name,
+        audienceIds: source.revision.audienceIds,
+        durationMinutes: source.revision.durationMinutes,
+        note: source.revision.note,
+        exercises: source.revision.exercises.map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          note: exercise.note,
+          parameterOverrides: exercise.parameterOverrides.map((override) => ({
+            key: override.key,
+            value: override.value,
+          })),
+        })),
+      });
+      return blocks.duplicate(organizationId, blockId, input);
+    },
     async update(
       organizationId: string,
       blockId: string,
@@ -321,6 +357,13 @@ export function createUlcTrainingBlockService({
       expectedRevision: number,
     ) {
       return blocks.deactivate(organizationId, blockId, expectedRevision);
+    },
+    deleteUnused(
+      organizationId: string,
+      blockId: string,
+      expectedRevision: number,
+    ) {
+      return blocks.deleteUnused(organizationId, blockId, expectedRevision);
     },
     listRevisions(organizationId: string, blockId: string) {
       return blocks.listRevisions(organizationId, blockId);

@@ -155,28 +155,48 @@ describe("ULC training block adapter", () => {
     });
   });
 
-  it("requires exactly one active same-organization training group", async () => {
-    const { blocks, service } = createService();
+  it("allows club-wide and multiple active groups but rejects unavailable groups", async () => {
+    const secondActiveGroup: TrainingGroup = Object.freeze({
+      ...ACTIVE_GROUP,
+      id: "group-second",
+      name: "U18",
+      shortName: "U18",
+      sortOrder: 20,
+    });
+    const { service } = createService({
+      groups: [ACTIVE_GROUP, secondActiveGroup, INACTIVE_GROUP],
+    });
 
     await expect(
       service.create("org-1", {
-        name: "No group",
-        audienceId: null,
+        name: "Vereinsweit",
+        audienceIds: [],
       }),
-    ).rejects.toMatchObject({
-      name: "UlcTrainingBlockReferenceError",
-      referenceType: "audience",
-      referenceId: null,
+    ).resolves.toMatchObject({
+      revision: {
+        audienceId: null,
+        audienceIds: [],
+      },
+    });
+
+    await expect(
+      service.create("org-1", {
+        name: "Mehrgruppen",
+        audienceIds: ["group-active", "group-second"],
+      }),
+    ).resolves.toMatchObject({
+      revision: {
+        audienceId: "group-active",
+        audienceIds: ["group-active", "group-second"],
+      },
     });
 
     await expect(
       service.create("org-1", {
         name: "Inactive",
-        audienceId: "group-inactive",
+        audienceIds: ["group-inactive"],
       }),
     ).rejects.toBeInstanceOf(UlcTrainingBlockReferenceError);
-
-    await expect(blocks.list("org-1")).resolves.toEqual([]);
   });
 
   it("rejects missing, inactive and foreign exercises before persistence", async () => {

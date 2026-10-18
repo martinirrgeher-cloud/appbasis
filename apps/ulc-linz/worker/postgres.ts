@@ -103,6 +103,9 @@ export interface GeneratedPostgresApplicationRuntime {
     | "readOrganizationSnapshot"
     | "createTrainingGroup"
     | "createAthlete"
+    | "createAthleteContact"
+    | "updateAthleteContact"
+    | "deleteAthleteContact"
     | "createTrainer"
     | "updateTrainingGroup"
     | "updateAthlete"
@@ -263,6 +266,45 @@ export async function createGeneratedPostgresApplicationRuntime(
         input: Parameters<PostgresAthleteMasterdataRepository["createAthlete"]>[1],
       ) {
         return athleteMasterdataRepository.createAthlete(organizationId, input);
+      },
+      createAthleteContact(
+        organizationId: string,
+        athleteId: string,
+        input: Parameters<
+          PostgresAthleteMasterdataRepository["createAthleteContact"]
+        >[2],
+      ) {
+        return athleteMasterdataRepository.createAthleteContact(
+          organizationId,
+          athleteId,
+          input,
+        );
+      },
+      updateAthleteContact(
+        organizationId: string,
+        athleteId: string,
+        contactId: string,
+        input: Parameters<
+          PostgresAthleteMasterdataRepository["updateAthleteContact"]
+        >[3],
+      ) {
+        return athleteMasterdataRepository.updateAthleteContact(
+          organizationId,
+          athleteId,
+          contactId,
+          input,
+        );
+      },
+      deleteAthleteContact(
+        organizationId: string,
+        athleteId: string,
+        contactId: string,
+      ) {
+        return athleteMasterdataRepository.deleteAthleteContact(
+          organizationId,
+          athleteId,
+          contactId,
+        );
       },
       createTrainer(
         organizationId: string,

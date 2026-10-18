@@ -47,8 +47,9 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                       <label class="training-block-wide">Name
                         <input id="training-block-name" minlength="1" maxlength="120" />
                       </label>
-                      <label>Trainingsgruppe
-                        <select id="training-block-audience"></select>
+                      <label>Trainingsgruppen
+                        <select id="training-block-audience" multiple size="4"></select>
+                        <small>Keine Auswahl = vereinsweit.</small>
                       </label>
                       <label>Dauer (Min.)
                         <input id="training-block-duration" type="number" min="1" max="2147483647" step="1" inputmode="numeric" placeholder="Optional" />
@@ -92,7 +93,9 @@ export const ULC_TRAINING_BLOCKS_HTML = `
 
                 <footer class="training-block-footer">
                   <div class="training-block-footer__actions">
+                    <button class="button button--secondary" id="training-block-duplicate" type="button" hidden>Duplizieren</button>
                     <button class="button button--secondary" id="training-block-favorite" type="button" hidden>☆ Favorit</button>
+                    <button class="button button--danger" id="training-block-delete-unused" type="button" hidden>Unbenutzten Block löschen</button>
                     <button class="button button--danger" id="training-block-deactivate" type="button" hidden>Deaktivieren</button>
                   </div>
                   <div class="training-block-footer__meta">
@@ -350,8 +353,10 @@ const trainingBlockElements = Object.freeze({
   compare: document.querySelector("#training-block-compare"),
   revisionPreview: document.querySelector("#training-block-revision-preview"),
   comparison: document.querySelector("#training-block-comparison"),
+  duplicate: document.querySelector("#training-block-duplicate"),
   favorite: document.querySelector("#training-block-favorite"),
   usageInfo: document.querySelector("#training-block-usage-info"),
+  deleteUnused: document.querySelector("#training-block-delete-unused"),
   deactivate: document.querySelector("#training-block-deactivate"),
   info: document.querySelector("#training-block-exercise-info"),
   infoTitle: document.querySelector("#training-block-info-title"),
@@ -373,6 +378,7 @@ let trainingBlockSavePending = false;
 let trainingBlockChangeVersion = 0;
 let trainingBlockCreateUncertain = false;
 let trainingBlockDeactivateBusy = false;
+let trainingBlockDuplicateBusy = false;
 let trainingBlockFavoriteBusy = false;
 let trainingBlockFavoriteRequestId = 0;
 let trainingBlockReloadBusy = false;
@@ -420,6 +426,9 @@ function isTrainingBlockRevision(value) {
     typeof value.name !== "string" ||
     value.name.length < 1 ||
     (value.audienceId !== null && typeof value.audienceId !== "string") ||
+    !Array.isArray(value.audienceIds) ||
+    !value.audienceIds.every((id) => typeof id === "string" && id.length > 0) ||
+    (value.audienceIds[0] ?? null) !== value.audienceId ||
     (value.durationMinutes !== null &&
       (!Number.isSafeInteger(value.durationMinutes) || value.durationMinutes < 1)) ||
     (value.note !== null && typeof value.note !== "string") ||
@@ -476,6 +485,8 @@ async function bootstrapTrainingBlocks() {
       features?.revisionComparison !== true ||
       features?.favorites !== true ||
       features?.usageSummary !== true ||
+      features?.duplicate !== true ||
+      features?.multipleAudiences !== true ||
       payload?.access?.view !== true ||
       typeof payload?.access?.edit !== "boolean" ||
       !Array.isArray(blocks) ||
@@ -565,8 +576,7 @@ function refreshTrainingBlockControls() {
     trainingBlockElements.newButton.disabled =
       !trainingBlocksCanEdit ||
       trainingBlockDeactivateBusy ||
-      trainingBlockReloadBusy ||
-      trainingBlockAudiences.length === 0;
+      trainingBlockReloadBusy;
   }
 }
 
@@ -576,6 +586,11 @@ function trainingBlockAudienceLabel(id) {
   return audience.shortName
     ? audience.name + " (" + audience.shortName + ")"
     : audience.name;
+}
+
+function trainingBlockAudienceSetLabel(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return "Vereinsweit";
+  return ids.map(trainingBlockAudienceLabel).join(", ");
 }
 
 function trainingBlockExerciseItem(id) {
@@ -597,7 +612,7 @@ function renderTrainingBlocks() {
     if (!query) return true;
     return (
       block.revision.name.toLocaleLowerCase("de").includes(query) ||
-      trainingBlockAudienceLabel(block.revision.audienceId)
+      trainingBlockAudienceSetLabel(block.revision.audienceIds)
         .toLocaleLowerCase("de")
         .includes(query)
     );
@@ -616,7 +631,7 @@ function renderTrainingBlocks() {
 
   const grouped = new Map();
   for (const block of filtered) {
-    const key = trainingBlockAudienceLabel(block.revision.audienceId);
+    const key = trainingBlockAudienceSetLabel(block.revision.audienceIds);
     const values = grouped.get(key) || [];
     values.push(block);
     grouped.set(key, values);
@@ -686,7 +701,7 @@ function renderTrainingBlocks() {
 function trainingBlockDraftFromSnapshot(block) {
   return {
     name: block.revision.name,
-    audienceId: block.revision.audienceId || "",
+    audienceIds: block.revision.audienceIds.slice(),
     durationMinutes: block.revision.durationMinutes,
     note: block.revision.note || "",
     exercises: block.revision.exercises.map((exercise) => ({
@@ -704,6 +719,7 @@ function trainingBlockDraftFromSnapshot(block) {
 function newTrainingBlock() {
   if (
     trainingBlockDeactivateBusy ||
+    trainingBlockDuplicateBusy ||
     trainingBlockReloadBusy ||
     !trainingBlocksCanEdit ||
     trainingBlockAudiences.length === 0
@@ -720,8 +736,7 @@ function newTrainingBlock() {
   trainingBlockSelected = null;
   trainingBlockDraft = {
     name: "",
-    audienceId:
-      trainingBlockAudiences.length === 1 ? trainingBlockAudiences[0].id : "",
+    audienceIds: [],
     durationMinutes: null,
     note: "",
     exercises: [],
@@ -841,6 +856,18 @@ function populateTrainingBlockEditor() {
 
 function refreshTrainingBlockParityMetadata() {
   const block = trainingBlockSelected;
+  if (trainingBlockElements.duplicate) {
+    trainingBlockElements.duplicate.hidden =
+      !block || !trainingBlocksCanEdit;
+    trainingBlockElements.duplicate.disabled =
+      !block ||
+      !trainingBlocksCanEdit ||
+      trainingBlockDuplicateBusy ||
+      trainingBlockFavoriteBusy ||
+      trainingBlockSaveBusy ||
+      trainingBlockDeactivateBusy ||
+      trainingBlockReloadBusy;
+  }
   if (trainingBlockElements.favorite) {
     trainingBlockElements.favorite.hidden = !block;
     trainingBlockElements.favorite.disabled =
@@ -848,6 +875,7 @@ function refreshTrainingBlockParityMetadata() {
       trainingBlockFavoriteBusy ||
       trainingBlockSaveBusy ||
       trainingBlockDeactivateBusy ||
+      trainingBlockDuplicateBusy ||
       trainingBlockReloadBusy;
     trainingBlockElements.favorite.textContent =
       block?.isFavorite ? "★ Favorit" : "☆ Favorit";
@@ -855,6 +883,21 @@ function refreshTrainingBlockParityMetadata() {
       "aria-pressed",
       block?.isFavorite ? "true" : "false",
     );
+  }
+  if (trainingBlockElements.deleteUnused) {
+    trainingBlockElements.deleteUnused.hidden =
+      !block ||
+      !trainingBlocksCanEdit ||
+      block.usageCount !== 0;
+    trainingBlockElements.deleteUnused.disabled =
+      !block ||
+      !trainingBlocksCanEdit ||
+      block.usageCount !== 0 ||
+      trainingBlockSaveBusy ||
+      trainingBlockFavoriteBusy ||
+      trainingBlockDeactivateBusy ||
+      trainingBlockDuplicateBusy ||
+      trainingBlockReloadBusy;
   }
   if (trainingBlockElements.usageInfo) {
     if (!block) {
@@ -875,6 +918,7 @@ function refreshTrainingBlockParityMetadata() {
 function refreshTrainingBlockEditorLock() {
   const locked =
     trainingBlockDeactivateBusy ||
+    trainingBlockDuplicateBusy ||
     trainingBlockReloadBusy ||
     trainingBlockFavoriteBusy;
   const editable =
@@ -892,6 +936,19 @@ function refreshTrainingBlockEditorLock() {
   }
   if (trainingBlockElements.close) {
     trainingBlockElements.close.disabled = locked;
+  }
+  if (trainingBlockElements.duplicate) {
+    trainingBlockElements.duplicate.disabled =
+      locked ||
+      !trainingBlocksCanEdit ||
+      !trainingBlockSelected;
+  }
+  if (trainingBlockElements.deleteUnused) {
+    trainingBlockElements.deleteUnused.disabled =
+      locked ||
+      !trainingBlocksCanEdit ||
+      !trainingBlockSelected ||
+      trainingBlockSelected.usageCount !== 0;
   }
   if (trainingBlockElements.deactivate) {
     trainingBlockElements.deactivate.disabled =
@@ -925,20 +982,18 @@ function renderTrainingBlockAudienceOptions() {
   const select = trainingBlockElements.audience;
   if (!select || !trainingBlockDraft) return;
   select.replaceChildren();
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Trainingsgruppe wählen";
-  select.append(placeholder);
+  const selected = new Set(trainingBlockDraft.audienceIds || []);
   for (const audience of trainingBlockAudiences) {
     const option = document.createElement("option");
     option.value = audience.id;
     option.textContent = trainingBlockAudienceLabel(audience.id);
+    option.selected = selected.has(audience.id);
     select.append(option);
   }
-  select.value = trainingBlockDraft.audienceId || "";
   select.disabled =
     !trainingBlocksCanEdit ||
     trainingBlockDeactivateBusy ||
+    trainingBlockDuplicateBusy ||
     trainingBlockReloadBusy ||
     trainingBlockSelected?.isActive === false;
 }
@@ -1154,7 +1209,11 @@ function markTrainingBlockDirty() {
 function syncTrainingBlockDraftFromFields() {
   if (!trainingBlockDraft) return;
   trainingBlockDraft.name = (trainingBlockElements.name?.value || "").trim();
-  trainingBlockDraft.audienceId = trainingBlockElements.audience?.value || "";
+  trainingBlockDraft.audienceIds = trainingBlockElements.audience
+    ? [...trainingBlockElements.audience.selectedOptions].map(
+        (option) => option.value,
+      )
+    : [];
   const duration = trainingBlockElements.duration?.value || "";
   trainingBlockDraft.durationMinutes =
     duration === "" ? null : Number(duration);
@@ -1177,7 +1236,7 @@ function trainingBlockDraftPayload() {
   if (!trainingBlockDraft) return null;
   return {
     name: trainingBlockDraft.name,
-    audienceId: trainingBlockDraft.audienceId || null,
+    audienceIds: trainingBlockDraft.audienceIds.slice(),
     durationMinutes: trainingBlockDraft.durationMinutes,
     note: trainingBlockDraft.note.trim() || null,
     exercises: trainingBlockDraft.exercises.map((exercise) => {
@@ -1306,8 +1365,11 @@ function trainingBlockDraftReady(payload) {
   return payload &&
     typeof payload.name === "string" &&
     payload.name.length >= 1 &&
-    typeof payload.audienceId === "string" &&
-    payload.audienceId.length > 0 &&
+    Array.isArray(payload.audienceIds) &&
+    payload.audienceIds.length <= 100 &&
+    payload.audienceIds.every(
+      (value) => typeof value === "string" && value.length > 0,
+    ) &&
     (payload.durationMinutes === null ||
       (Number.isSafeInteger(payload.durationMinutes) &&
         payload.durationMinutes >= 1 &&
@@ -1544,6 +1606,7 @@ function closeTrainingBlockEditor(force = false) {
   trainingBlockChangeVersion = 0;
   trainingBlockCreateUncertain = false;
   trainingBlockDeactivateBusy = false;
+  trainingBlockDuplicateBusy = false;
   trainingBlockReloadBusy = false;
   if (trainingBlockElements.editor) trainingBlockElements.editor.hidden = true;
   document.body.classList.remove("training-block-editor-open");
@@ -1854,6 +1917,169 @@ async function toggleTrainingBlockFavorite() {
   }
 }
 
+async function duplicateTrainingBlock() {
+  if (
+    trainingBlockDuplicateBusy ||
+    trainingBlockSaveBusy ||
+    trainingBlockFavoriteBusy ||
+    trainingBlockDeactivateBusy ||
+    trainingBlockReloadBusy ||
+    !trainingBlockSelected ||
+    !trainingBlocksCanEdit ||
+    trainingBlockConflict ||
+    trainingBlockCreateUncertain
+  ) return;
+
+  if (trainingBlockDirty) {
+    await saveTrainingBlock();
+    if (
+      trainingBlockDirty ||
+      trainingBlockSaveBusy ||
+      trainingBlockConflict ||
+      trainingBlockCreateUncertain
+    ) return;
+  }
+
+  const sourceId = trainingBlockSelected.id;
+  const copyName = trainingBlockSelected.revision.name + " – Kopie";
+  trainingBlockDuplicateBusy = true;
+  refreshTrainingBlockParityMetadata();
+  refreshTrainingBlockEditorLock();
+  showMessage(trainingBlockElements.editorMessage, "");
+  setTrainingBlockSaveState("saving", "Kopie wird angelegt …");
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/training-blocks/" +
+        encodeURIComponent(sourceId) +
+        "/duplicate",
+      {
+        method: "POST",
+        body: JSON.stringify({ name: copyName }),
+      },
+    );
+    if (!isTrainingBlockSnapshot(payload?.block)) {
+      throw new Error("INVALID_TRAINING_BLOCK_DUPLICATE");
+    }
+
+    invalidateTrainingBlockOverviewRefresh();
+    replaceTrainingBlockInList(payload.block);
+    trainingBlockSelected = payload.block;
+    trainingBlockDraft = trainingBlockDraftFromSnapshot(payload.block);
+    trainingBlockDirty = false;
+    trainingBlockConflict = false;
+    trainingBlockChangeVersion = 0;
+    trainingBlockCreateUncertain = false;
+    resetTrainingBlockHistory();
+    populateTrainingBlockEditor();
+    setTrainingBlockSaveState(
+      "saved",
+      "Kopie angelegt · Version " + String(payload.block.currentRevision),
+    );
+  } catch (error) {
+    setTrainingBlockSaveState("error", "Duplizieren fehlgeschlagen");
+    showMessage(
+      trainingBlockElements.editorMessage,
+      error?.status === 404
+        ? "Der Quellblock wurde nicht gefunden."
+        : error?.status === 400
+          ? "Der Block kann mit seinen aktuellen Referenzen nicht dupliziert werden."
+          : "Der Trainingsblock konnte nicht dupliziert werden.",
+    );
+  } finally {
+    trainingBlockDuplicateBusy = false;
+    refreshTrainingBlockParityMetadata();
+    refreshTrainingBlockEditorLock();
+  }
+}
+
+async function deleteUnusedTrainingBlock() {
+  if (
+    trainingBlockSaveBusy ||
+    trainingBlockFavoriteBusy ||
+    trainingBlockDeactivateBusy ||
+    trainingBlockDuplicateBusy ||
+    trainingBlockReloadBusy ||
+    !trainingBlockSelected ||
+    trainingBlockSelected.usageCount !== 0 ||
+    !trainingBlocksCanEdit ||
+    trainingBlockConflict ||
+    trainingBlockCreateUncertain
+  ) return;
+
+  if (trainingBlockDirty) {
+    await saveTrainingBlock();
+    if (
+      trainingBlockDirty ||
+      trainingBlockSaveBusy ||
+      trainingBlockConflict ||
+      trainingBlockCreateUncertain
+    ) return;
+  }
+
+  if (!window.confirm(
+    "Diesen unbenutzten Trainingsblock endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+  )) return;
+
+  const id = trainingBlockSelected.id;
+  const expectedRevision = trainingBlockSelected.currentRevision;
+  trainingBlockDeactivateBusy = true;
+  refreshTrainingBlockParityMetadata();
+  refreshTrainingBlockEditorLock();
+  setTrainingBlockSaveState("saving", "Löscht …");
+  showMessage(trainingBlockElements.editorMessage, "");
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/training-blocks/" +
+        encodeURIComponent(id) +
+        "/delete-unused",
+      {
+        method: "POST",
+        body: JSON.stringify({ expectedRevision }),
+      },
+    );
+    if (payload?.deleted !== true) {
+      throw new Error("INVALID_TRAINING_BLOCK_DELETE");
+    }
+    invalidateTrainingBlockOverviewRefresh();
+    trainingBlocks = trainingBlocks.filter((block) => block.id !== id);
+    trainingBlockDeactivateBusy = false;
+    closeTrainingBlockEditor(true);
+    renderTrainingBlocks();
+  } catch (error) {
+    if (error?.status === 409 && error?.code === "TRAINING_BLOCK_IN_USE") {
+      setTrainingBlockSaveState("error", "Bereits verwendet");
+      showMessage(
+        trainingBlockElements.editorMessage,
+        "Der Trainingsblock wurde inzwischen verwendet und kann deshalb nicht mehr gelöscht werden. Du kannst ihn stattdessen archivieren.",
+      );
+    } else if (error?.status === 409) {
+      trainingBlockConflict = true;
+      setTrainingBlockSaveState("conflict", "Konflikt – neuer Stand vorhanden");
+      if (trainingBlockElements.reload) trainingBlockElements.reload.hidden = false;
+      showMessage(
+        trainingBlockElements.editorMessage,
+        "Der Trainingsblock wurde inzwischen geändert. Bitte aktuellen Stand neu laden.",
+      );
+    } else {
+      setTrainingBlockSaveState("error", "Löschen fehlgeschlagen");
+      showMessage(
+        trainingBlockElements.editorMessage,
+        error?.status === 404
+          ? "Der Trainingsblock wurde nicht gefunden."
+          : "Der Trainingsblock konnte nicht gelöscht werden.",
+      );
+    }
+  } finally {
+    if (trainingBlockElements.editor && !trainingBlockElements.editor.hidden) {
+      trainingBlockDeactivateBusy = false;
+      refreshTrainingBlockParityMetadata();
+      refreshTrainingBlockEditorLock();
+    }
+  }
+}
+
 async function deactivateTrainingBlock() {
   if (
     trainingBlockSaveBusy ||
@@ -2048,8 +2274,8 @@ async function openTrainingBlockRevision(number) {
         String(revision.revision) +
         "\\n" +
         revision.name +
-        "\\nGruppe: " +
-        trainingBlockAudienceLabel(revision.audienceId) +
+        "\\nGruppen: " +
+        trainingBlockAudienceSetLabel(revision.audienceIds) +
         "\\nDauer: " +
         (revision.durationMinutes === null
           ? "—"
@@ -2149,7 +2375,9 @@ trainingBlockElements.retry?.addEventListener("click", retryTrainingBlockSave);
 trainingBlockElements.exerciseAdd?.addEventListener("click", addTrainingBlockExercise);
 trainingBlockElements.exercises?.addEventListener("click", handleTrainingBlockExerciseClick);
 trainingBlockElements.exercises?.addEventListener("input", handleTrainingBlockExerciseInput);
+trainingBlockElements.duplicate?.addEventListener("click", () => void duplicateTrainingBlock());
 trainingBlockElements.favorite?.addEventListener("click", () => void toggleTrainingBlockFavorite());
+trainingBlockElements.deleteUnused?.addEventListener("click", () => void deleteUnusedTrainingBlock());
 trainingBlockElements.deactivate?.addEventListener("click", () => void deactivateTrainingBlock());
 trainingBlockElements.historyLoad?.addEventListener("click", () => void loadTrainingBlockHistory());
 trainingBlockElements.compare?.addEventListener("click", () => void compareTrainingBlockRevisions());

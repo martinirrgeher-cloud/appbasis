@@ -34,6 +34,20 @@ export const ULC_TRAINING_PLANS_HTML = `
 
             <section class="training-plan-week" id="training-plan-week" aria-live="polite"></section>
 
+            <section class="card training-plan-overview-card">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Übersicht</p>
+                  <h2>Gruppenwoche</h2>
+                </div>
+                <label>Trainingsgruppe
+                  <select id="training-plan-overview-group"></select>
+                </label>
+              </div>
+              <p class="settings-note">Athleten zeilenweise, Wochentage spaltenweise. Ein Klick öffnet den Tagesplan.</p>
+              <div class="training-plan-overview" id="training-plan-overview" aria-live="polite"></div>
+            </section>
+
             <div class="training-plan-backdrop" id="training-plan-editor" hidden>
               <section class="training-plan-dialog" role="dialog" aria-modal="true" aria-labelledby="training-plan-editor-title">
                 <header class="training-plan-header">
@@ -222,6 +236,76 @@ export const ULC_TRAINING_PLANS_CSS = `
 .training-plan-day[data-has-plan="false"] .training-plan-day__summary {
   color: var(--secondary);
 }
+.training-plan-overview-card {
+  margin-top: 14px;
+  padding: 14px;
+}
+.training-plan-overview-card .section-heading {
+  align-items: end;
+}
+.training-plan-overview-card .section-heading label {
+  min-width: min(100%, 240px);
+}
+.training-plan-overview {
+  overflow-x: auto;
+  margin-top: 10px;
+}
+.training-plan-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.25fr) repeat(7, minmax(92px, 1fr));
+  min-width: 800px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--card);
+}
+.training-plan-overview-grid > * {
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.training-plan-overview-grid > :nth-child(8n) { border-right: 0; }
+.training-plan-overview-head,
+.training-plan-overview-athlete {
+  padding: 8px 10px;
+}
+.training-plan-overview-head {
+  background: var(--muted);
+  color: var(--secondary);
+  font-size: .75rem;
+  font-weight: 700;
+}
+.training-plan-overview-athlete {
+  display: flex;
+  align-items: center;
+  font-size: .82rem;
+  font-weight: 700;
+}
+.training-plan-overview-cell {
+  min-height: 58px;
+  border: 0;
+  padding: 7px 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.training-plan-overview-cell[data-has-plan="true"] {
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+.training-plan-overview-cell strong,
+.training-plan-overview-cell span {
+  display: block;
+}
+.training-plan-overview-cell strong { font-size: .78rem; }
+.training-plan-overview-cell span {
+  margin-top: 2px;
+  color: var(--secondary);
+  font-size: .7rem;
+}
+.training-plan-overview-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .training-plan-backdrop {
   position: fixed;
   inset: 0;
@@ -374,6 +458,8 @@ const trainingPlanElements = Object.freeze({
   weekNext: document.querySelector("#training-plan-week-next"),
   weekLabel: document.querySelector("#training-plan-week-label"),
   week: document.querySelector("#training-plan-week"),
+  overviewGroup: document.querySelector("#training-plan-overview-group"),
+  overview: document.querySelector("#training-plan-overview"),
   editor: document.querySelector("#training-plan-editor"),
   editorTitle: document.querySelector("#training-plan-editor-title"),
   editorMessage: document.querySelector("#training-plan-editor-message"),
@@ -400,6 +486,10 @@ const trainingPlanElements = Object.freeze({
 let trainingPlansReady = false;
 let trainingPlansCanEdit = false;
 let trainingPlanSubjects = [];
+let trainingPlanOverviewGroups = [];
+let trainingPlanSelectedOverviewGroupId = "";
+let trainingPlanOverview = null;
+let trainingPlanOverviewLoading = false;
 let trainingPlanBlockTemplates = [];
 let trainingPlanSelectedSubjectId = "";
 let trainingPlanWeekStart = trainingPlanMonday(new Date());
@@ -431,6 +521,52 @@ function isTrainingPlanSubject(value) {
     typeof value.firstName === "string" &&
     typeof value.lastName === "string" &&
     typeof value.displayName === "string";
+}
+
+function isTrainingPlanOverviewGroup(value) {
+  return value !== null &&
+    typeof value === "object" &&
+    typeof value.id === "string" &&
+    value.id.length > 0 &&
+    typeof value.name === "string" &&
+    value.name.length > 0 &&
+    (value.shortName === null || typeof value.shortName === "string");
+}
+
+function isTrainingPlanOverview(value) {
+  return value !== null &&
+    typeof value === "object" &&
+    isTrainingPlanOverviewGroup(value.group) &&
+    typeof value.weekStart === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value.weekStart) &&
+    typeof value.weekEnd === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value.weekEnd) &&
+    Array.isArray(value.dates) &&
+    value.dates.length === 7 &&
+    value.dates.every(
+      (date) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date),
+    ) &&
+    Array.isArray(value.rows) &&
+    value.rows.every(
+      (row) =>
+        row !== null &&
+        typeof row === "object" &&
+        isTrainingPlanSubject(row.subject) &&
+        Array.isArray(row.cells) &&
+        row.cells.length === 7 &&
+        row.cells.every(
+          (cell) =>
+            cell !== null &&
+            typeof cell === "object" &&
+            typeof cell.planDate === "string" &&
+            /^\d{4}-\d{2}-\d{2}$/.test(cell.planDate) &&
+            (cell.planId === null || typeof cell.planId === "string") &&
+            Number.isSafeInteger(cell.durationMinutes) &&
+            cell.durationMinutes >= 0 &&
+            Number.isSafeInteger(cell.exerciseCount) &&
+            cell.exerciseCount >= 0,
+        ),
+    );
 }
 
 function isTrainingPlanBlockTemplateSummary(value) {
@@ -593,6 +729,10 @@ async function bootstrapTrainingPlans() {
   trainingPlansReady = false;
   trainingPlansCanEdit = false;
   trainingPlanSubjects = [];
+  trainingPlanOverviewGroups = [];
+  trainingPlanSelectedOverviewGroupId = "";
+  trainingPlanOverview = null;
+  trainingPlanOverviewLoading = false;
   trainingPlanBlockTemplates = [];
   trainingPlanSaveBackBusy = false;
   trainingPlanSaveBackItemId = null;
@@ -616,12 +756,15 @@ async function bootstrapTrainingPlans() {
       features?.optimisticConcurrency !== true ||
       features?.attendanceSummary !== true ||
       features?.attendanceFilter !== true ||
+      features?.groupWeekOverview !== true ||
       features?.blockTemplateAdoption !== true ||
       features?.blockTemplateSaveBack !== true ||
       payload?.access?.view !== true ||
       typeof payload?.access?.edit !== "boolean" ||
       !Array.isArray(payload?.subjects) ||
       !payload.subjects.every(isTrainingPlanSubject) ||
+      !Array.isArray(payload?.overviewGroups) ||
+      !payload.overviewGroups.every(isTrainingPlanOverviewGroup) ||
       !Array.isArray(payload?.blockTemplates) ||
       !payload.blockTemplates.every(isTrainingPlanBlockTemplateSummary)
     ) {
@@ -631,6 +774,15 @@ async function bootstrapTrainingPlans() {
     trainingPlansReady = true;
     trainingPlansCanEdit = payload.access.edit;
     trainingPlanSubjects = payload.subjects.slice();
+    trainingPlanOverviewGroups = payload.overviewGroups.slice();
+    if (
+      !trainingPlanOverviewGroups.some(
+        (group) => group.id === trainingPlanSelectedOverviewGroupId,
+      )
+    ) {
+      trainingPlanSelectedOverviewGroupId =
+        trainingPlanOverviewGroups[0]?.id || "";
+    }
     trainingPlanBlockTemplates = payload.blockTemplates.slice();
     if (
       !trainingPlanSubjects.some(
@@ -640,18 +792,28 @@ async function bootstrapTrainingPlans() {
       trainingPlanSelectedSubjectId = trainingPlanSubjects[0]?.id || "";
     }
     renderTrainingPlanSubjects();
+    renderTrainingPlanOverviewGroups();
     renderTrainingPlanBlockTemplates();
-    await loadTrainingPlanWeek();
+    await Promise.all([
+      loadTrainingPlanWeek(),
+      loadTrainingPlanOverview(),
+    ]);
   } catch (error) {
     trainingPlansReady = false;
     trainingPlansCanEdit = false;
+    trainingPlanOverviewGroups = [];
+    trainingPlanSelectedOverviewGroupId = "";
+    trainingPlanOverview = null;
+    trainingPlanOverviewLoading = false;
     trainingPlanBlockTemplates = [];
     trainingPlanWeekPlans = [];
     trainingPlanWeekAttendance = [];
     trainingPlanWeekLoaded = false;
     renderTrainingPlanSubjects();
+    renderTrainingPlanOverviewGroups();
     renderTrainingPlanBlockTemplates();
     renderTrainingPlanWeek();
+    renderTrainingPlanOverview();
     showMessage(
       trainingPlanElements.message,
       error?.status === 403
@@ -665,14 +827,23 @@ async function bootstrapTrainingPlans() {
 function prepareTrainingPlansView() {
   if (!trainingPlansReady) return;
   renderTrainingPlanSubjects();
+  renderTrainingPlanOverviewGroups();
   renderTrainingPlanBlockTemplates();
   renderTrainingPlanWeek();
+  renderTrainingPlanOverview();
   if (
     trainingPlanSelectedSubjectId &&
     !trainingPlanWeekLoaded &&
     !trainingPlanWeekLoading
   ) {
     void loadTrainingPlanWeek();
+  }
+  if (
+    trainingPlanSelectedOverviewGroupId &&
+    trainingPlanOverview === null &&
+    !trainingPlanOverviewLoading
+  ) {
+    void loadTrainingPlanOverview();
   }
 }
 
@@ -699,6 +870,12 @@ function refreshTrainingPlanControls() {
   if (trainingPlanElements.weekPrev) trainingPlanElements.weekPrev.disabled = disabled;
   if (trainingPlanElements.weekToday) trainingPlanElements.weekToday.disabled = disabled;
   if (trainingPlanElements.weekNext) trainingPlanElements.weekNext.disabled = disabled;
+  if (trainingPlanElements.overviewGroup) {
+    trainingPlanElements.overviewGroup.disabled =
+      !trainingPlansReady ||
+      trainingPlanOverviewGroups.length === 0 ||
+      trainingPlanOverviewLoading;
+  }
   refreshTrainingPlanTemplateControls();
 }
 
@@ -727,6 +904,186 @@ function renderTrainingPlanSubjects() {
   ) {
     select.value = trainingPlanSelectedSubjectId;
   }
+}
+
+function renderTrainingPlanOverviewGroups() {
+  const select = trainingPlanElements.overviewGroup;
+  if (!select) return;
+  select.replaceChildren();
+
+  if (trainingPlanOverviewGroups.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Keine aktive Trainingsgruppe";
+    select.append(option);
+    select.value = "";
+    return;
+  }
+
+  for (const group of trainingPlanOverviewGroups) {
+    const option = document.createElement("option");
+    option.value = group.id;
+    option.textContent = group.shortName
+      ? group.name + " (" + group.shortName + ")"
+      : group.name;
+    select.append(option);
+  }
+  select.value = trainingPlanSelectedOverviewGroupId;
+}
+
+async function loadTrainingPlanOverview() {
+  if (
+    !trainingPlansReady ||
+    trainingPlanOverviewLoading ||
+    !trainingPlanSelectedOverviewGroupId
+  ) {
+    renderTrainingPlanOverview();
+    return false;
+  }
+
+  const groupId = trainingPlanSelectedOverviewGroupId;
+  const weekStart = trainingPlanWeekStart;
+  trainingPlanOverviewLoading = true;
+  trainingPlanOverview = null;
+  refreshTrainingPlanControls();
+  renderTrainingPlanOverview();
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/training-plans/overview?groupId=" +
+        encodeURIComponent(groupId) +
+        "&weekStart=" +
+        encodeURIComponent(weekStart),
+    );
+    if (
+      !isTrainingPlanOverview(payload?.overview) ||
+      payload.overview.group.id !== groupId ||
+      payload.overview.weekStart !== weekStart
+    ) {
+      throw new Error("INVALID_TRAINING_PLAN_OVERVIEW");
+    }
+    trainingPlanOverview = payload.overview;
+    return true;
+  } catch (error) {
+    showMessage(
+      trainingPlanElements.message,
+      error?.status === 400
+        ? "Die Gruppenübersicht ist für diese Woche nicht verfügbar."
+        : "Die Gruppenübersicht konnte nicht geladen werden.",
+    );
+    return false;
+  } finally {
+    trainingPlanOverviewLoading = false;
+    refreshTrainingPlanControls();
+    renderTrainingPlanOverview();
+  }
+}
+
+function renderTrainingPlanOverview() {
+  const container = trainingPlanElements.overview;
+  if (!container) return;
+  container.replaceChildren();
+
+  if (!trainingPlanSelectedOverviewGroupId) {
+    const empty = document.createElement("p");
+    empty.className = "settings-note";
+    empty.textContent = "Für die Übersicht ist keine aktive Trainingsgruppe verfügbar.";
+    container.append(empty);
+    return;
+  }
+
+  if (trainingPlanOverviewLoading) {
+    const loading = document.createElement("p");
+    loading.className = "settings-note";
+    loading.textContent = "Gruppenübersicht wird geladen …";
+    container.append(loading);
+    return;
+  }
+
+  if (!trainingPlanOverview) {
+    const empty = document.createElement("p");
+    empty.className = "settings-note";
+    empty.textContent = "Gruppenübersicht derzeit nicht verfügbar.";
+    container.append(empty);
+    return;
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "training-plan-overview-grid";
+
+  const athleteHead = document.createElement("div");
+  athleteHead.className = "training-plan-overview-head";
+  athleteHead.textContent = "Athlet";
+  grid.append(athleteHead);
+
+  for (const date of trainingPlanOverview.dates) {
+    const head = document.createElement("div");
+    head.className = "training-plan-overview-head";
+    head.textContent =
+      trainingPlanDayLabel(date) + " " + trainingPlanShortDate(date);
+    grid.append(head);
+  }
+
+  if (trainingPlanOverview.rows.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "training-plan-overview-athlete";
+    empty.style.gridColumn = "1 / -1";
+    empty.textContent = "Keine aktiven Athleten in dieser Gruppe.";
+    grid.append(empty);
+  } else {
+    for (const row of trainingPlanOverview.rows) {
+      const athlete = document.createElement("div");
+      athlete.className = "training-plan-overview-athlete";
+      athlete.textContent = row.subject.displayName;
+      grid.append(athlete);
+
+      for (const cell of row.cells) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "training-plan-overview-cell";
+        button.dataset.trainingPlanOverviewSubject = row.subject.id;
+        button.dataset.trainingPlanOverviewDate = cell.planDate;
+        button.dataset.hasPlan = cell.planId ? "true" : "false";
+
+        const title = document.createElement("strong");
+        title.textContent = cell.planId
+          ? cell.durationMinutes > 0
+            ? String(cell.durationMinutes) + " Min."
+            : "Plan"
+          : trainingPlansCanEdit
+            ? "＋ Plan"
+            : "—";
+
+        const detail = document.createElement("span");
+        detail.textContent = cell.planId
+          ? String(cell.exerciseCount) +
+            " Übung" +
+            (cell.exerciseCount === 1 ? "" : "en")
+          : "Kein Eintrag";
+
+        button.append(title, detail);
+        grid.append(button);
+      }
+    }
+  }
+
+  container.append(grid);
+}
+
+async function openTrainingPlanFromOverview(subjectId, date) {
+  if (!closeTrainingPlanEditor(false)) return;
+  if (
+    !trainingPlanSubjects.some((subject) => subject.id === subjectId)
+  ) return;
+
+  trainingPlanSelectedSubjectId = subjectId;
+  if (trainingPlanElements.subject) {
+    trainingPlanElements.subject.value = subjectId;
+  }
+  trainingPlanWeekPlans = [];
+  trainingPlanWeekAttendance = [];
+  const loaded = await loadTrainingPlanWeek();
+  if (loaded) openTrainingPlanEditor(date);
 }
 
 function renderTrainingPlanBlockTemplates() {
@@ -2165,6 +2522,22 @@ function trainingPlanDateLabel(value) {
   });
 }
 
+trainingPlanElements.overviewGroup?.addEventListener("change", () => {
+  trainingPlanSelectedOverviewGroupId =
+    trainingPlanElements.overviewGroup?.value || "";
+  trainingPlanOverview = null;
+  void loadTrainingPlanOverview();
+});
+trainingPlanElements.overview?.addEventListener("click", (event) => {
+  const control = event.target?.closest?.(
+    "[data-training-plan-overview-subject]",
+  );
+  if (!control) return;
+  void openTrainingPlanFromOverview(
+    control.dataset.trainingPlanOverviewSubject || "",
+    control.dataset.trainingPlanOverviewDate || "",
+  );
+});
 trainingPlanElements.subject?.addEventListener("change", () => {
   const nextSubjectId = trainingPlanElements.subject?.value || "";
   if (!closeTrainingPlanEditor(false)) {
@@ -2176,28 +2549,44 @@ trainingPlanElements.subject?.addEventListener("change", () => {
   trainingPlanSelectedSubjectId = nextSubjectId;
   trainingPlanWeekPlans = [];
   trainingPlanWeekAttendance = [];
-  void loadTrainingPlanWeek();
+  trainingPlanOverview = null;
+  void Promise.all([
+    loadTrainingPlanWeek(),
+    loadTrainingPlanOverview(),
+  ]);
 });
 trainingPlanElements.weekPrev?.addEventListener("click", () => {
   if (!closeTrainingPlanEditor(false)) return;
   trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, -7);
   trainingPlanWeekPlans = [];
   trainingPlanWeekAttendance = [];
-  void loadTrainingPlanWeek();
+  trainingPlanOverview = null;
+  void Promise.all([
+    loadTrainingPlanWeek(),
+    loadTrainingPlanOverview(),
+  ]);
 });
 trainingPlanElements.weekToday?.addEventListener("click", () => {
   if (!closeTrainingPlanEditor(false)) return;
   trainingPlanWeekStart = trainingPlanMonday(new Date());
   trainingPlanWeekPlans = [];
   trainingPlanWeekAttendance = [];
-  void loadTrainingPlanWeek();
+  trainingPlanOverview = null;
+  void Promise.all([
+    loadTrainingPlanWeek(),
+    loadTrainingPlanOverview(),
+  ]);
 });
 trainingPlanElements.weekNext?.addEventListener("click", () => {
   if (!closeTrainingPlanEditor(false)) return;
   trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, 7);
   trainingPlanWeekPlans = [];
   trainingPlanWeekAttendance = [];
-  void loadTrainingPlanWeek();
+  trainingPlanOverview = null;
+  void Promise.all([
+    loadTrainingPlanWeek(),
+    loadTrainingPlanOverview(),
+  ]);
 });
 trainingPlanElements.attendanceFilter?.addEventListener("change", () => {
   const value = trainingPlanElements.attendanceFilter?.value || "all";

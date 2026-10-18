@@ -17,6 +17,14 @@ const parityMigration = readFileSync(
   "utf8",
 );
 
+const multiAudienceMigration = readFileSync(
+  new URL(
+    "../migrations/0002_appbasis_training_block_multi_audience.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
 describe("training-blocks schema", () => {
   it("keeps the current block revision referentially valid at transaction commit", () => {
     expect(migration).toContain(
@@ -51,6 +59,22 @@ describe("training-blocks schema", () => {
     );
     expect(migration).toContain(
       "UNIQUE (\n    organization_id,\n    block_id,\n    revision,\n    item_id,\n    sort_order\n  )",
+    );
+  });
+
+  it("adds a backward-compatible audience set for club-wide and multi-group blocks", () => {
+    expect(multiAudienceMigration).toContain("ADD COLUMN audience_ids text[]");
+    expect(multiAudienceMigration).not.toContain(
+      "UPDATE appbasis_training_block_revision",
+    );
+    expect(multiAudienceMigration).toContain(
+      "audience_ids IS NULL OR",
+    );
+    expect(multiAudienceMigration).toContain(
+      "audience_id IS NOT DISTINCT FROM audience_ids[1]",
+    );
+    expect(multiAudienceMigration).not.toContain(
+      "REFERENCES appbasis_training_group",
     );
   });
 

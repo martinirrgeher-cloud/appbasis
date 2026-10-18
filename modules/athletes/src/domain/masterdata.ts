@@ -51,6 +51,31 @@ export interface UpdateAthleteInput {
   readonly notes: string | null;
 }
 
+export interface AthleteContact {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly athleteId: string;
+  readonly contactName: string;
+  readonly relationship: string | null;
+  readonly phone: string;
+  readonly isEmergency: boolean;
+  readonly priority: number;
+  readonly notes: string | null;
+}
+
+export interface AthleteContactInput {
+  readonly contactName: string;
+  readonly relationship?: string | null;
+  readonly phone: string;
+  readonly isEmergency?: boolean;
+  readonly priority?: number;
+  readonly notes?: string | null;
+}
+
+export interface AthleteContactContext extends EntityContext {
+  readonly athleteId: string;
+}
+
 export interface Trainer {
   readonly id: string;
   readonly organizationId: string;
@@ -149,6 +174,51 @@ export function createAthlete(
         : integerInRange(input.birthYear, 'Athlete birth year', 1900, 2100),
     notes: optionalText(input.notes, 'Athlete notes', 3000),
     isActive: true,
+  };
+}
+
+export function createAthleteContact(
+  input: AthleteContactInput,
+  context: AthleteContactContext,
+): AthleteContact {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    throw new MasterdataValidationError('Athlete contact input is invalid.');
+  }
+  if (
+    input.isEmergency !== undefined &&
+    typeof input.isEmergency !== 'boolean'
+  ) {
+    throw new MasterdataValidationError(
+      'Athlete contact emergency flag must be boolean.',
+    );
+  }
+  return {
+    id: requiredIdentifier(context.id, 'Athlete contact id'),
+    organizationId: requiredIdentifier(
+      context.organizationId,
+      'Organization id',
+    ),
+    athleteId: requiredIdentifier(context.athleteId, 'Athlete id'),
+    contactName: requiredText(
+      input.contactName,
+      'Athlete contact name',
+      1,
+      120,
+    ),
+    relationship: optionalText(
+      input.relationship,
+      'Athlete contact relationship',
+      80,
+    ),
+    phone: requiredText(input.phone, 'Athlete contact phone', 3, 80),
+    isEmergency: input.isEmergency ?? true,
+    priority: integerInRange(
+      input.priority ?? 1,
+      'Athlete contact priority',
+      1,
+      1000,
+    ),
+    notes: optionalText(input.notes, 'Athlete contact notes', 3000),
   };
 }
 

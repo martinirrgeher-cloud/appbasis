@@ -2,6 +2,7 @@ import {
   assertTrainingBlockCreationInvariant,
   compareTrainingBlockSnapshots,
   type TrainingBlockDeactivateResult,
+  type TrainingBlockDeleteUnusedResult,
   type TrainingBlockRepository,
   type TrainingBlockRevision,
   type TrainingBlockRevisionAppendResult,
@@ -10,7 +11,12 @@ import {
   type TrainingBlockUsageSummary,
 } from "./repository";
 
-export type TrainingBlockSqlParameter = string | number | boolean | null;
+export type TrainingBlockSqlParameter =
+  | string
+  | number
+  | boolean
+  | readonly string[]
+  | null;
 
 export interface TrainingBlockPostgresQueryClient {
   unsafe(
@@ -192,6 +198,85 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
       const block = blocks[0];
       if (block === undefined) throw new Error("Training block disappeared after deactivation.");
       return Object.freeze({ status: "updated" as const, block });
+    });
+  }
+
+  async deleteUnused(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+  ): Promise<TrainingBlockDeleteUnusedResult> {
+    return this.#client.begin(async (transaction) => {
+      const rows = await transaction.unsafe(
+        `SELECT current_revision
+         FROM appbasis_training_block
+         WHERE organization_id = $1
+           AND id = $2
+         FOR UPDATE`,
+        [organizationId, blockId],
+      );
+      if (rows.length === 0) return Object.freeze({ status: "not-found" as const });
+      if (rows.length !== 1) {
+        throw new Error("Training block delete lock returned multiple rows.");
+      }
+      const currentRevision = requiredInteger(
+        rows[0]!.current_revision,
+        "current revision",
+      );
+      if (currentRevision !== expectedRevision) {
+        return Object.freeze({
+          status: "conflict" as const,
+          currentRevision,
+        });
+      }
+
+      const usage = await transaction.unsafe(
+        `SELECT 1 AS used
+         FROM appbasis_training_block_usage
+         WHERE organization_id = $1
+           AND block_id = $2
+         LIMIT 1`,
+        [organizationId, blockId],
+      );
+      if (usage.length > 0) {
+        return Object.freeze({ status: "in-use" as const });
+      }
+
+      await transaction.unsafe(
+        `DELETE FROM appbasis_training_block_favorite
+         WHERE organization_id = $1
+           AND block_id = $2`,
+        [organizationId, blockId],
+      );
+      await transaction.unsafe(
+        `DELETE FROM appbasis_training_block_revision_item_parameter
+         WHERE organization_id = $1
+           AND block_id = $2`,
+        [organizationId, blockId],
+      );
+      await transaction.unsafe(
+        `DELETE FROM appbasis_training_block_revision_item
+         WHERE organization_id = $1
+           AND block_id = $2`,
+        [organizationId, blockId],
+      );
+      await transaction.unsafe(
+        `DELETE FROM appbasis_training_block_revision
+         WHERE organization_id = $1
+           AND block_id = $2`,
+        [organizationId, blockId],
+      );
+      const deleted = await transaction.unsafe(
+        `DELETE FROM appbasis_training_block
+         WHERE organization_id = $1
+           AND id = $2
+         RETURNING id`,
+        [organizationId, blockId],
+      );
+      if (deleted.length !== 1) {
+        throw new Error("Training block unused delete was not atomic.");
+      }
+      return Object.freeze({ status: "deleted" as const });
     });
   }
 
@@ -412,7 +497,8 @@ async function readCurrentBlocks(
     `SELECT block.id, block.organization_id, block.is_active,
             block.current_revision, block.created_at::text AS block_created_at,
             block.updated_at::text AS block_updated_at,
-            revision.name, revision.audience_id, revision.duration_minutes,
+            revision.name, revision.audience_id, revision.audience_ids,
+            revision.duration_minutes,
             revision.note, revision.created_at::text AS revision_created_at
      FROM appbasis_training_block AS block
      INNER JOIN appbasis_training_block_revision AS revision
@@ -458,7 +544,7 @@ async function readRevisions(
   const filter = revision === undefined ? "" : " AND revision = $3";
   if (revision !== undefined) parameters.push(revision);
   const rows = await client.unsafe(
-    `SELECT organization_id, block_id, revision, name, audience_id,
+    `SELECT organization_id, block_id, revision, name, audience_id, audience_ids,
             duration_minutes, note, created_at::text AS revision_created_at
      FROM appbasis_training_block_revision
      WHERE organization_id = $1
@@ -588,10 +674,10 @@ async function insertRevision(
 ): Promise<void> {
   const rows = await transaction.unsafe(
     `INSERT INTO appbasis_training_block_revision (
-       organization_id, block_id, revision, name, audience_id,
+       organization_id, block_id, revision, name, audience_id, audience_ids,
        duration_minutes, note, created_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz)
+     VALUES ($1, $2, $3, $4, $5, $6::text[], $7, $8, $9::timestamptz)
      RETURNING revision`,
     [
       revision.organizationId,
@@ -599,6 +685,7 @@ async function insertRevision(
       revision.revision,
       revision.name,
       revision.audienceId,
+      [...revision.audienceIds],
       revision.durationMinutes,
       revision.note,
       revision.createdAt,
@@ -686,6 +773,10 @@ function revisionFromRow(
     revision,
     name: requiredString(row.name, "revision name"),
     audienceId: optionalString(row.audience_id, "audience id"),
+    audienceIds: audienceArray(
+      row.audience_ids,
+      optionalString(row.audience_id, "audience id"),
+    ),
     durationMinutes: optionalInteger(row.duration_minutes, "duration"),
     note: optionalString(row.note, "revision note"),
     exercises: Object.freeze(exercises.map(cloneExercise)),
@@ -696,6 +787,7 @@ function revisionFromRow(
 function cloneRevision(revision: TrainingBlockRevision): TrainingBlockRevision {
   return Object.freeze({
     ...revision,
+    audienceIds: Object.freeze([...revision.audienceIds]),
     exercises: Object.freeze(revision.exercises.map(cloneExercise)),
   });
 }
@@ -738,6 +830,29 @@ function optionalString(value: unknown, label: string): string | null {
     throw new Error(`Training block ${label} has an invalid shape.`);
   }
   return value;
+}
+
+function audienceArray(
+  value: unknown,
+  compatibilityAudienceId: string | null,
+): readonly string[] {
+  if (value === null || value === undefined) {
+    return Object.freeze(
+      compatibilityAudienceId === null ? [] : [compatibilityAudienceId],
+    );
+  }
+  return stringArray(value, "audience ids");
+}
+
+function stringArray(value: unknown, label: string): readonly string[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Training block ${label} has an invalid shape.`);
+  }
+  const result = value.map((item) => requiredString(item, label));
+  if (new Set(result).size !== result.length) {
+    throw new Error(`Training block ${label} has an invalid shape.`);
+  }
+  return Object.freeze(result);
 }
 
 function requiredInteger(value: unknown, label: string): number {
