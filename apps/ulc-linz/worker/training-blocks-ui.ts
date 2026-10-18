@@ -92,6 +92,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
 
                 <footer class="training-block-footer">
                   <div class="training-block-footer__actions">
+                    <button class="button button--secondary" id="training-block-duplicate" type="button" hidden>Duplizieren</button>
                     <button class="button button--secondary" id="training-block-favorite" type="button" hidden>☆ Favorit</button>
                     <button class="button button--danger" id="training-block-deactivate" type="button" hidden>Deaktivieren</button>
                   </div>
@@ -350,6 +351,7 @@ const trainingBlockElements = Object.freeze({
   compare: document.querySelector("#training-block-compare"),
   revisionPreview: document.querySelector("#training-block-revision-preview"),
   comparison: document.querySelector("#training-block-comparison"),
+  duplicate: document.querySelector("#training-block-duplicate"),
   favorite: document.querySelector("#training-block-favorite"),
   usageInfo: document.querySelector("#training-block-usage-info"),
   deactivate: document.querySelector("#training-block-deactivate"),
@@ -373,6 +375,7 @@ let trainingBlockSavePending = false;
 let trainingBlockChangeVersion = 0;
 let trainingBlockCreateUncertain = false;
 let trainingBlockDeactivateBusy = false;
+let trainingBlockDuplicateBusy = false;
 let trainingBlockFavoriteBusy = false;
 let trainingBlockFavoriteRequestId = 0;
 let trainingBlockReloadBusy = false;
@@ -704,6 +707,7 @@ function trainingBlockDraftFromSnapshot(block) {
 function newTrainingBlock() {
   if (
     trainingBlockDeactivateBusy ||
+    trainingBlockDuplicateBusy ||
     trainingBlockReloadBusy ||
     !trainingBlocksCanEdit ||
     trainingBlockAudiences.length === 0
@@ -841,6 +845,18 @@ function populateTrainingBlockEditor() {
 
 function refreshTrainingBlockParityMetadata() {
   const block = trainingBlockSelected;
+  if (trainingBlockElements.duplicate) {
+    trainingBlockElements.duplicate.hidden =
+      !block || !trainingBlocksCanEdit;
+    trainingBlockElements.duplicate.disabled =
+      !block ||
+      !trainingBlocksCanEdit ||
+      trainingBlockDuplicateBusy ||
+      trainingBlockFavoriteBusy ||
+      trainingBlockSaveBusy ||
+      trainingBlockDeactivateBusy ||
+      trainingBlockReloadBusy;
+  }
   if (trainingBlockElements.favorite) {
     trainingBlockElements.favorite.hidden = !block;
     trainingBlockElements.favorite.disabled =
@@ -848,6 +864,7 @@ function refreshTrainingBlockParityMetadata() {
       trainingBlockFavoriteBusy ||
       trainingBlockSaveBusy ||
       trainingBlockDeactivateBusy ||
+      trainingBlockDuplicateBusy ||
       trainingBlockReloadBusy;
     trainingBlockElements.favorite.textContent =
       block?.isFavorite ? "★ Favorit" : "☆ Favorit";
@@ -875,6 +892,7 @@ function refreshTrainingBlockParityMetadata() {
 function refreshTrainingBlockEditorLock() {
   const locked =
     trainingBlockDeactivateBusy ||
+    trainingBlockDuplicateBusy ||
     trainingBlockReloadBusy ||
     trainingBlockFavoriteBusy;
   const editable =
@@ -892,6 +910,12 @@ function refreshTrainingBlockEditorLock() {
   }
   if (trainingBlockElements.close) {
     trainingBlockElements.close.disabled = locked;
+  }
+  if (trainingBlockElements.duplicate) {
+    trainingBlockElements.duplicate.disabled =
+      locked ||
+      !trainingBlocksCanEdit ||
+      !trainingBlockSelected;
   }
   if (trainingBlockElements.deactivate) {
     trainingBlockElements.deactivate.disabled =
@@ -939,6 +963,7 @@ function renderTrainingBlockAudienceOptions() {
   select.disabled =
     !trainingBlocksCanEdit ||
     trainingBlockDeactivateBusy ||
+    trainingBlockDuplicateBusy ||
     trainingBlockReloadBusy ||
     trainingBlockSelected?.isActive === false;
 }
@@ -1544,6 +1569,7 @@ function closeTrainingBlockEditor(force = false) {
   trainingBlockChangeVersion = 0;
   trainingBlockCreateUncertain = false;
   trainingBlockDeactivateBusy = false;
+  trainingBlockDuplicateBusy = false;
   trainingBlockReloadBusy = false;
   if (trainingBlockElements.editor) trainingBlockElements.editor.hidden = true;
   document.body.classList.remove("training-block-editor-open");
@@ -1854,6 +1880,82 @@ async function toggleTrainingBlockFavorite() {
   }
 }
 
+async function duplicateTrainingBlock() {
+  if (
+    trainingBlockDuplicateBusy ||
+    trainingBlockSaveBusy ||
+    trainingBlockFavoriteBusy ||
+    trainingBlockDeactivateBusy ||
+    trainingBlockReloadBusy ||
+    !trainingBlockSelected ||
+    !trainingBlocksCanEdit ||
+    trainingBlockConflict ||
+    trainingBlockCreateUncertain
+  ) return;
+
+  if (trainingBlockDirty) {
+    await saveTrainingBlock();
+    if (
+      trainingBlockDirty ||
+      trainingBlockSaveBusy ||
+      trainingBlockConflict ||
+      trainingBlockCreateUncertain
+    ) return;
+  }
+
+  const sourceId = trainingBlockSelected.id;
+  const copyName = trainingBlockSelected.revision.name + " – Kopie";
+  trainingBlockDuplicateBusy = true;
+  refreshTrainingBlockParityMetadata();
+  refreshTrainingBlockEditorLock();
+  showMessage(trainingBlockElements.editorMessage, "");
+  setTrainingBlockSaveState("saving", "Kopie wird angelegt …");
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/training-blocks/" +
+        encodeURIComponent(sourceId) +
+        "/duplicate",
+      {
+        method: "POST",
+        body: JSON.stringify({ name: copyName }),
+      },
+    );
+    if (!isTrainingBlockSnapshot(payload?.block)) {
+      throw new Error("INVALID_TRAINING_BLOCK_DUPLICATE");
+    }
+
+    invalidateTrainingBlockOverviewRefresh();
+    replaceTrainingBlockInList(payload.block);
+    trainingBlockSelected = payload.block;
+    trainingBlockDraft = trainingBlockDraftFromSnapshot(payload.block);
+    trainingBlockDirty = false;
+    trainingBlockConflict = false;
+    trainingBlockChangeVersion = 0;
+    trainingBlockCreateUncertain = false;
+    resetTrainingBlockHistory();
+    populateTrainingBlockEditor();
+    setTrainingBlockSaveState(
+      "saved",
+      "Kopie angelegt · Version " + String(payload.block.currentRevision),
+    );
+  } catch (error) {
+    setTrainingBlockSaveState("error", "Duplizieren fehlgeschlagen");
+    showMessage(
+      trainingBlockElements.editorMessage,
+      error?.status === 404
+        ? "Der Quellblock wurde nicht gefunden."
+        : error?.status === 400
+          ? "Der Block kann mit seinen aktuellen Referenzen nicht dupliziert werden."
+          : "Der Trainingsblock konnte nicht dupliziert werden.",
+    );
+  } finally {
+    trainingBlockDuplicateBusy = false;
+    refreshTrainingBlockParityMetadata();
+    refreshTrainingBlockEditorLock();
+  }
+}
+
 async function deactivateTrainingBlock() {
   if (
     trainingBlockSaveBusy ||
@@ -2149,6 +2251,7 @@ trainingBlockElements.retry?.addEventListener("click", retryTrainingBlockSave);
 trainingBlockElements.exerciseAdd?.addEventListener("click", addTrainingBlockExercise);
 trainingBlockElements.exercises?.addEventListener("click", handleTrainingBlockExerciseClick);
 trainingBlockElements.exercises?.addEventListener("input", handleTrainingBlockExerciseInput);
+trainingBlockElements.duplicate?.addEventListener("click", () => void duplicateTrainingBlock());
 trainingBlockElements.favorite?.addEventListener("click", () => void toggleTrainingBlockFavorite());
 trainingBlockElements.deactivate?.addEventListener("click", () => void deactivateTrainingBlock());
 trainingBlockElements.historyLoad?.addEventListener("click", () => void loadTrainingBlockHistory());
