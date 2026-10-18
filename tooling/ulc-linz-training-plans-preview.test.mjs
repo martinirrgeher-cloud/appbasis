@@ -40,7 +40,7 @@ const trainingBlockTables = [
   "appbasis_training_block_usage",
 ];
 
-test("E7B9 plan pins the published training-plans-v2 owner on the training-blocks-v2 baseline", async () => {
+test("E7B9 plan pins the published training-plans-v2 owner on the training-blocks-v3 baseline", async () => {
   const plan = await loadUlcTrainingPlansPreviewPlan({
     repositoryRoot,
   });
@@ -86,7 +86,7 @@ test("E7B9 preview shape distinguishes absent, current and partial training-plan
   );
 });
 
-test("E7B9 read-only inspect refuses a preview missing the complete training-blocks-v2 baseline", async () => {
+test("E7B9 read-only inspect refuses a preview missing the complete training-blocks-v3 baseline", async () => {
   const tables = [...targetTables, ...trainingBlockTables.slice(0, -1)];
   let closed = false;
   const fakePlan = Object.freeze({
@@ -144,7 +144,7 @@ test("E7B9 read-only inspect refuses a preview missing the complete training-blo
     ),
     (error) =>
       error instanceof UlcTrainingPlansPreviewExecutionError &&
-      /complete training-blocks-v2 preview baseline/.test(
+      /complete training-blocks-v3 preview baseline/.test(
         error.message,
       ),
   );
