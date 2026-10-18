@@ -61,6 +61,9 @@ export async function trainingPlansHttpResponse(
   if (url.pathname === "/api/modules/training-plans/week") {
     return trainingPlansWeekResponse(request, runtime, url);
   }
+  if (url.pathname === "/api/modules/training-plans/overview") {
+    return trainingPlansOverviewResponse(request, runtime, url);
+  }
   if (
     url.pathname ===
     "/api/modules/training-plans/block-template-save-options"
@@ -155,8 +158,9 @@ async function trainingPlansModuleResponse(
 
   try {
     if (request.method === "GET") {
-      const [subjects, blockTemplates] = await Promise.all([
+      const [subjects, overviewGroups, blockTemplates] = await Promise.all([
         runtime.trainingPlans.listSubjects(access.organizationId),
+        runtime.trainingPlans.listOverviewGroups(access.organizationId),
         runtime.trainingPlans.listBlockTemplates(access.organizationId),
       ]);
       return privateJson({
@@ -169,12 +173,14 @@ async function trainingPlansModuleResponse(
             optimisticConcurrency: true,
             attendanceSummary: true,
             attendanceFilter: true,
+            groupWeekOverview: true,
             blockTemplateAdoption: true,
             blockTemplateSaveBack: true,
           },
         },
         access: { view: true, edit: access.canEdit },
         subjects,
+        overviewGroups,
         blockTemplates,
       });
     }
@@ -350,6 +356,36 @@ async function trainingPlanBlockTemplateResponse(
   }
 }
 
+async function trainingPlansOverviewResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return methodNotAllowedFor("GET", "training plan overview");
+  }
+
+  const access = await authorizeTrainingPlansRequest(
+    request,
+    runtime,
+    url,
+    "view",
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    const { groupId, weekStart } = trainingPlanOverviewQuery(url);
+    const overview = await runtime.trainingPlans.groupWeekOverview(
+      access.organizationId,
+      groupId,
+      weekStart,
+    );
+    return privateJson({ overview });
+  } catch (error) {
+    return trainingPlanErrorResponse(error);
+  }
+}
+
 async function trainingPlansWeekResponse(
   request: Request,
   runtime: GeneratedPostgresApplicationRuntime,
@@ -486,6 +522,32 @@ async function authorizeTrainingPlansRequest(
     }
     throw error;
   }
+}
+
+function trainingPlanOverviewQuery(
+  url: URL,
+): Readonly<{ groupId: string; weekStart: string }> {
+  const allowed = new Set(["groupId", "weekStart"]);
+  if (
+    [...url.searchParams.keys()].some((key) => !allowed.has(key)) ||
+    url.searchParams.getAll("groupId").length !== 1 ||
+    url.searchParams.getAll("weekStart").length !== 1
+  ) {
+    throw new InvalidTrainingPlanRequestError();
+  }
+
+  const groupId = normalizeTrainingPlanIdentifier(
+    url.searchParams.get("groupId"),
+    "Training plan overview group",
+  );
+  const weekStart = normalizeTrainingPlanDate(
+    url.searchParams.get("weekStart"),
+  );
+  const parsed = new Date(weekStart + "T00:00:00.000Z");
+  if (parsed.getUTCDay() !== 1) {
+    throw new InvalidTrainingPlanRequestError();
+  }
+  return Object.freeze({ groupId, weekStart });
 }
 
 function trainingPlanWeekQuery(
