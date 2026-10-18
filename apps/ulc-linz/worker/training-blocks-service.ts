@@ -13,6 +13,7 @@ import {
   TrainingBlockInactiveError,
   TrainingBlockValidationError,
   type CreateTrainingBlockDraftInput,
+  type DuplicateTrainingBlockInput,
   type RecordTrainingBlockUsageInput,
   type TrainingBlockExerciseDraft,
   type TrainingBlockOverviewItem,
@@ -118,6 +119,11 @@ export interface UlcTrainingBlockService {
     organizationId: string,
     input: CreateTrainingBlockDraftInput,
   ): Promise<TrainingBlockSnapshot>;
+  duplicate(
+    organizationId: string,
+    blockId: string,
+    input?: DuplicateTrainingBlockInput,
+  ): Promise<TrainingBlockSnapshot | undefined>;
   update(
     organizationId: string,
     blockId: string,
@@ -294,6 +300,29 @@ export function createUlcTrainingBlockService({
     ) {
       await assertReferences(organizationId, input);
       return blocks.create(organizationId, input);
+    },
+    async duplicate(
+      organizationId: string,
+      blockId: string,
+      input: DuplicateTrainingBlockInput = {},
+    ) {
+      const source = await blocks.findCurrent(organizationId, blockId);
+      if (source === undefined) return undefined;
+      await assertReferences(organizationId, {
+        name: input.name ?? source.revision.name,
+        audienceId: source.revision.audienceId,
+        durationMinutes: source.revision.durationMinutes,
+        note: source.revision.note,
+        exercises: source.revision.exercises.map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          note: exercise.note,
+          parameterOverrides: exercise.parameterOverrides.map((override) => ({
+            key: override.key,
+            value: override.value,
+          })),
+        })),
+      });
+      return blocks.duplicate(organizationId, blockId, input);
     },
     async update(
       organizationId: string,
