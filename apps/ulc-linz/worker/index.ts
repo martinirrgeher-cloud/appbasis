@@ -23,6 +23,7 @@ import {
   TRAINING_BLOCK_CAPABILITIES,
   TrainingBlockConflictError,
   TrainingBlockInactiveError,
+  TrainingBlockInUseError,
   TrainingBlockValidationError,
 } from "@appbasis/training-blocks";
 import { createIdentityHttpHandlers } from "@appbasis/identity/http";
@@ -386,6 +387,7 @@ async function trainingBlocksItemResponse(
   const detail = /^([^/]+)$/.exec(route);
   const update = /^([^/]+)\/update$/.exec(route);
   const duplicate = /^([^/]+)\/duplicate$/.exec(route);
+  const deleteUnused = /^([^/]+)\/delete-unused$/.exec(route);
   const deactivate = /^([^/]+)\/deactivate$/.exec(route);
   const favorite = /^([^/]+)\/favorite$/.exec(route);
   const revisions = /^([^/]+)\/revisions$/.exec(route);
@@ -403,7 +405,10 @@ async function trainingBlocksItemResponse(
     action = "view";
   } else if (
     request.method === "POST" &&
-    (update !== null || duplicate !== null || deactivate !== null)
+    (update !== null ||
+      duplicate !== null ||
+      deleteUnused !== null ||
+      deactivate !== null)
   ) {
     action = "edit";
   } else if (
@@ -499,6 +504,23 @@ async function trainingBlocksItemResponse(
         },
         {
           status: 201,
+          headers: { "cache-control": "private, no-store" },
+        },
+      );
+    }
+
+    if (deleteUnused !== null) {
+      const id = decodeTrainingBlockPathIdentifier(deleteUnused[1]);
+      const expectedRevision = await trainingBlockExpectedRevisionBody(request);
+      const deleted = await runtime.trainingBlocks.deleteUnused(
+        access.organizationId,
+        id,
+        expectedRevision,
+      );
+      if (!deleted) return trainingBlockNotFound();
+      return Response.json(
+        { deleted: true },
+        {
           headers: { "cache-control": "private, no-store" },
         },
       );
@@ -954,6 +976,17 @@ function trainingBlockErrorResponse(error: unknown): Response {
           message: "The training block changed since it was loaded.",
           expectedRevision: error.expectedRevision,
           currentRevision: error.currentRevision,
+        },
+      },
+      { status: 409 },
+    );
+  }
+  if (error instanceof TrainingBlockInUseError) {
+    return Response.json(
+      {
+        error: {
+          code: "TRAINING_BLOCK_IN_USE",
+          message: "The training block is already in use.",
         },
       },
       { status: 409 },
