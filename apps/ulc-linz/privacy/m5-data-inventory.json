@@ -44,10 +44,11 @@
     },
     {
       "id": "athletes",
-      "schemaVersion": 2,
+      "schemaVersion": 3,
       "migrations": [
         "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
-        "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql"
+        "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
+        "modules/athletes/migrations/0002_appbasis_athlete_contacts.sql"
       ],
       "lifecycleStatus": "deletion-retention-restore-repository-verified-production-activation-pending",
       "notes": [
@@ -56,7 +57,8 @@
         "deactivation-sets-server-side-lifecycle-timestamp",
         "repository-retention-deletes-personal-masterdata-and-group-memberships-after-12-calendar-months",
         "production-retention-activation-pending-athletes-schema-deploy",
-        "restore-reconciliation-repository-verified-production-activation-pending"
+        "restore-reconciliation-repository-verified-production-activation-pending",
+        "athlete-contact-data-deletes-with-athlete-retention-lifecycle"
       ]
     },
     {
@@ -79,16 +81,17 @@
     },
     {
       "id": "training-blocks",
-      "schemaVersion": 2,
+      "schemaVersion": 3,
       "migrations": [
         "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql",
-        "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql"
+        "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql",
+        "modules/training-blocks/migrations/0002_appbasis_training_block_multi_audience.sql"
       ],
       "lifecycleStatus": "training-block-data-lifecycle-pending",
       "notes": [
         "training-block-template-revision-favorite-usage-lifecycle-pending",
         "training-block-notes-may-contain-user-entered-content",
-        "ulc-preview-schema-v1-live-v2-upgrade-pending",
+        "ulc-preview-schema-v2-live-v3-upgrade-pending",
         "production-lifecycle-activation-not-authorized"
       ]
     },
@@ -277,6 +280,14 @@
       "owner": "athletes",
       "privacyClass": "athlete-master-data",
       "retentionPolicy": "12-months-after-deactivation",
+      "deletionEvidence": "verified",
+      "retentionEvidence": "verified"
+    },
+    {
+      "id": "appbasis_athlete_contact",
+      "owner": "athletes",
+      "privacyClass": "athlete-contact-data",
+      "retentionPolicy": "delete-with-athlete-after-12-months-deactivation",
       "deletionEvidence": "verified",
       "retentionEvidence": "verified"
     },
