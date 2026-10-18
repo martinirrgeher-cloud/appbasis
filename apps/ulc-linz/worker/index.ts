@@ -3461,6 +3461,44 @@ async function athletesMasterdataMutationResponse(
       return Response.json({ trainer }, { status: 201 });
     }
 
+    if (route === "athlete-contacts") {
+      const body = await athletesJsonBody(
+        request,
+        [
+          "athleteId",
+          "contactName",
+          "relationship",
+          "phone",
+          "isEmergency",
+          "priority",
+          "notes",
+        ],
+        ["athleteId", "contactName", "phone"],
+      );
+      const contact = await runtime.athleteMasterdata.createAthleteContact(
+        access.organizationId,
+        body.athleteId as string,
+        {
+          contactName: body.contactName as string,
+          ...(body.relationship === undefined
+            ? {}
+            : { relationship: body.relationship as string | null }),
+          phone: body.phone as string,
+          ...(body.isEmergency === undefined
+            ? {}
+            : { isEmergency: body.isEmergency as boolean }),
+          ...(body.priority === undefined
+            ? {}
+            : { priority: body.priority as number }),
+          ...(body.notes === undefined
+            ? {}
+            : { notes: body.notes as string | null }),
+        },
+      );
+      if (contact === null) return athletesNotFound();
+      return Response.json({ contact }, { status: 201 });
+    }
+
     if (route === "athlete-group-memberships") {
       const body = await athletesJsonBody(request, [
         "athleteId",
@@ -3497,6 +3535,64 @@ async function athletesMasterdataMutationResponse(
           },
         );
       return Response.json({ membership }, { status: 201 });
+    }
+
+    const contactUpdate = /^athlete-contacts\/([^/]+)\/update$/.exec(route);
+    if (contactUpdate !== null) {
+      const id = decodePathIdentifier(contactUpdate[1]);
+      const body = await athletesJsonBody(
+        request,
+        [
+          "athleteId",
+          "contactName",
+          "relationship",
+          "phone",
+          "isEmergency",
+          "priority",
+          "notes",
+        ],
+        [
+          "athleteId",
+          "contactName",
+          "relationship",
+          "phone",
+          "isEmergency",
+          "priority",
+          "notes",
+        ],
+      );
+      const contact = await runtime.athleteMasterdata.updateAthleteContact(
+        access.organizationId,
+        body.athleteId as string,
+        id,
+        {
+          contactName: body.contactName as string,
+          relationship: body.relationship as string | null,
+          phone: body.phone as string,
+          isEmergency: body.isEmergency as boolean,
+          priority: body.priority as number,
+          notes: body.notes as string | null,
+        },
+      );
+      if (contact === null) return athletesNotFound();
+      return Response.json({ contact });
+    }
+
+    const contactDelete = /^athlete-contacts\/([^/]+)\/delete$/.exec(route);
+    if (contactDelete !== null) {
+      const id = decodePathIdentifier(contactDelete[1]);
+      const body = await athletesJsonBody(
+        request,
+        ["athleteId"],
+        ["athleteId"],
+      );
+      const changed = await runtime.athleteMasterdata.deleteAthleteContact(
+        access.organizationId,
+        body.athleteId as string,
+        id,
+      );
+      if (!changed) return athletesNotFound();
+      return Response.json({ deleted: true });
     }
 
     const update = /^(athletes|trainers|training-groups)\/([^/]+)\/update$/.exec(route);
