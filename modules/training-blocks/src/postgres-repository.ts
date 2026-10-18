@@ -10,7 +10,12 @@ import {
   type TrainingBlockUsageSummary,
 } from "./repository";
 
-export type TrainingBlockSqlParameter = string | number | boolean | null;
+export type TrainingBlockSqlParameter =
+  | string
+  | number
+  | boolean
+  | readonly string[]
+  | null;
 
 export interface TrainingBlockPostgresQueryClient {
   unsafe(
