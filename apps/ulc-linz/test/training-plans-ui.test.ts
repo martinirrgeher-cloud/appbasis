@@ -45,6 +45,39 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_CSS).toContain("min-height: var(--touch);");
   });
 
+  it("adds the old group-week overview inside the existing training-plans module", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-overview-group"',
+    );
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-overview"',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "features?.groupWeekOverview !== true",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "!Array.isArray(payload?.overviewGroups)",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '"/api/modules/training-plans/overview?groupId="',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanOverview.rows",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "cell.durationMinutes",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "cell.exerciseCount",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "openTrainingPlanFromOverview",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "/api/modules/training-registration",
+    );
+  });
+
   it("loads only Monday-based week data without client-owned organization scope", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       '"/api/modules/training-plans/week?subjectId="',
