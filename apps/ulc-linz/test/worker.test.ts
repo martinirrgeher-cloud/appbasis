@@ -814,7 +814,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("block.isFavorite ? \"★ Favorit\" : null");
     expect(ULC_LINZ_APP_SCRIPT).toContain("if (trainingBlockFavoriteBusy) {\n    trainingBlockSavePending = true;");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockSaveBusy ||\n    trainingBlockDeactivateBusy ||\n    trainingBlockReloadBusy");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockSavePending &&\n        trainingBlockDirty");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockElements.save.disabled =");
     expect(ULC_LINZ_APP_SCRIPT).toContain("invalidateTrainingBlockOverviewRefresh();\n    trainingBlockSelected = {");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockSaveBusy ||\n    trainingBlockFavoriteBusy ||");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockDeactivateBusy ||\n    trainingBlockDuplicateBusy ||\n    trainingBlockReloadBusy ||\n    trainingBlockFavoriteBusy");
