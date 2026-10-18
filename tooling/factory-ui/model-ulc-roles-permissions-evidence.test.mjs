@@ -62,6 +62,12 @@ async function createFactoryFixture({ rolePolicy } = {}) {
     ),
     ...ULC_LINZ_LIFECYCLE_EVIDENCE_POLICY.evidenceFiles.map(({ path }) => path),
   ]);
+  // The fixture copies evidence files selectively, but module verification
+  // requires the complete migration inventory declared by copied manifests.
+  evidencePaths.add(
+    "modules/athletes/migrations/0002_appbasis_athlete_contacts.sql",
+  );
+
   for (const path of evidencePaths) {
     const destination = join(root, path);
     await mkdir(dirname(destination), { recursive: true });
