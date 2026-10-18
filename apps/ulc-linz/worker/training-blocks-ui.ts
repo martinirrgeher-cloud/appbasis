@@ -2163,8 +2163,8 @@ async function openTrainingBlockRevision(number) {
         String(revision.revision) +
         "\\n" +
         revision.name +
-        "\\nGruppe: " +
-        trainingBlockAudienceLabel(revision.audienceId) +
+        "\\nGruppen: " +
+        trainingBlockAudienceSetLabel(revision.audienceIds) +
         "\\nDauer: " +
         (revision.durationMinutes === null
           ? "—"
