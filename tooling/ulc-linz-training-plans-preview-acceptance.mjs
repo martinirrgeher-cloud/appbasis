@@ -55,6 +55,28 @@ export async function runUlcTrainingPlansPreviewAcceptance(
   const marker = randomUUID().replaceAll("-", "").slice(0, 12);
   const planDate = previewAcceptanceMonday(marker);
 
+  const groupName = "E7B9 Preview Group " + marker;
+  const groupResponse = await requestJson(
+    baseURL,
+    "/api/modules/athletes/masterdata/training-groups",
+    fetchImpl,
+    {
+      method: "POST",
+      cookie,
+      body: {
+        name: groupName,
+        shortName: "E7B9",
+        description: "E7B9 isolated preview acceptance",
+        sortOrder: 9999,
+      },
+      expectedStatus: 201,
+    },
+  );
+  const groupId = requiredId(
+    groupResponse.payload?.trainingGroup?.id,
+    "E7B9 preview training group",
+  );
+
   const training = await requestJson(
     baseURL,
     "/api/modules/kindertraining",
@@ -62,21 +84,20 @@ export async function runUlcTrainingPlansPreviewAcceptance(
     { cookie },
   );
   const groups = training.payload?.trainingGroups;
-  if (!Array.isArray(groups) || groups.length === 0) {
+  if (!Array.isArray(groups)) {
     throw new UlcTrainingPlansPreviewAcceptanceError(
-      "E7B9 acceptance requires at least one preview Kindertraining group.",
+      "E7B9 acceptance Kindertraining group response is invalid.",
     );
   }
   const group = groups.find(
     (value) =>
       value !== null &&
       typeof value === "object" &&
-      typeof value.id === "string" &&
-      value.id.length > 0,
+      value.id === groupId,
   );
   if (group === undefined) {
     throw new UlcTrainingPlansPreviewAcceptanceError(
-      "E7B9 acceptance training-group response is invalid.",
+      "E7B9 acceptance preview training group is unavailable in Kindertraining.",
     );
   }
 
@@ -110,7 +131,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
       cookie,
       body: {
         athleteId,
-        groupId: group.id,
+        groupId: groupId,
         startedOn: planDate,
       },
       expectedStatus: 201,
@@ -128,7 +149,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
       body: {
         name: exerciseName,
         categoryKey: PREVIEW_EXERCISE_CATEGORY_KEY,
-        groupIds: [group.id],
+        groupIds: [groupId],
       },
       expectedStatus: 201,
     },
@@ -148,7 +169,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
       cookie,
       body: {
         name: blockName,
-        audienceId: group.id,
+        audienceId: groupId,
         durationMinutes: 25,
         note: "E7B9 preview source template",
         exercises: [
@@ -225,7 +246,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
     baseURL,
     cookie,
     fetchImpl,
-    groupId: group.id,
+    groupId: groupId,
     athleteId,
     sessionDate: planDate,
   });
@@ -253,7 +274,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
       body: {
         expectedRevision: 1,
         name: blockName + " changed",
-        audienceId: group.id,
+        audienceId: groupId,
         durationMinutes: 30,
         note: "Template changed after adoption",
         exercises: [
@@ -370,7 +391,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
         planId,
         blockItemId: persistedPlanBlock.itemId,
         expectedRevision: plan.currentRevision,
-        audienceId: group.id,
+        audienceId: groupId,
         name: "E7B9 Save-back " + marker,
       },
       expectedStatus: 201,
@@ -419,7 +440,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
     sourceBlockId: blockId,
     savedTemplateId,
     athleteId,
-    groupId: group.id,
+    groupId: groupId,
     planDate,
     checks: Object.freeze([
       "login",
