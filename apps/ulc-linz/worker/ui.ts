@@ -336,7 +336,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                         <div><p class="eyebrow">Benutzer</p><h2>Trainer-Benutzer</h2></div>
                         <button class="button button--secondary" id="trainer-identity-load" type="button">Verwalten</button>
                       </div>
-                      <p class="settings-note">Nur für Administratoren. Benutzerzuordnungen werden erst auf ausdrücklichen Aufruf geladen.</p>
+                      <p class="settings-note">Nur für Administratoren. Die Zuordnung wird erst auf ausdrücklichen Aufruf geladen. Ein neu angelegter Trainer-Benutzer muss beim ersten Login das temporäre Passwort ändern.</p>
                       <p class="message message--error" id="trainer-identity-message" role="alert" hidden></p>
                       <p class="message message--success" id="trainer-identity-success" role="status" hidden></p>
                       <div id="trainer-identity-workspace" hidden>
