@@ -473,6 +473,24 @@ body.training-plan-picker-open { overflow: hidden; }
   gap: 8px;
 }
 .training-plan-grid .training-plan-wide { grid-column: 1 / -1; }
+.training-plan-exercise-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.training-plan-exercise-grid .training-plan-field--name,
+.training-plan-exercise-grid .training-plan-field--comment {
+  grid-column: 1 / -1;
+}
+.training-plan-exercise-grid label {
+  min-width: 0;
+  font-size: .7rem;
+}
+.training-plan-exercise-grid input,
+.training-plan-exercise-grid textarea {
+  min-height: 40px;
+  padding-inline: 8px;
+}
+.training-plan-exercise-grid textarea { min-height: 58px; }
 .training-plan-child-list {
   display: grid;
   gap: 8px;
@@ -522,11 +540,19 @@ body.training-plan-picker-open { overflow: hidden; }
   .training-plan-day__button { min-height: 128px; }
   .training-plan-day__button { padding: 9px; }
   .training-plan-grid { grid-template-columns: 1fr; }
+  .training-plan-exercise-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .training-plan-exercise-grid .training-plan-field--name,
+  .training-plan-exercise-grid .training-plan-field--comment { grid-column: 1 / -1; }
   .training-plan-template-picker { grid-template-columns: 1fr; }
   .training-plan-dialog { max-height: 96vh; border-radius: 18px 18px 0 0; }
   .training-plan-body { gap: 8px; padding: 8px; }
   .training-plan-note-card,
-  .training-plan-items-card { padding: 10px; }
+  .training-plan-items-card { padding: 9px; }
+  .training-plan-item { gap: 7px; padding: 8px; }
+  .training-plan-child { gap: 6px; padding: 7px; }
+  .training-plan-child-list { gap: 6px; padding-left: 5px; border-left-width: 2px; }
+  .training-plan-mini { min-width: 38px; width: 38px; min-height: 38px; }
+  .training-plan-item__actions { flex-wrap: nowrap; }
   .training-plan-close-label { display: none; }
   .training-plan-icon-close { min-width: 40px; width: 40px; padding-inline: 0; }
   .training-plan-overview-card > .settings-note { display: none; }
@@ -1828,33 +1854,50 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
 
 function trainingPlanExerciseFields(item, editable) {
   const grid = document.createElement("div");
-  grid.className = "training-plan-grid";
-  grid.append(
-    trainingPlanTextField("Name", item.name, 160, editable, (value) => {
-      item.name = value;
-      markTrainingPlanDirty();
-    }, true),
-    trainingPlanTextField("Sätze", item.sets, 80, editable, (value) => {
-      item.sets = value;
-      markTrainingPlanDirty();
-    }),
-    trainingPlanTextField("Wiederholungen", item.repetitions, 80, editable, (value) => {
+  grid.className = "training-plan-grid training-plan-exercise-grid";
+
+  const name = trainingPlanTextField("Name", item.name, 160, editable, (value) => {
+    item.name = value;
+    markTrainingPlanDirty();
+  }, true);
+  name.classList.add("training-plan-field--name");
+
+  const sets = trainingPlanTextField("Sätze", item.sets, 80, editable, (value) => {
+    item.sets = value;
+    markTrainingPlanDirty();
+  });
+  const repetitions = trainingPlanTextField(
+    "Wdh.",
+    item.repetitions,
+    80,
+    editable,
+    (value) => {
       item.repetitions = value;
       markTrainingPlanDirty();
-    }),
-    trainingPlanTextField("Menge", item.amount, 80, editable, (value) => {
-      item.amount = value;
-      markTrainingPlanDirty();
-    }),
-    trainingPlanTextField("Einheit", item.unit, 80, editable, (value) => {
-      item.unit = value;
-      markTrainingPlanDirty();
-    }),
-    trainingPlanTextField("Kommentar", item.comment, 2000, editable, (value) => {
+    },
+  );
+  const amount = trainingPlanTextField("Menge", item.amount, 80, editable, (value) => {
+    item.amount = value;
+    markTrainingPlanDirty();
+  });
+  const unit = trainingPlanTextField("Einheit", item.unit, 80, editable, (value) => {
+    item.unit = value;
+    markTrainingPlanDirty();
+  });
+  const comment = trainingPlanTextField(
+    "Kommentar",
+    item.comment,
+    2000,
+    editable,
+    (value) => {
       item.comment = value;
       markTrainingPlanDirty();
-    }, true),
+    },
+    true,
   );
+  comment.classList.add("training-plan-field--comment");
+
+  grid.append(name, sets, repetitions, amount, unit, comment);
   return grid;
 }
 
