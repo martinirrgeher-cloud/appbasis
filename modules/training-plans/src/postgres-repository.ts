@@ -15,7 +15,12 @@ import {
   type TrainingPlanSubjectDeletionResult,
 } from "./repository";
 
-export type TrainingPlanSqlParameter = string | number | boolean | null;
+export type TrainingPlanSqlParameter =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly string[];
 
 export interface TrainingPlanPostgresQueryClient {
   unsafe(
@@ -38,6 +43,28 @@ export class PostgresTrainingPlanRepository
 
   constructor(client: TrainingPlanPostgresClient) {
     this.#client = client;
+  }
+
+  async listCurrentBySubjectsDateRange(
+    organizationId: string,
+    subjectIds: readonly string[],
+    fromDate: string,
+    toDate: string,
+  ): Promise<readonly TrainingPlanSnapshot[]> {
+    if (subjectIds.length === 0) return Object.freeze([]);
+    return this.#client.begin(async (transaction) => {
+      await transaction.unsafe(
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+      );
+      return readCurrentPlans(
+        transaction,
+        organizationId,
+        `AND plan.subject_id = ANY($2::text[])
+         AND plan.plan_date >= $3::date
+         AND plan.plan_date <= $4::date`,
+        [subjectIds, fromDate, toDate],
+      );
+    });
   }
 
   async listCurrentBySubjectDateRange(
