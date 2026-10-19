@@ -912,6 +912,27 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 }
 .masterdata-row strong { min-width: 0; font-size: .9rem; }
 .masterdata-row span { min-width: 0; color: var(--secondary); font-size: .74rem; line-height: 1.3; }
+.masterdata-row__right {
+  grid-column: 2;
+  grid-row: 1;
+  max-width: 48vw;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.masterdata-row__secondary {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.masterdata-inline-count {
+  color: var(--secondary);
+  font-size: .78em;
+  font-weight: 700;
+}
 .masterdata-row__actions { grid-column: 2; grid-row: 1 / 3; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; padding: 0; }
 .masterdata-form-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .masterdata-heading-actions { display: flex; align-items: center; gap: 8px; }
@@ -972,6 +993,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   background: var(--surface-soft);
   white-space: pre-wrap;
 }
+.masterdata-group-actions { grid-template-columns: minmax(0, 180px); }
+.masterdata-trainer-identity-list { margin: 10px 0; }
 .masterdata-athlete-contacts { display: grid; gap: 8px; }
 .masterdata-athlete-contacts h3 { margin: 0; }
 .masterdata-overlay-form { margin: 0; }
@@ -1369,6 +1392,7 @@ const elements = {
   trainerGroupGroup: document.querySelector("#trainer-group-group"),
   trainerGroupCancel: document.querySelector("#trainer-group-cancel"),
   trainerIdentityClose: document.querySelector("#trainer-identity-close"),
+  trainerIdentityAdmin: document.querySelector("#trainer-identity-admin"),
   trainerIdentityLoad: document.querySelector("#trainer-identity-load"),
   trainerIdentityMessage: document.querySelector("#trainer-identity-message"),
   trainerIdentitySuccess: document.querySelector("#trainer-identity-success"),
@@ -1568,6 +1592,7 @@ elements.kindertrainingNote?.addEventListener("input", markKindertrainingDirty);
 for (const control of document.querySelectorAll("[data-masterdata-tab]")) {
   control.addEventListener("click", () => showMasterdataTab(control.dataset.masterdataTab || "athletes"));
 }
+bindMasterdataSwipe();
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && runMode === "running") {
     void acquireWakeLock();
@@ -2415,6 +2440,45 @@ function showMasterdataTab(tab) {
   }
 }
 
+function bindMasterdataSwipe() {
+  const root = document.querySelector("#masterdata");
+  if (!root) return;
+  let suppressClick = false;
+  root.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) return;
+    if (event.target?.closest?.("input, select, textarea, button, a, [role='dialog']")) {
+      masterdataSwipeStart = null;
+      return;
+    }
+    const touch = event.touches[0];
+    masterdataSwipeStart = { x: touch.clientX, y: touch.clientY };
+  }, { passive: true });
+  root.addEventListener("touchend", (event) => {
+    if (!masterdataSwipeStart || event.changedTouches.length !== 1) return;
+    const touch = event.changedTouches[0];
+    const dx = touch.clientX - masterdataSwipeStart.x;
+    const dy = touch.clientY - masterdataSwipeStart.y;
+    masterdataSwipeStart = null;
+    if (Math.abs(dx) < 65 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    const order = ["athletes", "trainers", "groups"];
+    const active = document.querySelector("[data-masterdata-tab].is-active")?.dataset.masterdataTab || "athletes";
+    const index = order.indexOf(active);
+    const target = dx < 0
+      ? order[Math.min(order.length - 1, index + 1)]
+      : order[Math.max(0, index - 1)];
+    if (target && target !== active) {
+      suppressClick = true;
+      showMasterdataTab(target);
+      window.setTimeout(() => { suppressClick = false; }, 250);
+    }
+  }, { passive: true });
+  root.addEventListener("click", (event) => {
+    if (!suppressClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+}
+
 function isMasterdataImportPreview(value) {
   return (
     value !== null &&
@@ -2929,11 +2993,11 @@ function renderMasterdata(snapshot) {
     "Noch keine Athleten angelegt.",
     (item) => ({
       title: String(item?.lastName || "") + ", " + String(item?.firstName || ""),
+      topRight:
+        item?.birthYear === null || item?.birthYear === undefined
+          ? "Jahrgang –"
+          : "Jahrgang " + String(item.birthYear),
       meta:
-        (item?.birthYear === null || item?.birthYear === undefined
-          ? "Jahrgang nicht erfasst"
-          : "Jahrgang " + String(item.birthYear)) +
-        " · " +
         ((activeAthleteGroups.get(item?.id) || []).join(", ") || "keine aktive Gruppe") +
         (item?.isActive === false ? " · inaktiv" : ""),
       open: { type: "athlete", id: String(item?.id || ""), item },
@@ -2945,18 +3009,14 @@ function renderMasterdata(snapshot) {
     "Noch keine Trainer angelegt.",
     (item) => ({
       title: String(item?.lastName || "") + ", " + String(item?.firstName || ""),
+      topRight:
+        [item?.phone, item?.email]
+          .filter((value) => typeof value === "string" && value.length > 0)
+          .join(" · ") || "keine Kontaktdaten",
       meta:
-        ([item?.email, item?.phone].filter((value) => typeof value === "string" && value.length > 0).join(" · ") ||
-          "Keine Kontaktdaten erfasst") +
-        " · " +
         ((trainerGroups.get(item?.id) || []).join(", ") || "keine Gruppe") +
         (item?.isActive === false ? " · inaktiv" : ""),
-      edit: item?.isActive !== false
-        ? { type: "trainer", id: String(item?.id || ""), item }
-        : null,
-      deactivate: item?.isActive !== false
-        ? { type: "trainer", id: String(item?.id || ""), label: "Trainer deaktivieren" }
-        : null,
+      open: { type: "trainer", id: String(item?.id || ""), item },
     }),
   );
   renderMasterdataList(
@@ -2965,17 +3025,19 @@ function renderMasterdata(snapshot) {
     "Noch keine Trainingsgruppen angelegt.",
     (item) => ({
       title: String(item?.name || ""),
+      topRight:
+        typeof item?.shortName === "string" && item.shortName.length > 0
+          ? item.shortName
+          : "",
       meta:
-        (typeof item?.shortName === "string" && item.shortName.length > 0
-          ? item.shortName + " · "
-          : "") +
-        (item?.isActive === false ? "inaktiv" : "aktiv"),
-      edit: item?.isActive !== false
-        ? { type: "group", id: String(item?.id || ""), item }
-        : null,
+        (String(item?.description || "").trim() || "Keine Beschreibung") +
+        (item?.isActive === false ? " · inaktiv" : ""),
+      open: { type: "group", id: String(item?.id || ""), item },
     }),
   );
   renderMasterdataAthleteOverlay(snapshot);
+  renderMasterdataTrainerOverlay(snapshot);
+  renderMasterdataGroupOverlay(snapshot);
   if (elements.athleteCount) elements.athleteCount.textContent = "(" + String(snapshot.athletes.length) + ")";
   if (elements.trainerCount) elements.trainerCount.textContent = "(" + String(snapshot.trainers.length) + ")";
   if (elements.groupCount) elements.groupCount.textContent = "(" + String(snapshot.trainingGroups.length) + ")";
@@ -3179,7 +3241,19 @@ function renderTrainerIdentityAdmin() {
           String(trainer.lastName || "") + ", " + String(trainer.firstName || ""),
         ]),
       );
-      for (const binding of trainerIdentityBindings) {
+      const selectedTrainer = selectedMasterdataTrainer();
+      const visibleBindings = selectedTrainer
+        ? trainerIdentityBindings.filter(
+            (binding) => binding.trainerId === selectedTrainer.id,
+          )
+        : trainerIdentityBindings;
+      if (selectedTrainer && visibleBindings.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "masterdata-empty";
+        empty.textContent = "Für diesen Trainer ist noch kein Benutzer zugeordnet.";
+        container.append(empty);
+      }
+      for (const binding of visibleBindings) {
         const row = document.createElement("article");
         row.className = "masterdata-row";
         const title = document.createElement("strong");
@@ -3220,7 +3294,16 @@ function renderTrainerIdentityAdmin() {
     (item) => String(item?.id || ""),
     (item) => String(item?.lastName || "") + ", " + String(item?.firstName || ""),
   );
-  syncTrainerIdentitySelection();
+  if (masterdataTrainerOverlayId) {
+    if (elements.trainerIdentityTrainer) {
+      elements.trainerIdentityTrainer.value = masterdataTrainerOverlayId;
+    }
+    if (elements.trainerUserTrainer) {
+      elements.trainerUserTrainer.value = masterdataTrainerOverlayId;
+    }
+  } else {
+    syncTrainerIdentitySelection();
+  }
 }
 
 function normalizeTrainerIdentityBindings(value) {
@@ -3430,6 +3513,10 @@ async function bindTrainerIdentity(event) {
 
 function syncTrainerIdentitySelection() {
   if (!trainerIdentityAdminReady || !elements.trainerIdentityTrainer) return;
+  if (masterdataTrainerOverlayId) {
+    elements.trainerIdentityTrainer.value = masterdataTrainerOverlayId;
+    return;
+  }
   const identityId = elements.trainerIdentityIdentity?.value || "";
   const binding = trainerIdentityBindings.find((item) => item.identityId === identityId);
   const trainerId = binding?.trainerId || "";
@@ -3478,15 +3565,19 @@ function renderMasterdataList(container, items, emptyMessage, describe) {
     row.className = "masterdata-row";
     const title = document.createElement("strong");
     title.textContent = description.title;
+    const right = document.createElement("span");
+    right.className = "masterdata-row__right";
+    right.textContent = description.topRight || "";
     const meta = document.createElement("span");
-    meta.textContent = description.meta;
-    row.append(title, meta);
+    meta.className = "masterdata-row__secondary";
+    meta.textContent = description.meta || "";
+    row.append(title, right, meta);
     if (description.open?.id) {
       row.classList.add("masterdata-row--interactive");
       row.tabIndex = 0;
       row.setAttribute("role", "button");
       row.setAttribute("aria-label", description.title + " öffnen");
-      const open = () => openMasterdataAthleteOverlay(description.open.id);
+      const open = () => openMasterdataEntityOverlay(description.open);
       row.addEventListener("click", open);
       row.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -3517,6 +3608,218 @@ function renderMasterdataList(container, items, emptyMessage, describe) {
       row.append(actions);
     }
     container.append(row);
+  }
+}
+
+function openMasterdataEntityOverlay(action) {
+  if (action?.type === "athlete") {
+    openMasterdataAthleteOverlay(action.id);
+    return;
+  }
+  if (action?.type === "trainer") {
+    openMasterdataTrainerOverlay(action.id);
+    return;
+  }
+  if (action?.type === "group") {
+    openMasterdataGroupOverlay(action.id);
+  }
+}
+
+function selectedMasterdataTrainer() {
+  if (!masterdataSnapshot || !masterdataTrainerOverlayId) return null;
+  return (
+    masterdataSnapshot.trainers.find(
+      (trainer) => trainer.id === masterdataTrainerOverlayId,
+    ) || null
+  );
+}
+
+function openMasterdataTrainerOverlay(trainerId) {
+  if (!masterdataSnapshot) return;
+  const trainer = masterdataSnapshot.trainers.find((item) => item.id === trainerId);
+  if (!trainer) return;
+  masterdataEdit = null;
+  masterdataTrainerOverlayId = trainerId;
+  showMasterdataTrainerOverlayMode("detail");
+}
+
+function openNewMasterdataTrainer() {
+  if (!masterdataCanEdit) return;
+  masterdataTrainerOverlayId = null;
+  masterdataEdit = null;
+  elements.trainerForm?.reset();
+  refreshMasterdataEditMode();
+  showMasterdataTrainerOverlayMode("trainer");
+  if (elements.trainerOverlayTitle) elements.trainerOverlayTitle.textContent = "Trainer anlegen";
+  if (elements.trainerOverlayMeta) elements.trainerOverlayMeta.textContent = "Neuen Trainer erfassen";
+  elements.trainerFirstName?.focus();
+}
+
+function closeMasterdataTrainerOverlay() {
+  masterdataTrainerOverlayMode = "closed";
+  masterdataTrainerOverlayId = null;
+  masterdataEdit = null;
+  elements.trainerForm?.reset();
+  elements.trainerGroupForm?.reset();
+  if (elements.trainerIdentityAdmin) elements.trainerIdentityAdmin.hidden = true;
+  refreshMasterdataEditMode();
+  if (elements.trainerOverlay) elements.trainerOverlay.hidden = true;
+  document.body.classList.remove("masterdata-athlete-overlay-open");
+}
+
+function showMasterdataTrainerOverlayMode(mode) {
+  masterdataTrainerOverlayMode = mode;
+  if (elements.trainerOverlay) elements.trainerOverlay.hidden = false;
+  document.body.classList.add("masterdata-athlete-overlay-open");
+  if (elements.trainerDetail) elements.trainerDetail.hidden = mode !== "detail";
+  if (elements.trainerForm) elements.trainerForm.hidden = mode !== "trainer";
+  if (elements.trainerGroupForm) elements.trainerGroupForm.hidden = mode !== "group";
+  if (elements.trainerIdentityAdmin) elements.trainerIdentityAdmin.hidden = mode !== "identity";
+  if (masterdataSnapshot) renderMasterdataTrainerOverlay(masterdataSnapshot);
+}
+
+function renderMasterdataTrainerOverlay(snapshot) {
+  if (masterdataTrainerOverlayMode === "closed") return;
+  const trainer = selectedMasterdataTrainer();
+  if (masterdataTrainerOverlayMode === "trainer" && trainer === null) return;
+  if (trainer === null) {
+    closeMasterdataTrainerOverlay();
+    return;
+  }
+  const groupsById = new Map(
+    snapshot.trainingGroups.map((group) => [group.id, group.name]),
+  );
+  const groups = (snapshot.trainerGroupMemberships || [])
+    .filter((membership) => membership.trainerId === trainer.id)
+    .map((membership) => groupsById.get(membership.groupId))
+    .filter(Boolean);
+
+  if (elements.trainerOverlayTitle) {
+    elements.trainerOverlayTitle.textContent =
+      String(trainer.firstName || "") + " " + String(trainer.lastName || "");
+  }
+  if (elements.trainerOverlayMeta) {
+    elements.trainerOverlayMeta.textContent = [
+      groups.length ? groups.join(", ") : "keine Gruppe",
+      trainer.phone || null,
+      trainer.email || null,
+      trainer.isActive === false ? "inaktiv" : null,
+    ].filter(Boolean).join(" · ");
+  }
+  if (elements.trainerDetailNotes) {
+    const notes = String(trainer.notes || "").trim();
+    elements.trainerDetailNotes.textContent = notes;
+    elements.trainerDetailNotes.hidden = notes.length === 0;
+  }
+  const editable = masterdataCanEdit && trainer.isActive !== false;
+  for (const control of [
+    elements.trainerDetailEdit,
+    elements.trainerDetailGroup,
+    elements.trainerDetailUser,
+  ]) {
+    if (control) control.disabled = !editable;
+  }
+  if (elements.trainerDetailDeactivate) {
+    elements.trainerDetailDeactivate.hidden = trainer.isActive === false;
+    elements.trainerDetailDeactivate.disabled = !editable;
+  }
+  if (elements.trainerGroupTrainer) elements.trainerGroupTrainer.value = trainer.id;
+  if (elements.trainerUserTrainer) elements.trainerUserTrainer.value = trainer.id;
+  if (elements.trainerIdentityTrainer) elements.trainerIdentityTrainer.value = trainer.id;
+  if (masterdataTrainerOverlayMode === "identity") renderTrainerIdentityAdmin();
+}
+
+function openNewMasterdataTrainerGroup() {
+  const trainer = selectedMasterdataTrainer();
+  if (!trainer || !masterdataCanEdit || trainer.isActive === false) return;
+  elements.trainerGroupForm?.reset();
+  renderMasterdataAssignmentOptions(masterdataSnapshot);
+  if (elements.trainerGroupTrainer) elements.trainerGroupTrainer.value = trainer.id;
+  showMasterdataTrainerOverlayMode("group");
+}
+
+function openMasterdataTrainerIdentity() {
+  const trainer = selectedMasterdataTrainer();
+  if (!trainer || !masterdataCanEdit || trainer.isActive === false) return;
+  showMasterdataTrainerOverlayMode("identity");
+  if (!trainerIdentityAdminReady && !trainerIdentityLoading) {
+    void loadTrainerIdentityAdmin();
+  }
+}
+
+function selectedMasterdataGroup() {
+  if (!masterdataSnapshot || !masterdataGroupOverlayId) return null;
+  return (
+    masterdataSnapshot.trainingGroups.find(
+      (group) => group.id === masterdataGroupOverlayId,
+    ) || null
+  );
+}
+
+function openMasterdataGroupOverlay(groupId) {
+  if (!masterdataSnapshot) return;
+  const group = masterdataSnapshot.trainingGroups.find((item) => item.id === groupId);
+  if (!group) return;
+  masterdataEdit = null;
+  masterdataGroupOverlayId = groupId;
+  showMasterdataGroupOverlayMode("detail");
+}
+
+function openNewMasterdataGroup() {
+  if (!masterdataCanEdit) return;
+  masterdataGroupOverlayId = null;
+  masterdataEdit = null;
+  elements.groupForm?.reset();
+  if (elements.groupSortOrder) elements.groupSortOrder.value = "100";
+  refreshMasterdataEditMode();
+  showMasterdataGroupOverlayMode("group");
+  if (elements.groupOverlayTitle) elements.groupOverlayTitle.textContent = "Trainingsgruppe anlegen";
+  if (elements.groupOverlayMeta) elements.groupOverlayMeta.textContent = "Neue Trainingsgruppe erfassen";
+  elements.groupName?.focus();
+}
+
+function closeMasterdataGroupOverlay() {
+  masterdataGroupOverlayMode = "closed";
+  masterdataGroupOverlayId = null;
+  masterdataEdit = null;
+  elements.groupForm?.reset();
+  if (elements.groupSortOrder) elements.groupSortOrder.value = "100";
+  refreshMasterdataEditMode();
+  if (elements.groupOverlay) elements.groupOverlay.hidden = true;
+  document.body.classList.remove("masterdata-athlete-overlay-open");
+}
+
+function showMasterdataGroupOverlayMode(mode) {
+  masterdataGroupOverlayMode = mode;
+  if (elements.groupOverlay) elements.groupOverlay.hidden = false;
+  document.body.classList.add("masterdata-athlete-overlay-open");
+  if (elements.groupDetail) elements.groupDetail.hidden = mode !== "detail";
+  if (elements.groupForm) elements.groupForm.hidden = mode !== "group";
+  if (masterdataSnapshot) renderMasterdataGroupOverlay(masterdataSnapshot);
+}
+
+function renderMasterdataGroupOverlay(snapshot) {
+  if (masterdataGroupOverlayMode === "closed") return;
+  const group = selectedMasterdataGroup();
+  if (masterdataGroupOverlayMode === "group" && group === null) return;
+  if (group === null) {
+    closeMasterdataGroupOverlay();
+    return;
+  }
+  if (elements.groupOverlayTitle) elements.groupOverlayTitle.textContent = String(group.name || "");
+  if (elements.groupOverlayMeta) {
+    elements.groupOverlayMeta.textContent = [
+      group.shortName || null,
+      group.isActive === false ? "inaktiv" : "aktiv",
+    ].filter(Boolean).join(" · ");
+  }
+  if (elements.groupDetailDescription) {
+    const description = String(group.description || "").trim();
+    elements.groupDetailDescription.textContent = description;
+    elements.groupDetailDescription.hidden = description.length === 0;
+  }
+  if (elements.groupDetailEdit) {
+    elements.groupDetailEdit.disabled = !masterdataCanEdit || group.isActive === false;
   }
 }
 
@@ -3716,14 +4019,16 @@ function beginMasterdataEdit(action) {
     if (elements.trainerPhone) elements.trainerPhone.value = String(item.phone || "");
     if (elements.trainerEmail) elements.trainerEmail.value = String(item.email || "");
     if (elements.trainerNotes) elements.trainerNotes.value = String(item.notes || "");
-    elements.trainerForm?.scrollIntoView({ block: "start", behavior: "smooth" });
+    masterdataTrainerOverlayId = id;
+    showMasterdataTrainerOverlayMode("trainer");
   } else {
     showMasterdataTab("groups");
     if (elements.groupName) elements.groupName.value = String(item.name || "");
     if (elements.groupShortName) elements.groupShortName.value = String(item.shortName || "");
     if (elements.groupDescription) elements.groupDescription.value = String(item.description || "");
     if (elements.groupSortOrder) elements.groupSortOrder.value = String(item.sortOrder ?? 100);
-    elements.groupForm?.scrollIntoView({ block: "start", behavior: "smooth" });
+    masterdataGroupOverlayId = id;
+    showMasterdataGroupOverlayMode("group");
   }
 
   refreshMasterdataEditMode();
@@ -3736,10 +4041,14 @@ function cancelMasterdataEdit() {
     elements.athleteForm?.reset();
     if (masterdataAthleteOverlayId) showMasterdataAthleteOverlayMode("detail");
   }
-  if (previousType === "trainer") elements.trainerForm?.reset();
+  if (previousType === "trainer") {
+    elements.trainerForm?.reset();
+    if (masterdataTrainerOverlayId) showMasterdataTrainerOverlayMode("detail");
+  }
   if (previousType === "group") {
     elements.groupForm?.reset();
     if (elements.groupSortOrder) elements.groupSortOrder.value = "100";
+    if (masterdataGroupOverlayId) showMasterdataGroupOverlayMode("detail");
   }
   refreshMasterdataEditMode();
 }
@@ -3765,7 +4074,7 @@ function refreshMasterdataEditMode() {
   if (elements.trainerSubmitButton) {
     elements.trainerSubmitButton.textContent = trainerEditing ? "Änderungen speichern" : "Trainer anlegen";
   }
-  if (elements.trainerEditCancel) elements.trainerEditCancel.hidden = !trainerEditing;
+  if (elements.trainerEditCancel) elements.trainerEditCancel.hidden = masterdataTrainerOverlayMode !== "trainer";
 
   if (elements.groupFormTitle) {
     elements.groupFormTitle.textContent = groupEditing ? "Trainingsgruppe bearbeiten" : "Trainingsgruppe anlegen";
@@ -3773,7 +4082,7 @@ function refreshMasterdataEditMode() {
   if (elements.groupSubmitButton) {
     elements.groupSubmitButton.textContent = groupEditing ? "Änderungen speichern" : "Gruppe anlegen";
   }
-  if (elements.groupEditCancel) elements.groupEditCancel.hidden = !groupEditing;
+  if (elements.groupEditCancel) elements.groupEditCancel.hidden = masterdataGroupOverlayMode !== "group";
 }
 
 function renderMasterdataAssignmentOptions(snapshot) {
@@ -3881,7 +4190,10 @@ async function createMasterdataTrainer(event) {
     },
     elements.trainerForm,
   );
-  if (saved && editId) cancelMasterdataEdit();
+  if (saved) {
+    if (editId) cancelMasterdataEdit();
+    else closeMasterdataTrainerOverlay();
+  }
 }
 
 async function createMasterdataGroup(event) {
@@ -3900,7 +4212,10 @@ async function createMasterdataGroup(event) {
     },
     elements.groupForm,
   );
-  if (saved && editId) cancelMasterdataEdit();
+  if (saved) {
+    if (editId) cancelMasterdataEdit();
+    else closeMasterdataGroupOverlay();
+  }
 }
 
 async function createAthleteGroupMembership(event) {
@@ -3926,14 +4241,22 @@ async function createAthleteGroupMembership(event) {
 
 async function createTrainerGroupMembership(event) {
   event.preventDefault();
-  await submitMasterdataForm(
+  const trainerId =
+    masterdataTrainerOverlayId ||
+    elements.trainerGroupTrainer?.value ||
+    "";
+  const saved = await submitMasterdataForm(
     "/api/modules/athletes/masterdata/trainer-group-memberships",
     {
-      trainerId: elements.trainerGroupTrainer?.value ?? "",
+      trainerId,
       groupId: elements.trainerGroupGroup?.value ?? "",
     },
     elements.trainerGroupForm,
   );
+  if (saved && trainerId) {
+    masterdataTrainerOverlayId = trainerId;
+    showMasterdataTrainerOverlayMode("detail");
+  }
 }
 
 async function deactivateMasterdataEntity(action) {
