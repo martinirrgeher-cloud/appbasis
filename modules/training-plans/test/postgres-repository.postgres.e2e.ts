@@ -179,6 +179,25 @@ describe("training-plans PostgreSQL repository", () => {
         planDate: "2026-10-13",
       }),
     ]);
+    await expect(
+      service.listForSubjectsDateRange(
+        "org-a",
+        ["athlete-a", "athlete-b"],
+        "2026-10-12",
+        "2026-10-14",
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "source-plan",
+        subjectId: "athlete-a",
+        planDate: "2026-10-12",
+      }),
+      expect.objectContaining({
+        id: "copy-plan",
+        subjectId: "athlete-b",
+        planDate: "2026-10-13",
+      }),
+    ]);
   });
 
   it("reads dates and timestamps independently of PostgreSQL session formatting", async () => {

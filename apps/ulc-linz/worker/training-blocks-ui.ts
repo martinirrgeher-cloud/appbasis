@@ -98,16 +98,21 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                 </div>
 
                 <footer class="training-block-footer">
-                  <div class="training-block-footer__actions">
-                    <button class="button button--primary" id="training-block-save" type="button">Speichern</button>
-                    <button class="button button--secondary" id="training-block-duplicate" type="button" hidden>Duplizieren</button>
-                    <button class="button button--secondary" id="training-block-favorite" type="button" hidden>☆ Favorit</button>
-                    <button class="button button--danger" id="training-block-delete-unused" type="button" hidden>Unbenutzten Block löschen</button>
-                    <button class="button button--danger" id="training-block-deactivate" type="button" hidden>Deaktivieren</button>
-                  </div>
                   <div class="training-block-footer__meta">
                     <span id="training-block-usage-info"></span>
-                    <span>Eine neue Version entsteht erst beim Speichern.</span>
+                    <span class="training-block-footer__hint">Neue Version erst beim Speichern.</span>
+                  </div>
+                  <div class="training-block-footer__actions">
+                    <button class="button button--primary training-block-save-button" id="training-block-save" type="button">Speichern</button>
+                    <details class="training-block-more">
+                      <summary aria-label="Weitere Blockaktionen" title="Weitere Aktionen">•••</summary>
+                      <div class="training-block-more__menu">
+                        <button class="button button--secondary" id="training-block-duplicate" type="button" hidden>Duplizieren</button>
+                        <button class="button button--secondary" id="training-block-favorite" type="button" hidden>☆ Favorit</button>
+                        <button class="button button--danger" id="training-block-delete-unused" type="button" hidden>Unbenutzten Block löschen</button>
+                        <button class="button button--danger" id="training-block-deactivate" type="button" hidden>Deaktivieren</button>
+                      </div>
+                    </details>
                   </div>
                 </footer>
               </section>
@@ -183,15 +188,49 @@ export const ULC_TRAINING_BLOCKS_CSS = `
 .training-block-footer__actions,
 .training-block-footer__meta {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
+.training-block-footer__actions { flex: 0 0 auto; }
 .training-block-footer__meta {
-  justify-content: flex-end;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   color: var(--secondary);
-  font-size: .8rem;
+  font-size: .74rem;
 }
+.training-block-save-button { min-width: 104px; }
+.training-block-more { position: relative; }
+.training-block-more > summary {
+  display: grid;
+  width: 44px;
+  min-height: 44px;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+  background: white;
+  color: var(--secondary);
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 900;
+  list-style: none;
+}
+.training-block-more > summary::-webkit-details-marker { display: none; }
+.training-block-more__menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 8;
+  display: grid;
+  width: min(240px, calc(100vw - 24px));
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 12px 32px rgb(15 23 42 / 18%);
+}
+.training-block-more__menu .button { width: 100%; justify-content: flex-start; }
 .training-block-backdrop,
 .training-block-info-backdrop {
   position: fixed;
@@ -268,10 +307,29 @@ export const ULC_TRAINING_BLOCKS_CSS = `
   gap: 8px;
 }
 .training-block-exercise__meta { margin-top: 2px; color: var(--secondary); font-size: .78rem; }
-.training-block-exercise__actions { display: flex; flex-wrap: wrap; gap: 5px; }
-.training-block-exercise__actions button { min-height: 36px; padding: 6px 9px; }
-.training-block-exercise__note { display: block; margin-top: 10px; }
-.training-block-parameters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.training-block-exercise__actions { display: flex; flex-wrap: nowrap; gap: 4px; }
+.training-block-exercise__action {
+  min-width: 34px;
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  font-size: .86rem;
+}
+.training-block-exercise__note {
+  margin-top: 7px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+.training-block-exercise__note summary {
+  color: var(--secondary);
+  cursor: pointer;
+  font-size: .74rem;
+  font-weight: 750;
+}
+.training-block-exercise__note input { margin-top: 6px; }
+.training-block-parameters { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
+.training-block-parameter { min-width: 0; }
+.training-block-parameter input { min-height: 40px; }
 .training-block-parameter small { display: block; margin-top: 3px; color: var(--secondary); }
 .training-block-history-list { display: grid; gap: 6px; }
 .training-block-history-row {
@@ -304,11 +362,12 @@ export const ULC_TRAINING_BLOCKS_CSS = `
 .training-block-footer {
   position: sticky;
   bottom: 0;
+  z-index: 6;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px max(12px, env(safe-area-inset-bottom));
+  gap: 8px;
+  padding: 8px 10px max(8px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   background: rgb(255 255 255 / 96%);
   color: var(--secondary);
@@ -320,9 +379,20 @@ body.training-block-editor-open { overflow: hidden; }
   .training-blocks-hero { align-items: stretch; flex-direction: column; }
   .training-block-commandbar { grid-template-columns: 1fr 1fr; }
   .training-block-commandbar label:first-child { grid-column: 1 / -1; }
-  .training-block-form-grid,
-  .training-block-parameters { grid-template-columns: 1fr; }
+  .training-block-form-grid { grid-template-columns: 1fr; }
+  .training-block-parameters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .training-block-wide { grid-column: auto; }
+  .training-block-exercise { padding: 9px; }
+  .training-block-exercise__meta {
+    max-width: 190px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .training-block-parameter small { display: none; }
+  .training-block-footer__hint { display: none; }
+  .training-block-footer__meta { font-size: .68rem; }
+  .training-block-save-button { min-width: 92px; min-height: 40px; padding-inline: 10px; }
   .training-block-compare-controls { grid-template-columns: 1fr 1fr; }
   .training-block-compare-controls .button { grid-column: 1 / -1; }
 }
@@ -1139,12 +1209,12 @@ function renderTrainingBlockExercises() {
 
     const actions = document.createElement("div");
     actions.className = "training-block-exercise__actions";
-    const info = trainingBlockActionButton("Info", "info", index);
+    const info = trainingBlockActionButton("ⓘ", "info", index, "Übungsinfo");
     actions.append(info);
     if (editable) {
-      const up = trainingBlockActionButton("↑", "up", index);
-      const down = trainingBlockActionButton("↓", "down", index);
-      const remove = trainingBlockActionButton("Entfernen", "remove", index);
+      const up = trainingBlockActionButton("↑", "up", index, "Nach oben");
+      const down = trainingBlockActionButton("↓", "down", index, "Nach unten");
+      const remove = trainingBlockActionButton("×", "remove", index, "Entfernen");
       const unavailable = item?.isActive === false;
       up.disabled = unavailable || index === 0;
       down.disabled =
@@ -1154,16 +1224,19 @@ function renderTrainingBlockExercises() {
     header.append(title, actions);
     row.append(header);
 
-    const note = document.createElement("label");
-    note.className = "training-block-exercise__note";
-    note.textContent = "Notiz";
+    const noteDetails = document.createElement("details");
+    noteDetails.className = "training-block-exercise__note";
+    noteDetails.open = Boolean(draft.note);
+    const noteSummary = document.createElement("summary");
+    noteSummary.textContent = draft.note ? "Notiz bearbeiten" : "Notiz";
     const noteInput = document.createElement("input");
     noteInput.maxLength = 2000;
+    noteInput.placeholder = "Optional";
     noteInput.value = draft.note || "";
     noteInput.disabled = !editable || item?.isActive === false;
     noteInput.dataset.trainingBlockExerciseNote = String(index);
-    note.append(noteInput);
-    row.append(note);
+    noteDetails.append(noteSummary, noteInput);
+    row.append(noteDetails);
 
     if (item) {
       const currentKeys = new Set(
@@ -1224,11 +1297,13 @@ function renderTrainingBlockExercises() {
   });
 }
 
-function trainingBlockActionButton(label, action, index) {
+function trainingBlockActionButton(label, action, index, ariaLabel = label) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "button button--secondary";
+  button.className = "button button--secondary training-block-exercise__action";
   button.textContent = label;
+  button.title = ariaLabel;
+  button.setAttribute("aria-label", ariaLabel);
   button.dataset.trainingBlockExerciseAction = action;
   button.dataset.trainingBlockExerciseIndex = String(index);
   return button;

@@ -731,7 +731,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-save-state"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-save"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-audience-filter"');
-    expect(ULC_LINZ_APP_HTML).toContain("Eine neue Version entsteht erst beim Speichern.");
+    expect(ULC_LINZ_APP_HTML).toContain("Neue Version erst beim Speichern.");
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-retry"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-exercise-picker"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-history-load"');
@@ -832,6 +832,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="athlete-form"');
     expect(ULC_LINZ_APP_HTML).toContain('id="trainer-form"');
     expect(ULC_LINZ_APP_HTML).toContain('id="group-form"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-overlay"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="group-overlay"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("bindMasterdataSwipe");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("openMasterdataTrainerIdentity");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       'requestJson("/api/modules/athletes")',
     );

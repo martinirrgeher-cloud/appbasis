@@ -1027,6 +1027,7 @@ let exerciseCatalogBusy = false;
 let exerciseCatalogFilterOpen = false;
 let exerciseCatalogEditorDirty = false;
 let exerciseCatalogEditorTab = "basis";
+let exerciseCatalogSwipeStart = null;
 let exerciseCatalogImportPreviewData = null;
 let exerciseCatalogImportPreviewToken = null;
 let exerciseCatalogImportFileDraft = null;
@@ -1280,6 +1281,41 @@ function setExerciseCatalogEditorTab(tab) {
   for (const panel of document.querySelectorAll("[data-exercise-catalog-panel]")) {
     panel.hidden = panel.dataset.exerciseCatalogPanel !== exerciseCatalogEditorTab;
   }
+  document
+    .querySelector("[data-exercise-catalog-tab='" + exerciseCatalogEditorTab + "']")
+    ?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+}
+
+function bindExerciseCatalogSwipe() {
+  const body = elements.exerciseCatalogEditor?.querySelector(
+    ".exercise-catalog-editor-body",
+  );
+  if (!body) return;
+  body.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) return;
+    if (event.target?.closest?.("input, select, textarea, button, a, video")) {
+      exerciseCatalogSwipeStart = null;
+      return;
+    }
+    const touch = event.touches[0];
+    exerciseCatalogSwipeStart = { x: touch.clientX, y: touch.clientY };
+  }, { passive: true });
+  body.addEventListener("touchend", (event) => {
+    if (!exerciseCatalogSwipeStart || event.changedTouches.length !== 1) return;
+    const touch = event.changedTouches[0];
+    const dx = touch.clientX - exerciseCatalogSwipeStart.x;
+    const dy = touch.clientY - exerciseCatalogSwipeStart.y;
+    exerciseCatalogSwipeStart = null;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    const order = ["basis", "instructions", "groups", "parameters", "similar", "usage", "media"];
+    const index = order.indexOf(exerciseCatalogEditorTab);
+    const target = dx < 0
+      ? order[Math.min(order.length - 1, index + 1)]
+      : order[Math.max(0, index - 1)];
+    if (target && target !== exerciseCatalogEditorTab) {
+      setExerciseCatalogEditorTab(target);
+    }
+  }, { passive: true });
 }
 
 function prepareExerciseCatalogView() {
@@ -1609,6 +1645,7 @@ function populateExerciseCatalogEditor(item, options = {}) {
   renderExerciseCatalogSimilarChecks(
     Array.isArray(item.similarExerciseIds) ? item.similarExerciseIds : [],
     item.id,
+    item.categoryKey,
   );
   exerciseCatalogParameterDrafts = Array.isArray(item.parameters)
     ? item.parameters.map((parameter) => ({ ...parameter }))
@@ -1728,12 +1765,17 @@ function renderExerciseCatalogExternalLinks(urls) {
   }
 }
 
-function renderExerciseCatalogSimilarChecks(selectedIds, currentId) {
+function renderExerciseCatalogSimilarChecks(selectedIds, currentId, categoryKey) {
   const container = elements.exerciseCatalogSimilar;
   if (!container) return;
   container.replaceChildren();
   const candidates = exerciseCatalogItems
-    .filter((item) => item.id !== currentId && item.isActive)
+    .filter(
+      (item) =>
+        item.id !== currentId &&
+        item.isActive &&
+        item.categoryKey === categoryKey,
+    )
     .slice()
     .sort((left, right) =>
       left.name.localeCompare(right.name, "de", { sensitivity: "base" }),
@@ -1741,7 +1783,7 @@ function renderExerciseCatalogSimilarChecks(selectedIds, currentId) {
   if (candidates.length === 0) {
     const empty = document.createElement("span");
     empty.className = "exercise-catalog-readonly";
-    empty.textContent = "Keine weiteren aktiven Übungen vorhanden.";
+    empty.textContent = "Keine weiteren aktiven Übungen in dieser Kategorie vorhanden.";
     container.append(empty);
     return;
   }
@@ -3320,6 +3362,19 @@ for (const control of document.querySelectorAll("[data-exercise-catalog-tab]")) 
     setExerciseCatalogEditorTab(control.dataset.exerciseCatalogTab || "basis");
   });
 }
+elements.exerciseCatalogCategory?.addEventListener("change", () => {
+  const selected = [
+    ...(elements.exerciseCatalogSimilar?.querySelectorAll(
+      "input[type='checkbox']:checked",
+    ) || []),
+  ].map((input) => input.value);
+  renderExerciseCatalogSimilarChecks(
+    selected,
+    exerciseCatalogSelectedId || "",
+    elements.exerciseCatalogCategory?.value || "",
+  );
+});
+bindExerciseCatalogSwipe();
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!elements.exerciseCatalogEditor?.hidden) {

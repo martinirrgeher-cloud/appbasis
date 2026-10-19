@@ -150,31 +150,23 @@ export class TrainingPlanService {
     }
     if (subjects.length === 0) return Object.freeze([]);
 
-    const groupedPlans: Array<readonly TrainingPlanSnapshot[]> =
-      new Array(subjects.length);
-    let nextSubjectIndex = 0;
-    const workerCount = Math.min(4, subjects.length);
-
-    async function loadNext(this: TrainingPlanService): Promise<void> {
-      while (true) {
-        const index = nextSubjectIndex;
-        nextSubjectIndex += 1;
-        if (index >= subjects.length) return;
-        const subjectId = subjects[index];
-        if (subjectId === undefined) return;
-        groupedPlans[index] = await this.listForSubjectDateRange(
-          organizationId,
-          subjectId,
-          fromDate,
-          toDate,
-        );
-      }
-    }
-
-    await Promise.all(
-      Array.from({ length: workerCount }, () => loadNext.call(this)),
+    const organization = normalizeTrainingPlanIdentifier(
+      organizationId,
+      "Organization id",
     );
-    const plans = groupedPlans.flat();
+    const from = normalizeTrainingPlanDate(fromDate);
+    const to = normalizeTrainingPlanDate(toDate);
+    if (from > to) {
+      throw new TrainingPlanValidationError(
+        "Training plan date range is invalid.",
+      );
+    }
+    const plans = await this.#repository.listCurrentBySubjectsDateRange(
+      organization,
+      subjects,
+      from,
+      to,
+    );
 
     return Object.freeze(
       plans.slice().sort(
