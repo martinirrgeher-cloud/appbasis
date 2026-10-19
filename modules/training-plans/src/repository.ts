@@ -96,6 +96,12 @@ export interface TrainingPlanLifecycleRepository {
 }
 
 export interface TrainingPlanRepository {
+  listCurrentBySubjectsDateRange(
+    organizationId: string,
+    subjectIds: readonly string[],
+    fromDate: string,
+    toDate: string,
+  ): Promise<readonly TrainingPlanSnapshot[]>;
   listCurrentBySubjectDateRange(
     organizationId: string,
     subjectId: string,
