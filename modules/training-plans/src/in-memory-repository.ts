@@ -28,6 +28,31 @@ export class InMemoryTrainingPlanRepository
     for (const plan of initialPlans) this.#insertInitial(plan);
   }
 
+  async listCurrentBySubjectsDateRange(
+    organizationId: string,
+    subjectIds: readonly string[],
+    fromDate: string,
+    toDate: string,
+  ): Promise<readonly TrainingPlanSnapshot[]> {
+    const subjects = new Set(subjectIds);
+    return Object.freeze(
+      [...this.#plans.values()]
+        .filter(
+          (plan) =>
+            plan.organizationId === organizationId &&
+            subjects.has(plan.subjectId) &&
+            plan.planDate >= fromDate &&
+            plan.planDate <= toDate,
+        )
+        .sort(
+          (left, right) =>
+            left.subjectId.localeCompare(right.subjectId) ||
+            compareTrainingPlanSnapshots(left, right),
+        )
+        .map(clonePlan),
+    );
+  }
+
   async listCurrentBySubjectDateRange(
     organizationId: string,
     subjectId: string,
