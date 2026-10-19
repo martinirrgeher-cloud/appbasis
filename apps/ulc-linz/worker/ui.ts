@@ -182,9 +182,8 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
 
             <section class="masterdata-panel" data-masterdata-panel="athletes">
               <div class="section-heading masterdata-list-heading">
-                <div><p class="eyebrow">Athleten</p><h2>Aktuelle Athleten</h2></div>
+                <div><p class="eyebrow">Athleten</p><h2>Aktuelle Athleten <span class="masterdata-inline-count" id="athlete-count">(0)</span></h2></div>
                 <div class="masterdata-heading-actions">
-                  <span id="athlete-count">0</span>
                   <button class="button button--primary masterdata-icon-action" id="athlete-new" type="button" aria-label="Athlet anlegen" title="Athlet anlegen">
                     <span aria-hidden="true">＋</span><span class="masterdata-icon-action__label">Athlet</span>
                   </button>
@@ -275,91 +274,146 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             </section>
 
             <section class="masterdata-panel" data-masterdata-panel="trainers" hidden>
-              <div class="section-heading">
-                <div><p class="eyebrow">Trainer</p><h2>Aktuelle Trainer</h2></div>
-                <span id="trainer-count">0</span>
+              <div class="section-heading masterdata-list-heading">
+                <div><p class="eyebrow">Trainer</p><h2>Aktuelle Trainer <span class="masterdata-inline-count" id="trainer-count">(0)</span></h2></div>
+                <button class="button button--primary masterdata-icon-action" id="trainer-new" type="button" aria-label="Trainer anlegen" title="Trainer anlegen">
+                  <span aria-hidden="true">＋</span><span class="masterdata-icon-action__label">Trainer</span>
+                </button>
               </div>
+              <p class="settings-note masterdata-list-hint">Trainer antippen, um Details, Gruppen- und Benutzerzuordnung zu öffnen.</p>
               <div class="masterdata-list" id="trainer-list" aria-live="polite"></div>
-              <form class="card masterdata-form" id="trainer-form">
-                <div class="section-heading"><div><p class="eyebrow">Stammdaten</p><h2 id="trainer-form-title">Trainer anlegen</h2></div></div>
-                <div class="settings-grid">
-                  <label>Vorname<input id="trainer-first-name" maxlength="80" required /></label>
-                  <label>Nachname<input id="trainer-last-name" maxlength="80" required /></label>
-                  <label>Telefon<input id="trainer-phone" maxlength="80" inputmode="tel" /></label>
-                  <label>E-Mail<input id="trainer-email" type="email" maxlength="320" /></label>
-                  <label>Notiz<input id="trainer-notes" maxlength="3000" /></label>
-                </div>
-                <div class="masterdata-form-actions">
-                  <button class="button button--primary" id="trainer-submit-button" type="submit">Trainer anlegen</button>
-                  <button class="button button--secondary" id="trainer-edit-cancel" type="button" hidden>Abbrechen</button>
-                </div>
-              </form>
-              <form class="card masterdata-form" id="trainer-group-form">
-                <div class="section-heading"><div><p class="eyebrow">Gruppe</p><h2>Trainer zuordnen</h2></div></div>
-                <div class="settings-grid">
-                  <label>Trainer<select id="trainer-group-trainer" required></select></label>
-                  <label>Trainingsgruppe<select id="trainer-group-group" required></select></label>
-                </div>
-                <button class="button button--primary" type="submit">Zuordnung anlegen</button>
-              </form>
 
-              <section class="card masterdata-form" id="trainer-identity-admin">
-                <div class="section-heading">
-                  <div><p class="eyebrow">Benutzer</p><h2>Trainer-Benutzer zuordnen</h2></div>
-                  <button class="button button--secondary" id="trainer-identity-load" type="button">Verwalten</button>
-                </div>
-                <p class="settings-note">Nur für Administratoren. Die Zuordnung wird erst auf ausdrücklichen Aufruf geladen.</p>
-                <p class="message message--error" id="trainer-identity-message" role="alert" hidden></p>
-                <p class="message message--success" id="trainer-identity-success" role="status" hidden></p>
-                <div id="trainer-identity-workspace" hidden>
-                  <form id="trainer-user-form">
-                    <div class="section-heading">
-                      <div><p class="eyebrow">Neu</p><h3>Trainer-Benutzer anlegen</h3></div>
+              <div class="masterdata-athlete-backdrop" id="trainer-overlay" hidden>
+                <section class="masterdata-athlete-dialog" role="dialog" aria-modal="true" aria-labelledby="trainer-overlay-title">
+                  <header class="masterdata-athlete-header">
+                    <div>
+                      <p class="eyebrow">Trainer</p>
+                      <h2 id="trainer-overlay-title">Trainer</h2>
+                      <p class="settings-note" id="trainer-overlay-meta"></p>
                     </div>
-                    <p class="settings-note">Der Benutzer erhält die Rolle Trainer mit Kindertraining-Zugriff und muss beim ersten Login das temporäre Passwort ändern.</p>
-                    <div class="settings-grid">
-                      <label>Benutzername<input id="trainer-user-username" minlength="3" maxlength="30" pattern="[a-z0-9._]+" autocomplete="off" required /></label>
-                      <label>Anzeigename<input id="trainer-user-display-name" maxlength="120" autocomplete="off" required /></label>
-                      <label>E-Mail optional<input id="trainer-user-email" type="email" maxlength="320" autocomplete="off" /></label>
-                      <label>Temporäres Passwort<input id="trainer-user-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required /></label>
-                      <label>Trainer<select id="trainer-user-trainer" required></select></label>
-                    </div>
-                    <button class="button button--primary" type="submit">Benutzer anlegen</button>
-                  </form>
-                  <div class="masterdata-list" id="trainer-identity-list" aria-live="polite"></div>
-                  <form id="trainer-identity-form">
-                    <div class="section-heading">
-                      <div><p class="eyebrow">Bestehend</p><h3>Benutzerzuordnung ändern</h3></div>
-                    </div>
-                    <div class="settings-grid">
-                      <label>Benutzer<select id="trainer-identity-identity" required></select></label>
-                      <label>Trainer<select id="trainer-identity-trainer" required></select></label>
-                    </div>
-                    <button class="button button--secondary" type="submit">Zuordnung speichern</button>
-                  </form>
-                </div>
-              </section>
+                    <button class="button button--secondary masterdata-overlay-close" id="trainer-overlay-close" type="button" aria-label="Trainerfenster schließen" title="Schließen">✕</button>
+                  </header>
+                  <div class="masterdata-athlete-body">
+                    <section id="trainer-detail">
+                      <p class="masterdata-athlete-note" id="trainer-detail-notes" hidden></p>
+                      <div class="masterdata-athlete-actions">
+                        <button class="button button--secondary" id="trainer-detail-edit" type="button"><span aria-hidden="true">✎</span> Bearbeiten</button>
+                        <button class="button button--secondary" id="trainer-detail-group" type="button"><span aria-hidden="true">＋</span> Gruppe</button>
+                        <button class="button button--secondary" id="trainer-detail-user" type="button"><span aria-hidden="true">👤</span> Benutzer</button>
+                        <button class="button button--danger" id="trainer-detail-deactivate" type="button"><span aria-hidden="true">⏸</span> Deaktivieren</button>
+                      </div>
+                    </section>
+
+                    <form class="card masterdata-form masterdata-overlay-form" id="trainer-form" hidden>
+                      <div class="section-heading"><div><p class="eyebrow">Stammdaten</p><h2 id="trainer-form-title">Trainer anlegen</h2></div></div>
+                      <div class="settings-grid">
+                        <label>Vorname<input id="trainer-first-name" maxlength="80" required /></label>
+                        <label>Nachname<input id="trainer-last-name" maxlength="80" required /></label>
+                        <label>Telefon<input id="trainer-phone" maxlength="80" inputmode="tel" /></label>
+                        <label>E-Mail<input id="trainer-email" type="email" maxlength="320" /></label>
+                        <label>Notiz<input id="trainer-notes" maxlength="3000" /></label>
+                      </div>
+                      <div class="masterdata-form-actions">
+                        <button class="button button--primary" id="trainer-submit-button" type="submit">Trainer anlegen</button>
+                        <button class="button button--secondary" id="trainer-edit-cancel" type="button">Zurück</button>
+                      </div>
+                    </form>
+
+                    <form class="card masterdata-form masterdata-overlay-form" id="trainer-group-form" hidden>
+                      <div class="section-heading"><div><p class="eyebrow">Gruppe</p><h2>Trainer zuordnen</h2></div></div>
+                      <div class="settings-grid">
+                        <label class="masterdata-athlete-fixed-owner">Trainer<select id="trainer-group-trainer" required></select></label>
+                        <label>Trainingsgruppe<select id="trainer-group-group" required></select></label>
+                      </div>
+                      <div class="masterdata-form-actions">
+                        <button class="button button--primary" type="submit">Zuordnung anlegen</button>
+                        <button class="button button--secondary" id="trainer-group-cancel" type="button">Zurück</button>
+                      </div>
+                    </form>
+
+                    <section class="card masterdata-form masterdata-overlay-form" id="trainer-identity-admin" hidden>
+                      <div class="section-heading">
+                        <div><p class="eyebrow">Benutzer</p><h2>Trainer-Benutzer</h2></div>
+                        <button class="button button--secondary" id="trainer-identity-load" type="button">Verwalten</button>
+                      </div>
+                      <p class="settings-note">Nur für Administratoren. Benutzerzuordnungen werden erst auf ausdrücklichen Aufruf geladen.</p>
+                      <p class="message message--error" id="trainer-identity-message" role="alert" hidden></p>
+                      <p class="message message--success" id="trainer-identity-success" role="status" hidden></p>
+                      <div id="trainer-identity-workspace" hidden>
+                        <form id="trainer-user-form">
+                          <div class="section-heading"><div><p class="eyebrow">Neu</p><h3>Trainer-Benutzer anlegen</h3></div></div>
+                          <div class="settings-grid">
+                            <label>Benutzername<input id="trainer-user-username" minlength="3" maxlength="30" pattern="[a-z0-9._]+" autocomplete="off" required /></label>
+                            <label>Anzeigename<input id="trainer-user-display-name" maxlength="120" autocomplete="off" required /></label>
+                            <label>E-Mail optional<input id="trainer-user-email" type="email" maxlength="320" autocomplete="off" /></label>
+                            <label>Temporäres Passwort<input id="trainer-user-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required /></label>
+                            <label class="masterdata-athlete-fixed-owner">Trainer<select id="trainer-user-trainer" required></select></label>
+                          </div>
+                          <button class="button button--primary" type="submit">Benutzer anlegen</button>
+                        </form>
+                        <div class="masterdata-list masterdata-trainer-identity-list" id="trainer-identity-list" aria-live="polite"></div>
+                        <form id="trainer-identity-form">
+                          <div class="section-heading"><div><p class="eyebrow">Bestehend</p><h3>Benutzer diesem Trainer zuordnen</h3></div></div>
+                          <div class="settings-grid">
+                            <label>Benutzer<select id="trainer-identity-identity" required></select></label>
+                            <label class="masterdata-athlete-fixed-owner">Trainer<select id="trainer-identity-trainer" required></select></label>
+                          </div>
+                          <button class="button button--secondary" type="submit">Zuordnung speichern</button>
+                        </form>
+                      </div>
+                      <div class="masterdata-form-actions">
+                        <span></span>
+                        <button class="button button--secondary" id="trainer-identity-close" type="button">Zurück</button>
+                      </div>
+                    </section>
+                  </div>
+                </section>
+              </div>
             </section>
 
             <section class="masterdata-panel" data-masterdata-panel="groups" hidden>
-              <div class="section-heading">
-                <div><p class="eyebrow">Trainingsgruppen</p><h2>Aktuelle Gruppen</h2></div>
-                <span id="group-count">0</span>
+              <div class="section-heading masterdata-list-heading">
+                <div><p class="eyebrow">Trainingsgruppen</p><h2>Aktuelle Gruppen <span class="masterdata-inline-count" id="group-count">(0)</span></h2></div>
+                <button class="button button--primary masterdata-icon-action" id="group-new" type="button" aria-label="Trainingsgruppe anlegen" title="Trainingsgruppe anlegen">
+                  <span aria-hidden="true">＋</span><span class="masterdata-icon-action__label">Gruppe</span>
+                </button>
               </div>
+              <p class="settings-note masterdata-list-hint">Gruppe antippen, um Details und Bearbeitung zu öffnen.</p>
               <div class="masterdata-list" id="group-list" aria-live="polite"></div>
-              <form class="card masterdata-form" id="group-form">
-                <div class="section-heading"><div><p class="eyebrow">Stammdaten</p><h2 id="group-form-title">Trainingsgruppe anlegen</h2></div></div>
-                <div class="settings-grid">
-                  <label>Name<input id="group-name" minlength="2" maxlength="100" required /></label>
-                  <label>Kurzname<input id="group-short-name" maxlength="20" /></label>
-                  <label>Beschreibung<input id="group-description" maxlength="1000" /></label>
-                  <label>Sortierung<input id="group-sort-order" type="number" min="0" max="10000" value="100" inputmode="numeric" /></label>
-                </div>
-                <div class="masterdata-form-actions">
-                  <button class="button button--primary" id="group-submit-button" type="submit">Gruppe anlegen</button>
-                  <button class="button button--secondary" id="group-edit-cancel" type="button" hidden>Abbrechen</button>
-                </div>
-              </form>
+
+              <div class="masterdata-athlete-backdrop" id="group-overlay" hidden>
+                <section class="masterdata-athlete-dialog" role="dialog" aria-modal="true" aria-labelledby="group-overlay-title">
+                  <header class="masterdata-athlete-header">
+                    <div>
+                      <p class="eyebrow">Trainingsgruppe</p>
+                      <h2 id="group-overlay-title">Gruppe</h2>
+                      <p class="settings-note" id="group-overlay-meta"></p>
+                    </div>
+                    <button class="button button--secondary masterdata-overlay-close" id="group-overlay-close" type="button" aria-label="Gruppenfenster schließen" title="Schließen">✕</button>
+                  </header>
+                  <div class="masterdata-athlete-body">
+                    <section id="group-detail">
+                      <p class="masterdata-athlete-note" id="group-detail-description" hidden></p>
+                      <div class="masterdata-athlete-actions masterdata-group-actions">
+                        <button class="button button--secondary" id="group-detail-edit" type="button"><span aria-hidden="true">✎</span> Bearbeiten</button>
+                      </div>
+                    </section>
+                    <form class="card masterdata-form masterdata-overlay-form" id="group-form" hidden>
+                      <div class="section-heading"><div><p class="eyebrow">Stammdaten</p><h2 id="group-form-title">Trainingsgruppe anlegen</h2></div></div>
+                      <div class="settings-grid">
+                        <label>Name<input id="group-name" minlength="2" maxlength="100" required /></label>
+                        <label>Kurzname<input id="group-short-name" maxlength="20" /></label>
+                        <label>Beschreibung<input id="group-description" maxlength="1000" /></label>
+                        <label>Sortierung<input id="group-sort-order" type="number" min="0" max="10000" value="100" inputmode="numeric" /></label>
+                      </div>
+                      <div class="masterdata-form-actions">
+                        <button class="button button--primary" id="group-submit-button" type="submit">Gruppe anlegen</button>
+                        <button class="button button--secondary" id="group-edit-cancel" type="button">Zurück</button>
+                      </div>
+                    </form>
+                  </div>
+                </section>
+              </div>
             </section>
           </section>
 
@@ -1245,7 +1299,26 @@ const elements = {
   athleteDetailGroupNew: document.querySelector("#athlete-detail-group-new"),
   athleteDetailDeactivate: document.querySelector("#athlete-detail-deactivate"),
   trainerList: document.querySelector("#trainer-list"),
+  trainerNew: document.querySelector("#trainer-new"),
+  trainerOverlay: document.querySelector("#trainer-overlay"),
+  trainerOverlayClose: document.querySelector("#trainer-overlay-close"),
+  trainerOverlayTitle: document.querySelector("#trainer-overlay-title"),
+  trainerOverlayMeta: document.querySelector("#trainer-overlay-meta"),
+  trainerDetail: document.querySelector("#trainer-detail"),
+  trainerDetailNotes: document.querySelector("#trainer-detail-notes"),
+  trainerDetailEdit: document.querySelector("#trainer-detail-edit"),
+  trainerDetailGroup: document.querySelector("#trainer-detail-group"),
+  trainerDetailUser: document.querySelector("#trainer-detail-user"),
+  trainerDetailDeactivate: document.querySelector("#trainer-detail-deactivate"),
   groupList: document.querySelector("#group-list"),
+  groupNew: document.querySelector("#group-new"),
+  groupOverlay: document.querySelector("#group-overlay"),
+  groupOverlayClose: document.querySelector("#group-overlay-close"),
+  groupOverlayTitle: document.querySelector("#group-overlay-title"),
+  groupOverlayMeta: document.querySelector("#group-overlay-meta"),
+  groupDetail: document.querySelector("#group-detail"),
+  groupDetailDescription: document.querySelector("#group-detail-description"),
+  groupDetailEdit: document.querySelector("#group-detail-edit"),
   athleteCount: document.querySelector("#athlete-count"),
   trainerCount: document.querySelector("#trainer-count"),
   groupCount: document.querySelector("#group-count"),
@@ -1294,6 +1367,8 @@ const elements = {
   trainerGroupForm: document.querySelector("#trainer-group-form"),
   trainerGroupTrainer: document.querySelector("#trainer-group-trainer"),
   trainerGroupGroup: document.querySelector("#trainer-group-group"),
+  trainerGroupCancel: document.querySelector("#trainer-group-cancel"),
+  trainerIdentityClose: document.querySelector("#trainer-identity-close"),
   trainerIdentityLoad: document.querySelector("#trainer-identity-load"),
   trainerIdentityMessage: document.querySelector("#trainer-identity-message"),
   trainerIdentitySuccess: document.querySelector("#trainer-identity-success"),
@@ -1371,6 +1446,11 @@ let masterdataEdit = null;
 let masterdataContactEdit = null;
 let masterdataAthleteOverlayId = null;
 let masterdataAthleteOverlayMode = "closed";
+let masterdataTrainerOverlayId = null;
+let masterdataTrainerOverlayMode = "closed";
+let masterdataGroupOverlayId = null;
+let masterdataGroupOverlayMode = "closed";
+let masterdataSwipeStart = null;
 let trainerIdentityAdminReady = false;
 let trainerIdentityLoading = false;
 let trainerIdentityBindings = [];
@@ -1436,16 +1516,42 @@ elements.athleteDetailDeactivate?.addEventListener("click", () => {
 });
 elements.athleteContactEditCancel?.addEventListener("click", cancelMasterdataAthleteContactEdit);
 elements.trainerForm?.addEventListener("submit", (event) => void createMasterdataTrainer(event));
+elements.trainerNew?.addEventListener("click", openNewMasterdataTrainer);
+elements.trainerOverlayClose?.addEventListener("click", closeMasterdataTrainerOverlay);
+elements.trainerDetailEdit?.addEventListener("click", () => {
+  const trainer = selectedMasterdataTrainer();
+  if (trainer) beginMasterdataEdit({ type: "trainer", id: trainer.id, item: trainer });
+});
+elements.trainerDetailGroup?.addEventListener("click", openNewMasterdataTrainerGroup);
+elements.trainerDetailUser?.addEventListener("click", openMasterdataTrainerIdentity);
+elements.trainerDetailDeactivate?.addEventListener("click", () => {
+  const trainer = selectedMasterdataTrainer();
+  if (trainer) void deactivateMasterdataEntity({ type: "trainer", id: trainer.id });
+});
 elements.groupForm?.addEventListener("submit", (event) => void createMasterdataGroup(event));
+elements.groupNew?.addEventListener("click", openNewMasterdataGroup);
+elements.groupOverlayClose?.addEventListener("click", closeMasterdataGroupOverlay);
+elements.groupDetailEdit?.addEventListener("click", () => {
+  const group = selectedMasterdataGroup();
+  if (group) beginMasterdataEdit({ type: "group", id: group.id, item: group });
+});
 elements.athleteEditCancel?.addEventListener("click", () => {
   if (masterdataEdit?.type === "athlete") cancelMasterdataEdit();
   else closeMasterdataAthleteOverlay();
 });
-elements.trainerEditCancel?.addEventListener("click", cancelMasterdataEdit);
-elements.groupEditCancel?.addEventListener("click", cancelMasterdataEdit);
+elements.trainerEditCancel?.addEventListener("click", () => {
+  if (masterdataEdit?.type === "trainer") cancelMasterdataEdit();
+  else closeMasterdataTrainerOverlay();
+});
+elements.groupEditCancel?.addEventListener("click", () => {
+  if (masterdataEdit?.type === "group") cancelMasterdataEdit();
+  else closeMasterdataGroupOverlay();
+});
 elements.athleteGroupForm?.addEventListener("submit", (event) => void createAthleteGroupMembership(event));
 elements.athleteGroupCancel?.addEventListener("click", () => showMasterdataAthleteOverlayMode("detail"));
 elements.trainerGroupForm?.addEventListener("submit", (event) => void createTrainerGroupMembership(event));
+elements.trainerGroupCancel?.addEventListener("click", () => showMasterdataTrainerOverlayMode("detail"));
+elements.trainerIdentityClose?.addEventListener("click", () => showMasterdataTrainerOverlayMode("detail"));
 elements.trainerIdentityLoad?.addEventListener("click", () => void loadTrainerIdentityAdmin());
 elements.trainerUserForm?.addEventListener("submit", (event) => void createTrainerUser(event));
 elements.trainerIdentityForm?.addEventListener("submit", (event) => void bindTrainerIdentity(event));
@@ -2870,9 +2976,9 @@ function renderMasterdata(snapshot) {
     }),
   );
   renderMasterdataAthleteOverlay(snapshot);
-  if (elements.athleteCount) elements.athleteCount.textContent = String(snapshot.athletes.length);
-  if (elements.trainerCount) elements.trainerCount.textContent = String(snapshot.trainers.length);
-  if (elements.groupCount) elements.groupCount.textContent = String(snapshot.trainingGroups.length);
+  if (elements.athleteCount) elements.athleteCount.textContent = "(" + String(snapshot.athletes.length) + ")";
+  if (elements.trainerCount) elements.trainerCount.textContent = "(" + String(snapshot.trainers.length) + ")";
+  if (elements.groupCount) elements.groupCount.textContent = "(" + String(snapshot.trainingGroups.length) + ")";
   renderMasterdataAssignmentOptions(snapshot);
   renderTrainerIdentityAdmin();
 }
