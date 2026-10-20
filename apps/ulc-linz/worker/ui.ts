@@ -71,8 +71,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="3" hidden disabled>Übungen</button>
             <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="4" hidden disabled>Blöcke</button>
             <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="5" hidden disabled>Stammdaten</button>
-            <button class="app-nav__link" type="button" data-nav-view="countdown" data-nav-priority="6" hidden disabled>Countdown</button>
-            <button class="app-nav__link" type="button" data-nav-view="settings" data-nav-priority="7" hidden disabled>Einstellungen</button>
+            <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="6" hidden disabled>Nützliches</button>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" hidden>Mehr</button>
           </div>
           <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden></div>
@@ -511,11 +510,32 @@ ${ULC_EXERCISE_CATALOG_HTML}
 ${ULC_TRAINING_BLOCKS_HTML}
 ${ULC_TRAINING_PLANS_HTML}
 
-          <section class="app-section" data-app-section="countdown" id="countdown" hidden>
+          <section class="app-section" data-app-section="useful" id="useful" hidden>
             <section class="hero">
-              <p class="eyebrow">Nützliches</p>
-              <h1>Intervall-Countdown</h1>
-              <p class="summary">Für Belastungs- und Pausenintervalle im Training.</p>
+              <p class="eyebrow">Werkzeuge</p>
+              <h1>Nützliches</h1>
+              <p class="summary">Kleine Helfer für Training und Organisation.</p>
+            </section>
+            <section class="utility-grid">
+              <article class="card utility-card">
+                <div>
+                  <p class="eyebrow">Training</p>
+                  <h2>Intervall-Countdown</h2>
+                  <p>Belastungs- und Pausenintervalle mit optionaler Sprachausgabe.</p>
+                </div>
+                <button class="button button--primary" type="button" data-open-view="countdown">Countdown öffnen</button>
+              </article>
+            </section>
+          </section>
+
+          <section class="app-section" data-app-section="countdown" id="countdown" hidden>
+            <section class="hero countdown-hero">
+              <div>
+                <p class="eyebrow">Nützliches</p>
+                <h1>Intervall-Countdown</h1>
+                <p class="summary">Für Belastungs- und Pausenintervalle im Training.</p>
+              </div>
+              <button class="button button--secondary" type="button" data-open-view="useful">← Nützliches</button>
             </section>
 
             <p class="message message--error" id="app-message" role="alert" hidden></p>
@@ -536,47 +556,42 @@ ${ULC_TRAINING_PLANS_HTML}
                 <button class="button button--reset" id="reset-button" type="button" disabled>Reset</button>
               </div>
             </section>
-          </section>
 
-          <section class="app-section" data-app-section="settings" hidden>
-            <section class="hero">
-              <p class="eyebrow">Countdown</p>
-              <h1>Einstellungen</h1>
-              <p class="summary">Deine Trainingseinstellungen werden lokal auf diesem Gerät gespeichert.</p>
-            </section>
-
-            <section class="card settings-panel" id="settings" aria-labelledby="settings-title">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">Training</p>
-                  <h2 id="settings-title">Training konfigurieren</h2>
+            <details class="card countdown-settings">
+              <summary>⚙ Einstellungen</summary>
+              <section class="settings-panel" id="settings" aria-labelledby="settings-title">
+                <div class="section-heading">
+                  <div>
+                    <p class="eyebrow">Countdown</p>
+                    <h2 id="settings-title">Training konfigurieren</h2>
+                  </div>
+                  <span id="total-duration">Gesamt: 0:00</span>
                 </div>
-                <span id="total-duration">Gesamt: 0:00</span>
-              </div>
 
-              <form class="settings-grid" id="settings-form">
-                <label>Übungen / Durchgänge
-                  <input id="rounds" type="number" min="1" max="1000" step="1" inputmode="numeric" required />
-                </label>
-                <label>Belastung (Sekunden)
-                  <input id="work-seconds" type="number" min="1" max="86400" step="1" inputmode="numeric" required />
-                </label>
-                <label>Pause (Sekunden)
-                  <input id="rest-seconds" type="number" min="0" max="86400" step="1" inputmode="numeric" required />
-                </label>
-                <label>Ansage Belastung alle … Sek.
-                  <input id="work-interval" type="number" min="0" max="86400" step="1" inputmode="numeric" required />
-                </label>
-                <label>Ansage Pause alle … Sek.
-                  <input id="rest-interval" type="number" min="0" max="86400" step="1" inputmode="numeric" required />
-                </label>
-                <label class="toggle-label">
-                  <input id="speech-enabled" type="checkbox" />
-                  <span>Sprachausgabe</span>
-                </label>
-              </form>
-              <p class="settings-note">0 bei den Ansageintervallen bedeutet: nur die letzten fünf Sekunden werden einzeln angesagt.</p>
-            </section>
+                <form class="settings-grid" id="settings-form">
+                  <label>Übungen / Durchgänge
+                    <input id="rounds" type="number" min="1" max="1000" step="1" inputmode="numeric" required />
+                  </label>
+                  <label>Belastung (Sekunden)
+                    <input id="work-seconds" type="number" min="1" max="86400" step="1" inputmode="numeric" required />
+                  </label>
+                  <label>Pause (Sekunden)
+                    <input id="rest-seconds" type="number" min="0" max="86400" step="1" inputmode="numeric" required />
+                  </label>
+                  <label>Ansage Belastung alle … Sek.
+                    <input id="work-interval" type="number" min="0" max="86400" step="1" inputmode="numeric" required />
+                  </label>
+                  <label>Ansage Pause alle … Sek.
+                    <input id="rest-interval" type="number" min="0" max="86400" step="1" inputmode="numeric" required />
+                  </label>
+                  <label class="toggle-label">
+                    <input id="speech-enabled" type="checkbox" />
+                    <span>Sprachausgabe</span>
+                  </label>
+                </form>
+                <p class="settings-note">0 bei den Ansageintervallen bedeutet: nur die letzten fünf Sekunden werden einzeln angesagt.</p>
+              </section>
+            </details>
           </section>
         </main>
       </div>
@@ -1185,7 +1200,29 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 .button--start { background: #0f172a; color: white; }
 .button--pause { border-color: #f59e0b; background: #fef3c7; color: #92400e; }
 .button--reset { border-color: var(--border-strong); background: white; color: var(--secondary); }
-.settings-panel { margin-top: 18px; padding: 18px; scroll-margin-top: 80px; }
+.utility-grid { display: grid; gap: 12px; }
+.utility-card { display: grid; gap: 12px; padding: 16px; }
+.countdown-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+.countdown-settings {
+  margin-top: 16px;
+  overflow: hidden;
+  padding: 0;
+}
+.countdown-settings > summary {
+  min-height: var(--touch);
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 800;
+  list-style: none;
+}
+.countdown-settings > summary::-webkit-details-marker { display: none; }
+.countdown-settings[open] > summary { border-bottom: 1px solid var(--border); }
+.settings-panel { margin-top: 0; padding: 16px; scroll-margin-top: 80px; }
 .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .section-heading > span { color: #64748b; font-size: .8rem; white-space: nowrap; }
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -1205,6 +1242,7 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 .settings-panel.is-locked { opacity: .68; }
 @media (max-width: 480px) {
   .settings-grid { grid-template-columns: 1fr; }
+  .countdown-hero { align-items: stretch; flex-direction: column; }
   .masterdata-form .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .masterdata-overlay-form .settings-grid { grid-template-columns: 1fr; }
   .masterdata-athlete-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1446,8 +1484,7 @@ const APP_NAV_PRIORITY = Object.freeze([
   "exercise-catalog",
   "training-blocks",
   "masterdata",
-  "countdown",
-  "settings",
+  "useful",
 ]);
 
 let appNavMoreOpen = false;
@@ -1857,7 +1894,7 @@ function isAppNavigationAvailable(section) {
   if (section === "exercise-catalog") return exerciseCatalogReady;
   if (section === "training-blocks") return trainingBlocksReady;
   if (section === "training-plans") return trainingPlansReady;
-  if (section === "countdown" || section === "settings") return countdownReady;
+  if (section === "useful" || section === "countdown") return countdownReady;
   return false;
 }
 
@@ -1924,12 +1961,16 @@ function setAppNavMoreOpen(open) {
 }
 
 function syncAppNavigationActive(section) {
+  const navigationSection = section === "countdown" ? "useful" : section;
   for (const control of document.querySelectorAll("[data-nav-view]")) {
-    control.classList.toggle("is-active", control.dataset.navView === section);
+    control.classList.toggle(
+      "is-active",
+      control.dataset.navView === navigationSection,
+    );
   }
   const overflowActive = [
     ...(elements.appNavOverflow?.querySelectorAll("[data-nav-view]") ?? []),
-  ].some((control) => control.dataset.navView === section);
+  ].some((control) => control.dataset.navView === navigationSection);
   elements.appNavMore?.classList.toggle("is-active", overflowActive);
 }
 
@@ -2004,7 +2045,7 @@ function refreshAppAvailability() {
 function showAppSection(section) {
   const allowed =
     section === "home" ||
-    ((section === "countdown" || section === "settings") && countdownReady) ||
+    ((section === "useful" || section === "countdown") && countdownReady) ||
     (section === "masterdata" && masterdataReady) ||
     (section === "kindertraining" && kindertrainingReady) ||
     (section === "exercise-catalog" && exerciseCatalogReady) ||

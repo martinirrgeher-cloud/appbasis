@@ -33,7 +33,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
             <section class="training-block-groups" id="training-block-list" aria-live="polite"></section>
 
             <div class="training-block-backdrop" id="training-block-editor" hidden>
-              <section class="training-block-dialog" role="dialog" aria-modal="true" aria-labelledby="training-block-editor-title">
+              <section class="training-block-dialog" id="training-block-dialog" role="dialog" aria-modal="true" aria-labelledby="training-block-editor-title">
                 <header class="training-block-header">
                   <div>
                     <p class="eyebrow" id="training-block-editor-eyebrow">Trainingsblock</p>
@@ -53,10 +53,11 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                       <label class="training-block-wide">Name
                         <input id="training-block-name" minlength="1" maxlength="120" />
                       </label>
-                      <label>Trainingsgruppen
-                        <select id="training-block-audience" multiple size="4"></select>
-                        <small>Keine Auswahl = vereinsweit.</small>
-                      </label>
+                      <fieldset class="training-block-audience-field">
+                        <legend>Trainingsgruppen</legend>
+                        <div class="training-block-audience-picker" id="training-block-audience" role="group" aria-label="Trainingsgruppen auswählen"></div>
+                        <small>„Generell gültig“ gilt für alle Gruppen. Mehrere Gruppen können kombiniert werden.</small>
+                      </fieldset>
                       <label>Dauer (Min.)
                         <input id="training-block-duration" type="number" min="1" max="2147483647" step="1" inputmode="numeric" placeholder="Optional" />
                       </label>
@@ -124,6 +125,13 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                   <div><p class="eyebrow">Übung</p><h2 id="training-block-info-title">Details</h2></div>
                   <button class="button button--secondary" id="training-block-info-close" type="button">Schließen</button>
                 </header>
+                <nav class="training-block-info-tabs" aria-label="Übungsdetails">
+                  <button type="button" data-training-block-info-tab="basis" aria-selected="true">Basis</button>
+                  <button type="button" data-training-block-info-tab="hinweise" aria-selected="false">Hinweise</button>
+                  <button type="button" data-training-block-info-tab="zuordnung" aria-selected="false">Zuordnung</button>
+                  <button type="button" data-training-block-info-tab="parameter" aria-selected="false">Parameter</button>
+                  <button type="button" data-training-block-info-tab="videos" aria-selected="false">Videos</button>
+                </nav>
                 <div class="training-block-info-body" id="training-block-info-body"></div>
               </section>
             </div>
@@ -243,9 +251,13 @@ export const ULC_TRAINING_BLOCKS_CSS = `
 .training-block-info-backdrop { z-index: 90; }
 .training-block-dialog,
 .training-block-info-dialog {
-  width: min(100%, 760px);
-  max-height: min(94vh, 920px);
+  width: min(760px, 100vw);
+  max-width: 100vw;
+  min-width: 0;
+  max-height: min(94dvh, 920px);
   overflow: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   border-radius: 18px 18px 0 0;
   background: var(--page);
   box-shadow: 0 -20px 50px rgb(15 23 42 / 22%);
@@ -277,7 +289,61 @@ export const ULC_TRAINING_BLOCKS_CSS = `
 .training-block-save-state[data-state="error"],
 .training-block-save-state[data-state="conflict"] { background: #fee2e2; color: #991b1b; }
 .training-block-save-state[data-state="draft"] { background: #fef3c7; color: #92400e; }
-.training-block-body { display: grid; gap: 12px; padding: 12px; }
+.training-block-body {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding: 12px;
+  overflow-x: hidden;
+}
+.training-block-body > *,
+.training-block-form-grid > *,
+.training-block-exercise,
+.training-block-history-card,
+.training-block-exercises-card,
+.training-block-form-card { min-width: 0; }
+.training-block-form-card,
+.training-block-exercises-card,
+.training-block-history-card { max-width: 100%; overflow-x: hidden; }
+.training-block-audience-field {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.training-block-audience-field legend {
+  margin-bottom: 6px;
+  font-size: .78rem;
+  font-weight: 750;
+}
+.training-block-audience-field small {
+  display: block;
+  margin-top: 6px;
+  color: var(--secondary);
+}
+.training-block-audience-picker {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.training-block-audience-chip {
+  min-height: 38px;
+  max-width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: white;
+  color: var(--secondary);
+  font-size: .78rem;
+  font-weight: 750;
+}
+.training-block-audience-chip[aria-pressed="true"] {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.training-block-audience-chip:disabled { opacity: .55; }
 .training-block-form-card,
 .training-block-exercises-card,
 .training-block-history-card { padding: 14px; }
@@ -348,17 +414,93 @@ export const ULC_TRAINING_BLOCKS_CSS = `
   margin-top: 12px;
 }
 .training-block-revision-preview,
-.training-block-comparison,
-.training-block-info-body {
+.training-block-comparison {
   margin-top: 10px;
   padding: 12px;
   border-radius: var(--control-radius);
   background: var(--muted);
-  white-space: pre-wrap;
 }
-.training-block-info-body { margin: 0; border-radius: 0; background: var(--page); }
-.training-block-info-section { margin-bottom: 14px; }
-.training-block-info-section h3 { margin-bottom: 4px; }
+.training-block-revision-preview[hidden],
+.training-block-comparison[hidden] { display: none; }
+.training-block-version-head {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+.training-block-version-meta { color: var(--secondary); font-size: .76rem; }
+.training-block-version-exercises { display: grid; gap: 7px; }
+.training-block-version-exercise {
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+}
+.training-block-version-exercise strong { display: block; }
+.training-block-version-exercise span,
+.training-block-version-exercise small { display: block; margin-top: 3px; color: var(--secondary); }
+.training-block-comparison-list { display: grid; gap: 7px; }
+.training-block-comparison-row {
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+}
+.training-block-comparison-row strong { display: block; margin-bottom: 3px; }
+.training-block-comparison-row span { display: block; color: var(--secondary); font-size: .78rem; }
+.training-block-info-tabs {
+  position: sticky;
+  top: 73px;
+  z-index: 3;
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: rgb(255 255 255 / 97%);
+  scrollbar-width: none;
+}
+.training-block-info-tabs::-webkit-scrollbar { display: none; }
+.training-block-info-tabs button {
+  min-height: 36px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: white;
+  color: var(--secondary);
+  font-weight: 750;
+}
+.training-block-info-tabs button[aria-selected="true"] {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.training-block-info-body {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border-radius: 0;
+  background: var(--page);
+}
+.training-block-info-section { margin: 0; }
+.training-block-info-section h3 { margin: 0 0 6px; }
+.training-block-info-grid { display: grid; gap: 8px; }
+.training-block-info-card {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+}
+.training-block-info-card strong { display: block; margin-bottom: 3px; }
+.training-block-info-card span,
+.training-block-info-card p { margin: 0; color: var(--secondary); font-size: .82rem; line-height: 1.45; }
+.training-block-info-video {
+  width: 100%;
+  max-height: 260px;
+  margin-top: 7px;
+  border-radius: 8px;
+  background: #0f172a;
+}
 .training-block-footer {
   position: sticky;
   bottom: 0;
@@ -377,6 +519,24 @@ body.training-block-editor-open { overflow: hidden; }
 .training-block-reload { width: 100%; }
 @media (max-width: 480px) {
   .training-blocks-hero { align-items: stretch; flex-direction: column; }
+  .training-block-backdrop { place-items: stretch; }
+  .training-block-dialog {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .training-block-info-dialog {
+    width: 100vw;
+    max-height: 92dvh;
+  }
+  .training-block-header { padding: 10px 11px; }
+  .training-block-header .button { min-height: 40px; padding: 7px 9px; }
+  .training-block-body { padding: 8px; gap: 8px; }
+  .training-block-form-card,
+  .training-block-exercises-card,
+  .training-block-history-card { padding: 10px; }
+  .training-block-info-tabs { top: 62px; }
   .training-block-commandbar { grid-template-columns: 1fr 1fr; }
   .training-block-commandbar label:first-child { grid-column: 1 / -1; }
   .training-block-form-grid { grid-template-columns: 1fr; }
@@ -409,6 +569,7 @@ const trainingBlockElements = Object.freeze({
   statusFilter: document.querySelector("#training-block-status-filter"),
   newButton: document.querySelector("#training-block-new"),
   editor: document.querySelector("#training-block-editor"),
+  dialog: document.querySelector("#training-block-dialog"),
   editorEyebrow: document.querySelector("#training-block-editor-eyebrow"),
   editorTitle: document.querySelector("#training-block-editor-title"),
   editorMessage: document.querySelector("#training-block-editor-message"),
@@ -468,6 +629,11 @@ let trainingBlockOpenRequestId = 0;
 let trainingBlockHistoryRequestId = 0;
 let trainingBlockRevisionRequestId = 0;
 let trainingBlockCompareRequestId = 0;
+let trainingBlockInfoRequestId = 0;
+let trainingBlockInfoItem = null;
+let trainingBlockInfoPrivateMedia = [];
+let trainingBlockInfoPrivateMediaAvailable = false;
+let trainingBlockInfoTab = "basis";
 
 function isCurrentTrainingBlockSelection(blockId, requestId) {
   return (
@@ -639,6 +805,7 @@ async function refreshTrainingBlockAudienceDependency() {
 
 function refreshTrainingBlockCatalogDependency() {
   if (!trainingBlockDraft) return;
+  renderTrainingBlockAudienceOptions();
   renderTrainingBlockExercisePicker();
   renderTrainingBlockExercises();
 }
@@ -849,6 +1016,7 @@ function newTrainingBlock() {
   trainingBlockDeactivateBusy = false;
   trainingBlockReloadBusy = false;
   populateTrainingBlockEditor();
+  scrollTrainingBlockEditorTop();
   trainingBlockElements.name?.focus();
 }
 
@@ -884,7 +1052,10 @@ async function openTrainingBlock(id, allowReload = false) {
     trainingBlockCreateUncertain = false;
     trainingBlockDeactivateBusy = false;
     populateTrainingBlockEditor();
-    if (!allowReload) trainingBlockElements.close?.focus();
+    if (!allowReload) {
+      scrollTrainingBlockEditorTop();
+      trainingBlockElements.close?.focus();
+    }
     return true;
   } catch (error) {
     if (requestId !== trainingBlockOpenRequestId) return false;
@@ -896,6 +1067,12 @@ async function openTrainingBlock(id, allowReload = false) {
     );
     return false;
   }
+}
+
+function scrollTrainingBlockEditorTop() {
+  if (!trainingBlockElements.dialog) return;
+  trainingBlockElements.dialog.scrollTop = 0;
+  trainingBlockElements.dialog.scrollLeft = 0;
 }
 
 function populateTrainingBlockEditor() {
@@ -1034,7 +1211,6 @@ function refreshTrainingBlockEditorLock() {
 
   for (const control of [
     trainingBlockElements.name,
-    trainingBlockElements.audience,
     trainingBlockElements.duration,
     trainingBlockElements.note,
   ]) {
@@ -1095,23 +1271,62 @@ function refreshTrainingBlockEditorLock() {
 }
 
 function renderTrainingBlockAudienceOptions() {
-  const select = trainingBlockElements.audience;
-  if (!select || !trainingBlockDraft) return;
-  select.replaceChildren();
+  const container = trainingBlockElements.audience;
+  if (!container || !trainingBlockDraft) return;
+  container.replaceChildren();
   const selected = new Set(trainingBlockDraft.audienceIds || []);
-  for (const audience of trainingBlockAudiences) {
-    const option = document.createElement("option");
-    option.value = audience.id;
-    option.textContent = trainingBlockAudienceLabel(audience.id);
-    option.selected = selected.has(audience.id);
-    select.append(option);
-  }
-  select.disabled =
+  const disabled =
     !trainingBlocksCanEdit ||
     trainingBlockDeactivateBusy ||
     trainingBlockDuplicateBusy ||
     trainingBlockReloadBusy ||
+    trainingBlockFavoriteBusy ||
+    trainingBlockSaveBusy ||
     trainingBlockSelected?.isActive === false;
+
+  const clubwide = document.createElement("button");
+  clubwide.type = "button";
+  clubwide.className = "training-block-audience-chip";
+  clubwide.dataset.trainingBlockAudienceId = "__clubwide__";
+  clubwide.setAttribute("aria-pressed", selected.size === 0 ? "true" : "false");
+  clubwide.disabled = disabled;
+  clubwide.textContent = "Generell gültig";
+  container.append(clubwide);
+
+  for (const audience of trainingBlockAudiences
+    .slice()
+    .sort((left, right) =>
+      left.name.localeCompare(right.name, "de", { sensitivity: "base" }),
+    )) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "training-block-audience-chip";
+    button.dataset.trainingBlockAudienceId = audience.id;
+    button.setAttribute(
+      "aria-pressed",
+      selected.has(audience.id) ? "true" : "false",
+    );
+    button.disabled = disabled;
+    button.textContent = trainingBlockAudienceLabel(audience.id);
+    container.append(button);
+  }
+}
+
+function handleTrainingBlockAudienceClick(event) {
+  const control = event.target?.closest?.("[data-training-block-audience-id]");
+  if (!control || !trainingBlockDraft || control.disabled) return;
+  const id = control.dataset.trainingBlockAudienceId || "";
+  if (id === "__clubwide__") {
+    trainingBlockDraft.audienceIds = [];
+  } else if (trainingBlockDraft.audienceIds.includes(id)) {
+    trainingBlockDraft.audienceIds = trainingBlockDraft.audienceIds.filter(
+      (value) => value !== id,
+    );
+  } else {
+    trainingBlockDraft.audienceIds = [...trainingBlockDraft.audienceIds, id];
+  }
+  renderTrainingBlockAudienceOptions();
+  markTrainingBlockDirty();
 }
 
 function renderTrainingBlockExercisePicker() {
@@ -1332,11 +1547,6 @@ function markTrainingBlockDirty() {
 function syncTrainingBlockDraftFromFields() {
   if (!trainingBlockDraft) return;
   trainingBlockDraft.name = (trainingBlockElements.name?.value || "").trim();
-  trainingBlockDraft.audienceIds = trainingBlockElements.audience
-    ? [...trainingBlockElements.audience.selectedOptions].map(
-        (option) => option.value,
-      )
-    : [];
   const duration = trainingBlockElements.duration?.value || "";
   trainingBlockDraft.durationMinutes =
     duration === "" ? null : Number(duration);
@@ -1712,6 +1922,7 @@ function closeTrainingBlockEditor(force = false) {
   trainingBlockDuplicateBusy = false;
   trainingBlockReloadBusy = false;
   if (trainingBlockElements.editor) trainingBlockElements.editor.hidden = true;
+  scrollTrainingBlockEditorTop();
   document.body.classList.remove("training-block-editor-open");
   showMessage(trainingBlockElements.editorMessage, "");
 }
@@ -1868,78 +2079,253 @@ function handleTrainingBlockExerciseInput(event) {
   markTrainingBlockDirty();
 }
 
-function showTrainingBlockExerciseInfo(id) {
-  const item = trainingBlockExerciseItem(id);
-  if (!item || !trainingBlockElements.infoBody) return;
-  trainingBlockElements.infoBody.replaceChildren();
+async function showTrainingBlockExerciseInfo(id) {
+  const fallback = trainingBlockExerciseItem(id);
+  if (!fallback || !trainingBlockElements.infoBody) return;
+  const requestId = ++trainingBlockInfoRequestId;
+  trainingBlockInfoItem = fallback;
+  trainingBlockInfoPrivateMedia = [];
+  trainingBlockInfoPrivateMediaAvailable = false;
+  trainingBlockInfoTab = "basis";
   if (trainingBlockElements.infoTitle) {
-    trainingBlockElements.infoTitle.textContent = item.name;
+    trainingBlockElements.infoTitle.textContent = fallback.name;
   }
-  const difficulty =
-    item.difficultyKey === null
-      ? "Keine Angabe"
-      : EXERCISE_DIFFICULTIES.find(
-          (value) => value.key === item.difficultyKey,
-        )?.label || item.difficultyKey;
-  const sections = [
-    ["Status", item.isActive ? "Aktiv" : "Archiviert"],
-    ["Einordnung", [categoryLabel(item.categoryKey), item.subcategory, item.goal]
-      .filter(Boolean).join(" · ")],
-    ["Schwierigkeit", difficulty],
-    ["Beschreibung", item.description],
-    ["Trainerhinweise", item.coachingCues],
-    ["Typische Fehler", item.commonMistakes],
-    ["Material", item.equipment.join(", ")],
-  ];
-  for (const value of sections) {
-    if (!value[1]) continue;
-    const section = document.createElement("section");
-    section.className = "training-block-info-section";
-    const title = document.createElement("h3");
-    title.textContent = value[0];
-    const text = document.createElement("p");
-    text.textContent = value[1];
-    section.append(title, text);
-    trainingBlockElements.infoBody.append(section);
+  if (trainingBlockElements.info) trainingBlockElements.info.hidden = false;
+  renderTrainingBlockExerciseInfo();
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/exercise-catalog/" + encodeURIComponent(id),
+    );
+    if (
+      requestId !== trainingBlockInfoRequestId ||
+      !isExerciseCatalogItem(payload?.item)
+    ) {
+      if (requestId === trainingBlockInfoRequestId) {
+        throw new Error("INVALID_TRAINING_BLOCK_EXERCISE_INFO");
+      }
+      return;
+    }
+    trainingBlockInfoItem = payload.item;
+    if (trainingBlockElements.infoTitle) {
+      trainingBlockElements.infoTitle.textContent = payload.item.name;
+    }
+    renderTrainingBlockExerciseInfo();
+  } catch {
+    if (requestId !== trainingBlockInfoRequestId) return;
+    trainingBlockInfoItem = fallback;
+    renderTrainingBlockExerciseInfo();
   }
-  if (item.videoUrls.length > 0) {
-    const section = document.createElement("section");
-    section.className = "training-block-info-section";
-    const title = document.createElement("h3");
-    title.textContent = "Videos";
-    section.append(title);
+
+  try {
+    const mediaPayload = await requestJson(
+      "/api/modules/exercise-catalog/" +
+        encodeURIComponent(id) +
+        "/private-media",
+    );
+    if (requestId !== trainingBlockInfoRequestId) return;
+    trainingBlockInfoPrivateMediaAvailable = mediaPayload?.available === true;
+    trainingBlockInfoPrivateMedia = Array.isArray(mediaPayload?.media)
+      ? mediaPayload.media.filter(
+          (entry) =>
+            entry !== null &&
+            typeof entry === "object" &&
+            typeof entry.id === "string" &&
+            typeof entry.fileName === "string",
+        )
+      : [];
+    if (trainingBlockInfoTab === "videos") renderTrainingBlockExerciseInfo();
+  } catch {
+    if (requestId !== trainingBlockInfoRequestId) return;
+    trainingBlockInfoPrivateMediaAvailable = false;
+    trainingBlockInfoPrivateMedia = [];
+    if (trainingBlockInfoTab === "videos") renderTrainingBlockExerciseInfo();
+  }
+}
+
+function setTrainingBlockInfoTab(tab) {
+  const allowed = ["basis", "hinweise", "zuordnung", "parameter", "videos"];
+  trainingBlockInfoTab = allowed.includes(tab) ? tab : "basis";
+  for (const control of trainingBlockElements.info?.querySelectorAll(
+    "[data-training-block-info-tab]",
+  ) || []) {
+    control.setAttribute(
+      "aria-selected",
+      control.dataset.trainingBlockInfoTab === trainingBlockInfoTab
+        ? "true"
+        : "false",
+    );
+  }
+  renderTrainingBlockExerciseInfo();
+}
+
+function appendTrainingBlockInfoCard(container, title, value) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return;
+  }
+  const card = document.createElement("article");
+  card.className = "training-block-info-card";
+  const strong = document.createElement("strong");
+  strong.textContent = title;
+  const text = document.createElement("p");
+  text.textContent = String(value);
+  card.append(strong, text);
+  container.append(card);
+}
+
+function renderTrainingBlockExerciseInfo() {
+  const item = trainingBlockInfoItem;
+  const container = trainingBlockElements.infoBody;
+  if (!item || !container) return;
+  container.replaceChildren();
+
+  const section = document.createElement("section");
+  section.className = "training-block-info-section";
+  const grid = document.createElement("div");
+  grid.className = "training-block-info-grid";
+  section.append(grid);
+
+  if (trainingBlockInfoTab === "basis") {
+    const difficulty =
+      item.difficultyKey === null
+        ? "Keine Angabe"
+        : EXERCISE_DIFFICULTIES.find(
+            (value) => value.key === item.difficultyKey,
+          )?.label || item.difficultyKey;
+    appendTrainingBlockInfoCard(
+      grid,
+      "Einordnung",
+      [categoryLabel(item.categoryKey), item.subcategory, item.goal]
+        .filter(Boolean)
+        .join(" · "),
+    );
+    appendTrainingBlockInfoCard(grid, "Schwierigkeit", difficulty);
+    appendTrainingBlockInfoCard(
+      grid,
+      "Status",
+      [
+        item.isActive ? "Aktiv" : "Archiviert",
+        item.isFavorite ? "Favorit" : null,
+      ].filter(Boolean).join(" · "),
+    );
+    appendTrainingBlockInfoCard(grid, "Beschreibung", item.description);
+    appendTrainingBlockInfoCard(
+      grid,
+      "Material",
+      item.equipment.length ? item.equipment.join(", ") : "Kein Material hinterlegt",
+    );
+  } else if (trainingBlockInfoTab === "hinweise") {
+    appendTrainingBlockInfoCard(
+      grid,
+      "Trainerhinweise",
+      item.coachingCues || "Keine Trainerhinweise hinterlegt",
+    );
+    appendTrainingBlockInfoCard(
+      grid,
+      "Typische Fehler",
+      item.commonMistakes || "Keine typischen Fehler hinterlegt",
+    );
+  } else if (trainingBlockInfoTab === "zuordnung") {
+    const groups = item.groupIds
+      .map((id) => {
+        const group = exerciseCatalogGroups.find((value) => value.id === id);
+        return group?.shortName
+          ? group.name + " (" + group.shortName + ")"
+          : group?.name || id;
+      });
+    const similar = item.similarExerciseIds
+      .map((id) => exerciseCatalogItems.find((value) => value.id === id)?.name || id);
+    appendTrainingBlockInfoCard(
+      grid,
+      "Geeignete Gruppen",
+      groups.length ? groups.join(", ") : "Für alle Gruppen",
+    );
+    appendTrainingBlockInfoCard(
+      grid,
+      "Ähnliche Übungen",
+      similar.length ? similar.join(", ") : "Keine ähnlichen Übungen hinterlegt",
+    );
+  } else if (trainingBlockInfoTab === "parameter") {
+    if (item.parameters.length === 0) {
+      appendTrainingBlockInfoCard(
+        grid,
+        "Planungsparameter",
+        "Keine Planungsparameter hinterlegt",
+      );
+    }
+    for (const parameter of item.parameters
+      .slice()
+      .sort((left, right) => left.sortOrder - right.sortOrder)) {
+      const limits = [
+        parameter.minValue === null ? null : "Min. " + String(parameter.minValue),
+        parameter.maxValue === null ? null : "Max. " + String(parameter.maxValue),
+        parameter.stepValue === null ? null : "Schritt " + String(parameter.stepValue),
+      ].filter(Boolean);
+      appendTrainingBlockInfoCard(
+        grid,
+        parameter.label + (parameter.unit ? " (" + parameter.unit + ")" : ""),
+        [
+          parameter.defaultValue === null
+            ? "Kein Standardwert"
+            : "Standard: " + parameter.defaultValue,
+          parameter.isRequired ? "Pflichtwert" : "Optional",
+          parameter.inputType === "number" ? "Zahl" : "Text",
+          ...limits,
+        ].join(" · "),
+      );
+    }
+  } else {
+    if (item.videoUrls.length === 0 && trainingBlockInfoPrivateMedia.length === 0) {
+      appendTrainingBlockInfoCard(
+        grid,
+        "Videos",
+        trainingBlockInfoPrivateMediaAvailable
+          ? "Keine Videos hinterlegt"
+          : "Keine öffentlichen Videos hinterlegt. Private Videos sind in dieser Umgebung nicht verfügbar oder konnten nicht geladen werden.",
+      );
+    }
     item.videoUrls.forEach((url, index) => {
+      const card = document.createElement("article");
+      card.className = "training-block-info-card";
+      const strong = document.createElement("strong");
+      strong.textContent = "Video-Link " + String(index + 1);
       const link = document.createElement("a");
       link.href = url;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
-      link.textContent = "Video " + String(index + 1);
-      section.append(link);
+      link.textContent = url;
+      card.append(strong, link);
+      grid.append(card);
     });
-    trainingBlockElements.infoBody.append(section);
-  }
-  if (item.parameters.length > 0) {
-    const section = document.createElement("section");
-    section.className = "training-block-info-section";
-    const title = document.createElement("h3");
-    title.textContent = "Planungsparameter";
-    section.append(title);
-    for (const parameter of item.parameters) {
-      const text = document.createElement("p");
-      text.textContent =
-        parameter.label +
-        (parameter.unit ? " (" + parameter.unit + ")" : "") +
-        (parameter.defaultValue === null
-          ? ""
-          : " · Standard " + parameter.defaultValue);
-      section.append(text);
+    for (const entry of trainingBlockInfoPrivateMedia) {
+      const card = document.createElement("article");
+      card.className = "training-block-info-card";
+      const strong = document.createElement("strong");
+      strong.textContent = entry.fileName;
+      const video = document.createElement("video");
+      video.className = "training-block-info-video";
+      video.controls = true;
+      video.preload = "metadata";
+      video.src =
+        "/api/modules/exercise-catalog/" +
+        encodeURIComponent(item.id) +
+        "/private-media/" +
+        encodeURIComponent(entry.id) +
+        "/content";
+      card.append(strong, video);
+      grid.append(card);
     }
-    trainingBlockElements.infoBody.append(section);
   }
-  if (trainingBlockElements.info) trainingBlockElements.info.hidden = false;
+
+  container.append(section);
 }
 
 function closeTrainingBlockExerciseInfo() {
+  trainingBlockInfoRequestId += 1;
+  trainingBlockInfoItem = null;
+  trainingBlockInfoPrivateMedia = [];
+  trainingBlockInfoPrivateMediaAvailable = false;
+  trainingBlockInfoTab = "basis";
   if (trainingBlockElements.info) trainingBlockElements.info.hidden = true;
 }
 
@@ -2343,43 +2729,122 @@ function renderTrainingBlockRevisionSelect(select, revisions) {
   }
 }
 
+async function fetchTrainingBlockRevision(blockId, number) {
+  const payload = await requestJson(
+    "/api/modules/training-blocks/" +
+      encodeURIComponent(blockId) +
+      "/revisions/" +
+      encodeURIComponent(String(number)),
+  );
+  if (!isTrainingBlockRevision(payload?.revision)) {
+    throw new Error("INVALID_TRAINING_BLOCK_REVISION");
+  }
+  return payload.revision;
+}
+
+function trainingBlockRevisionParameterText(exercise) {
+  const item = trainingBlockExerciseItem(exercise.exerciseId);
+  if (!item) {
+    return exercise.parameterOverrides
+      .map((value) => value.key + ": " + value.value)
+      .join(" · ");
+  }
+  const overrides = new Map(
+    exercise.parameterOverrides.map((value) => [value.key, value.value]),
+  );
+  return item.parameters
+    .slice()
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((parameter) => {
+      const value = overrides.has(parameter.key)
+        ? overrides.get(parameter.key)
+        : parameter.defaultValue;
+      if (value === null || value === undefined || value === "") return null;
+      return (
+        parameter.label +
+        ": " +
+        value +
+        (parameter.unit ? " " + parameter.unit : "")
+      );
+    })
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function renderTrainingBlockRevisionPreview(revision) {
+  const container = trainingBlockElements.revisionPreview;
+  if (!container) return;
+  container.replaceChildren();
+
+  const head = document.createElement("div");
+  head.className = "training-block-version-head";
+  const title = document.createElement("strong");
+  title.textContent =
+    "Version " + String(revision.revision) + " · " + revision.name;
+  const meta = document.createElement("span");
+  meta.className = "training-block-version-meta";
+  meta.textContent = [
+    "Gruppen: " + trainingBlockAudienceSetLabel(revision.audienceIds),
+    revision.durationMinutes === null
+      ? "Dauer: —"
+      : "Dauer: " + String(revision.durationMinutes) + " Min.",
+    new Date(revision.createdAt).toLocaleString("de-AT"),
+  ].join(" · ");
+  head.append(title, meta);
+  if (revision.note) {
+    const note = document.createElement("span");
+    note.className = "training-block-version-meta";
+    note.textContent = "Notiz: " + revision.note;
+    head.append(note);
+  }
+  container.append(head);
+
+  const exercises = document.createElement("div");
+  exercises.className = "training-block-version-exercises";
+  if (revision.exercises.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "training-block-version-meta";
+    empty.textContent = "Keine Übungen in dieser Version.";
+    exercises.append(empty);
+  }
+  revision.exercises.forEach((exercise, index) => {
+    const item = trainingBlockExerciseItem(exercise.exerciseId);
+    const card = document.createElement("article");
+    card.className = "training-block-version-exercise";
+    const strong = document.createElement("strong");
+    strong.textContent =
+      String(index + 1) + ". " + (item?.name || exercise.exerciseId);
+    card.append(strong);
+    const parameterText = trainingBlockRevisionParameterText(exercise);
+    if (parameterText) {
+      const parameters = document.createElement("span");
+      parameters.textContent = parameterText;
+      card.append(parameters);
+    }
+    if (exercise.note) {
+      const note = document.createElement("small");
+      note.textContent = "Notiz: " + exercise.note;
+      card.append(note);
+    }
+    exercises.append(card);
+  });
+  container.append(exercises);
+  container.hidden = false;
+  container.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
 async function openTrainingBlockRevision(number) {
   if (!trainingBlockSelected) return;
   const blockId = trainingBlockSelected.id;
   const requestId = trainingBlockOpenRequestId;
   const operationId = ++trainingBlockRevisionRequestId;
   try {
-    const payload = await requestJson(
-      "/api/modules/training-blocks/" +
-        encodeURIComponent(blockId) +
-        "/revisions/" +
-        encodeURIComponent(String(number)),
-    );
+    const revision = await fetchTrainingBlockRevision(blockId, number);
     if (
       operationId !== trainingBlockRevisionRequestId ||
       !isCurrentTrainingBlockSelection(blockId, requestId)
     ) return;
-    if (!isTrainingBlockRevision(payload?.revision)) {
-      throw new Error("INVALID_TRAINING_BLOCK_REVISION");
-    }
-    const revision = payload.revision;
-    if (trainingBlockElements.revisionPreview) {
-      trainingBlockElements.revisionPreview.textContent =
-        "Version " +
-        String(revision.revision) +
-        "\\n" +
-        revision.name +
-        "\\nGruppen: " +
-        trainingBlockAudienceSetLabel(revision.audienceIds) +
-        "\\nDauer: " +
-        (revision.durationMinutes === null
-          ? "—"
-          : String(revision.durationMinutes) + " Min.") +
-        "\\nÜbungen: " +
-        String(revision.exercises.length) +
-        (revision.note ? "\\nNotiz: " + revision.note : "");
-      trainingBlockElements.revisionPreview.hidden = false;
-    }
+    renderTrainingBlockRevisionPreview(revision);
   } catch {
     if (
       operationId !== trainingBlockRevisionRequestId ||
@@ -2392,63 +2857,201 @@ async function openTrainingBlockRevision(number) {
   }
 }
 
+function addTrainingBlockComparisonRow(container, title, before, after) {
+  const row = document.createElement("article");
+  row.className = "training-block-comparison-row";
+  const strong = document.createElement("strong");
+  strong.textContent = title;
+  const oldValue = document.createElement("span");
+  oldValue.textContent = "Vorher: " + (before || "—");
+  const newValue = document.createElement("span");
+  newValue.textContent = "Nachher: " + (after || "—");
+  row.append(strong, oldValue, newValue);
+  container.append(row);
+}
+
+function revisionExerciseLabel(exercise) {
+  return trainingBlockExerciseItem(exercise.exerciseId)?.name || exercise.exerciseId;
+}
+
+function renderTrainingBlockComparison(fromRevision, toRevision) {
+  const container = trainingBlockElements.comparison;
+  if (!container) return;
+  container.replaceChildren();
+
+  const title = document.createElement("div");
+  title.className = "training-block-version-head";
+  const strong = document.createElement("strong");
+  strong.textContent =
+    "Version " +
+    String(fromRevision.revision) +
+    " → Version " +
+    String(toRevision.revision);
+  const meta = document.createElement("span");
+  meta.className = "training-block-version-meta";
+  meta.textContent =
+    new Date(fromRevision.createdAt).toLocaleString("de-AT") +
+    " → " +
+    new Date(toRevision.createdAt).toLocaleString("de-AT");
+  title.append(strong, meta);
+  container.append(title);
+
+  const list = document.createElement("div");
+  list.className = "training-block-comparison-list";
+  let changes = 0;
+
+  const simpleFields = [
+    ["Name", fromRevision.name, toRevision.name],
+    [
+      "Trainingsgruppen",
+      trainingBlockAudienceSetLabel(fromRevision.audienceIds),
+      trainingBlockAudienceSetLabel(toRevision.audienceIds),
+    ],
+    [
+      "Dauer",
+      fromRevision.durationMinutes === null
+        ? "—"
+        : String(fromRevision.durationMinutes) + " Min.",
+      toRevision.durationMinutes === null
+        ? "—"
+        : String(toRevision.durationMinutes) + " Min.",
+    ],
+    ["Notiz", fromRevision.note || "—", toRevision.note || "—"],
+  ];
+  for (const [label, before, after] of simpleFields) {
+    if (before === after) continue;
+    changes += 1;
+    addTrainingBlockComparisonRow(list, label, before, after);
+  }
+
+  const fromById = new Map(
+    fromRevision.exercises.map((exercise, index) => [
+      exercise.itemId,
+      { exercise, index },
+    ]),
+  );
+  const toById = new Map(
+    toRevision.exercises.map((exercise, index) => [
+      exercise.itemId,
+      { exercise, index },
+    ]),
+  );
+  const allIds = new Set([...fromById.keys(), ...toById.keys()]);
+
+  for (const itemId of allIds) {
+    const before = fromById.get(itemId);
+    const after = toById.get(itemId);
+    if (!before && after) {
+      changes += 1;
+      addTrainingBlockComparisonRow(
+        list,
+        "Übung hinzugefügt",
+        "—",
+        String(after.index + 1) + ". " + revisionExerciseLabel(after.exercise),
+      );
+      continue;
+    }
+    if (before && !after) {
+      changes += 1;
+      addTrainingBlockComparisonRow(
+        list,
+        "Übung entfernt",
+        String(before.index + 1) + ". " + revisionExerciseLabel(before.exercise),
+        "—",
+      );
+      continue;
+    }
+    if (!before || !after) continue;
+
+    const beforeExercise = before.exercise;
+    const afterExercise = after.exercise;
+    const label =
+      revisionExerciseLabel(afterExercise) ||
+      revisionExerciseLabel(beforeExercise);
+
+    if (before.index !== after.index) {
+      changes += 1;
+      addTrainingBlockComparisonRow(
+        list,
+        label + " · Reihenfolge",
+        "Position " + String(before.index + 1),
+        "Position " + String(after.index + 1),
+      );
+    }
+    if (beforeExercise.exerciseId !== afterExercise.exerciseId) {
+      changes += 1;
+      addTrainingBlockComparisonRow(
+        list,
+        label + " · Übung",
+        revisionExerciseLabel(beforeExercise),
+        revisionExerciseLabel(afterExercise),
+      );
+    }
+    if ((beforeExercise.note || "") !== (afterExercise.note || "")) {
+      changes += 1;
+      addTrainingBlockComparisonRow(
+        list,
+        label + " · Notiz",
+        beforeExercise.note || "—",
+        afterExercise.note || "—",
+      );
+    }
+
+    const beforeOverrides = new Map(
+      beforeExercise.parameterOverrides.map((value) => [value.key, value.value]),
+    );
+    const afterOverrides = new Map(
+      afterExercise.parameterOverrides.map((value) => [value.key, value.value]),
+    );
+    const keys = new Set([...beforeOverrides.keys(), ...afterOverrides.keys()]);
+    const catalogItem =
+      trainingBlockExerciseItem(afterExercise.exerciseId) ||
+      trainingBlockExerciseItem(beforeExercise.exerciseId);
+    for (const key of keys) {
+      const oldValue = beforeOverrides.get(key) || "";
+      const newValue = afterOverrides.get(key) || "";
+      if (oldValue === newValue) continue;
+      changes += 1;
+      const parameter = catalogItem?.parameters.find((value) => value.key === key);
+      addTrainingBlockComparisonRow(
+        list,
+        label + " · " + (parameter?.label || key),
+        oldValue || "Katalogstandard",
+        newValue || "Katalogstandard",
+      );
+    }
+  }
+
+  if (changes === 0) {
+    const empty = document.createElement("div");
+    empty.className = "training-block-comparison-row";
+    empty.textContent = "Keine fachlichen Änderungen zwischen diesen Versionen.";
+    list.append(empty);
+  }
+  container.append(list);
+  container.hidden = false;
+  container.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
 async function compareTrainingBlockRevisions() {
   if (!trainingBlockSelected) return;
   const blockId = trainingBlockSelected.id;
   const requestId = trainingBlockOpenRequestId;
   const operationId = ++trainingBlockCompareRequestId;
-  const from = trainingBlockElements.compareFrom?.value || "";
-  const to = trainingBlockElements.compareTo?.value || "";
-  if (!from || !to) return;
+  const from = Number(trainingBlockElements.compareFrom?.value || "");
+  const to = Number(trainingBlockElements.compareTo?.value || "");
+  if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to)) return;
+  if (trainingBlockElements.compare) trainingBlockElements.compare.disabled = true;
   try {
-    const payload = await requestJson(
-      "/api/modules/training-blocks/" +
-        encodeURIComponent(blockId) +
-        "/compare?from=" +
-        encodeURIComponent(from) +
-        "&to=" +
-        encodeURIComponent(to),
-    );
+    const [fromRevision, toRevision] = await Promise.all([
+      fetchTrainingBlockRevision(blockId, from),
+      fetchTrainingBlockRevision(blockId, to),
+    ]);
     if (
       operationId !== trainingBlockCompareRequestId ||
       !isCurrentTrainingBlockSelection(blockId, requestId)
     ) return;
-    const value = payload?.comparison;
-    if (
-      value === null ||
-      typeof value !== "object" ||
-      typeof value.hasChanges !== "boolean" ||
-      !Array.isArray(value.changedFields) ||
-      !Array.isArray(value.addedItemIds) ||
-      !Array.isArray(value.removedItemIds) ||
-      !Array.isArray(value.changedItemIds) ||
-      !Array.isArray(value.reorderedItemIds)
-    ) {
-      throw new Error("INVALID_TRAINING_BLOCK_COMPARISON");
-    }
-    if (trainingBlockElements.comparison) {
-      const lines = value.hasChanges
-        ? [
-            value.changedFields.length
-              ? "Felder geändert: " + value.changedFields.join(", ")
-              : null,
-            value.addedItemIds.length
-              ? "Übungen hinzugefügt: " + String(value.addedItemIds.length)
-              : null,
-            value.removedItemIds.length
-              ? "Übungen entfernt: " + String(value.removedItemIds.length)
-              : null,
-            value.changedItemIds.length
-              ? "Übungen geändert: " + String(value.changedItemIds.length)
-              : null,
-            value.reorderedItemIds.length
-              ? "Reihenfolge geändert: " + String(value.reorderedItemIds.length)
-              : null,
-          ].filter(Boolean)
-        : ["Keine fachlichen Änderungen."];
-      trainingBlockElements.comparison.textContent = lines.join("\\n");
-      trainingBlockElements.comparison.hidden = false;
-    }
+    renderTrainingBlockComparison(fromRevision, toRevision);
   } catch {
     if (
       operationId !== trainingBlockCompareRequestId ||
@@ -2458,10 +3061,14 @@ async function compareTrainingBlockRevisions() {
       trainingBlockElements.editorMessage,
       "Die Versionen konnten nicht verglichen werden.",
     );
+  } finally {
+    if (operationId === trainingBlockCompareRequestId) {
+      refreshTrainingBlockEditorLock();
+    }
   }
 }
 
-trainingBlockElements.search?.addEventListener("input", renderTrainingBlocks);
+trainingBlockElements.search?.addEventListener("input", renderTrainingBlocks);trainingBlockElements.search?.addEventListener("input", renderTrainingBlocks);
 trainingBlockElements.audienceFilter?.addEventListener("change", renderTrainingBlocks);
 trainingBlockElements.statusFilter?.addEventListener("change", renderTrainingBlocks);
 trainingBlockElements.newButton?.addEventListener("click", newTrainingBlock);
@@ -2481,6 +3088,11 @@ trainingBlockElements.compare?.addEventListener("click", () => void compareTrain
 trainingBlockElements.compareFrom?.addEventListener("change", invalidateTrainingBlockComparison);
 trainingBlockElements.compareTo?.addEventListener("change", invalidateTrainingBlockComparison);
 trainingBlockElements.infoClose?.addEventListener("click", closeTrainingBlockExerciseInfo);
+trainingBlockElements.info?.addEventListener("click", (event) => {
+  const control = event.target?.closest?.("[data-training-block-info-tab]");
+  if (!control) return;
+  setTrainingBlockInfoTab(control.dataset.trainingBlockInfoTab || "basis");
+});
 for (const control of [
   trainingBlockElements.name,
   trainingBlockElements.duration,
@@ -2491,10 +3103,7 @@ for (const control of [
     markTrainingBlockDirty();
   });
 }
-trainingBlockElements.audience?.addEventListener("change", () => {
-  syncTrainingBlockDraftFromFields();
-  markTrainingBlockDirty();
-});
+trainingBlockElements.audience?.addEventListener("click", handleTrainingBlockAudienceClick);
 trainingBlockElements.list?.addEventListener("click", (event) => {
   const control = event.target?.closest?.("[data-training-block-open]");
   if (control) void openTrainingBlock(control.dataset.trainingBlockOpen || "");
