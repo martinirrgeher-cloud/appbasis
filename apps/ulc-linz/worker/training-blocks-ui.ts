@@ -33,7 +33,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
             <section class="training-block-groups" id="training-block-list" aria-live="polite"></section>
 
             <div class="training-block-backdrop" id="training-block-editor" hidden>
-              <section class="training-block-dialog" role="dialog" aria-modal="true" aria-labelledby="training-block-editor-title">
+              <section class="training-block-dialog" id="training-block-dialog" role="dialog" aria-modal="true" aria-labelledby="training-block-editor-title">
                 <header class="training-block-header">
                   <div>
                     <p class="eyebrow" id="training-block-editor-eyebrow">Trainingsblock</p>
@@ -53,10 +53,11 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                       <label class="training-block-wide">Name
                         <input id="training-block-name" minlength="1" maxlength="120" />
                       </label>
-                      <label>Trainingsgruppen
-                        <select id="training-block-audience" multiple size="4"></select>
-                        <small>Keine Auswahl = vereinsweit.</small>
-                      </label>
+                      <fieldset class="training-block-audience-field">
+                        <legend>Trainingsgruppen</legend>
+                        <div class="training-block-audience-picker" id="training-block-audience" role="group" aria-label="Trainingsgruppen auswählen"></div>
+                        <small>„Generell gültig“ gilt für alle Gruppen. Mehrere Gruppen können kombiniert werden.</small>
+                      </fieldset>
                       <label>Dauer (Min.)
                         <input id="training-block-duration" type="number" min="1" max="2147483647" step="1" inputmode="numeric" placeholder="Optional" />
                       </label>
@@ -124,6 +125,13 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                   <div><p class="eyebrow">Übung</p><h2 id="training-block-info-title">Details</h2></div>
                   <button class="button button--secondary" id="training-block-info-close" type="button">Schließen</button>
                 </header>
+                <nav class="training-block-info-tabs" aria-label="Übungsdetails">
+                  <button type="button" data-training-block-info-tab="basis" aria-selected="true">Basis</button>
+                  <button type="button" data-training-block-info-tab="hinweise" aria-selected="false">Hinweise</button>
+                  <button type="button" data-training-block-info-tab="zuordnung" aria-selected="false">Zuordnung</button>
+                  <button type="button" data-training-block-info-tab="parameter" aria-selected="false">Parameter</button>
+                  <button type="button" data-training-block-info-tab="videos" aria-selected="false">Videos</button>
+                </nav>
                 <div class="training-block-info-body" id="training-block-info-body"></div>
               </section>
             </div>
@@ -243,9 +251,13 @@ export const ULC_TRAINING_BLOCKS_CSS = `
 .training-block-info-backdrop { z-index: 90; }
 .training-block-dialog,
 .training-block-info-dialog {
-  width: min(100%, 760px);
-  max-height: min(94vh, 920px);
+  width: min(760px, 100vw);
+  max-width: 100vw;
+  min-width: 0;
+  max-height: min(94dvh, 920px);
   overflow: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   border-radius: 18px 18px 0 0;
   background: var(--page);
   box-shadow: 0 -20px 50px rgb(15 23 42 / 22%);
@@ -277,7 +289,61 @@ export const ULC_TRAINING_BLOCKS_CSS = `
 .training-block-save-state[data-state="error"],
 .training-block-save-state[data-state="conflict"] { background: #fee2e2; color: #991b1b; }
 .training-block-save-state[data-state="draft"] { background: #fef3c7; color: #92400e; }
-.training-block-body { display: grid; gap: 12px; padding: 12px; }
+.training-block-body {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding: 12px;
+  overflow-x: hidden;
+}
+.training-block-body > *,
+.training-block-form-grid > *,
+.training-block-exercise,
+.training-block-history-card,
+.training-block-exercises-card,
+.training-block-form-card { min-width: 0; }
+.training-block-form-card,
+.training-block-exercises-card,
+.training-block-history-card { max-width: 100%; overflow-x: hidden; }
+.training-block-audience-field {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.training-block-audience-field legend {
+  margin-bottom: 6px;
+  font-size: .78rem;
+  font-weight: 750;
+}
+.training-block-audience-field small {
+  display: block;
+  margin-top: 6px;
+  color: var(--secondary);
+}
+.training-block-audience-picker {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.training-block-audience-chip {
+  min-height: 38px;
+  max-width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: white;
+  color: var(--secondary);
+  font-size: .78rem;
+  font-weight: 750;
+}
+.training-block-audience-chip[aria-pressed="true"] {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.training-block-audience-chip:disabled { opacity: .55; }
 .training-block-form-card,
 .training-block-exercises-card,
 .training-block-history-card { padding: 14px; }
@@ -348,17 +414,93 @@ export const ULC_TRAINING_BLOCKS_CSS = `
   margin-top: 12px;
 }
 .training-block-revision-preview,
-.training-block-comparison,
-.training-block-info-body {
+.training-block-comparison {
   margin-top: 10px;
   padding: 12px;
   border-radius: var(--control-radius);
   background: var(--muted);
-  white-space: pre-wrap;
 }
-.training-block-info-body { margin: 0; border-radius: 0; background: var(--page); }
-.training-block-info-section { margin-bottom: 14px; }
-.training-block-info-section h3 { margin-bottom: 4px; }
+.training-block-revision-preview[hidden],
+.training-block-comparison[hidden] { display: none; }
+.training-block-version-head {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+.training-block-version-meta { color: var(--secondary); font-size: .76rem; }
+.training-block-version-exercises { display: grid; gap: 7px; }
+.training-block-version-exercise {
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+}
+.training-block-version-exercise strong { display: block; }
+.training-block-version-exercise span,
+.training-block-version-exercise small { display: block; margin-top: 3px; color: var(--secondary); }
+.training-block-comparison-list { display: grid; gap: 7px; }
+.training-block-comparison-row {
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+}
+.training-block-comparison-row strong { display: block; margin-bottom: 3px; }
+.training-block-comparison-row span { display: block; color: var(--secondary); font-size: .78rem; }
+.training-block-info-tabs {
+  position: sticky;
+  top: 73px;
+  z-index: 3;
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: rgb(255 255 255 / 97%);
+  scrollbar-width: none;
+}
+.training-block-info-tabs::-webkit-scrollbar { display: none; }
+.training-block-info-tabs button {
+  min-height: 36px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: white;
+  color: var(--secondary);
+  font-weight: 750;
+}
+.training-block-info-tabs button[aria-selected="true"] {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.training-block-info-body {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border-radius: 0;
+  background: var(--page);
+}
+.training-block-info-section { margin: 0; }
+.training-block-info-section h3 { margin: 0 0 6px; }
+.training-block-info-grid { display: grid; gap: 8px; }
+.training-block-info-card {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+}
+.training-block-info-card strong { display: block; margin-bottom: 3px; }
+.training-block-info-card span,
+.training-block-info-card p { margin: 0; color: var(--secondary); font-size: .82rem; line-height: 1.45; }
+.training-block-info-video {
+  width: 100%;
+  max-height: 260px;
+  margin-top: 7px;
+  border-radius: 8px;
+  background: #0f172a;
+}
 .training-block-footer {
   position: sticky;
   bottom: 0;
@@ -377,6 +519,24 @@ body.training-block-editor-open { overflow: hidden; }
 .training-block-reload { width: 100%; }
 @media (max-width: 480px) {
   .training-blocks-hero { align-items: stretch; flex-direction: column; }
+  .training-block-backdrop { place-items: stretch; }
+  .training-block-dialog {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .training-block-info-dialog {
+    width: 100vw;
+    max-height: 92dvh;
+  }
+  .training-block-header { padding: 10px 11px; }
+  .training-block-header .button { min-height: 40px; padding: 7px 9px; }
+  .training-block-body { padding: 8px; gap: 8px; }
+  .training-block-form-card,
+  .training-block-exercises-card,
+  .training-block-history-card { padding: 10px; }
+  .training-block-info-tabs { top: 62px; }
   .training-block-commandbar { grid-template-columns: 1fr 1fr; }
   .training-block-commandbar label:first-child { grid-column: 1 / -1; }
   .training-block-form-grid { grid-template-columns: 1fr; }
@@ -409,6 +569,7 @@ const trainingBlockElements = Object.freeze({
   statusFilter: document.querySelector("#training-block-status-filter"),
   newButton: document.querySelector("#training-block-new"),
   editor: document.querySelector("#training-block-editor"),
+  dialog: document.querySelector("#training-block-dialog"),
   editorEyebrow: document.querySelector("#training-block-editor-eyebrow"),
   editorTitle: document.querySelector("#training-block-editor-title"),
   editorMessage: document.querySelector("#training-block-editor-message"),
@@ -468,6 +629,11 @@ let trainingBlockOpenRequestId = 0;
 let trainingBlockHistoryRequestId = 0;
 let trainingBlockRevisionRequestId = 0;
 let trainingBlockCompareRequestId = 0;
+let trainingBlockInfoRequestId = 0;
+let trainingBlockInfoItem = null;
+let trainingBlockInfoPrivateMedia = [];
+let trainingBlockInfoPrivateMediaAvailable = false;
+let trainingBlockInfoTab = "basis";
 
 function isCurrentTrainingBlockSelection(blockId, requestId) {
   return (
@@ -639,6 +805,7 @@ async function refreshTrainingBlockAudienceDependency() {
 
 function refreshTrainingBlockCatalogDependency() {
   if (!trainingBlockDraft) return;
+  renderTrainingBlockAudienceOptions();
   renderTrainingBlockExercisePicker();
   renderTrainingBlockExercises();
 }
@@ -849,6 +1016,7 @@ function newTrainingBlock() {
   trainingBlockDeactivateBusy = false;
   trainingBlockReloadBusy = false;
   populateTrainingBlockEditor();
+  scrollTrainingBlockEditorTop();
   trainingBlockElements.name?.focus();
 }
 
@@ -884,7 +1052,10 @@ async function openTrainingBlock(id, allowReload = false) {
     trainingBlockCreateUncertain = false;
     trainingBlockDeactivateBusy = false;
     populateTrainingBlockEditor();
-    if (!allowReload) trainingBlockElements.close?.focus();
+    if (!allowReload) {
+      scrollTrainingBlockEditorTop();
+      trainingBlockElements.close?.focus();
+    }
     return true;
   } catch (error) {
     if (requestId !== trainingBlockOpenRequestId) return false;
@@ -896,6 +1067,12 @@ async function openTrainingBlock(id, allowReload = false) {
     );
     return false;
   }
+}
+
+function scrollTrainingBlockEditorTop() {
+  if (!trainingBlockElements.dialog) return;
+  trainingBlockElements.dialog.scrollTop = 0;
+  trainingBlockElements.dialog.scrollLeft = 0;
 }
 
 function populateTrainingBlockEditor() {
@@ -1034,7 +1211,6 @@ function refreshTrainingBlockEditorLock() {
 
   for (const control of [
     trainingBlockElements.name,
-    trainingBlockElements.audience,
     trainingBlockElements.duration,
     trainingBlockElements.note,
   ]) {
@@ -1095,23 +1271,62 @@ function refreshTrainingBlockEditorLock() {
 }
 
 function renderTrainingBlockAudienceOptions() {
-  const select = trainingBlockElements.audience;
-  if (!select || !trainingBlockDraft) return;
-  select.replaceChildren();
+  const container = trainingBlockElements.audience;
+  if (!container || !trainingBlockDraft) return;
+  container.replaceChildren();
   const selected = new Set(trainingBlockDraft.audienceIds || []);
-  for (const audience of trainingBlockAudiences) {
-    const option = document.createElement("option");
-    option.value = audience.id;
-    option.textContent = trainingBlockAudienceLabel(audience.id);
-    option.selected = selected.has(audience.id);
-    select.append(option);
-  }
-  select.disabled =
+  const disabled =
     !trainingBlocksCanEdit ||
     trainingBlockDeactivateBusy ||
     trainingBlockDuplicateBusy ||
     trainingBlockReloadBusy ||
+    trainingBlockFavoriteBusy ||
+    trainingBlockSaveBusy ||
     trainingBlockSelected?.isActive === false;
+
+  const clubwide = document.createElement("button");
+  clubwide.type = "button";
+  clubwide.className = "training-block-audience-chip";
+  clubwide.dataset.trainingBlockAudienceId = "__clubwide__";
+  clubwide.setAttribute("aria-pressed", selected.size === 0 ? "true" : "false");
+  clubwide.disabled = disabled;
+  clubwide.textContent = "Generell gültig";
+  container.append(clubwide);
+
+  for (const audience of trainingBlockAudiences
+    .slice()
+    .sort((left, right) =>
+      left.name.localeCompare(right.name, "de", { sensitivity: "base" }),
+    )) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "training-block-audience-chip";
+    button.dataset.trainingBlockAudienceId = audience.id;
+    button.setAttribute(
+      "aria-pressed",
+      selected.has(audience.id) ? "true" : "false",
+    );
+    button.disabled = disabled;
+    button.textContent = trainingBlockAudienceLabel(audience.id);
+    container.append(button);
+  }
+}
+
+function handleTrainingBlockAudienceClick(event) {
+  const control = event.target?.closest?.("[data-training-block-audience-id]");
+  if (!control || !trainingBlockDraft || control.disabled) return;
+  const id = control.dataset.trainingBlockAudienceId || "";
+  if (id === "__clubwide__") {
+    trainingBlockDraft.audienceIds = [];
+  } else if (trainingBlockDraft.audienceIds.includes(id)) {
+    trainingBlockDraft.audienceIds = trainingBlockDraft.audienceIds.filter(
+      (value) => value !== id,
+    );
+  } else {
+    trainingBlockDraft.audienceIds = [...trainingBlockDraft.audienceIds, id];
+  }
+  renderTrainingBlockAudienceOptions();
+  markTrainingBlockDirty();
 }
 
 function renderTrainingBlockExercisePicker() {
@@ -1332,11 +1547,6 @@ function markTrainingBlockDirty() {
 function syncTrainingBlockDraftFromFields() {
   if (!trainingBlockDraft) return;
   trainingBlockDraft.name = (trainingBlockElements.name?.value || "").trim();
-  trainingBlockDraft.audienceIds = trainingBlockElements.audience
-    ? [...trainingBlockElements.audience.selectedOptions].map(
-        (option) => option.value,
-      )
-    : [];
   const duration = trainingBlockElements.duration?.value || "";
   trainingBlockDraft.durationMinutes =
     duration === "" ? null : Number(duration);
@@ -1712,6 +1922,7 @@ function closeTrainingBlockEditor(force = false) {
   trainingBlockDuplicateBusy = false;
   trainingBlockReloadBusy = false;
   if (trainingBlockElements.editor) trainingBlockElements.editor.hidden = true;
+  scrollTrainingBlockEditorTop();
   document.body.classList.remove("training-block-editor-open");
   showMessage(trainingBlockElements.editorMessage, "");
 }
@@ -2491,10 +2702,7 @@ for (const control of [
     markTrainingBlockDirty();
   });
 }
-trainingBlockElements.audience?.addEventListener("change", () => {
-  syncTrainingBlockDraftFromFields();
-  markTrainingBlockDirty();
-});
+trainingBlockElements.audience?.addEventListener("click", handleTrainingBlockAudienceClick);
 trainingBlockElements.list?.addEventListener("click", (event) => {
   const control = event.target?.closest?.("[data-training-block-open]");
   if (control) void openTrainingBlock(control.dataset.trainingBlockOpen || "");
