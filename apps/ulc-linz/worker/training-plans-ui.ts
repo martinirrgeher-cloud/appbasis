@@ -1390,13 +1390,44 @@ async function loadTrainingPlanOverview() {
 
 function renderTrainingPlanOverview() {
   const container = trainingPlanElements.overview;
-  if (!container) return;
+  const days = trainingPlanElements.overviewDays;
+  if (!container || !days) return;
   container.replaceChildren();
+  days.replaceChildren();
+
+  trainingPlanUpdateWeekLabel();
+
+  const dates =
+    trainingPlanOverview?.dates ||
+    Array.from({ length: 7 }, (_, index) =>
+      trainingPlanAddDays(trainingPlanWeekStart, index),
+    );
+  trainingPlanOverviewDayIndex = Math.max(
+    0,
+    Math.min(6, trainingPlanOverviewDayIndex),
+  );
+
+  dates.forEach((date, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "training-plan-day-tab";
+    button.dataset.trainingPlanOverviewDay = String(index);
+    button.setAttribute(
+      "aria-selected",
+      index === trainingPlanOverviewDayIndex ? "true" : "false",
+    );
+    const day = document.createElement("strong");
+    day.textContent = trainingPlanDayLabel(date);
+    const shortDate = document.createElement("span");
+    shortDate.textContent = trainingPlanShortDate(date);
+    button.append(day, shortDate);
+    days.append(button);
+  });
 
   if (!trainingPlanSelectedOverviewGroupId) {
     const empty = document.createElement("p");
     empty.className = "settings-note";
-    empty.textContent = "Für die Übersicht ist keine aktive Trainingsgruppe verfügbar.";
+    empty.textContent = "Für die Gruppenplanung ist keine aktive Trainingsgruppe verfügbar.";
     container.append(empty);
     return;
   }
@@ -1404,79 +1435,88 @@ function renderTrainingPlanOverview() {
   if (trainingPlanOverviewLoading) {
     const loading = document.createElement("p");
     loading.className = "settings-note";
-    loading.textContent = "Gruppenübersicht wird geladen …";
+    loading.textContent = "Gruppenplanung wird geladen …";
     container.append(loading);
     return;
   }
 
   if (!trainingPlanOverview) {
-    const empty = document.createElement("p");
-    empty.className = "settings-note";
-    empty.textContent = "Gruppenübersicht derzeit nicht verfügbar.";
+    const empty = document.createElement("div");
+    empty.className = "training-plan-group-row";
+    const text = document.createElement("div");
+    text.className = "training-plan-group-row__main";
+    const title = document.createElement("strong");
+    title.textContent = "Gruppenplanung derzeit nicht verfügbar";
+    const detail = document.createElement("span");
+    detail.textContent = "Gruppe oder Woche erneut wählen.";
+    text.append(title, detail);
+    empty.append(text);
     container.append(empty);
     return;
   }
 
-  const grid = document.createElement("div");
-  grid.className = "training-plan-overview-grid";
-
-  const athleteHead = document.createElement("div");
-  athleteHead.className = "training-plan-overview-head";
-  athleteHead.textContent = "Athlet";
-  grid.append(athleteHead);
-
-  for (const date of trainingPlanOverview.dates) {
-    const head = document.createElement("div");
-    head.className = "training-plan-overview-head";
-    head.textContent =
-      trainingPlanDayLabel(date) + " " + trainingPlanShortDate(date);
-    grid.append(head);
-  }
+  const date = trainingPlanOverview.dates[trainingPlanOverviewDayIndex];
+  if (!date) return;
 
   if (trainingPlanOverview.rows.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "training-plan-overview-athlete";
-    empty.style.gridColumn = "1 / -1";
+    const empty = document.createElement("p");
+    empty.className = "settings-note";
     empty.textContent = "Keine aktiven Athleten in dieser Gruppe.";
-    grid.append(empty);
-  } else {
-    for (const row of trainingPlanOverview.rows) {
-      const athlete = document.createElement("div");
-      athlete.className = "training-plan-overview-athlete";
-      athlete.textContent = row.subject.displayName;
-      grid.append(athlete);
-
-      for (const cell of row.cells) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "training-plan-overview-cell";
-        button.dataset.trainingPlanOverviewSubject = row.subject.id;
-        button.dataset.trainingPlanOverviewDate = cell.planDate;
-        button.dataset.hasPlan = cell.planId ? "true" : "false";
-
-        const title = document.createElement("strong");
-        title.textContent = cell.planId
-          ? cell.durationMinutes > 0
-            ? String(cell.durationMinutes) + " Min."
-            : "Plan"
-          : trainingPlansCanEdit
-            ? "＋ Plan"
-            : "—";
-
-        const detail = document.createElement("span");
-        detail.textContent = cell.planId
-          ? String(cell.exerciseCount) +
-            " Übung" +
-            (cell.exerciseCount === 1 ? "" : "en")
-          : "Kein Eintrag";
-
-        button.append(title, detail);
-        grid.append(button);
-      }
-    }
+    container.append(empty);
+    return;
   }
 
-  container.append(grid);
+  for (const row of trainingPlanOverview.rows) {
+    const cell = row.cells[trainingPlanOverviewDayIndex];
+    if (!cell) continue;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "training-plan-group-row";
+    button.dataset.trainingPlanOverviewSubject = row.subject.id;
+    button.dataset.trainingPlanOverviewDate = cell.planDate;
+    button.dataset.hasPlan = cell.planId ? "true" : "false";
+
+    const main = document.createElement("span");
+    main.className = "training-plan-group-row__main";
+    const name = document.createElement("strong");
+    name.textContent = row.subject.displayName;
+    const detail = document.createElement("span");
+    detail.textContent = cell.planId
+      ? [
+          cell.durationMinutes > 0
+            ? String(cell.durationMinutes) + " Min."
+            : null,
+          String(cell.exerciseCount) +
+            " Übung" +
+            (cell.exerciseCount === 1 ? "" : "en"),
+        ].filter(Boolean).join(" · ")
+      : "Noch kein Trainingsplan";
+    main.append(name, detail);
+
+    const status = document.createElement("span");
+    status.className = "training-plan-group-row__status";
+    const statusTitle = document.createElement("strong");
+    statusTitle.textContent = cell.planId ? "Plan" : trainingPlansCanEdit ? "＋ Plan" : "—";
+    const statusDetail = document.createElement("span");
+    statusDetail.textContent = trainingPlanShortDate(date);
+    status.append(statusTitle, statusDetail);
+
+    button.append(main, status);
+    container.append(button);
+  }
+}
+
+function trainingPlanDefaultOverviewDayIndex() {
+  const today = trainingPlanLocalIso(new Date());
+  const end = trainingPlanAddDays(trainingPlanWeekStart, 6);
+  if (today < trainingPlanWeekStart || today > end) return 0;
+  const start = new Date(trainingPlanWeekStart + "T12:00:00");
+  const current = new Date(today + "T12:00:00");
+  return Math.max(
+    0,
+    Math.min(6, Math.round((current.getTime() - start.getTime()) / 86400000)),
+  );
 }
 
 async function openTrainingPlanFromOverview(subjectId, date) {
