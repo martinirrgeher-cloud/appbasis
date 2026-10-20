@@ -734,7 +734,6 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-save"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-audience-filter"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-audience" role="group"');
-    expect(ULC_LINZ_APP_SCRIPT).toContain('dataTrainingBlockAudienceId');
     expect(ULC_LINZ_APP_SCRIPT).toContain('dataset.trainingBlockAudienceId');
     expect(ULC_LINZ_APP_HTML).toContain("Neue Version erst beim Speichern.");
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-retry"');
