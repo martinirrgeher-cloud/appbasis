@@ -43,7 +43,7 @@
       },
       {
         "path": "modules/training-plans/src/postgres-repository.ts",
-        "gitBlobSha": "19c1f730f5089acbe7e303c586cfb4c2c44d74f5"
+        "gitBlobSha": "27b8026431b8693128017fee598f5168c59b7e04"
       },
       {
         "path": "modules/training-plans/test/lifecycle.test.ts",
