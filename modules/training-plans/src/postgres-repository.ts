@@ -55,8 +55,8 @@ export class PostgresTrainingPlanRepository
     const subjectPlaceholders = subjectIds
       .map((_, index) => "$" + String(index + 2))
       .join(", ");
-    const fromIndex = subjectIds.length + 2;
-    const toIndex = subjectIds.length + 3;
+    const fromPlaceholder = "$" + String(subjectIds.length + 2);
+    const toPlaceholder = "$" + String(subjectIds.length + 3);
     return this.#client.begin(async (transaction) => {
       await transaction.unsafe(
         "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
@@ -65,8 +65,8 @@ export class PostgresTrainingPlanRepository
         transaction,
         organizationId,
         `AND plan.subject_id IN (${subjectPlaceholders})
-         AND plan.plan_date >= ${fromIndex}::date
-         AND plan.plan_date <= ${toIndex}::date`,
+         AND plan.plan_date >= ${fromPlaceholder}::date
+         AND plan.plan_date <= ${toPlaceholder}::date`,
         [...subjectIds, fromDate, toDate],
       );
     });
