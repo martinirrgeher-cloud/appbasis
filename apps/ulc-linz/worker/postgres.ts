@@ -64,6 +64,7 @@ import {
 } from "./training-plans-access";
 import {
   createUlcTrainingPlanService,
+  type UlcTrainingPlanOverviewReader,
   type UlcTrainingPlanService,
 } from "./training-plans-service";
 import { PostgresUlcLinzScopePersistence } from "./scope-persistence";
@@ -438,6 +439,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       exerciseCatalog: new PostgresExerciseCatalogRepository(applicationSql),
       attendance: trainingSessions,
       blocks: trainingBlocks,
+      overview: createTrainingPlanOverviewReader(applicationSql),
     });
     return Object.freeze({
       identity: identityRuntime.identity,
@@ -492,6 +494,103 @@ export async function createGeneratedPostgresApplicationRuntime(
     }
     throw error;
   }
+}
+
+function createTrainingPlanOverviewReader(client: {
+  unsafe(
+    query: string,
+    parameters?: Array<string | number | boolean | null>,
+  ): PromiseLike<readonly Record<string, unknown>[]>;
+}): UlcTrainingPlanOverviewReader {
+  return Object.freeze({
+    async listSummaries(
+      organizationId: string,
+      subjectIds: readonly string[],
+      fromDate: string,
+      toDate: string,
+    ) {
+      if (subjectIds.length === 0) return Object.freeze([]);
+      const subjectPlaceholders = subjectIds
+        .map((_, index) => "$" + String(index + 2))
+        .join(", ");
+      const fromPlaceholder = "$" + String(subjectIds.length + 2);
+      const toPlaceholder = "$" + String(subjectIds.length + 3);
+      const rows = await client.unsafe(
+        `SELECT
+           plan.id AS plan_id,
+           plan.subject_id,
+           to_char(plan.plan_date, 'YYYY-MM-DD') AS plan_date,
+           COALESCE(
+             SUM(
+               CASE
+                 WHEN item.item_kind = 'block'
+                   THEN COALESCE(item.duration_minutes, 0)
+                 ELSE 0
+               END
+             ),
+             0
+           )::int AS duration_minutes,
+           COUNT(*) FILTER (WHERE item.item_kind = 'exercise')::int AS exercise_count
+         FROM appbasis_training_plan AS plan
+         LEFT JOIN appbasis_training_plan_revision_item AS item
+           ON item.organization_id = plan.organization_id
+          AND item.plan_id = plan.id
+          AND item.revision = plan.current_revision
+         WHERE plan.organization_id = $1
+           AND plan.subject_id IN (${subjectPlaceholders})
+           AND plan.plan_date >= ${fromPlaceholder}::date
+           AND plan.plan_date <= ${toPlaceholder}::date
+         GROUP BY plan.id, plan.subject_id, plan.plan_date
+         ORDER BY plan.subject_id ASC, plan.plan_date ASC, plan.id ASC`,
+        [organizationId, ...subjectIds, fromDate, toDate],
+      );
+      return Object.freeze(
+        rows.map((row) =>
+          Object.freeze({
+            subjectId: trainingPlanOverviewString(row.subject_id, "subject id"),
+            planDate: trainingPlanOverviewDate(row.plan_date),
+            planId: trainingPlanOverviewString(row.plan_id, "plan id"),
+            durationMinutes: trainingPlanOverviewInteger(
+              row.duration_minutes,
+              "duration",
+            ),
+            exerciseCount: trainingPlanOverviewInteger(
+              row.exercise_count,
+              "exercise count",
+            ),
+          }),
+        ),
+      );
+    },
+  });
+}
+
+function trainingPlanOverviewString(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length === 0 || value !== value.trim()) {
+    throw new Error(`Training plan overview returned invalid ${label}.`);
+  }
+  return value;
+}
+
+function trainingPlanOverviewDate(value: unknown): string {
+  const result = trainingPlanOverviewString(value, "date");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(result)) {
+    throw new Error("Training plan overview returned invalid date.");
+  }
+  return result;
+}
+
+function trainingPlanOverviewInteger(value: unknown, label: string): number {
+  const number =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d+$/.test(value)
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isSafeInteger(number) || number < 0) {
+    throw new Error(`Training plan overview returned invalid ${label}.`);
+  }
+  return number;
 }
 
 function createPermissionStore(client: IdentityPostgresRuntimeSqlClient) {
