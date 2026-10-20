@@ -3111,10 +3111,8 @@ async function saveTrainingPlan() {
     showMessage(trainingPlanElements.editorMessage, "");
     if (trainingPlanElements.retry) trainingPlanElements.retry.hidden = true;
     renderTrainingPlanWeek();
-    if (trainingPlanViewMode === "group") {
-      trainingPlanOverview = null;
-      void loadTrainingPlanOverview();
-    }
+    replaceTrainingPlanOverviewSummary(saved);
+    if (trainingPlanViewMode === "group") renderTrainingPlanOverview();
   } catch (error) {
     if (
       error?.status === 409 &&
@@ -3234,6 +3232,27 @@ function trainingPlanApplySavedIds(draft, savedItems) {
       });
     }
   });
+}
+
+function replaceTrainingPlanOverviewSummary(saved) {
+  if (!trainingPlanOverview) return;
+  const row = trainingPlanOverview.rows.find(
+    (candidate) => candidate.subject.id === saved.subjectId,
+  );
+  const cell = row?.cells.find(
+    (candidate) => candidate.planDate === saved.planDate,
+  );
+  if (!cell) return;
+  cell.planId = saved.id;
+  cell.durationMinutes = saved.revision.items.reduce(
+    (total, item) =>
+      total +
+      (item.kind === "block" && item.durationMinutes !== null
+        ? item.durationMinutes
+        : 0),
+    0,
+  );
+  cell.exerciseCount = trainingPlanExerciseCount(saved.revision.items);
 }
 
 function replaceTrainingPlanWeekSnapshot(saved) {
