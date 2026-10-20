@@ -1356,6 +1356,7 @@ async function loadTrainingPlanOverview() {
   trainingPlanOverview = null;
   refreshTrainingPlanControls();
   renderTrainingPlanOverview();
+  showMessage(trainingPlanElements.message, "");
 
   try {
     const payload = await requestJson(
