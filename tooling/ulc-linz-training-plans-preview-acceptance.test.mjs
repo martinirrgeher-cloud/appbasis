@@ -413,6 +413,8 @@ test("E7B9 acceptance executes the complete isolated public-HTTP happy path", as
   assert.deepEqual(result.checks, [
     "login",
     "week-view",
+    "group-overview",
+    "day-view",
     "attendance",
     "autosave",
     "block-template-adoption",
