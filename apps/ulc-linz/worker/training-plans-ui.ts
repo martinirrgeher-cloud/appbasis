@@ -2141,12 +2141,29 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
   const children = document.createElement("div");
   children.className = "training-plan-child-list";
   item.exercises.forEach((exercise, childIndex) => {
-    const child = document.createElement("section");
+    const child = document.createElement("details");
     child.className = "training-plan-child";
+    child.open = exercise.itemId === null;
+
+    const summary = document.createElement("summary");
+    summary.className = "training-plan-child-summary";
+    const main = document.createElement("span");
+    const title = document.createElement("strong");
+    title.textContent = exercise.name || "Übung " + String(childIndex + 1);
+    const meta = document.createElement("span");
+    meta.textContent = trainingPlanItemCompactSummary(exercise);
+    main.append(title, meta);
+    const chevron = document.createElement("span");
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = "▾";
+    summary.append(main, chevron);
+
+    const editor = document.createElement("div");
+    editor.className = "training-plan-item-editor";
     const header = document.createElement("div");
     header.className = "training-plan-item__header";
-    const title = document.createElement("strong");
-    title.textContent = "Übung " + String(childIndex + 1);
+    const label = document.createElement("strong");
+    label.textContent = "Übung " + String(childIndex + 1) + " bearbeiten";
     const actions = trainingPlanActionButtons(
       childIndex,
       item.exercises.length,
@@ -2155,8 +2172,9 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
       () => trainingPlanMoveChild(itemIndex, childIndex, 1),
       () => trainingPlanRemoveChild(itemIndex, childIndex),
     );
-    header.append(title, actions);
-    child.append(header, trainingPlanExerciseFields(exercise, editable));
+    header.append(label, actions);
+    editor.append(header, trainingPlanExerciseFields(exercise, editable));
+    child.append(summary, editor);
     children.append(child);
   });
   if (item.exercises.length > 0) wrapper.append(children);
