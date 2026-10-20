@@ -3275,11 +3275,24 @@ function trainingPlanDateLabel(value) {
   });
 }
 
+for (const control of document.querySelectorAll("[data-training-plan-mode]")) {
+  control.addEventListener("click", () =>
+    showTrainingPlanMode(control.dataset.trainingPlanMode || "group"),
+  );
+}
 trainingPlanElements.overviewGroup?.addEventListener("change", () => {
   trainingPlanSelectedOverviewGroupId =
     trainingPlanElements.overviewGroup?.value || "";
   trainingPlanOverview = null;
   void loadTrainingPlanOverview();
+});
+trainingPlanElements.overviewDays?.addEventListener("click", (event) => {
+  const control = event.target?.closest?.("[data-training-plan-overview-day]");
+  if (!control) return;
+  const index = Number(control.dataset.trainingPlanOverviewDay);
+  if (!Number.isSafeInteger(index) || index < 0 || index > 6) return;
+  trainingPlanOverviewDayIndex = index;
+  renderTrainingPlanOverview();
 });
 trainingPlanElements.overview?.addEventListener("click", (event) => {
   const control = event.target?.closest?.(
@@ -3302,44 +3315,41 @@ trainingPlanElements.subject?.addEventListener("change", () => {
   trainingPlanSelectedSubjectId = nextSubjectId;
   trainingPlanWeekPlans = [];
   trainingPlanWeekAttendance = [];
-  trainingPlanOverview = null;
-  void Promise.all([
-    loadTrainingPlanWeek(),
-    loadTrainingPlanOverview(),
-  ]);
+  trainingPlanWeekLoaded = false;
+  void loadTrainingPlanWeek();
 });
 trainingPlanElements.weekPrev?.addEventListener("click", () => {
   if (!closeTrainingPlanEditor(false)) return;
   trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, -7);
+  trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
   trainingPlanWeekPlans = [];
   trainingPlanWeekAttendance = [];
+  trainingPlanWeekLoaded = false;
   trainingPlanOverview = null;
-  void Promise.all([
-    loadTrainingPlanWeek(),
-    loadTrainingPlanOverview(),
-  ]);
+  renderTrainingPlanMode();
+  void loadTrainingPlanActiveView();
 });
 trainingPlanElements.weekToday?.addEventListener("click", () => {
   if (!closeTrainingPlanEditor(false)) return;
   trainingPlanWeekStart = trainingPlanMonday(new Date());
+  trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
   trainingPlanWeekPlans = [];
   trainingPlanWeekAttendance = [];
+  trainingPlanWeekLoaded = false;
   trainingPlanOverview = null;
-  void Promise.all([
-    loadTrainingPlanWeek(),
-    loadTrainingPlanOverview(),
-  ]);
+  renderTrainingPlanMode();
+  void loadTrainingPlanActiveView();
 });
 trainingPlanElements.weekNext?.addEventListener("click", () => {
   if (!closeTrainingPlanEditor(false)) return;
   trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, 7);
+  trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
   trainingPlanWeekPlans = [];
   trainingPlanWeekAttendance = [];
+  trainingPlanWeekLoaded = false;
   trainingPlanOverview = null;
-  void Promise.all([
-    loadTrainingPlanWeek(),
-    loadTrainingPlanOverview(),
-  ]);
+  renderTrainingPlanMode();
+  void loadTrainingPlanActiveView();
 });
 trainingPlanElements.attendanceFilter?.addEventListener("change", () => {
   const value = trainingPlanElements.attendanceFilter?.value || "all";
@@ -3379,6 +3389,7 @@ trainingPlanElements.addBlock?.addEventListener("click", () => {
 });
 trainingPlanElements.pickerClose?.addEventListener("click", closeTrainingPlanPicker);
 trainingPlanElements.pickerSearch?.addEventListener("input", renderTrainingPlanPicker);
+trainingPlanElements.pickerCategory?.addEventListener("change", renderTrainingPlanPicker);
 trainingPlanElements.pickerList?.addEventListener("click", handleTrainingPlanPickerClick);
 trainingPlanElements.pickerManual?.addEventListener("click", () => {
   if (!trainingPlanDraft) return;
