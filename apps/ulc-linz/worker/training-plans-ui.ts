@@ -10,42 +10,47 @@ export const ULC_TRAINING_PLANS_HTML = `
 
             <p class="message message--error" id="training-plan-message" role="alert" hidden></p>
 
-            <section class="card training-plan-toolbar">
-              <label>Athlet
-                <select id="training-plan-subject"></select>
-              </label>
-              <label>Anwesenheit
-                <select id="training-plan-attendance-filter">
-                  <option value="all">Alle</option>
-                  <option value="present">Anwesend</option>
-                  <option value="excused">Entschuldigt</option>
-                  <option value="absent">Abwesend</option>
-                  <option value="open">Offen</option>
-                  <option value="none">Kein Eintrag</option>
-                </select>
-              </label>
-              <div class="training-plan-week-nav" aria-label="Woche wechseln">
-                <button class="button button--secondary" id="training-plan-week-prev" type="button" aria-label="Vorherige Woche">←</button>
-                <button class="button button--secondary" id="training-plan-week-today" type="button">Diese Woche</button>
-                <button class="button button--secondary" id="training-plan-week-next" type="button" aria-label="Nächste Woche">→</button>
+            <section class="card training-plan-shell">
+              <div class="training-plan-mode-tabs" role="tablist" aria-label="Planungsansicht">
+                <button type="button" role="tab" data-training-plan-mode="group" aria-selected="true">Gruppe</button>
+                <button type="button" role="tab" data-training-plan-mode="athlete" aria-selected="false">Athlet</button>
               </div>
-              <strong id="training-plan-week-label"></strong>
-            </section>
 
-            <section class="training-plan-week" id="training-plan-week" aria-live="polite"></section>
-
-            <section class="card training-plan-overview-card">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">Übersicht</p>
-                  <h2>Gruppenwoche</h2>
+              <div class="training-plan-weekbar">
+                <div class="training-plan-week-nav" aria-label="Woche wechseln">
+                  <button class="button button--secondary" id="training-plan-week-prev" type="button" aria-label="Vorherige Woche">←</button>
+                  <button class="button button--secondary" id="training-plan-week-today" type="button">Diese Woche</button>
+                  <button class="button button--secondary" id="training-plan-week-next" type="button" aria-label="Nächste Woche">→</button>
                 </div>
-                <label>Trainingsgruppe
+                <strong id="training-plan-week-label"></strong>
+              </div>
+
+              <section class="training-plan-mode-panel" id="training-plan-group-panel" data-training-plan-mode-panel="group">
+                <label class="training-plan-primary-select">Trainingsgruppe
                   <select id="training-plan-overview-group"></select>
                 </label>
-              </div>
-              <p class="settings-note">Athleten zeilenweise, Wochentage spaltenweise. Ein Klick öffnet den Tagesplan.</p>
-              <div class="training-plan-overview" id="training-plan-overview" aria-live="polite"></div>
+                <nav class="training-plan-day-tabs" id="training-plan-overview-days" aria-label="Trainingstag auswählen"></nav>
+                <div class="training-plan-overview" id="training-plan-overview" aria-live="polite"></div>
+              </section>
+
+              <section class="training-plan-mode-panel" id="training-plan-athlete-panel" data-training-plan-mode-panel="athlete" hidden>
+                <div class="training-plan-athlete-controls">
+                  <label>Athlet
+                    <select id="training-plan-subject"></select>
+                  </label>
+                  <label>Anwesenheit
+                    <select id="training-plan-attendance-filter">
+                      <option value="all">Alle</option>
+                      <option value="present">Anwesend</option>
+                      <option value="excused">Entschuldigt</option>
+                      <option value="absent">Abwesend</option>
+                      <option value="open">Offen</option>
+                      <option value="none">Kein Eintrag</option>
+                    </select>
+                  </label>
+                </div>
+                <section class="training-plan-week" id="training-plan-week" aria-live="polite"></section>
+              </section>
             </section>
 
             <div class="training-plan-backdrop" id="training-plan-editor" hidden>
@@ -109,9 +114,14 @@ export const ULC_TRAINING_PLANS_HTML = `
                   <button class="button button--secondary training-plan-icon-close" id="training-plan-picker-close" type="button" aria-label="Auswahl schließen" title="Schließen">✕</button>
                 </header>
                 <div class="training-plan-picker-body">
-                  <label class="training-plan-picker-search">Suchen
-                    <input id="training-plan-picker-search" type="search" maxlength="160" placeholder="Name, Kategorie oder Gruppe …" autocomplete="off" />
-                  </label>
+                  <div class="training-plan-picker-filters">
+                    <label class="training-plan-picker-search">Suchen
+                      <input id="training-plan-picker-search" type="search" maxlength="160" placeholder="Name, Kategorie oder Gruppe …" autocomplete="off" />
+                    </label>
+                    <label id="training-plan-picker-category-wrap" hidden>Kategorie
+                      <select id="training-plan-picker-category"></select>
+                    </label>
+                  </div>
                   <p class="settings-note" id="training-plan-picker-hint"></p>
                   <div class="training-plan-picker-list" id="training-plan-picker-list" aria-live="polite"></div>
                   <button class="button button--secondary" id="training-plan-picker-manual" type="button" hidden>Freie Übung ohne Katalogbezug</button>
