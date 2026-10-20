@@ -61,6 +61,9 @@ export async function trainingPlansHttpResponse(
   if (url.pathname === "/api/modules/training-plans/week") {
     return trainingPlansWeekResponse(request, runtime, url);
   }
+  if (url.pathname === "/api/modules/training-plans/day") {
+    return trainingPlansDayResponse(request, runtime, url);
+  }
   if (url.pathname === "/api/modules/training-plans/overview") {
     return trainingPlansOverviewResponse(request, runtime, url);
   }
@@ -386,6 +389,46 @@ async function trainingPlansOverviewResponse(
   }
 }
 
+async function trainingPlansDayResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return methodNotAllowedFor("GET", "training plan day");
+  }
+
+  const access = await authorizeTrainingPlansRequest(
+    request,
+    runtime,
+    url,
+    "view",
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    const { subjectId, planDate } = trainingPlanDayQuery(url);
+    const subjects = await runtime.trainingPlans.listSubjects(
+      access.organizationId,
+    );
+    if (!subjects.some((subject) => subject.id === subjectId)) {
+      throw new UlcTrainingPlanReferenceError("subject", subjectId);
+    }
+    const plan = await runtime.trainingPlans.findCurrentBySubjectDate(
+      access.organizationId,
+      subjectId,
+      planDate,
+    );
+    return privateJson({
+      subjectId,
+      planDate,
+      plan: plan === undefined ? null : trainingPlanClientSnapshot(plan),
+    });
+  } catch (error) {
+    return trainingPlanErrorResponse(error);
+  }
+}
+
 async function trainingPlansWeekResponse(
   request: Request,
   runtime: GeneratedPostgresApplicationRuntime,
@@ -548,6 +591,26 @@ function trainingPlanOverviewQuery(
     throw new InvalidTrainingPlanRequestError();
   }
   return Object.freeze({ groupId, weekStart });
+}
+
+function trainingPlanDayQuery(
+  url: URL,
+): Readonly<{ subjectId: string; planDate: string }> {
+  const allowed = new Set(["subjectId", "planDate"]);
+  if (
+    [...url.searchParams.keys()].some((key) => !allowed.has(key)) ||
+    url.searchParams.getAll("subjectId").length !== 1 ||
+    url.searchParams.getAll("planDate").length !== 1
+  ) {
+    throw new InvalidTrainingPlanRequestError();
+  }
+  return Object.freeze({
+    subjectId: normalizeTrainingPlanIdentifier(
+      url.searchParams.get("subjectId"),
+      "Training plan subject",
+    ),
+    planDate: normalizeTrainingPlanDate(url.searchParams.get("planDate")),
+  });
 }
 
 function trainingPlanWeekQuery(
