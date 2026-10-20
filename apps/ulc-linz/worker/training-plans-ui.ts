@@ -1522,18 +1522,44 @@ function trainingPlanDefaultOverviewDayIndex() {
 
 async function openTrainingPlanFromOverview(subjectId, date) {
   if (!closeTrainingPlanEditor(false)) return;
-  if (
-    !trainingPlanSubjects.some((subject) => subject.id === subjectId)
-  ) return;
+  if (!trainingPlanSubjects.some((subject) => subject.id === subjectId)) return;
 
   trainingPlanSelectedSubjectId = subjectId;
   if (trainingPlanElements.subject) {
     trainingPlanElements.subject.value = subjectId;
   }
-  trainingPlanWeekPlans = [];
-  trainingPlanWeekAttendance = [];
-  const loaded = await loadTrainingPlanWeek();
-  if (loaded) openTrainingPlanEditor(date);
+  showMessage(trainingPlanElements.message, "");
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/training-plans/day?subjectId=" +
+        encodeURIComponent(subjectId) +
+        "&planDate=" +
+        encodeURIComponent(date),
+    );
+    if (
+      payload?.subjectId !== subjectId ||
+      payload?.planDate !== date ||
+      !(
+        payload?.plan === null ||
+        (
+          isTrainingPlanSnapshot(payload?.plan) &&
+          payload.plan.subjectId === subjectId &&
+          payload.plan.planDate === date
+        )
+      )
+    ) {
+      throw new Error("INVALID_TRAINING_PLAN_DAY");
+    }
+    openTrainingPlanEditor(date, payload.plan);
+  } catch (error) {
+    showMessage(
+      trainingPlanElements.message,
+      error?.status === 400
+        ? "Der ausgewählte Tagesplan ist nicht mehr verfügbar."
+        : "Der Tagesplan konnte nicht geladen werden.",
+    );
+  }
 }
 
 function renderTrainingPlanBlockTemplates() {
@@ -1843,10 +1869,12 @@ function trainingPlanExerciseCount(items) {
   return count;
 }
 
-function openTrainingPlanEditor(date) {
+function openTrainingPlanEditor(date, planOverride) {
   if (!trainingPlansReady || !trainingPlanSelectedSubjectId) return;
   const plan =
-    trainingPlanWeekPlans.find((value) => value.planDate === date) || null;
+    planOverride === undefined
+      ? trainingPlanWeekPlans.find((value) => value.planDate === date) || null
+      : planOverride;
   trainingPlanEditorDate = date;
   trainingPlanSelected = plan;
   trainingPlanDraft = plan
