@@ -78,6 +78,27 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
+  it("uses a group-first mobile planning flow with day tabs and a separate athlete view", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain('data-training-plan-mode="group"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('data-training-plan-mode="athlete"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-overview-days"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-group-panel"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-athlete-panel"');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain('let trainingPlanViewMode = "group";');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("showTrainingPlanMode");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("training-plan-group-row");
+    expect(ULC_TRAINING_PLANS_CSS).toContain(".training-plan-day-tabs");
+    expect(ULC_TRAINING_PLANS_CSS).toContain("height: 100dvh");
+  });
+
+  it("keeps the add picker open for multi-add and offers exercise category filtering", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-picker-category"');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("renderTrainingPlanPickerCategories");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain('item.categoryKey === categoryKey');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("Die Auswahl bleibt offen");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("trainingPlanItemCompactSummary");
+  });
+
   it("loads only Monday-based week data without client-owned organization scope", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       '"/api/modules/training-plans/week?subjectId="',
