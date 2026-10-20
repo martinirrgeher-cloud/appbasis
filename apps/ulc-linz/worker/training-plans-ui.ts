@@ -1992,13 +1992,30 @@ function renderTrainingPlanItems() {
   }
 
   trainingPlanDraft.items.forEach((item, index) => {
-    const card = document.createElement("section");
+    const card = document.createElement("details");
     card.className = "training-plan-item";
+    card.open = item.itemId === null;
 
+    const summary = document.createElement("summary");
+    summary.className = "training-plan-item-summary";
+    const summaryMain = document.createElement("span");
+    const title = document.createElement("strong");
+    title.textContent = item.name || (item.kind === "block" ? "Block" : "Übung");
+    const meta = document.createElement("span");
+    meta.textContent = trainingPlanItemCompactSummary(item);
+    summaryMain.append(title, meta);
+    const chevron = document.createElement("span");
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = "▾";
+    summary.append(summaryMain, chevron);
+    card.append(summary);
+
+    const editor = document.createElement("div");
+    editor.className = "training-plan-item-editor";
     const header = document.createElement("div");
     header.className = "training-plan-item__header";
-    const title = document.createElement("strong");
-    title.textContent = item.kind === "block" ? "Block" : "Übung";
+    const kind = document.createElement("strong");
+    kind.textContent = item.kind === "block" ? "Block bearbeiten" : "Übung bearbeiten";
     const actions = trainingPlanActionButtons(
       index,
       trainingPlanDraft.items.length,
@@ -2007,16 +2024,44 @@ function renderTrainingPlanItems() {
       () => trainingPlanMoveItem(index, 1),
       () => trainingPlanRemoveItem(index),
     );
-    header.append(title, actions);
-    card.append(header);
+    header.append(kind, actions);
+    editor.append(header);
 
     if (item.kind === "block") {
-      card.append(trainingPlanBlockFields(item, index, editable, structural));
+      editor.append(trainingPlanBlockFields(item, index, editable, structural));
     } else {
-      card.append(trainingPlanExerciseFields(item, editable));
+      editor.append(trainingPlanExerciseFields(item, editable));
     }
+    card.append(editor);
     container.append(card);
   });
+}
+
+function trainingPlanItemCompactSummary(item) {
+  if (item.kind === "block") {
+    return [
+      item.durationMinutes === null
+        ? null
+        : String(item.durationMinutes) + " Min.",
+      String(item.exercises.length) +
+        " Übung" +
+        (item.exercises.length === 1 ? "" : "en"),
+      item.note || null,
+    ].filter(Boolean).join(" · ") || "Block";
+  }
+  const prescription = [
+    item.sets && item.repetitions
+      ? item.sets + " × " + item.repetitions
+      : item.sets
+        ? item.sets + " Sätze"
+        : item.repetitions
+          ? item.repetitions + " Wdh."
+          : null,
+    item.amount
+      ? item.amount + (item.unit ? " " + item.unit : "")
+      : null,
+  ].filter(Boolean).join(" · ");
+  return prescription || item.comment || "Übung";
 }
 
 function trainingPlanActionButtons(index, length, enabled, up, down, remove) {
