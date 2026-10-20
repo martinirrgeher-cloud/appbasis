@@ -527,6 +527,158 @@ body.training-plan-picker-open { overflow: hidden; }
   color: var(--secondary);
   font-size: .78rem;
 }
+.training-plan-shell {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+.training-plan-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--muted);
+}
+.training-plan-mode-tabs button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--secondary);
+  font-weight: 800;
+}
+.training-plan-mode-tabs button[aria-selected="true"] {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgb(15 23 42 / 10%);
+}
+.training-plan-weekbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.training-plan-weekbar > strong {
+  color: var(--secondary);
+  font-size: .82rem;
+  text-align: right;
+}
+.training-plan-mode-panel { display: grid; gap: 10px; min-width: 0; }
+.training-plan-primary-select { max-width: 360px; }
+.training-plan-athlete-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, .55fr);
+  gap: 8px;
+}
+.training-plan-day-tabs {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.training-plan-day-tabs::-webkit-scrollbar { display: none; }
+.training-plan-day-tab {
+  min-width: 64px;
+  min-height: 42px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 5px 8px;
+  background: var(--card);
+  color: var(--secondary);
+  text-align: center;
+}
+.training-plan-day-tab strong,
+.training-plan-day-tab span { display: block; }
+.training-plan-day-tab strong { font-size: .78rem; }
+.training-plan-day-tab span { margin-top: 1px; font-size: .68rem; }
+.training-plan-day-tab[aria-selected="true"] {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.training-plan-overview {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  margin-top: 0;
+  overflow: visible;
+}
+.training-plan-group-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 9px 10px;
+  background: var(--card);
+  color: inherit;
+  text-align: left;
+}
+.training-plan-group-row[data-has-plan="true"] {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, var(--card));
+}
+.training-plan-group-row__main strong,
+.training-plan-group-row__main span { display: block; }
+.training-plan-group-row__main strong { font-size: .86rem; }
+.training-plan-group-row__main span {
+  margin-top: 3px;
+  color: var(--secondary);
+  font-size: .73rem;
+}
+.training-plan-group-row__status {
+  display: grid;
+  min-width: 74px;
+  justify-items: end;
+  gap: 2px;
+}
+.training-plan-group-row__status strong { font-size: .78rem; }
+.training-plan-group-row__status span { color: var(--secondary); font-size: .68rem; }
+.training-plan-picker-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, .45fr);
+  gap: 8px;
+  align-items: end;
+}
+.training-plan-picker-filters label { min-width: 0; }
+.training-plan-item > summary,
+.training-plan-child > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.training-plan-item > summary::-webkit-details-marker,
+.training-plan-child > summary::-webkit-details-marker { display: none; }
+.training-plan-item-summary,
+.training-plan-child-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.training-plan-item-summary strong,
+.training-plan-item-summary span,
+.training-plan-child-summary strong,
+.training-plan-child-summary span { display: block; }
+.training-plan-item-summary span,
+.training-plan-child-summary span {
+  margin-top: 2px;
+  color: var(--secondary);
+  font-size: .72rem;
+}
+.training-plan-item-editor {
+  display: grid;
+  gap: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+}
+.training-plan-item[open] > summary,
+.training-plan-child[open] > summary { margin-bottom: 8px; }
 @media (min-width: 900px) {
   .training-plan-week {
     grid-auto-flow: initial;
@@ -554,7 +706,13 @@ body.training-plan-picker-open { overflow: hidden; }
   .training-plan-exercise-grid .training-plan-field--name,
   .training-plan-exercise-grid .training-plan-field--comment { grid-column: 1 / -1; }
   .training-plan-template-picker { grid-template-columns: 1fr; }
-  .training-plan-dialog { max-height: 96vh; border-radius: 18px 18px 0 0; }
+  .training-plan-backdrop { place-items: stretch; }
+  .training-plan-dialog {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
   .training-plan-body { gap: 8px; padding: 8px; }
   .training-plan-note-card,
   .training-plan-items-card { padding: 9px; }
@@ -565,8 +723,16 @@ body.training-plan-picker-open { overflow: hidden; }
   .training-plan-item__actions { flex-wrap: nowrap; }
   .training-plan-close-label { display: none; }
   .training-plan-icon-close { min-width: 40px; width: 40px; padding-inline: 0; }
-  .training-plan-overview-card > .settings-note { display: none; }
-  .training-plan-overview-card { padding: 10px; }
+  .training-plan-shell { padding: 8px; gap: 8px; }
+  .training-plan-weekbar { align-items: stretch; flex-direction: column-reverse; }
+  .training-plan-weekbar > strong { text-align: left; }
+  .training-plan-week-nav { justify-content: space-between; }
+  .training-plan-athlete-controls { grid-template-columns: 1fr; }
+  .training-plan-primary-select { max-width: none; }
+  .training-plan-picker-filters { grid-template-columns: 1fr; }
+  .training-plan-group-row { min-height: 54px; padding: 8px 9px; }
+  .training-plan-header { padding: 10px 11px; }
+  .training-plan-footer { padding: 8px 10px max(8px, env(safe-area-inset-bottom)); }
 }
 @media (max-width: 359px) {
   .training-plan-grid { grid-template-columns: 1fr; }
