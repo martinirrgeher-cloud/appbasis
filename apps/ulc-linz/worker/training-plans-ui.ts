@@ -579,6 +579,8 @@ const trainingPlanElements = Object.freeze({
   quickAction: document.querySelector("#training-plan-quick-action"),
   accessLabel: document.querySelector("#training-plan-access-label"),
   message: document.querySelector("#training-plan-message"),
+  groupPanel: document.querySelector("#training-plan-group-panel"),
+  athletePanel: document.querySelector("#training-plan-athlete-panel"),
   subject: document.querySelector("#training-plan-subject"),
   attendanceFilter: document.querySelector("#training-plan-attendance-filter"),
   weekPrev: document.querySelector("#training-plan-week-prev"),
@@ -587,6 +589,7 @@ const trainingPlanElements = Object.freeze({
   weekLabel: document.querySelector("#training-plan-week-label"),
   week: document.querySelector("#training-plan-week"),
   overviewGroup: document.querySelector("#training-plan-overview-group"),
+  overviewDays: document.querySelector("#training-plan-overview-days"),
   overview: document.querySelector("#training-plan-overview"),
   editor: document.querySelector("#training-plan-editor"),
   editorTitle: document.querySelector("#training-plan-editor-title"),
@@ -602,6 +605,8 @@ const trainingPlanElements = Object.freeze({
   pickerTitle: document.querySelector("#training-plan-picker-title"),
   pickerClose: document.querySelector("#training-plan-picker-close"),
   pickerSearch: document.querySelector("#training-plan-picker-search"),
+  pickerCategoryWrap: document.querySelector("#training-plan-picker-category-wrap"),
+  pickerCategory: document.querySelector("#training-plan-picker-category"),
   pickerHint: document.querySelector("#training-plan-picker-hint"),
   pickerList: document.querySelector("#training-plan-picker-list"),
   pickerManual: document.querySelector("#training-plan-picker-manual"),
@@ -621,6 +626,8 @@ const trainingPlanElements = Object.freeze({
 let trainingPlansReady = false;
 let trainingPlansCanEdit = false;
 let trainingPlanSubjects = [];
+let trainingPlanViewMode = "group";
+let trainingPlanOverviewDayIndex = 0;
 let trainingPlanOverviewGroups = [];
 let trainingPlanSelectedOverviewGroupId = "";
 let trainingPlanOverview = null;
