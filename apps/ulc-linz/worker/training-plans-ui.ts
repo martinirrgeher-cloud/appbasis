@@ -1039,6 +1039,8 @@ async function bootstrapTrainingPlans() {
   trainingPlansReady = false;
   trainingPlansCanEdit = false;
   trainingPlanSubjects = [];
+  trainingPlanViewMode = "group";
+  trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
   trainingPlanOverviewGroups = [];
   trainingPlanSelectedOverviewGroupId = "";
   trainingPlanOverview = null;
@@ -1104,10 +1106,8 @@ async function bootstrapTrainingPlans() {
     renderTrainingPlanSubjects();
     renderTrainingPlanOverviewGroups();
     renderTrainingPlanBlockTemplates();
-    await Promise.all([
-      loadTrainingPlanWeek(),
-      loadTrainingPlanOverview(),
-    ]);
+    renderTrainingPlanMode();
+    await loadTrainingPlanOverview();
   } catch (error) {
     trainingPlansReady = false;
     trainingPlansCanEdit = false;
@@ -1122,6 +1122,7 @@ async function bootstrapTrainingPlans() {
     renderTrainingPlanSubjects();
     renderTrainingPlanOverviewGroups();
     renderTrainingPlanBlockTemplates();
+    renderTrainingPlanMode();
     renderTrainingPlanWeek();
     renderTrainingPlanOverview();
     showMessage(
@@ -1139,23 +1140,71 @@ function prepareTrainingPlansView() {
   renderTrainingPlanSubjects();
   renderTrainingPlanOverviewGroups();
   renderTrainingPlanBlockTemplates();
+  renderTrainingPlanMode();
   renderTrainingPlanWeek();
   renderTrainingPlanOverview();
   void refreshTrainingPlanDependencies();
+  void loadTrainingPlanActiveView();
+}
+
+function renderTrainingPlanMode() {
+  const groupMode = trainingPlanViewMode === "group";
+  if (trainingPlanElements.groupPanel) {
+    trainingPlanElements.groupPanel.hidden = !groupMode;
+  }
+  if (trainingPlanElements.athletePanel) {
+    trainingPlanElements.athletePanel.hidden = groupMode;
+  }
+  for (const control of document.querySelectorAll("[data-training-plan-mode]")) {
+    control.setAttribute(
+      "aria-selected",
+      control.dataset.trainingPlanMode === trainingPlanViewMode
+        ? "true"
+        : "false",
+    );
+  }
+  trainingPlanUpdateWeekLabel();
+}
+
+function showTrainingPlanMode(mode) {
+  const next = mode === "athlete" ? "athlete" : "group";
+  if (next === trainingPlanViewMode) return;
+  if (!closeTrainingPlanEditor(false)) return;
+  trainingPlanViewMode = next;
+  renderTrainingPlanMode();
+  void loadTrainingPlanActiveView();
+}
+
+async function loadTrainingPlanActiveView() {
+  if (trainingPlanViewMode === "group") {
+    if (
+      trainingPlanSelectedOverviewGroupId &&
+      trainingPlanOverview === null &&
+      !trainingPlanOverviewLoading
+    ) {
+      return loadTrainingPlanOverview();
+    }
+    renderTrainingPlanOverview();
+    return true;
+  }
   if (
     trainingPlanSelectedSubjectId &&
     !trainingPlanWeekLoaded &&
     !trainingPlanWeekLoading
   ) {
-    void loadTrainingPlanWeek();
+    return loadTrainingPlanWeek();
   }
-  if (
-    trainingPlanSelectedOverviewGroupId &&
-    trainingPlanOverview === null &&
-    !trainingPlanOverviewLoading
-  ) {
-    void loadTrainingPlanOverview();
-  }
+  renderTrainingPlanWeek();
+  return true;
+}
+
+function trainingPlanUpdateWeekLabel() {
+  if (!trainingPlanElements.weekLabel) return;
+  const end = trainingPlanAddDays(trainingPlanWeekStart, 6);
+  trainingPlanElements.weekLabel.textContent =
+    trainingPlanDateLabel(trainingPlanWeekStart) +
+    " – " +
+    trainingPlanDateLabel(end);
 }
 
 async function refreshTrainingPlanDependencies() {
@@ -1598,13 +1647,7 @@ function renderTrainingPlanWeek() {
   if (!container) return;
   container.replaceChildren();
 
-  if (trainingPlanElements.weekLabel) {
-    const end = trainingPlanAddDays(trainingPlanWeekStart, 6);
-    trainingPlanElements.weekLabel.textContent =
-      trainingPlanDateLabel(trainingPlanWeekStart) +
-      " – " +
-      trainingPlanDateLabel(end);
-  }
+  trainingPlanUpdateWeekLabel();
 
   if (!trainingPlanSelectedSubjectId) {
     const empty = document.createElement("div");
