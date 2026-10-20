@@ -1869,7 +1869,11 @@ function populateTrainingPlanEditor() {
   if (!trainingPlanDraft || !trainingPlanEditorDate) return;
   if (trainingPlanElements.editor) trainingPlanElements.editor.hidden = false;
   if (trainingPlanElements.editorTitle) {
+    const subject = trainingPlanSubjects.find(
+      (candidate) => candidate.id === trainingPlanSelectedSubjectId,
+    );
     trainingPlanElements.editorTitle.textContent =
+      (subject?.displayName ? subject.displayName + " · " : "") +
       trainingPlanDayLabel(trainingPlanEditorDate) +
       ", " +
       trainingPlanDateLabel(trainingPlanEditorDate);
@@ -2660,6 +2664,7 @@ async function openTrainingPlanPicker(mode) {
   }
 
   if (mode === "exercise") {
+    renderTrainingPlanPickerCategories();
     trainingPlanPickerLoading = true;
     renderTrainingPlanPicker();
     try {
@@ -3105,6 +3110,10 @@ async function saveTrainingPlan() {
     showMessage(trainingPlanElements.editorMessage, "");
     if (trainingPlanElements.retry) trainingPlanElements.retry.hidden = true;
     renderTrainingPlanWeek();
+    if (trainingPlanViewMode === "group") {
+      trainingPlanOverview = null;
+      void loadTrainingPlanOverview();
+    }
   } catch (error) {
     if (
       error?.status === 409 &&
