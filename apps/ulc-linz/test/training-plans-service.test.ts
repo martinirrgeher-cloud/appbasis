@@ -181,11 +181,19 @@ function createService(input: {
   blocks?: readonly TrainingBlockSnapshot[];
   usageFailureCount?: number;
   usageDelayMs?: number;
+  overviewSummaries?: readonly Readonly<{
+    subjectId: string;
+    planDate: string;
+    planId: string;
+    durationMinutes: number;
+    exerciseCount: number;
+  }>[];
 } = {}) {
   const repository = new InMemoryTrainingPlanRepository();
   let idIndex = 0;
   let catalogReadCount = 0;
   let attendanceReadCount = 0;
+  let overviewReadCount = 0;
   const createdBlockInputs: unknown[] = [];
   const usageAttempts: unknown[] = [];
   let usageFailuresRemaining = input.usageFailureCount ?? 0;
@@ -233,6 +241,7 @@ function createService(input: {
     plans,
     getCatalogReadCount: () => catalogReadCount,
     getAttendanceReadCount: () => attendanceReadCount,
+    getOverviewReadCount: () => overviewReadCount,
     getCreatedBlockInputs: () => createdBlockInputs.slice(),
     getUsageAttempts: () => usageAttempts.slice(),
     getMaxConcurrentUsage: () => maxConcurrentUsage,
@@ -258,6 +267,16 @@ function createService(input: {
           return attendanceRows;
         },
       },
+      ...(input.overviewSummaries === undefined
+        ? {}
+        : {
+            overview: {
+              async listSummaries() {
+                overviewReadCount += 1;
+                return input.overviewSummaries ?? [];
+              },
+            },
+          }),
       blocks: {
         async list() {
           return blockRows;
@@ -445,6 +464,47 @@ describe("ULC training plan group week overview", () => {
     expect(anna?.cells.slice(1).every((cell) => cell.planId === null)).toBe(
       true,
     );
+  });
+
+  it("uses the lightweight overview reader without reconstructing full plan revisions", async () => {
+    const memberships: readonly AthleteGroupMembership[] = [
+      Object.freeze({
+        organizationId: "org-1",
+        athleteId: ACTIVE_ATHLETE.id,
+        groupId: ACTIVE_GROUP.id,
+        startedOn: "2026-01-01",
+        endedOn: null,
+      }),
+    ];
+    const base = createService({
+      memberships,
+      overviewSummaries: [
+        Object.freeze({
+          subjectId: ACTIVE_ATHLETE.id,
+          planDate: "2026-10-12",
+          planId: "summary-plan",
+          durationMinutes: 42,
+          exerciseCount: 6,
+        }),
+      ],
+    });
+
+    const overview = await base.service.groupWeekOverview(
+      "org-1",
+      ACTIVE_GROUP.id,
+      "2026-10-12",
+    );
+
+    expect(base.getOverviewReadCount()).toBe(1);
+    const anna = overview.rows.find(
+      (row) => row.subject.id === ACTIVE_ATHLETE.id,
+    );
+    expect(anna?.cells[0]).toEqual({
+      planDate: "2026-10-12",
+      planId: "summary-plan",
+      durationMinutes: 42,
+      exerciseCount: 6,
+    });
   });
 
   it("rejects non-Monday overview starts and unavailable groups", async () => {
