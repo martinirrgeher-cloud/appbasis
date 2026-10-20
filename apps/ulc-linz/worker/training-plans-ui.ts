@@ -2585,6 +2585,12 @@ async function openTrainingPlanPicker(mode) {
   if (trainingPlanElements.pickerManual) {
     trainingPlanElements.pickerManual.hidden = mode !== "exercise";
   }
+  if (trainingPlanElements.pickerCategoryWrap) {
+    trainingPlanElements.pickerCategoryWrap.hidden = mode !== "exercise";
+  }
+  if (trainingPlanElements.pickerCategory) {
+    trainingPlanElements.pickerCategory.value = "";
+  }
   if (trainingPlanElements.pickerTitle) {
     trainingPlanElements.pickerTitle.textContent =
       mode === "exercise" ? "Übung aus Katalog" : "Trainingsblock auswählen";
@@ -2605,6 +2611,7 @@ async function openTrainingPlanPicker(mode) {
         throw new Error("INVALID_TRAINING_PLAN_EXERCISE_PICKER");
       }
       exerciseCatalogItems = items.slice();
+      renderTrainingPlanPickerCategories();
     } catch {
       showMessage(
         trainingPlanElements.editorMessage,
@@ -2629,6 +2636,31 @@ function closeTrainingPlanPicker() {
   if (trainingPlanElements.pickerList) trainingPlanElements.pickerList.replaceChildren();
 }
 
+function renderTrainingPlanPickerCategories() {
+  const select = trainingPlanElements.pickerCategory;
+  if (!select) return;
+  const selected = select.value;
+  select.replaceChildren();
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "Alle Kategorien";
+  select.append(all);
+  const keys = [...new Set(
+    exerciseCatalogItems
+      .filter((item) => item.isActive)
+      .map((item) => item.categoryKey),
+  )].sort((left, right) =>
+    categoryLabel(left).localeCompare(categoryLabel(right), "de"),
+  );
+  for (const key of keys) {
+    const option = document.createElement("option");
+    option.value = key;
+    option.textContent = categoryLabel(key);
+    select.append(option);
+  }
+  select.value = keys.includes(selected) ? selected : "";
+}
+
 function renderTrainingPlanPicker() {
   const container = trainingPlanElements.pickerList;
   if (!container || trainingPlanPickerMode === null) return;
@@ -2647,8 +2679,10 @@ function renderTrainingPlanPicker() {
   }
 
   if (trainingPlanPickerMode === "exercise") {
+    const categoryKey = trainingPlanElements.pickerCategory?.value || "";
     const items = exerciseCatalogItems
       .filter((item) => item.isActive)
+      .filter((item) => !categoryKey || item.categoryKey === categoryKey)
       .filter((item) => {
         if (!query) return true;
         return [
@@ -2664,7 +2698,7 @@ function renderTrainingPlanPicker() {
 
     if (trainingPlanElements.pickerHint) {
       trainingPlanElements.pickerHint.textContent =
-        "Katalogübung auswählen; Planwerte können danach im Tagesplan angepasst werden.";
+        "Katalogübung auswählen. Die Auswahl bleibt offen, damit mehrere Übungen nacheinander ergänzt werden können.";
     }
     if (items.length === 0) {
       const empty = document.createElement("div");
@@ -2697,6 +2731,18 @@ function renderTrainingPlanPicker() {
     return;
   }
 
+  const selectedGroup = trainingPlanOverviewGroups.find(
+    (group) => group.id === trainingPlanSelectedOverviewGroupId,
+  );
+  const groupTerms = selectedGroup
+    ? [selectedGroup.name, selectedGroup.shortName]
+        .filter(Boolean)
+        .map((value) => String(value).toLocaleLowerCase("de"))
+    : [];
+  const matchScore = (template) => {
+    const audience = template.audienceName.toLocaleLowerCase("de");
+    return groupTerms.some((term) => audience.includes(term)) ? 0 : 1;
+  };
   const templates = trainingPlanBlockTemplates
     .filter((template) =>
       !query ||
@@ -2705,12 +2751,14 @@ function renderTrainingPlanPicker() {
         .includes(query),
     )
     .slice()
-    .sort((left, right) =>
-      left.name.localeCompare(right.name, "de", { sensitivity: "base" }),
+    .sort(
+      (left, right) =>
+        matchScore(left) - matchScore(right) ||
+        left.name.localeCompare(right.name, "de", { sensitivity: "base" }),
     );
   if (trainingPlanElements.pickerHint) {
     trainingPlanElements.pickerHint.textContent =
-      "Aktuelle gespeicherte Blockversionen; neue Blöcke werden beim Öffnen dieser Auswahl nachgeladen.";
+      "Passende Blöcke der gewählten Gruppe stehen oben. Die Auswahl bleibt für mehrere Blöcke geöffnet.";
   }
   if (templates.length === 0) {
     const empty = document.createElement("div");
@@ -2798,8 +2846,8 @@ function handleTrainingPlanPickerClick(event) {
     );
     if (!item || !trainingPlanDraft) return;
     trainingPlanDraft.items.push(trainingPlanExerciseDraftFromCatalog(item));
-    closeTrainingPlanPicker();
     markTrainingPlanDirty(true);
+    trainingPlanSetSaveState("dirty", "Übung hinzugefügt");
     return;
   }
 
@@ -2809,7 +2857,6 @@ function handleTrainingPlanPickerClick(event) {
     if (trainingPlanElements.blockTemplate) {
       trainingPlanElements.blockTemplate.value = value;
     }
-    closeTrainingPlanPicker();
     void addTrainingPlanBlockTemplate();
   }
 }
