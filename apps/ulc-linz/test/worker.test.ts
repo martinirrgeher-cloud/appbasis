@@ -699,8 +699,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="5" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" data-nav-priority="1" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="countdown" data-nav-priority="6" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="settings" data-nav-priority="7" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="useful" data-nav-priority="6" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).not.toContain('data-nav-view="settings"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-app-section="countdown"');
+    expect(ULC_LINZ_APP_HTML).toContain('class="card countdown-settings"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('showAppSection("home");');
     expect(ULC_LINZ_APP_SCRIPT).toContain("refreshAppAvailability();");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
@@ -731,6 +733,9 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-save-state"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-save"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-audience-filter"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="training-block-audience" role="group"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('dataTrainingBlockAudienceId');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('dataset.trainingBlockAudienceId');
     expect(ULC_LINZ_APP_HTML).toContain("Neue Version erst beim Speichern.");
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-retry"');
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-exercise-picker"');
@@ -794,7 +799,8 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("Diese Übung ist archiviert");
     expect(ULC_LINZ_APP_SCRIPT).toContain("training-block-exercise--unavailable");
     expect(ULC_LINZ_APP_SCRIPT).toContain("EXERCISE_DIFFICULTIES.find");
-    expect(ULC_LINZ_APP_SCRIPT).toContain('title.textContent = "Videos"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-training-block-info-tab="videos"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"/private-media"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('link.rel = "noopener noreferrer"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockStepAligned");
     expect(ULC_LINZ_APP_SCRIPT).toContain("veraltete(r) Parameterwert(e)");
@@ -806,7 +812,9 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainingBlockSaveBusy ||\n    trainingBlockReloadBusy");
     expect(ULC_LINZ_APP_SCRIPT).toContain("TRAINING_BLOCK_CONFLICT");
     expect(ULC_LINZ_APP_SCRIPT).toContain("dataset.trainingBlockExerciseAction");
-    expect(ULC_LINZ_APP_SCRIPT).toContain('"/compare?from="');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("renderTrainingBlockComparison");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("fetchTrainingBlockRevision(blockId, from)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("training-block-comparison-row");
     expect(ULC_LINZ_APP_SCRIPT).toContain('"/favorite"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("features?.favorites !== true");
     expect(ULC_LINZ_APP_SCRIPT).toContain("features?.usageSummary !== true");
