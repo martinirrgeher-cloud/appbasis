@@ -52,6 +52,11 @@ export class PostgresTrainingPlanRepository
     toDate: string,
   ): Promise<readonly TrainingPlanSnapshot[]> {
     if (subjectIds.length === 0) return Object.freeze([]);
+    const subjectPlaceholders = subjectIds
+      .map((_, index) => "$" + String(index + 2))
+      .join(", ");
+    const fromIndex = subjectIds.length + 2;
+    const toIndex = subjectIds.length + 3;
     return this.#client.begin(async (transaction) => {
       await transaction.unsafe(
         "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
@@ -59,10 +64,10 @@ export class PostgresTrainingPlanRepository
       return readCurrentPlans(
         transaction,
         organizationId,
-        `AND plan.subject_id = ANY($2::text[])
-         AND plan.plan_date >= $3::date
-         AND plan.plan_date <= $4::date`,
-        [subjectIds, fromDate, toDate],
+        `AND plan.subject_id IN (${subjectPlaceholders})
+         AND plan.plan_date >= ${fromIndex}::date
+         AND plan.plan_date <= ${toIndex}::date`,
+        [...subjectIds, fromDate, toDate],
       );
     });
   }
