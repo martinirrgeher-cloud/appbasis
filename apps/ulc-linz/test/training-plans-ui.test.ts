@@ -97,6 +97,12 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain('item.categoryKey === categoryKey');
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("Die Auswahl bleibt offen");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("trainingPlanItemCompactSummary");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '"/api/modules/training-plans/day?subjectId="',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "openTrainingPlanEditor(date, payload.plan)",
+    );
   });
 
   it("loads only Monday-based week data without client-owned organization scope", () => {
