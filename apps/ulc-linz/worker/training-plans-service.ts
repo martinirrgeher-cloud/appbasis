@@ -42,6 +42,23 @@ export interface UlcTrainingPlanOverviewCell {
   readonly exerciseCount: number;
 }
 
+export interface UlcTrainingPlanOverviewSummary {
+  readonly subjectId: string;
+  readonly planDate: string;
+  readonly planId: string;
+  readonly durationMinutes: number;
+  readonly exerciseCount: number;
+}
+
+export interface UlcTrainingPlanOverviewReader {
+  listSummaries(
+    organizationId: string,
+    subjectIds: readonly string[],
+    fromDate: string,
+    toDate: string,
+  ): PromiseLike<readonly UlcTrainingPlanOverviewSummary[]>;
+}
+
 export interface UlcTrainingPlanOverviewRow {
   readonly subject: UlcTrainingPlanSubject;
   readonly cells: readonly UlcTrainingPlanOverviewCell[];
@@ -288,12 +305,14 @@ export function createUlcTrainingPlanService({
   exerciseCatalog,
   attendance,
   blocks,
+  overview,
 }: {
   plans: TrainingPlanService;
   masterdata: UlcTrainingPlanMasterdataReader;
   exerciseCatalog: UlcTrainingPlanExerciseReader;
   attendance: UlcTrainingPlanAttendanceReader;
   blocks: UlcTrainingPlanBlockReader;
+  overview?: UlcTrainingPlanOverviewReader;
 }): UlcTrainingPlanService {
   async function listSubjects(
     organizationId: string,
@@ -387,14 +406,30 @@ export function createUlcTrainingPlanService({
       )
       .sort(compareAthletes);
 
-    const groupPlans = await plans.listForSubjectsDateRange(
-      organizationId,
-      athletes.map((athlete) => athlete.id),
-      start,
-      weekEnd,
-    );
+    const athleteIds = athletes.map((athlete) => athlete.id);
+    const summaries = overview
+      ? await overview.listSummaries(
+          organizationId,
+          athleteIds,
+          start,
+          weekEnd,
+        )
+      : (await plans.listForSubjectsDateRange(
+          organizationId,
+          athleteIds,
+          start,
+          weekEnd,
+        )).map((plan) =>
+          Object.freeze({
+            subjectId: plan.subjectId,
+            planDate: plan.planDate,
+            planId: plan.id,
+            durationMinutes: trainingPlanTotalDuration(plan),
+            exerciseCount: trainingPlanExerciseTotal(plan),
+          }),
+        );
     const plansBySubjectDate = new Map(
-      groupPlans.map(
+      summaries.map(
         (plan) => [plan.subjectId + "\u0000" + plan.planDate, plan] as const,
       ),
     );
@@ -407,11 +442,9 @@ export function createUlcTrainingPlanService({
               plansBySubjectDate.get(athlete.id + "\u0000" + date) ?? null;
             return Object.freeze({
               planDate: date,
-              planId: plan?.id ?? null,
-              durationMinutes:
-                plan === null ? 0 : trainingPlanTotalDuration(plan),
-              exerciseCount:
-                plan === null ? 0 : trainingPlanExerciseTotal(plan),
+              planId: plan?.planId ?? null,
+              durationMinutes: plan?.durationMinutes ?? 0,
+              exerciseCount: plan?.exerciseCount ?? 0,
             });
           }),
         ),
