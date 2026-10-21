@@ -704,6 +704,13 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-app-section="countdown"');
     expect(ULC_LINZ_APP_HTML).toContain('class="card countdown-settings"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('showAppSection("home");');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("async function navigateAppSection(section)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'current === "training-plans" &&\n    section !== "training-plans"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "const closed = await closeTrainingPlanEditor(false);",
+    );
     expect(ULC_LINZ_APP_SCRIPT).toContain("refreshAppAvailability();");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "elements.countdownQuickAction.disabled = !countdownReady;",
