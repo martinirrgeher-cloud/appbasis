@@ -118,7 +118,8 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("organizationId");
   });
 
-  it("autosaves with explicit optimistic concurrency and stops on conflicts", () => {
+  it("uses manual save, saves on controlled leave and keeps optimistic concurrency", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-save"');
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "expectedRevision: existing.currentRevision",
     );
@@ -128,18 +129,16 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       '"TRAINING_PLAN_TARGET_OCCUPIED"',
     );
-    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "delay === undefined ? 550 : delay",
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "scheduleTrainingPlanSave",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "trainingPlanSaveBusy",
+      "if (trainingPlanDirty) {\n      const saved = await saveTrainingPlan();",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      'window.confirm("Ungespeicherte Änderungen verwerfen?")',
+      'window.addEventListener("pagehide", persistTrainingPlanOnPageHide)',
     );
-    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      'window.addEventListener("beforeunload"',
-    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("keepalive: true");
   });
 
   it("blocks stale week cards while a new subject or week is loading", () => {
@@ -184,7 +183,7 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
-  it("keeps active draft inputs mounted across successful autosave completion", () => {
+  it("keeps active draft inputs mounted across successful manual save", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "trainingPlanApplySavedIds(trainingPlanDraft, saved.revision.items);",
     );
@@ -307,7 +306,7 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("/api/modules/training-blocks");
   });
 
-  it("serializes template adoption with structural autosave", () => {
+  it("serializes template adoption without triggering background saves", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("let trainingPlanTemplateBusy = false;");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "trainingPlanSaveBusy ||\n    trainingPlanTemplateBusy ||\n    trainingPlanSaveBackBusy",
@@ -316,7 +315,7 @@ describe("ULC E7B6 training plan block template UI", () => {
       "editable &&\n    !trainingPlanSaveBusy &&\n    !trainingPlanTemplateBusy &&\n    !trainingPlanSaveBackBusy;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("trainingPlanBlockDraftFromTemplate(template)");
-    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("scheduleTrainingPlanSave(0);");
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("scheduleTrainingPlanSave");
   });
 
 
@@ -399,7 +398,7 @@ describe("ULC E7B6 training plan block template UI", () => {
   });
 
 
-  it("enables save-back after autosave assigns a previously missing block item id", () => {
+  it("enables save-back after manual save assigns a previously missing block item id", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "saveTemplate.dataset.trainingPlanSaveTemplateIndex = String(itemIndex);",
     );
