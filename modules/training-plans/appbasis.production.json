@@ -11,7 +11,7 @@
     "authorization": [
       {
         "path": "modules/training-plans/test/service.test.ts",
-        "gitBlobSha": "038da9e99f41726284861d05bdd55608a73b855f"
+        "gitBlobSha": "8adac45675cafdb71315742eb7fb7c06e5d91519"
       },
       {
         "path": "modules/training-plans/test/training-plan.test.ts",
