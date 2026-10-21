@@ -529,7 +529,7 @@ function createTrainingPlanOverviewReader(client: {
                END
              ),
              0
-           )::int AS duration_minutes,
+           ) AS duration_minutes,
            COUNT(*) FILTER (WHERE item.item_kind = 'exercise')::int AS exercise_count
          FROM appbasis_training_plan AS plan
          LEFT JOIN appbasis_training_plan_revision_item AS item
