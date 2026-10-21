@@ -2785,14 +2785,6 @@ async function addTrainingPlanBlockTemplate() {
     trainingPlanTemplateBusy = false;
     renderTrainingPlanItems();
     refreshTrainingPlanEditorState();
-    if (
-      trainingPlanSavePending &&
-      trainingPlanDirty &&
-      !trainingPlanConflict
-    ) {
-      trainingPlanSavePending = false;
-      scheduleTrainingPlanSave(0);
-    }
   }
 }
 
