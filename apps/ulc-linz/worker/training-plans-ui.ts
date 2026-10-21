@@ -73,7 +73,12 @@ export const ULC_TRAINING_PLANS_HTML = `
                     <h2 id="training-plan-editor-title">Training bearbeiten</h2>
                     <span class="training-plan-save-state" id="training-plan-save-state" data-state="saved">Gespeichert</span>
                   </div>
-                  <button class="button button--secondary training-plan-icon-close" id="training-plan-close" type="button" aria-label="Tagesplan schließen" title="Schließen"><span aria-hidden="true">✕</span><span class="training-plan-close-label">Schließen</span></button>
+                  <div class="training-plan-header-actions">
+                    <button class="button button--secondary training-plan-mini" id="training-plan-prev-athlete" type="button" aria-label="Vorheriger Athlet" title="Vorheriger Athlet">←</button>
+                    <button class="button button--secondary training-plan-mini" id="training-plan-next-athlete" type="button" aria-label="Nächster Athlet" title="Nächster Athlet">→</button>
+                    <button class="button button--secondary" id="training-plan-distribute-open" type="button">Verteilen</button>
+                    <button class="button button--secondary training-plan-icon-close" id="training-plan-close" type="button" aria-label="Tagesplan schließen" title="Schließen"><span aria-hidden="true">✕</span><span class="training-plan-close-label">Schließen</span></button>
+                  </div>
                 </header>
 
                 <div class="training-plan-body">
@@ -118,6 +123,20 @@ export const ULC_TRAINING_PLANS_HTML = `
               </section>
             </div>
 
+
+            <div class="training-plan-picker-backdrop" id="training-plan-distribute" hidden>
+              <section class="training-plan-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="training-plan-distribute-title">
+                <header class="training-plan-header">
+                  <div><p class="eyebrow">Gruppenplanung</p><h2 id="training-plan-distribute-title">Plan verteilen</h2></div>
+                  <button class="button button--secondary training-plan-icon-close" id="training-plan-distribute-close" type="button" aria-label="Verteilen schließen">✕</button>
+                </header>
+                <div class="training-plan-picker-body">
+                  <p class="settings-note">Bestehende Tagespläne werden nicht überschrieben.</p>
+                  <div class="training-plan-distribute-list" id="training-plan-distribute-list"></div>
+                  <button class="button button--primary" id="training-plan-distribute-confirm" type="button">Auf Auswahl kopieren</button>
+                </div>
+              </section>
+            </div>
 
             <div class="training-plan-picker-backdrop" id="training-plan-picker" hidden>
               <section class="training-plan-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="training-plan-picker-title">
@@ -556,6 +575,19 @@ body.training-plan-picker-open { overflow: hidden; }
   min-width: 104px;
   flex: 0 0 auto;
 }
+.training-plan-header-actions { display: flex; align-items: center; gap: 6px; }
+.training-plan-distribute-list { display: grid; gap: 6px; margin: 8px 0 12px; }
+.training-plan-distribute-row {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.training-plan-distribute-row small { color: var(--secondary); }
 .training-plan-shell {
   display: grid;
   gap: 10px;
@@ -804,6 +836,13 @@ const trainingPlanElements = Object.freeze({
   retry: document.querySelector("#training-plan-retry"),
   close: document.querySelector("#training-plan-close"),
   save: document.querySelector("#training-plan-save"),
+  prevAthlete: document.querySelector("#training-plan-prev-athlete"),
+  nextAthlete: document.querySelector("#training-plan-next-athlete"),
+  distributeOpen: document.querySelector("#training-plan-distribute-open"),
+  distribute: document.querySelector("#training-plan-distribute"),
+  distributeClose: document.querySelector("#training-plan-distribute-close"),
+  distributeList: document.querySelector("#training-plan-distribute-list"),
+  distributeConfirm: document.querySelector("#training-plan-distribute-confirm"),
   note: document.querySelector("#training-plan-note"),
   addExercise: document.querySelector("#training-plan-add-exercise"),
   addBlock: document.querySelector("#training-plan-add-block"),
@@ -861,6 +900,7 @@ let trainingPlanSaveBackOperation = 0;
 let trainingPlanChangeVersion = 0;
 let trainingPlanPickerMode = null;
 let trainingPlanPickerLoading = false;
+let trainingPlanDistributeBusy = false;
 
 function isTrainingPlanSubject(value) {
   return value !== null &&
