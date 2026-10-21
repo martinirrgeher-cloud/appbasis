@@ -562,6 +562,54 @@ function createTrainingPlanOverviewReader(client: {
         ),
       );
     },
+    async listAttendanceSummaries(
+      organizationId: string,
+      groupId: string,
+      subjectIds: readonly string[],
+      fromDate: string,
+      toDate: string,
+    ) {
+      if (subjectIds.length === 0) return Object.freeze([]);
+      const subjectPlaceholders = subjectIds
+        .map((_, index) => "$" + String(index + 3))
+        .join(", ");
+      const fromPlaceholder = "$" + String(subjectIds.length + 3);
+      const toPlaceholder = "$" + String(subjectIds.length + 4);
+      const rows = await client.unsafe(
+        `SELECT DISTINCT ON (
+           attendance.athlete_id,
+           session.session_date
+         )
+           attendance.athlete_id AS subject_id,
+           to_char(session.session_date, 'YYYY-MM-DD') AS session_date,
+           attendance.status
+         FROM ulc_linz_training_attendance AS attendance
+         INNER JOIN ulc_linz_training_session AS session
+           ON session.id = attendance.session_id
+          AND session.organization_id = attendance.organization_id
+         WHERE attendance.organization_id = $1
+           AND session.group_id = $2
+           AND session.state = 'scheduled'
+           AND attendance.athlete_id IN (${subjectPlaceholders})
+           AND session.session_date >= ${fromPlaceholder}::date
+           AND session.session_date <= ${toPlaceholder}::date
+         ORDER BY
+           attendance.athlete_id ASC,
+           session.session_date ASC,
+           attendance.updated_at DESC,
+           session.id DESC`,
+        [organizationId, groupId, ...subjectIds, fromDate, toDate],
+      );
+      return Object.freeze(
+        rows.map((row) =>
+          Object.freeze({
+            subjectId: trainingPlanOverviewString(row.subject_id, "subject id"),
+            sessionDate: trainingPlanOverviewDate(row.session_date),
+            status: trainingPlanOverviewAttendanceStatus(row.status),
+          }),
+        ),
+      );
+    },
   });
 }
 
@@ -578,6 +626,20 @@ function trainingPlanOverviewDate(value: unknown): string {
     throw new Error("Training plan overview returned invalid date.");
   }
   return result;
+}
+
+function trainingPlanOverviewAttendanceStatus(
+  value: unknown,
+): "open" | "present" | "excused" | "absent" {
+  if (
+    value === "open" ||
+    value === "present" ||
+    value === "excused" ||
+    value === "absent"
+  ) {
+    return value;
+  }
+  throw new Error("Training plan overview returned invalid attendance status.");
 }
 
 function trainingPlanOverviewInteger(value: unknown, label: string): number {
