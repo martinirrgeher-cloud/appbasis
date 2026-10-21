@@ -416,7 +416,7 @@ test("E7B9 acceptance executes the complete isolated public-HTTP happy path", as
     "group-overview",
     "day-view",
     "attendance",
-    "autosave",
+    "manual-save",
     "block-template-adoption",
     "independent-snapshot",
     "save-back",
