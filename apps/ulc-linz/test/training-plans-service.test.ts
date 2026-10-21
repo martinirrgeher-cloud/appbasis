@@ -1130,6 +1130,7 @@ describe("ULC training plan block usage booking", () => {
     const copied = await base.service.copyCurrentTo(
       "org-1",
       source.id,
+      source.currentRevision,
       SECOND_ATHLETE.id,
       "2026-10-13",
     );
@@ -1852,6 +1853,7 @@ describe("ULC training plan adapter", () => {
       lifecycleAware.copyCurrentTo(
         "org-1",
         created.id,
+        created.currentRevision,
         SECOND_ATHLETE.id,
         "2026-10-13",
       ),
@@ -1867,6 +1869,7 @@ describe("ULC training plan adapter", () => {
       lifecycleAware.copyCurrentTo(
         "org-1",
         created.id,
+        created.currentRevision,
         INACTIVE_ATHLETE.id,
         "2026-10-14",
       ),
