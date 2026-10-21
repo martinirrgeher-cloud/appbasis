@@ -166,6 +166,15 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("organizationId");
   });
 
+  it("emits valid ISO date validators for the browser script", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "/^\\d{4}-\\d{2}-\\d{2}$/",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "/^d{4}-d{2}-d{2}$/",
+    );
+  });
+
   it("uses manual save, saves on controlled leave and keeps optimistic concurrency", () => {
     expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-save"');
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
@@ -210,6 +219,9 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "trainingPlanSaveBusy = true;\n  refreshTrainingPlanEditorState();",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "!trainingPlanSaveBackBusy &&\n    !trainingPlanDistributeBusy",
     );
   });
 

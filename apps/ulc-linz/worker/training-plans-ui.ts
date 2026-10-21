@@ -932,13 +932,13 @@ function isTrainingPlanOverview(value) {
     typeof value === "object" &&
     isTrainingPlanOverviewGroup(value.group) &&
     typeof value.weekStart === "string" &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value.weekStart) &&
+    /^\\d{4}-\\d{2}-\\d{2}$/.test(value.weekStart) &&
     typeof value.weekEnd === "string" &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value.weekEnd) &&
+    /^\\d{4}-\\d{2}-\\d{2}$/.test(value.weekEnd) &&
     Array.isArray(value.dates) &&
     value.dates.length === 7 &&
     value.dates.every(
-      (date) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date),
+      (date) => typeof date === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(date),
     ) &&
     Array.isArray(value.rows) &&
     value.rows.every(
@@ -953,7 +953,7 @@ function isTrainingPlanOverview(value) {
             cell !== null &&
             typeof cell === "object" &&
             typeof cell.planDate === "string" &&
-            /^\d{4}-\d{2}-\d{2}$/.test(cell.planDate) &&
+            /^\\d{4}-\\d{2}-\\d{2}$/.test(cell.planDate) &&
             (cell.planId === null || typeof cell.planId === "string") &&
             Number.isSafeInteger(cell.durationMinutes) &&
             cell.durationMinutes >= 0 &&
@@ -1120,7 +1120,7 @@ function isTrainingPlanAttendance(value) {
     typeof value.sessionId === "string" &&
     value.sessionId.length > 0 &&
     typeof value.sessionDate === "string" &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value.sessionDate) &&
+    /^\\d{4}-\\d{2}-\\d{2}$/.test(value.sessionDate) &&
     (
       value.status === "open" ||
       value.status === "present" ||
@@ -4187,7 +4187,8 @@ window.addEventListener("beforeunload", (event) => {
   if (
     !trainingPlanDirty &&
     !trainingPlanSaveBusy &&
-    !trainingPlanSaveBackBusy
+    !trainingPlanSaveBackBusy &&
+    !trainingPlanDistributeBusy
   ) return;
   event.preventDefault();
   event.returnValue = "";
