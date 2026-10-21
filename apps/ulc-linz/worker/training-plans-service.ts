@@ -40,6 +40,7 @@ export interface UlcTrainingPlanOverviewCell {
   readonly planId: string | null;
   readonly durationMinutes: number;
   readonly exerciseCount: number;
+  readonly attendanceStatus?: UlcTrainingAttendanceSummary["status"];
 }
 
 export interface UlcTrainingPlanOverviewSummary {
@@ -57,6 +58,19 @@ export interface UlcTrainingPlanOverviewReader {
     fromDate: string,
     toDate: string,
   ): PromiseLike<readonly UlcTrainingPlanOverviewSummary[]>;
+  listAttendanceSummaries(
+    organizationId: string,
+    groupId: string,
+    subjectIds: readonly string[],
+    fromDate: string,
+    toDate: string,
+  ): PromiseLike<
+    readonly Readonly<{
+      subjectId: string;
+      sessionDate: string;
+      status: UlcTrainingAttendanceSummary["status"];
+    }>[]
+  >;
 }
 
 export interface UlcTrainingPlanOverviewRow {
@@ -407,30 +421,50 @@ export function createUlcTrainingPlanService({
       .sort(compareAthletes);
 
     const athleteIds = athletes.map((athlete) => athlete.id);
-    const summaries = overview
-      ? await overview.listSummaries(
-          organizationId,
-          athleteIds,
-          start,
-          weekEnd,
-        )
-      : (await plans.listForSubjectsDateRange(
-          organizationId,
-          athleteIds,
-          start,
-          weekEnd,
-        )).map((plan) =>
-          Object.freeze({
-            subjectId: plan.subjectId,
-            planDate: plan.planDate,
-            planId: plan.id,
-            durationMinutes: trainingPlanTotalDuration(plan),
-            exerciseCount: trainingPlanExerciseTotal(plan),
-          }),
-        );
+    const [summaries, attendanceSummaries] = overview
+      ? await Promise.all([
+          overview.listSummaries(
+            organizationId,
+            athleteIds,
+            start,
+            weekEnd,
+          ),
+          overview.listAttendanceSummaries(
+            organizationId,
+            groupId,
+            athleteIds,
+            start,
+            weekEnd,
+          ),
+        ])
+      : [
+          (await plans.listForSubjectsDateRange(
+            organizationId,
+            athleteIds,
+            start,
+            weekEnd,
+          )).map((plan) =>
+            Object.freeze({
+              subjectId: plan.subjectId,
+              planDate: plan.planDate,
+              planId: plan.id,
+              durationMinutes: trainingPlanTotalDuration(plan),
+              exerciseCount: trainingPlanExerciseTotal(plan),
+            }),
+          ),
+          Object.freeze([]),
+        ];
     const plansBySubjectDate = new Map(
       summaries.map(
         (plan) => [plan.subjectId + "\u0000" + plan.planDate, plan] as const,
+      ),
+    );
+    const attendanceBySubjectDate = new Map(
+      attendanceSummaries.map(
+        (entry) => [
+          entry.subjectId + "\u0000" + entry.sessionDate,
+          entry.status,
+        ] as const,
       ),
     );
     const planRows = athletes.map((athlete) =>
@@ -440,11 +474,17 @@ export function createUlcTrainingPlanService({
           dates.map((date) => {
             const plan =
               plansBySubjectDate.get(athlete.id + "\u0000" + date) ?? null;
+            const attendanceStatus = attendanceBySubjectDate.get(
+              athlete.id + "\u0000" + date,
+            );
             return Object.freeze({
               planDate: date,
               planId: plan?.planId ?? null,
               durationMinutes: plan?.durationMinutes ?? 0,
               exerciseCount: plan?.exerciseCount ?? 0,
+              ...(attendanceStatus === undefined
+                ? {}
+                : { attendanceStatus }),
             });
           }),
         ),
