@@ -468,6 +468,7 @@ describe("ULC training plan group week overview", () => {
       planId: "overview-plan",
       durationMinutes: 30,
       exerciseCount: 1,
+      attendanceStatuses: [],
     });
     expect(anna?.cells.slice(1).every((cell) => cell.planId === null)).toBe(
       true,
