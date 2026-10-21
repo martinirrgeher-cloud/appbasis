@@ -140,7 +140,10 @@ describe("ULC E7B6 training plan block template UI", () => {
       "const sourcePlanId = trainingPlanSelected.id;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "if (completed) closeTrainingPlanDistribution();",
+      "if (completed) {",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "} else {\n      renderTrainingPlanDistribution();",
     );
   });
 

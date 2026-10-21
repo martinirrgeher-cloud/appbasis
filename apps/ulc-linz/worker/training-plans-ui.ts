@@ -3723,7 +3723,11 @@ async function distributeTrainingPlan() {
     if (trainingPlanElements.distributeClose) {
       trainingPlanElements.distributeClose.disabled = false;
     }
-    if (completed) closeTrainingPlanDistribution();
+    if (completed) {
+      closeTrainingPlanDistribution();
+    } else {
+      renderTrainingPlanDistribution();
+    }
     refreshTrainingPlanEditorState();
   }
 }
