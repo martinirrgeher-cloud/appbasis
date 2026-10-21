@@ -105,6 +105,33 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
+  it("supports attendance-focused group planning, athlete navigation and plan distribution", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-overview-attendance-filter"',
+    );
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-prev-athlete"',
+    );
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-next-athlete"',
+    );
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-distribute"',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanAttendanceCompactLabel",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "navigateTrainingPlanGroupAthlete",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '"/copy"',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '"TRAINING_PLAN_TARGET_OCCUPIED"',
+    );
+  });
+
   it("loads only Monday-based week data without client-owned organization scope", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       '"/api/modules/training-plans/week?subjectId="',
