@@ -1150,8 +1150,10 @@ async function bootstrapTrainingPlans() {
       payload?.module?.capabilities?.view !== "training-plans:view" ||
       payload?.module?.capabilities?.edit !== "training-plans:edit" ||
       features?.weekView !== true ||
+      features?.autosave !== false ||
       features?.manualSave !== true ||
       features?.saveOnLeave !== true ||
+      features?.planCopy !== true ||
       features?.optimisticConcurrency !== true ||
       features?.attendanceSummary !== true ||
       features?.attendanceFilter !== true ||
