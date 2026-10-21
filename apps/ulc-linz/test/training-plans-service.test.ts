@@ -188,6 +188,11 @@ function createService(input: {
     durationMinutes: number;
     exerciseCount: number;
   }>[];
+  overviewAttendance?: readonly Readonly<{
+    subjectId: string;
+    sessionDate: string;
+    status: "open" | "present" | "excused" | "absent";
+  }>[];
 } = {}) {
   const repository = new InMemoryTrainingPlanRepository();
   let idIndex = 0;
@@ -274,6 +279,9 @@ function createService(input: {
               async listSummaries() {
                 overviewReadCount += 1;
                 return input.overviewSummaries ?? [];
+              },
+              async listAttendanceSummaries() {
+                return input.overviewAttendance ?? [];
               },
             },
           }),
@@ -487,6 +495,13 @@ describe("ULC training plan group week overview", () => {
           exerciseCount: 6,
         }),
       ],
+      overviewAttendance: [
+        Object.freeze({
+          subjectId: ACTIVE_ATHLETE.id,
+          sessionDate: "2026-10-12",
+          status: "present",
+        }),
+      ],
     });
 
     const overview = await base.service.groupWeekOverview(
@@ -504,6 +519,7 @@ describe("ULC training plan group week overview", () => {
       planId: "summary-plan",
       durationMinutes: 42,
       exerciseCount: 6,
+      attendanceStatus: "present",
     });
   });
 
