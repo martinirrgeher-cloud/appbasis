@@ -140,6 +140,12 @@ describe("ULC E7B6 training plan block template UI", () => {
       "const sourcePlanId = trainingPlanSelected.id;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "const expectedSourceRevision = trainingPlanSelected.currentRevision;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "expectedSourceRevision,\n              targetSubjectId: subjectId,",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "if (completed) {",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
@@ -231,6 +237,9 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "requestId !== trainingPlanDayRequestId ||\n      trainingPlanSelectedSubjectId !== subjectId",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "if (trainingPlanSelectedSubjectId !== subjectId) {\n    trainingPlanWeekRequestId += 1;\n    trainingPlanWeekPlans = [];\n    trainingPlanWeekAttendance = [];\n    trainingPlanWeekLoaded = false;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "requestId !== trainingPlanWeekRequestId ||\n      trainingPlanSelectedSubjectId !== subjectId ||\n      trainingPlanWeekStart !== weekStart",
