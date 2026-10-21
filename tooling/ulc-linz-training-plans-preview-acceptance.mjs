@@ -379,7 +379,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
       cookie,
       body: {
         expectedRevision: 1,
-        note: "E7B9 autosave verified",
+        note: "E7B9 manual save verified",
         items: updateItems,
       },
     },
@@ -387,7 +387,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
   plan = requiredPlan(autosaveResponse.payload?.plan);
   if (plan.currentRevision !== 2) {
     throw new UlcTrainingPlansPreviewAcceptanceError(
-      "E7B9 autosave did not advance the plan revision.",
+      "E7B9 manual save did not advance the plan revision.",
     );
   }
 
@@ -495,7 +495,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
       "group-overview",
       "day-view",
       "attendance",
-      "autosave",
+      "manual-save",
       "block-template-adoption",
       "independent-snapshot",
       "save-back",
