@@ -1697,6 +1697,12 @@ async function openTrainingPlanFromOverview(subjectId, date) {
   if (!trainingPlanSubjects.some((subject) => subject.id === subjectId)) return;
 
   const requestId = ++trainingPlanDayRequestId;
+  if (trainingPlanSelectedSubjectId !== subjectId) {
+    trainingPlanWeekRequestId += 1;
+    trainingPlanWeekPlans = [];
+    trainingPlanWeekAttendance = [];
+    trainingPlanWeekLoaded = false;
+  }
   trainingPlanSelectedSubjectId = subjectId;
   if (trainingPlanElements.subject) {
     trainingPlanElements.subject.value = subjectId;
@@ -3656,6 +3662,7 @@ async function distributeTrainingPlan() {
   if (selected.length === 0) return;
 
   const sourcePlanId = trainingPlanSelected.id;
+  const expectedSourceRevision = trainingPlanSelected.currentRevision;
   const targetDate = trainingPlanEditorDate;
   trainingPlanDistributeBusy = true;
   if (trainingPlanElements.distributeConfirm) {
@@ -3676,6 +3683,7 @@ async function distributeTrainingPlan() {
           {
             method: "POST",
             body: JSON.stringify({
+              expectedSourceRevision,
               targetSubjectId: subjectId,
               targetDate,
             }),
@@ -3710,11 +3718,25 @@ async function distributeTrainingPlan() {
         (skipped > 0 ? "; " + String(skipped) + " bereits belegt." : "."),
       "success",
     );
-  } catch {
-    showMessage(
-      trainingPlanElements.editorMessage,
-      "Der Plan konnte nicht vollständig verteilt werden.",
-    );
+  } catch (error) {
+    if (
+      error?.status === 409 &&
+      error?.code === "TRAINING_PLAN_CONFLICT"
+    ) {
+      trainingPlanConflict = true;
+      if (trainingPlanElements.reload) {
+        trainingPlanElements.reload.hidden = false;
+      }
+      showMessage(
+        trainingPlanElements.editorMessage,
+        "Der Quellplan wurde inzwischen geändert. Die Verteilung wurde gestoppt. Bitte neu laden.",
+      );
+    } else {
+      showMessage(
+        trainingPlanElements.editorMessage,
+        "Der Plan konnte nicht vollständig verteilt werden.",
+      );
+    }
   } finally {
     trainingPlanDistributeBusy = false;
     if (trainingPlanElements.distributeConfirm) {
