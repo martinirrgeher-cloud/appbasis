@@ -110,7 +110,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsplanung</h2>
-                  <p>Wochenpläne pro Athlet erstellen und automatisch speichern.</p>
+                  <p>Trainingspläne für Gruppen und Athleten erstellen, gezielt speichern und beim Verlassen sichern.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="training-plan-quick-action" type="button" data-open-view="training-plans" disabled>Trainingsplanung öffnen</button>
                 <small id="training-plan-access-label">Berechtigung wird geprüft …</small>
@@ -130,7 +130,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsblöcke</h2>
-                  <p>Trainingsvorlagen zusammenstellen, automatisch speichern und Versionen vergleichen.</p>
+                  <p>Trainingsvorlagen zusammenstellen, bewusst speichern und Versionen vergleichen.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="training-block-quick-action" type="button" data-open-view="training-blocks" disabled>Trainingsblöcke öffnen</button>
                 <small id="training-block-access-label">Berechtigung wird geprüft …</small>
