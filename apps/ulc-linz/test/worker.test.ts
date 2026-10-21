@@ -5280,6 +5280,91 @@ describe("U12 runtime API", () => {
     expect(createCalls).toBe(1);
   });
 
+  it("copies a persisted training plan to one selected athlete without client-owned organization scope", async () => {
+    const base = runtime();
+    let received = null;
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            canEdit: true,
+          };
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async copyCurrentTo(
+          organizationId,
+          sourcePlanId,
+          targetSubjectId,
+          targetDate,
+        ) {
+          received = {
+            organizationId,
+            sourcePlanId,
+            targetSubjectId,
+            targetDate,
+          };
+          return {
+            id: "plan-copy-1",
+            organizationId,
+            subjectId: targetSubjectId,
+            planDate: targetDate,
+            currentRevision: 1,
+            createdAt: "2026-10-12T12:00:00.000Z",
+            updatedAt: "2026-10-12T12:00:00.000Z",
+            revision: {
+              organizationId,
+              planId: "plan-copy-1",
+              revision: 1,
+              note: "Kopie",
+              items: [],
+              createdAt: "2026-10-12T12:00:00.000Z",
+            },
+          };
+        },
+      },
+    }));
+
+    const response = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/training-plans/plan-1/copy",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            targetSubjectId: "athlete-2",
+            targetDate: "2026-10-14",
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(response.status).toBe(201);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      sourcePlanId: "plan-1",
+      targetSubjectId: "athlete-2",
+      targetDate: "2026-10-14",
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      plan: {
+        id: "plan-copy-1",
+        subjectId: "athlete-2",
+        planDate: "2026-10-14",
+        currentRevision: 1,
+      },
+    });
+  });
+
   it("returns a conflict instead of silently overwriting a stale E7B4 plan revision", async () => {
     const base = runtime();
     const worker = createGeneratedWorker(() => ({
