@@ -1514,7 +1514,25 @@ function renderTrainingPlanOverview() {
     return;
   }
 
-  for (const row of trainingPlanOverview.rows) {
+  const visibleRows = trainingPlanOverview.rows.filter((row) => {
+    const cell = row.cells[trainingPlanOverviewDayIndex];
+    if (!cell) return false;
+    if (trainingPlanOverviewAttendanceFilter === "all") return true;
+    if (trainingPlanOverviewAttendanceFilter === "none") {
+      return cell.attendanceStatus === undefined;
+    }
+    return cell.attendanceStatus === trainingPlanOverviewAttendanceFilter;
+  });
+
+  if (visibleRows.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "settings-note";
+    empty.textContent = "Für diesen Anwesenheitsfilter gibt es keine Athleten.";
+    container.append(empty);
+    return;
+  }
+
+  for (const row of visibleRows) {
     const cell = row.cells[trainingPlanOverviewDayIndex];
     if (!cell) continue;
 
@@ -1547,12 +1565,35 @@ function renderTrainingPlanOverview() {
     const statusTitle = document.createElement("strong");
     statusTitle.textContent = cell.planId ? "Plan" : trainingPlansCanEdit ? "＋ Plan" : "—";
     const statusDetail = document.createElement("span");
-    statusDetail.textContent = trainingPlanShortDate(date);
+    statusDetail.textContent = trainingPlanAttendanceCompactLabel(
+      cell.attendanceStatus,
+    );
     status.append(statusTitle, statusDetail);
 
     button.append(main, status);
     container.append(button);
   }
+}
+
+function trainingPlanAttendanceCompactLabel(status) {
+  if (status === "present") return "✓ anwesend";
+  if (status === "excused") return "– entschuldigt";
+  if (status === "absent") return "✕ abwesend";
+  if (status === "open") return "? offen";
+  return "kein Eintrag";
+}
+
+function trainingPlanVisibleOverviewRows() {
+  if (!trainingPlanOverview) return [];
+  return trainingPlanOverview.rows.filter((row) => {
+    const cell = row.cells[trainingPlanOverviewDayIndex];
+    if (!cell) return false;
+    if (trainingPlanOverviewAttendanceFilter === "all") return true;
+    if (trainingPlanOverviewAttendanceFilter === "none") {
+      return cell.attendanceStatus === undefined;
+    }
+    return cell.attendanceStatus === trainingPlanOverviewAttendanceFilter;
+  });
 }
 
 function trainingPlanDefaultOverviewDayIndex() {
@@ -3484,6 +3525,18 @@ trainingPlanElements.overviewGroup?.addEventListener("change", () => {
     trainingPlanElements.overviewGroup?.value || "";
   trainingPlanOverview = null;
   void loadTrainingPlanOverview();
+});
+trainingPlanElements.overviewAttendanceFilter?.addEventListener("change", () => {
+  const value = trainingPlanElements.overviewAttendanceFilter?.value || "all";
+  trainingPlanOverviewAttendanceFilter =
+    value === "present" ||
+    value === "excused" ||
+    value === "absent" ||
+    value === "open" ||
+    value === "none"
+      ? value
+      : "all";
+  renderTrainingPlanOverview();
 });
 trainingPlanElements.overviewDays?.addEventListener("click", (event) => {
   const control = event.target?.closest?.("[data-training-plan-overview-day]");
