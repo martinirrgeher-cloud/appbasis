@@ -903,6 +903,9 @@ let trainingPlanPickerLoading = false;
 let trainingPlanDistributeBusy = false;
 let trainingPlanWeekRequestId = 0;
 let trainingPlanDayRequestId = 0;
+const TRAINING_PLAN_LEAVE_BACKUP_KEY =
+  "appbasis.training-plan.leave-backup.v1";
+const TRAINING_PLAN_KEEPALIVE_LIMIT_BYTES = 60 * 1024;
 
 function isTrainingPlanSubject(value) {
   return value !== null &&
@@ -2089,15 +2092,22 @@ function openTrainingPlanEditor(date, planOverride) {
   trainingPlanDraft = plan
     ? trainingPlanDraftFromSnapshot(plan)
     : { note: "", items: [] };
-  trainingPlanDirty = false;
+  const recoveredDraft = trainingPlanRestoreLeaveBackup(plan, date);
+  if (recoveredDraft) {
+    trainingPlanDraft = recoveredDraft;
+  }
+  trainingPlanDirty = recoveredDraft !== null;
   trainingPlanConflict = false;
   trainingPlanSaveBusy = false;
   trainingPlanTemplateBusy = false;
   trainingPlanSaveBackBusy = false;
   trainingPlanSaveBackItemId = null;
   trainingPlanSaveBackAudiences = [];
-  trainingPlanChangeVersion = 0;
+  trainingPlanChangeVersion = recoveredDraft ? 1 : 0;
   populateTrainingPlanEditor();
+  if (recoveredDraft) {
+    trainingPlanSetSaveState("dirty", "Wiederhergestellt – bitte speichern");
+  }
 }
 
 function populateTrainingPlanEditor() {
@@ -2126,6 +2136,13 @@ function populateTrainingPlanEditor() {
 }
 
 async function closeTrainingPlanEditor(force) {
+  if (trainingPlanDistributeBusy) {
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Die Verteilung läuft noch. Bitte zuerst abschließen lassen.",
+    );
+    return false;
+  }
   trainingPlanDayRequestId += 1;
   closeTrainingPlanPicker();
   closeTrainingPlanDistribution();
@@ -3296,7 +3313,6 @@ async function saveTrainingPlan() {
             "/update",
           {
             method: "POST",
-            keepalive: true,
             body: JSON.stringify({
               expectedRevision: existing.currentRevision,
               ...draftPayload,
@@ -3305,7 +3321,6 @@ async function saveTrainingPlan() {
         )
       : await requestJson("/api/modules/training-plans", {
           method: "POST",
-          keepalive: true,
           body: JSON.stringify({
             subjectId,
             planDate,
@@ -3324,6 +3339,7 @@ async function saveTrainingPlan() {
 
     trainingPlanApplySavedIds(trainingPlanDraft, saved.revision.items);
     trainingPlanSelected = saved;
+    trainingPlanClearLeaveBackup(subjectId, planDate);
     replaceTrainingPlanWeekSnapshot(saved);
     if (trainingPlanChangeVersion === version) {
       trainingPlanDirty = false;
@@ -3561,16 +3577,20 @@ async function navigateTrainingPlanGroupAthlete(delta) {
 }
 
 function closeTrainingPlanDistribution() {
-  trainingPlanDistributeBusy = false;
+  if (trainingPlanDistributeBusy) return false;
   if (trainingPlanElements.distribute) {
     trainingPlanElements.distribute.hidden = true;
   }
+  return true;
 }
 
 function renderTrainingPlanDistribution() {
   const container = trainingPlanElements.distributeList;
   if (!container) return;
   container.replaceChildren();
+  if (trainingPlanElements.distributeClose) {
+    trainingPlanElements.distributeClose.disabled = trainingPlanDistributeBusy;
+  }
   if (!trainingPlanOverview || !trainingPlanEditorDate) return;
   const dayIndex = trainingPlanOverview.dates.indexOf(trainingPlanEditorDate);
   if (dayIndex < 0) return;
@@ -3635,6 +3655,8 @@ async function distributeTrainingPlan() {
   ].map((input) => input.value);
   if (selected.length === 0) return;
 
+  const sourcePlanId = trainingPlanSelected.id;
+  const targetDate = trainingPlanEditorDate;
   trainingPlanDistributeBusy = true;
   if (trainingPlanElements.distributeConfirm) {
     trainingPlanElements.distributeConfirm.disabled = true;
@@ -3643,18 +3665,19 @@ async function distributeTrainingPlan() {
 
   let copied = 0;
   let skipped = 0;
+  let completed = false;
   try {
     for (const subjectId of selected) {
       try {
         const payload = await requestJson(
           "/api/modules/training-plans/" +
-            encodeURIComponent(trainingPlanSelected.id) +
+            encodeURIComponent(sourcePlanId) +
             "/copy",
           {
             method: "POST",
             body: JSON.stringify({
               targetSubjectId: subjectId,
-              targetDate: trainingPlanEditorDate,
+              targetDate,
             }),
           },
         );
@@ -3676,7 +3699,7 @@ async function distributeTrainingPlan() {
       }
     }
     renderTrainingPlanOverview();
-    closeTrainingPlanDistribution();
+    completed = true;
     showMessage(
       trainingPlanElements.editorMessage,
       "Plan auf " +
@@ -3697,6 +3720,10 @@ async function distributeTrainingPlan() {
     if (trainingPlanElements.distributeConfirm) {
       trainingPlanElements.distributeConfirm.disabled = false;
     }
+    if (trainingPlanElements.distributeClose) {
+      trainingPlanElements.distributeClose.disabled = false;
+    }
+    if (completed) closeTrainingPlanDistribution();
     refreshTrainingPlanEditorState();
   }
 }
@@ -3735,19 +3762,118 @@ function refreshTrainingPlanEditorState() {
   }
 }
 
+function trainingPlanReadLeaveBackup() {
+  try {
+    const raw = localStorage.getItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw);
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      value.version !== 1 ||
+      typeof value.subjectId !== "string" ||
+      typeof value.planDate !== "string" ||
+      !/^\\d{4}-\\d{2}-\\d{2}$/.test(value.planDate) ||
+      !(
+        value.planId === null ||
+        (typeof value.planId === "string" && value.planId.length > 0)
+      ) ||
+      !(
+        value.expectedRevision === null ||
+        (Number.isSafeInteger(value.expectedRevision) &&
+          value.expectedRevision >= 1)
+      ) ||
+      value.draft === null ||
+      typeof value.draft !== "object" ||
+      typeof value.draft.note !== "string" ||
+      !Array.isArray(value.draft.items)
+    ) {
+      throw new Error("INVALID_TRAINING_PLAN_LEAVE_BACKUP");
+    }
+    return value;
+  } catch {
+    try {
+      localStorage.removeItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
+    } catch {}
+    return null;
+  }
+}
+
+function trainingPlanRestoreLeaveBackup(plan, date) {
+  const backup = trainingPlanReadLeaveBackup();
+  if (
+    !backup ||
+    backup.subjectId !== trainingPlanSelectedSubjectId ||
+    backup.planDate !== date
+  ) {
+    return null;
+  }
+
+  const baseStillCurrent =
+    backup.planId === null
+      ? plan === null
+      : plan !== null &&
+        plan.id === backup.planId &&
+        plan.currentRevision === backup.expectedRevision;
+  if (!baseStillCurrent) {
+    trainingPlanClearLeaveBackup(trainingPlanSelectedSubjectId, date);
+    return null;
+  }
+
+  try {
+    return {
+      note: backup.draft.note,
+      items: backup.draft.items.map(trainingPlanCloneItem),
+    };
+  } catch {
+    trainingPlanClearLeaveBackup(trainingPlanSelectedSubjectId, date);
+    return null;
+  }
+}
+
+function trainingPlanWriteLeaveBackup(existing) {
+  if (!trainingPlanDraft || !trainingPlanEditorDate) return;
+  try {
+    localStorage.setItem(
+      TRAINING_PLAN_LEAVE_BACKUP_KEY,
+      JSON.stringify({
+        version: 1,
+        subjectId: trainingPlanSelectedSubjectId,
+        planDate: trainingPlanEditorDate,
+        planId: existing?.id || null,
+        expectedRevision: existing?.currentRevision || null,
+        draft: trainingPlanDraft,
+      }),
+    );
+  } catch {
+    // beforeunload remains the fallback when browser storage is unavailable.
+  }
+}
+
+function trainingPlanClearLeaveBackup(subjectId, planDate) {
+  const backup = trainingPlanReadLeaveBackup();
+  if (
+    !backup ||
+    backup.subjectId !== subjectId ||
+    backup.planDate !== planDate
+  ) return;
+  try {
+    localStorage.removeItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
+  } catch {}
+}
+
 function persistTrainingPlanOnPageHide() {
   if (
     !trainingPlanDraft ||
     !trainingPlanEditorDate ||
     !trainingPlanDirty ||
     !trainingPlansCanEdit ||
-    trainingPlanConflict ||
-    trainingPlanSaveBusy ||
-    trainingPlanTemplateBusy ||
-    trainingPlanSaveBackBusy
+    trainingPlanConflict
   ) return;
 
   const existing = trainingPlanSelected;
+  trainingPlanWriteLeaveBackup(existing);
+
   const draftPayload = trainingPlanDraftPayload(
     trainingPlanDraft,
     existing !== null,
@@ -3767,6 +3893,9 @@ function persistTrainingPlanOnPageHide() {
         planDate: trainingPlanEditorDate,
         ...draftPayload,
       };
+  const serialized = JSON.stringify(body);
+  const bytes = new TextEncoder().encode(serialized).byteLength;
+  if (bytes > TRAINING_PLAN_KEEPALIVE_LIMIT_BYTES) return;
 
   void fetch(url, {
     method: "POST",
@@ -3776,7 +3905,7 @@ function persistTrainingPlanOnPageHide() {
     },
     credentials: "same-origin",
     keepalive: true,
-    body: JSON.stringify(body),
+    body: serialized,
   });
 }
 

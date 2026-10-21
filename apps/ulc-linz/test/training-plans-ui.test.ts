@@ -133,6 +133,15 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       '"TRAINING_PLAN_TARGET_OCCUPIED"',
     );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "if (trainingPlanDistributeBusy) return false;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "const sourcePlanId = trainingPlanSelected.id;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "if (completed) closeTrainingPlanDistribution();",
+    );
   });
 
   it("loads only Monday-based week data without client-owned organization scope", () => {
@@ -174,7 +183,19 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("keepalive: true");
     expect(
       (ULC_TRAINING_PLANS_SCRIPT.match(/keepalive: true/g) || []).length,
-    ).toBeGreaterThanOrEqual(3);
+    ).toBe(1);
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "TRAINING_PLAN_KEEPALIVE_LIMIT_BYTES",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanWriteLeaveBackup(existing);",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanRestoreLeaveBackup(plan, date)",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "localStorage.setItem(",
+    );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "trainingPlanElements.editor.inert = trainingPlanSaveBusy;",
     );
