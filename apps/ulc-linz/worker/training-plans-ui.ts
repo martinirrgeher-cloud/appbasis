@@ -97,8 +97,11 @@ export const ULC_TRAINING_PLANS_HTML = `
                 </div>
 
                 <footer class="training-plan-footer">
-                  <span id="training-plan-editor-meta"></span>
-                  <span>Änderungen werden automatisch gespeichert.</span>
+                  <div class="training-plan-footer__meta">
+                    <span id="training-plan-editor-meta"></span>
+                    <span>Beim Schließen oder Wechseln wird automatisch gespeichert.</span>
+                  </div>
+                  <button class="button button--primary" id="training-plan-save" type="button">Speichern</button>
                 </footer>
               </section>
             </div>
@@ -764,6 +767,7 @@ const trainingPlanElements = Object.freeze({
   reload: document.querySelector("#training-plan-reload"),
   retry: document.querySelector("#training-plan-retry"),
   close: document.querySelector("#training-plan-close"),
+  save: document.querySelector("#training-plan-save"),
   note: document.querySelector("#training-plan-note"),
   addExercise: document.querySelector("#training-plan-add-exercise"),
   addBlock: document.querySelector("#training-plan-add-block"),
@@ -817,8 +821,6 @@ let trainingPlanSaveBackBusy = false;
 let trainingPlanSaveBackItemId = null;
 let trainingPlanSaveBackAudiences = [];
 let trainingPlanSaveBackOperation = 0;
-let trainingPlanSavePending = false;
-let trainingPlanSaveTimer = null;
 let trainingPlanChangeVersion = 0;
 let trainingPlanPickerMode = null;
 let trainingPlanPickerLoading = false;
@@ -1064,7 +1066,8 @@ async function bootstrapTrainingPlans() {
       payload?.module?.capabilities?.view !== "training-plans:view" ||
       payload?.module?.capabilities?.edit !== "training-plans:edit" ||
       features?.weekView !== true ||
-      features?.autosave !== true ||
+      features?.manualSave !== true ||
+      features?.saveOnLeave !== true ||
       features?.optimisticConcurrency !== true ||
       features?.attendanceSummary !== true ||
       features?.attendanceFilter !== true ||
@@ -1887,10 +1890,7 @@ function openTrainingPlanEditor(date, planOverride) {
   trainingPlanSaveBackBusy = false;
   trainingPlanSaveBackItemId = null;
   trainingPlanSaveBackAudiences = [];
-  trainingPlanSavePending = false;
   trainingPlanChangeVersion = 0;
-  clearTimeout(trainingPlanSaveTimer);
-  trainingPlanSaveTimer = null;
   populateTrainingPlanEditor();
 }
 
@@ -1919,7 +1919,7 @@ function populateTrainingPlanEditor() {
   refreshTrainingPlanEditorState();
 }
 
-function closeTrainingPlanEditor(force) {
+async function closeTrainingPlanEditor(force) {
   closeTrainingPlanPicker();
   if (!force) {
     if (
@@ -1927,14 +1927,19 @@ function closeTrainingPlanEditor(force) {
       trainingPlanTemplateBusy ||
       trainingPlanSaveBackBusy
     ) return false;
-    if (
-      (trainingPlanDirty || trainingPlanConflict) &&
-      !window.confirm("Ungespeicherte Änderungen verwerfen?")
-    ) return false;
+    if (trainingPlanConflict) {
+      showMessage(
+        trainingPlanElements.editorMessage,
+        "Der Plan hat einen Konflikt und kann nicht automatisch gespeichert werden. Bitte zuerst neu laden.",
+      );
+      return false;
+    }
+    if (trainingPlanDirty) {
+      const saved = await saveTrainingPlan();
+      if (!saved) return false;
+    }
   }
   closeTrainingPlanSaveTemplate(true);
-  clearTimeout(trainingPlanSaveTimer);
-  trainingPlanSaveTimer = null;
   trainingPlanEditorDate = null;
   trainingPlanSelected = null;
   trainingPlanDraft = null;
@@ -1942,7 +1947,6 @@ function closeTrainingPlanEditor(force) {
   trainingPlanConflict = false;
   trainingPlanSaveBusy = false;
   trainingPlanTemplateBusy = false;
-  trainingPlanSavePending = false;
   if (trainingPlanElements.editor) trainingPlanElements.editor.hidden = true;
   showMessage(trainingPlanElements.editorMessage, "");
   return true;
@@ -3049,43 +3053,27 @@ function markTrainingPlanDirty(render) {
   trainingPlanChangeVersion += 1;
   trainingPlanSetSaveState("dirty", "Ungespeichert");
   refreshTrainingPlanSaveBackButtons();
+  refreshTrainingPlanEditorState();
   if (render) renderTrainingPlanItems();
-  scheduleTrainingPlanSave();
-}
-
-function scheduleTrainingPlanSave(delay) {
-  if (
-    !trainingPlanDirty ||
-    !trainingPlanDraft ||
-    !trainingPlansCanEdit ||
-    trainingPlanConflict
-  ) return;
-  clearTimeout(trainingPlanSaveTimer);
-  trainingPlanSaveTimer = setTimeout(
-    () => void saveTrainingPlan(),
-    delay === undefined ? 550 : delay,
-  );
 }
 
 async function saveTrainingPlan() {
   if (
     !trainingPlanDraft ||
     !trainingPlanEditorDate ||
-    !trainingPlanDirty ||
     !trainingPlansCanEdit ||
     trainingPlanConflict
-  ) return;
+  ) return false;
+  if (!trainingPlanDirty) return true;
   if (
     trainingPlanSaveBusy ||
     trainingPlanTemplateBusy ||
     trainingPlanSaveBackBusy
   ) {
-    trainingPlanSavePending = true;
-    return;
+    return false;
   }
 
   trainingPlanSaveBusy = true;
-  trainingPlanSavePending = false;
   const version = trainingPlanChangeVersion;
   const existing = trainingPlanSelected;
   const subjectId = trainingPlanSelectedSubjectId;
@@ -3133,7 +3121,6 @@ async function saveTrainingPlan() {
       trainingPlanSetSaveState("saved", "Gespeichert");
     } else {
       trainingPlanDirty = true;
-      trainingPlanSavePending = true;
       trainingPlanSetSaveState("dirty", "Weitere Änderungen …");
     }
     showMessage(trainingPlanElements.editorMessage, "");
@@ -3141,6 +3128,7 @@ async function saveTrainingPlan() {
     renderTrainingPlanWeek();
     replaceTrainingPlanOverviewSummary(saved);
     if (trainingPlanViewMode === "group") renderTrainingPlanOverview();
+    return true;
   } catch (error) {
     if (
       error?.status === 409 &&
@@ -3166,20 +3154,13 @@ async function saveTrainingPlan() {
       );
       if (trainingPlanElements.retry) trainingPlanElements.retry.hidden = false;
     }
+    return false;
   } finally {
     trainingPlanSaveBusy = false;
     if (trainingPlanConflict) {
       renderTrainingPlanItems();
     }
     refreshTrainingPlanEditorState();
-    if (
-      trainingPlanSavePending &&
-      trainingPlanDirty &&
-      !trainingPlanConflict
-    ) {
-      trainingPlanSavePending = false;
-      scheduleTrainingPlanSave(0);
-    }
   }
 }
 
@@ -3339,6 +3320,15 @@ function refreshTrainingPlanEditorState() {
         ? "Noch kein gespeicherter Plan."
         : "Neuer Plan";
   }
+  if (trainingPlanElements.save) {
+    trainingPlanElements.save.disabled =
+      readonly ||
+      trainingPlanConflict ||
+      trainingPlanSaveBusy ||
+      trainingPlanTemplateBusy ||
+      trainingPlanSaveBackBusy ||
+      !trainingPlanDirty;
+  }
   if (readonly) {
     trainingPlanSetSaveState("saved", "Nur Lesen");
   } else if (!trainingPlanDirty && !trainingPlanSaveBusy && !trainingPlanConflict) {
@@ -3489,12 +3479,17 @@ trainingPlanElements.week?.addEventListener("click", (event) => {
   if (!control) return;
   openTrainingPlanEditor(control.dataset.trainingPlanDay || "");
 });
-trainingPlanElements.close?.addEventListener("click", () => closeTrainingPlanEditor(false));
+trainingPlanElements.close?.addEventListener("click", () => {
+  void closeTrainingPlanEditor(false);
+});
+trainingPlanElements.save?.addEventListener("click", () => {
+  void saveTrainingPlan();
+});
 trainingPlanElements.reload?.addEventListener("click", () => void reloadTrainingPlanEditor());
 trainingPlanElements.retry?.addEventListener("click", () => {
   if (trainingPlanConflict) return;
   trainingPlanDirty = true;
-  scheduleTrainingPlanSave(0);
+  void saveTrainingPlan();
 });
 trainingPlanElements.note?.addEventListener("input", () => {
   if (!trainingPlanDraft) return;
