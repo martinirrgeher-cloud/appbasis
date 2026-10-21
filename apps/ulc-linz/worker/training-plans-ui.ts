@@ -1054,7 +1054,7 @@ async function bootstrapTrainingPlans() {
   trainingPlanWeekPlans = [];
   trainingPlanWeekAttendance = [];
   trainingPlanWeekLoaded = false;
-  closeTrainingPlanEditor(true);
+  void closeTrainingPlanEditor(true);
   refreshAppAvailability();
   showMessage(trainingPlanElements.message, "");
 
@@ -1169,13 +1169,13 @@ function renderTrainingPlanMode() {
   trainingPlanUpdateWeekLabel();
 }
 
-function showTrainingPlanMode(mode) {
+async function showTrainingPlanMode(mode) {
   const next = mode === "athlete" ? "athlete" : "group";
   if (next === trainingPlanViewMode) return;
-  if (!closeTrainingPlanEditor(false)) return;
+  if (!(await closeTrainingPlanEditor(false))) return;
   trainingPlanViewMode = next;
   renderTrainingPlanMode();
-  void loadTrainingPlanActiveView();
+  await loadTrainingPlanActiveView();
 }
 
 async function loadTrainingPlanActiveView() {
@@ -1524,7 +1524,7 @@ function trainingPlanDefaultOverviewDayIndex() {
 }
 
 async function openTrainingPlanFromOverview(subjectId, date) {
-  if (!closeTrainingPlanEditor(false)) return;
+  if (!(await closeTrainingPlanEditor(false))) return;
   if (!trainingPlanSubjects.some((subject) => subject.id === subjectId)) return;
 
   trainingPlanSelectedSubjectId = subjectId;
@@ -3386,9 +3386,9 @@ function trainingPlanDateLabel(value) {
 }
 
 for (const control of document.querySelectorAll("[data-training-plan-mode]")) {
-  control.addEventListener("click", () =>
-    showTrainingPlanMode(control.dataset.trainingPlanMode || "group"),
-  );
+  control.addEventListener("click", () => {
+    void showTrainingPlanMode(control.dataset.trainingPlanMode || "group");
+  });
 }
 trainingPlanElements.overviewGroup?.addEventListener("change", () => {
   trainingPlanSelectedOverviewGroupId =
@@ -3415,51 +3415,59 @@ trainingPlanElements.overview?.addEventListener("click", (event) => {
   );
 });
 trainingPlanElements.subject?.addEventListener("change", () => {
-  const nextSubjectId = trainingPlanElements.subject?.value || "";
-  if (!closeTrainingPlanEditor(false)) {
-    if (trainingPlanElements.subject) {
-      trainingPlanElements.subject.value = trainingPlanSelectedSubjectId;
+  void (async () => {
+    const nextSubjectId = trainingPlanElements.subject?.value || "";
+    if (!(await closeTrainingPlanEditor(false))) {
+      if (trainingPlanElements.subject) {
+        trainingPlanElements.subject.value = trainingPlanSelectedSubjectId;
+      }
+      return;
     }
-    return;
-  }
-  trainingPlanSelectedSubjectId = nextSubjectId;
-  trainingPlanWeekPlans = [];
-  trainingPlanWeekAttendance = [];
-  trainingPlanWeekLoaded = false;
-  void loadTrainingPlanWeek();
+    trainingPlanSelectedSubjectId = nextSubjectId;
+    trainingPlanWeekPlans = [];
+    trainingPlanWeekAttendance = [];
+    trainingPlanWeekLoaded = false;
+    await loadTrainingPlanWeek();
+  })();
 });
 trainingPlanElements.weekPrev?.addEventListener("click", () => {
-  if (!closeTrainingPlanEditor(false)) return;
-  trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, -7);
-  trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
-  trainingPlanWeekPlans = [];
-  trainingPlanWeekAttendance = [];
-  trainingPlanWeekLoaded = false;
-  trainingPlanOverview = null;
-  renderTrainingPlanMode();
-  void loadTrainingPlanActiveView();
+  void (async () => {
+    if (!(await closeTrainingPlanEditor(false))) return;
+    trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, -7);
+    trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
+    trainingPlanWeekPlans = [];
+    trainingPlanWeekAttendance = [];
+    trainingPlanWeekLoaded = false;
+    trainingPlanOverview = null;
+    renderTrainingPlanMode();
+    await loadTrainingPlanActiveView();
+  })();
 });
 trainingPlanElements.weekToday?.addEventListener("click", () => {
-  if (!closeTrainingPlanEditor(false)) return;
-  trainingPlanWeekStart = trainingPlanMonday(new Date());
-  trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
-  trainingPlanWeekPlans = [];
-  trainingPlanWeekAttendance = [];
-  trainingPlanWeekLoaded = false;
-  trainingPlanOverview = null;
-  renderTrainingPlanMode();
-  void loadTrainingPlanActiveView();
+  void (async () => {
+    if (!(await closeTrainingPlanEditor(false))) return;
+    trainingPlanWeekStart = trainingPlanMonday(new Date());
+    trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
+    trainingPlanWeekPlans = [];
+    trainingPlanWeekAttendance = [];
+    trainingPlanWeekLoaded = false;
+    trainingPlanOverview = null;
+    renderTrainingPlanMode();
+    await loadTrainingPlanActiveView();
+  })();
 });
 trainingPlanElements.weekNext?.addEventListener("click", () => {
-  if (!closeTrainingPlanEditor(false)) return;
-  trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, 7);
-  trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
-  trainingPlanWeekPlans = [];
-  trainingPlanWeekAttendance = [];
-  trainingPlanWeekLoaded = false;
-  trainingPlanOverview = null;
-  renderTrainingPlanMode();
-  void loadTrainingPlanActiveView();
+  void (async () => {
+    if (!(await closeTrainingPlanEditor(false))) return;
+    trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, 7);
+    trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
+    trainingPlanWeekPlans = [];
+    trainingPlanWeekAttendance = [];
+    trainingPlanWeekLoaded = false;
+    trainingPlanOverview = null;
+    renderTrainingPlanMode();
+    await loadTrainingPlanActiveView();
+  })();
 });
 trainingPlanElements.attendanceFilter?.addEventListener("change", () => {
   const value = trainingPlanElements.attendanceFilter?.value || "all";
