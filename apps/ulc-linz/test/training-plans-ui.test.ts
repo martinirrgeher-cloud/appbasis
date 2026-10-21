@@ -172,6 +172,15 @@ describe("ULC E7B6 training plan block template UI", () => {
       'window.addEventListener("pagehide", persistTrainingPlanOnPageHide)',
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("keepalive: true");
+    expect(
+      (ULC_TRAINING_PLANS_SCRIPT.match(/keepalive: true/g) || []).length,
+    ).toBeGreaterThanOrEqual(3);
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanElements.editor.inert = trainingPlanSaveBusy;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanSaveBusy = true;\n  refreshTrainingPlanEditorState();",
+    );
   });
 
   it("discards stale group overview responses and reloads the current week", () => {
@@ -239,7 +248,7 @@ describe("ULC E7B6 training plan block template UI", () => {
 
   it("re-renders week cards only after clearing the loading flag", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "finally {\n    trainingPlanWeekLoading = false;\n    refreshTrainingPlanControls();\n    renderTrainingPlanWeek();\n  }",
+      "trainingPlanWeekLoading = false;\n    refreshTrainingPlanControls();\n    renderTrainingPlanWeek();",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
       "trainingPlanWeekPlans = payload.plans.slice();\n    renderTrainingPlanWeek();",

@@ -3280,6 +3280,7 @@ async function saveTrainingPlan() {
   }
 
   trainingPlanSaveBusy = true;
+  refreshTrainingPlanEditorState();
   const version = trainingPlanChangeVersion;
   const existing = trainingPlanSelected;
   const subjectId = trainingPlanSelectedSubjectId;
@@ -3295,6 +3296,7 @@ async function saveTrainingPlan() {
             "/update",
           {
             method: "POST",
+            keepalive: true,
             body: JSON.stringify({
               expectedRevision: existing.currentRevision,
               ...draftPayload,
@@ -3303,6 +3305,7 @@ async function saveTrainingPlan() {
         )
       : await requestJson("/api/modules/training-plans", {
           method: "POST",
+          keepalive: true,
           body: JSON.stringify({
             subjectId,
             planDate,
@@ -3700,6 +3703,9 @@ async function distributeTrainingPlan() {
 
 function refreshTrainingPlanEditorState() {
   const readonly = !trainingPlansCanEdit;
+  if (trainingPlanElements.editor) {
+    trainingPlanElements.editor.inert = trainingPlanSaveBusy;
+  }
   if (trainingPlanElements.note) {
     trainingPlanElements.note.disabled =
       readonly || trainingPlanConflict;
