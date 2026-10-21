@@ -299,6 +299,7 @@ export interface UlcTrainingPlanService {
   copyCurrentTo(
     organizationId: string,
     sourcePlanId: string,
+    expectedSourceRevision: number,
     targetSubjectId: string,
     targetDate: string,
   ): Promise<TrainingPlanSnapshot | undefined>;
@@ -1030,15 +1031,23 @@ export function createUlcTrainingPlanService({
     async copyCurrentTo(
       organizationId: string,
       sourcePlanId: string,
+      expectedSourceRevision: number,
       targetSubjectId: string,
       targetDate: string,
     ) {
       const source = await plans.findCurrent(organizationId, sourcePlanId);
       if (source === undefined) return undefined;
+      if (source.currentRevision !== expectedSourceRevision) {
+        throw new TrainingPlanConflictError(
+          expectedSourceRevision,
+          source.currentRevision,
+        );
+      }
       await assertActiveSubject(organizationId, targetSubjectId);
       const saved = await plans.copyCurrentTo(
         organizationId,
         sourcePlanId,
+        expectedSourceRevision,
         targetSubjectId,
         targetDate,
       );
