@@ -954,13 +954,16 @@ function isTrainingPlanOverview(value) {
             cell.durationMinutes >= 0 &&
             Number.isSafeInteger(cell.exerciseCount) &&
             cell.exerciseCount >= 0 &&
-            (
-              cell.attendanceStatus === undefined ||
-              cell.attendanceStatus === "open" ||
-              cell.attendanceStatus === "present" ||
-              cell.attendanceStatus === "excused" ||
-              cell.attendanceStatus === "absent"
-            ),
+            Array.isArray(cell.attendanceStatuses) &&
+            cell.attendanceStatuses.every(
+              (status) =>
+                status === "open" ||
+                status === "present" ||
+                status === "excused" ||
+                status === "absent",
+            ) &&
+            new Set(cell.attendanceStatuses).size ===
+              cell.attendanceStatuses.length,
         ),
     );
 }
@@ -1461,9 +1464,21 @@ async function loadTrainingPlanOverview() {
     ) {
       throw new Error("INVALID_TRAINING_PLAN_OVERVIEW");
     }
+    if (
+      trainingPlanSelectedOverviewGroupId !== groupId ||
+      trainingPlanWeekStart !== weekStart
+    ) {
+      return false;
+    }
     trainingPlanOverview = payload.overview;
     return true;
   } catch (error) {
+    if (
+      trainingPlanSelectedOverviewGroupId !== groupId ||
+      trainingPlanWeekStart !== weekStart
+    ) {
+      return false;
+    }
     showMessage(
       trainingPlanElements.message,
       error?.status === 400
@@ -1472,9 +1487,20 @@ async function loadTrainingPlanOverview() {
     );
     return false;
   } finally {
+    const requestOutdated =
+      trainingPlanSelectedOverviewGroupId !== groupId ||
+      trainingPlanWeekStart !== weekStart;
     trainingPlanOverviewLoading = false;
     refreshTrainingPlanControls();
     renderTrainingPlanOverview();
+    if (
+      requestOutdated &&
+      trainingPlanViewMode === "group" &&
+      trainingPlanOverview === null &&
+      trainingPlanSelectedOverviewGroupId
+    ) {
+      void loadTrainingPlanOverview();
+    }
   }
 }
 
@@ -1561,9 +1587,11 @@ function renderTrainingPlanOverview() {
     if (!cell) return false;
     if (trainingPlanOverviewAttendanceFilter === "all") return true;
     if (trainingPlanOverviewAttendanceFilter === "none") {
-      return cell.attendanceStatus === undefined;
+      return cell.attendanceStatuses.length === 0;
     }
-    return cell.attendanceStatus === trainingPlanOverviewAttendanceFilter;
+    return cell.attendanceStatuses.includes(
+      trainingPlanOverviewAttendanceFilter,
+    );
   });
 
   if (visibleRows.length === 0) {
@@ -1608,7 +1636,7 @@ function renderTrainingPlanOverview() {
     statusTitle.textContent = cell.planId ? "Plan" : trainingPlansCanEdit ? "＋ Plan" : "—";
     const statusDetail = document.createElement("span");
     statusDetail.textContent = trainingPlanAttendanceCompactLabel(
-      cell.attendanceStatus,
+      cell.attendanceStatuses,
     );
     status.append(statusTitle, statusDetail);
 
@@ -1617,12 +1645,18 @@ function renderTrainingPlanOverview() {
   }
 }
 
-function trainingPlanAttendanceCompactLabel(status) {
-  if (status === "present") return "✓ anwesend";
-  if (status === "excused") return "– entschuldigt";
-  if (status === "absent") return "✕ abwesend";
-  if (status === "open") return "? offen";
-  return "kein Eintrag";
+function trainingPlanAttendanceCompactLabel(statuses) {
+  if (!Array.isArray(statuses) || statuses.length === 0) return "kein Eintrag";
+  return statuses
+    .map((status) => {
+      if (status === "present") return "✓ anwesend";
+      if (status === "excused") return "– entschuldigt";
+      if (status === "absent") return "✕ abwesend";
+      if (status === "open") return "? offen";
+      return "";
+    })
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function trainingPlanVisibleOverviewRows() {
@@ -1632,9 +1666,11 @@ function trainingPlanVisibleOverviewRows() {
     if (!cell) return false;
     if (trainingPlanOverviewAttendanceFilter === "all") return true;
     if (trainingPlanOverviewAttendanceFilter === "none") {
-      return cell.attendanceStatus === undefined;
+      return cell.attendanceStatuses.length === 0;
     }
-    return cell.attendanceStatus === trainingPlanOverviewAttendanceFilter;
+    return cell.attendanceStatuses.includes(
+      trainingPlanOverviewAttendanceFilter,
+    );
   });
 }
 
@@ -2062,10 +2098,7 @@ async function closeTrainingPlanEditor(force) {
       );
       return false;
     }
-    if (trainingPlanDirty) {
-      const saved = await saveTrainingPlan();
-      if (!saved) return false;
-    }
+    if (!(await saveTrainingPlanUntilClean())) return false;
   }
   closeTrainingPlanSaveTemplate(true);
   trainingPlanEditorDate = null;
@@ -3178,6 +3211,14 @@ function markTrainingPlanDirty(render) {
   if (render) renderTrainingPlanItems();
 }
 
+async function saveTrainingPlanUntilClean() {
+  while (trainingPlanDirty) {
+    const saved = await saveTrainingPlan();
+    if (!saved) return false;
+  }
+  return true;
+}
+
 async function saveTrainingPlan() {
   if (
     !trainingPlanDraft ||
@@ -3502,7 +3543,7 @@ function renderTrainingPlanDistribution() {
     const status = document.createElement("small");
     status.textContent = cell.planId
       ? "Plan vorhanden"
-      : trainingPlanAttendanceCompactLabel(cell.attendanceStatus);
+      : trainingPlanAttendanceCompactLabel(cell.attendanceStatuses);
     label.append(checkbox, name, status);
     container.append(label);
   }
@@ -3519,7 +3560,7 @@ async function openTrainingPlanDistribution() {
   if (!trainingPlanOverview || !trainingPlanEditorDate || !trainingPlansCanEdit) {
     return;
   }
-  if (trainingPlanDirty && !(await saveTrainingPlan())) return;
+  if (!(await saveTrainingPlanUntilClean())) return;
   if (!trainingPlanSelected) {
     showMessage(
       trainingPlanElements.editorMessage,

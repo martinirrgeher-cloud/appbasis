@@ -122,6 +122,9 @@ describe("ULC E7B6 training plan block template UI", () => {
       "trainingPlanAttendanceCompactLabel",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "cell.attendanceStatuses.includes",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "navigateTrainingPlanGroupAthlete",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
@@ -160,12 +163,27 @@ describe("ULC E7B6 training plan block template UI", () => {
       "scheduleTrainingPlanSave",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "if (trainingPlanDirty) {\n      const saved = await saveTrainingPlan();",
+      "async function saveTrainingPlanUntilClean()",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "while (trainingPlanDirty)",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       'window.addEventListener("pagehide", persistTrainingPlanOnPageHide)',
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("keepalive: true");
+  });
+
+  it("discards stale group overview responses and reloads the current week", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanSelectedOverviewGroupId !== groupId ||\n      trainingPlanWeekStart !== weekStart",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "requestOutdated &&\n      trainingPlanViewMode === \"group\"",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "void loadTrainingPlanOverview();",
+    );
   });
 
   it("blocks stale week cards while a new subject or week is loading", () => {

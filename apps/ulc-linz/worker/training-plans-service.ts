@@ -40,7 +40,7 @@ export interface UlcTrainingPlanOverviewCell {
   readonly planId: string | null;
   readonly durationMinutes: number;
   readonly exerciseCount: number;
-  readonly attendanceStatus?: UlcTrainingAttendanceSummary["status"];
+  readonly attendanceStatuses: readonly UlcTrainingAttendanceSummary["status"][];
 }
 
 export interface UlcTrainingPlanOverviewSummary {
@@ -459,14 +459,25 @@ export function createUlcTrainingPlanService({
         (plan) => [plan.subjectId + "\u0000" + plan.planDate, plan] as const,
       ),
     );
-    const attendanceBySubjectDate = new Map(
-      attendanceSummaries.map(
-        (entry) => [
-          entry.subjectId + "\u0000" + entry.sessionDate,
-          entry.status,
-        ] as const,
-      ),
-    );
+    const attendanceStatusOrder: readonly UlcTrainingAttendanceSummary["status"][] =
+      ["present", "excused", "absent", "open"];
+    const attendanceBySubjectDate = new Map<
+      string,
+      UlcTrainingAttendanceSummary["status"][]
+    >();
+    for (const entry of attendanceSummaries) {
+      const key = entry.subjectId + "\u0000" + entry.sessionDate;
+      const statuses = attendanceBySubjectDate.get(key) ?? [];
+      if (!statuses.includes(entry.status)) {
+        statuses.push(entry.status);
+        statuses.sort(
+          (left, right) =>
+            attendanceStatusOrder.indexOf(left) -
+            attendanceStatusOrder.indexOf(right),
+        );
+      }
+      attendanceBySubjectDate.set(key, statuses);
+    }
     const planRows = athletes.map((athlete) =>
       Object.freeze({
         subject: subjectFromAthlete(athlete),
@@ -474,17 +485,17 @@ export function createUlcTrainingPlanService({
           dates.map((date) => {
             const plan =
               plansBySubjectDate.get(athlete.id + "\u0000" + date) ?? null;
-            const attendanceStatus = attendanceBySubjectDate.get(
-              athlete.id + "\u0000" + date,
+            const attendanceStatuses = Object.freeze(
+              (attendanceBySubjectDate.get(
+                athlete.id + "\u0000" + date,
+              ) ?? []).slice(),
             );
             return Object.freeze({
               planDate: date,
               planId: plan?.planId ?? null,
               durationMinutes: plan?.durationMinutes ?? 0,
               exerciseCount: plan?.exerciseCount ?? 0,
-              ...(attendanceStatus === undefined
-                ? {}
-                : { attendanceStatus }),
+              attendanceStatuses,
             });
           }),
         ),

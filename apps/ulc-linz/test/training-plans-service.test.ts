@@ -499,6 +499,16 @@ describe("ULC training plan group week overview", () => {
         Object.freeze({
           subjectId: ACTIVE_ATHLETE.id,
           sessionDate: "2026-10-12",
+          status: "absent",
+        }),
+        Object.freeze({
+          subjectId: ACTIVE_ATHLETE.id,
+          sessionDate: "2026-10-12",
+          status: "present",
+        }),
+        Object.freeze({
+          subjectId: ACTIVE_ATHLETE.id,
+          sessionDate: "2026-10-12",
           status: "present",
         }),
       ],
@@ -519,7 +529,7 @@ describe("ULC training plan group week overview", () => {
       planId: "summary-plan",
       durationMinutes: 42,
       exerciseCount: 6,
-      attendanceStatus: "present",
+      attendanceStatuses: ["present", "absent"],
     });
   });
 

@@ -576,10 +576,7 @@ function createTrainingPlanOverviewReader(client: {
       const fromPlaceholder = "$" + String(subjectIds.length + 3);
       const toPlaceholder = "$" + String(subjectIds.length + 4);
       const rows = await client.unsafe(
-        `SELECT DISTINCT ON (
-           attendance.athlete_id,
-           session.session_date
-         )
+        `SELECT
            attendance.athlete_id AS subject_id,
            to_char(session.session_date, 'YYYY-MM-DD') AS session_date,
            attendance.status
@@ -596,8 +593,8 @@ function createTrainingPlanOverviewReader(client: {
          ORDER BY
            attendance.athlete_id ASC,
            session.session_date ASC,
-           attendance.updated_at DESC,
-           session.id DESC`,
+           attendance.status ASC,
+           session.id ASC`,
         [organizationId, groupId, ...subjectIds, fromDate, toDate],
       );
       return Object.freeze(
