@@ -42,6 +42,11 @@ const UPDATE_FIELDS = Object.freeze([
   "note",
   "items",
 ]);
+const COPY_FIELDS = Object.freeze([
+  "expectedSourceRevision",
+  "targetSubjectId",
+  "targetDate",
+]);
 const SAVE_BLOCK_TEMPLATE_FIELDS = Object.freeze([
   "planId",
   "blockItemId",
@@ -60,6 +65,9 @@ export async function trainingPlansHttpResponse(
   }
   if (url.pathname === "/api/modules/training-plans/week") {
     return trainingPlansWeekResponse(request, runtime, url);
+  }
+  if (url.pathname === "/api/modules/training-plans/day") {
+    return trainingPlansDayResponse(request, runtime, url);
   }
   if (url.pathname === "/api/modules/training-plans/overview") {
     return trainingPlansOverviewResponse(request, runtime, url);
@@ -91,7 +99,8 @@ export async function trainingPlansHttpResponse(
   }
   const route = url.pathname.slice(base.length);
   const update = /^([^/]+)\/update$/.exec(route);
-  if (update === null) {
+  const copy = /^([^/]+)\/copy$/.exec(route);
+  if (update === null && copy === null) {
     return trainingPlanNotFound();
   }
   if (request.method !== "POST") {
@@ -110,7 +119,39 @@ export async function trainingPlansHttpResponse(
   if (access instanceof Response) return access;
 
   try {
-    const planId = decodeIdentifier(update[1]);
+    const encodedPlanId = update?.[1] ?? copy?.[1];
+    if (encodedPlanId === undefined) return trainingPlanNotFound();
+    const planId = decodeIdentifier(encodedPlanId);
+
+    if (copy !== null) {
+      const body = await trainingPlanJsonObject(
+        request,
+        COPY_FIELDS,
+        ["expectedSourceRevision", "targetSubjectId", "targetDate"],
+      );
+      if (
+        typeof body.targetSubjectId !== "string" ||
+        typeof body.targetDate !== "string"
+      ) {
+        throw new InvalidTrainingPlanRequestError();
+      }
+      const plan = await runtime.trainingPlans.copyCurrentTo(
+        access.organizationId,
+        planId,
+        requiredRevision(body.expectedSourceRevision),
+        normalizeTrainingPlanIdentifier(
+          body.targetSubjectId,
+          "Training plan copy target subject",
+        ),
+        normalizeTrainingPlanDate(body.targetDate),
+      );
+      if (plan === undefined) return trainingPlanNotFound();
+      return privateJson(
+        { plan: trainingPlanClientSnapshot(plan) },
+        { status: 201 },
+      );
+    }
+
     const body = await trainingPlanUpdateBody(request);
     const current = await runtime.trainingPlans.findCurrent(
       access.organizationId,
@@ -169,11 +210,14 @@ async function trainingPlansModuleResponse(
           capabilities: TRAINING_PLAN_CAPABILITIES,
           features: {
             weekView: true,
-            autosave: true,
+            autosave: false,
+            manualSave: true,
+            saveOnLeave: true,
             optimisticConcurrency: true,
             attendanceSummary: true,
             attendanceFilter: true,
             groupWeekOverview: true,
+            planCopy: true,
             blockTemplateAdoption: true,
             blockTemplateSaveBack: true,
           },
@@ -386,6 +430,46 @@ async function trainingPlansOverviewResponse(
   }
 }
 
+async function trainingPlansDayResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return methodNotAllowedFor("GET", "training plan day");
+  }
+
+  const access = await authorizeTrainingPlansRequest(
+    request,
+    runtime,
+    url,
+    "view",
+  );
+  if (access instanceof Response) return access;
+
+  try {
+    const { subjectId, planDate } = trainingPlanDayQuery(url);
+    const subjects = await runtime.trainingPlans.listSubjects(
+      access.organizationId,
+    );
+    if (!subjects.some((subject) => subject.id === subjectId)) {
+      throw new UlcTrainingPlanReferenceError("subject", subjectId);
+    }
+    const plan = await runtime.trainingPlans.findCurrentBySubjectDate(
+      access.organizationId,
+      subjectId,
+      planDate,
+    );
+    return privateJson({
+      subjectId,
+      planDate,
+      plan: plan === undefined ? null : trainingPlanClientSnapshot(plan),
+    });
+  } catch (error) {
+    return trainingPlanErrorResponse(error);
+  }
+}
+
 async function trainingPlansWeekResponse(
   request: Request,
   runtime: GeneratedPostgresApplicationRuntime,
@@ -548,6 +632,26 @@ function trainingPlanOverviewQuery(
     throw new InvalidTrainingPlanRequestError();
   }
   return Object.freeze({ groupId, weekStart });
+}
+
+function trainingPlanDayQuery(
+  url: URL,
+): Readonly<{ subjectId: string; planDate: string }> {
+  const allowed = new Set(["subjectId", "planDate"]);
+  if (
+    [...url.searchParams.keys()].some((key) => !allowed.has(key)) ||
+    url.searchParams.getAll("subjectId").length !== 1 ||
+    url.searchParams.getAll("planDate").length !== 1
+  ) {
+    throw new InvalidTrainingPlanRequestError();
+  }
+  return Object.freeze({
+    subjectId: normalizeTrainingPlanIdentifier(
+      url.searchParams.get("subjectId"),
+      "Training plan subject",
+    ),
+    planDate: normalizeTrainingPlanDate(url.searchParams.get("planDate")),
+  });
 }
 
 function trainingPlanWeekQuery(

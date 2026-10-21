@@ -366,6 +366,7 @@ export class TrainingPlanService {
   async copyCurrentTo(
     organizationId: string,
     sourcePlanId: string,
+    expectedSourceRevision: number,
     targetSubjectId: string,
     targetDate: string,
   ): Promise<TrainingPlanSnapshot | undefined> {
@@ -373,8 +374,18 @@ export class TrainingPlanService {
       organizationId,
       "Organization id",
     );
+    const expected = requiredRevision(
+      expectedSourceRevision,
+      "Expected source training plan revision",
+    );
     const source = await this.findCurrent(organization, sourcePlanId);
     if (source === undefined) return undefined;
+    if (source.currentRevision !== expected) {
+      throw new TrainingPlanConflictError(
+        expected,
+        source.currentRevision,
+      );
+    }
 
     const sourceRevisions = await this.#repository.listRevisions(
       organization,

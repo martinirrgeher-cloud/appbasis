@@ -10,42 +10,59 @@ export const ULC_TRAINING_PLANS_HTML = `
 
             <p class="message message--error" id="training-plan-message" role="alert" hidden></p>
 
-            <section class="card training-plan-toolbar">
-              <label>Athlet
-                <select id="training-plan-subject"></select>
-              </label>
-              <label>Anwesenheit
-                <select id="training-plan-attendance-filter">
-                  <option value="all">Alle</option>
-                  <option value="present">Anwesend</option>
-                  <option value="excused">Entschuldigt</option>
-                  <option value="absent">Abwesend</option>
-                  <option value="open">Offen</option>
-                  <option value="none">Kein Eintrag</option>
-                </select>
-              </label>
-              <div class="training-plan-week-nav" aria-label="Woche wechseln">
-                <button class="button button--secondary" id="training-plan-week-prev" type="button" aria-label="Vorherige Woche">←</button>
-                <button class="button button--secondary" id="training-plan-week-today" type="button">Diese Woche</button>
-                <button class="button button--secondary" id="training-plan-week-next" type="button" aria-label="Nächste Woche">→</button>
+            <section class="card training-plan-shell">
+              <div class="training-plan-mode-tabs" role="tablist" aria-label="Planungsansicht">
+                <button type="button" role="tab" data-training-plan-mode="group" aria-selected="true">Gruppe</button>
+                <button type="button" role="tab" data-training-plan-mode="athlete" aria-selected="false">Athlet</button>
               </div>
-              <strong id="training-plan-week-label"></strong>
-            </section>
 
-            <section class="training-plan-week" id="training-plan-week" aria-live="polite"></section>
-
-            <section class="card training-plan-overview-card">
-              <div class="section-heading">
-                <div>
-                  <p class="eyebrow">Übersicht</p>
-                  <h2>Gruppenwoche</h2>
+              <div class="training-plan-weekbar">
+                <div class="training-plan-week-nav" aria-label="Woche wechseln">
+                  <button class="button button--secondary" id="training-plan-week-prev" type="button" aria-label="Vorherige Woche">←</button>
+                  <button class="button button--secondary" id="training-plan-week-today" type="button">Diese Woche</button>
+                  <button class="button button--secondary" id="training-plan-week-next" type="button" aria-label="Nächste Woche">→</button>
                 </div>
-                <label>Trainingsgruppe
-                  <select id="training-plan-overview-group"></select>
-                </label>
+                <strong id="training-plan-week-label"></strong>
               </div>
-              <p class="settings-note">Athleten zeilenweise, Wochentage spaltenweise. Ein Klick öffnet den Tagesplan.</p>
-              <div class="training-plan-overview" id="training-plan-overview" aria-live="polite"></div>
+
+              <section class="training-plan-mode-panel" id="training-plan-group-panel" data-training-plan-mode-panel="group">
+                <div class="training-plan-group-controls">
+                  <label class="training-plan-primary-select">Trainingsgruppe
+                    <select id="training-plan-overview-group"></select>
+                  </label>
+                  <label>Anwesenheit
+                    <select id="training-plan-overview-attendance-filter">
+                      <option value="all">Alle</option>
+                      <option value="present">Anwesend</option>
+                      <option value="excused">Entschuldigt</option>
+                      <option value="absent">Abwesend</option>
+                      <option value="open">Offen</option>
+                      <option value="none">Kein Eintrag</option>
+                    </select>
+                  </label>
+                </div>
+                <nav class="training-plan-day-tabs" id="training-plan-overview-days" aria-label="Trainingstag auswählen"></nav>
+                <div class="training-plan-overview" id="training-plan-overview" aria-live="polite"></div>
+              </section>
+
+              <section class="training-plan-mode-panel" id="training-plan-athlete-panel" data-training-plan-mode-panel="athlete" hidden>
+                <div class="training-plan-athlete-controls">
+                  <label>Athlet
+                    <select id="training-plan-subject"></select>
+                  </label>
+                  <label>Anwesenheit
+                    <select id="training-plan-attendance-filter">
+                      <option value="all">Alle</option>
+                      <option value="present">Anwesend</option>
+                      <option value="excused">Entschuldigt</option>
+                      <option value="absent">Abwesend</option>
+                      <option value="open">Offen</option>
+                      <option value="none">Kein Eintrag</option>
+                    </select>
+                  </label>
+                </div>
+                <section class="training-plan-week" id="training-plan-week" aria-live="polite"></section>
+              </section>
             </section>
 
             <div class="training-plan-backdrop" id="training-plan-editor" hidden>
@@ -56,7 +73,12 @@ export const ULC_TRAINING_PLANS_HTML = `
                     <h2 id="training-plan-editor-title">Training bearbeiten</h2>
                     <span class="training-plan-save-state" id="training-plan-save-state" data-state="saved">Gespeichert</span>
                   </div>
-                  <button class="button button--secondary training-plan-icon-close" id="training-plan-close" type="button" aria-label="Tagesplan schließen" title="Schließen"><span aria-hidden="true">✕</span><span class="training-plan-close-label">Schließen</span></button>
+                  <div class="training-plan-header-actions">
+                    <button class="button button--secondary training-plan-mini" id="training-plan-prev-athlete" type="button" aria-label="Vorheriger Athlet" title="Vorheriger Athlet">←</button>
+                    <button class="button button--secondary training-plan-mini" id="training-plan-next-athlete" type="button" aria-label="Nächster Athlet" title="Nächster Athlet">→</button>
+                    <button class="button button--secondary" id="training-plan-distribute-open" type="button">Verteilen</button>
+                    <button class="button button--secondary training-plan-icon-close" id="training-plan-close" type="button" aria-label="Tagesplan schließen" title="Schließen"><span aria-hidden="true">✕</span><span class="training-plan-close-label">Schließen</span></button>
+                  </div>
                 </header>
 
                 <div class="training-plan-body">
@@ -92,12 +114,29 @@ export const ULC_TRAINING_PLANS_HTML = `
                 </div>
 
                 <footer class="training-plan-footer">
-                  <span id="training-plan-editor-meta"></span>
-                  <span>Änderungen werden automatisch gespeichert.</span>
+                  <div class="training-plan-footer__meta">
+                    <span id="training-plan-editor-meta"></span>
+                    <span>Beim Schließen oder Wechseln wird automatisch gespeichert.</span>
+                  </div>
+                  <button class="button button--primary" id="training-plan-save" type="button">Speichern</button>
                 </footer>
               </section>
             </div>
 
+
+            <div class="training-plan-picker-backdrop" id="training-plan-distribute" hidden>
+              <section class="training-plan-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="training-plan-distribute-title">
+                <header class="training-plan-header">
+                  <div><p class="eyebrow">Gruppenplanung</p><h2 id="training-plan-distribute-title">Plan verteilen</h2></div>
+                  <button class="button button--secondary training-plan-icon-close" id="training-plan-distribute-close" type="button" aria-label="Verteilen schließen">✕</button>
+                </header>
+                <div class="training-plan-picker-body">
+                  <p class="settings-note">Bestehende Tagespläne werden nicht überschrieben.</p>
+                  <div class="training-plan-distribute-list" id="training-plan-distribute-list"></div>
+                  <button class="button button--primary" id="training-plan-distribute-confirm" type="button">Auf Auswahl kopieren</button>
+                </div>
+              </section>
+            </div>
 
             <div class="training-plan-picker-backdrop" id="training-plan-picker" hidden>
               <section class="training-plan-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="training-plan-picker-title">
@@ -109,9 +148,14 @@ export const ULC_TRAINING_PLANS_HTML = `
                   <button class="button button--secondary training-plan-icon-close" id="training-plan-picker-close" type="button" aria-label="Auswahl schließen" title="Schließen">✕</button>
                 </header>
                 <div class="training-plan-picker-body">
-                  <label class="training-plan-picker-search">Suchen
-                    <input id="training-plan-picker-search" type="search" maxlength="160" placeholder="Name, Kategorie oder Gruppe …" autocomplete="off" />
-                  </label>
+                  <div class="training-plan-picker-filters">
+                    <label class="training-plan-picker-search">Suchen
+                      <input id="training-plan-picker-search" type="search" maxlength="160" placeholder="Name, Kategorie oder Gruppe …" autocomplete="off" />
+                    </label>
+                    <label id="training-plan-picker-category-wrap" hidden>Kategorie
+                      <select id="training-plan-picker-category"></select>
+                    </label>
+                  </div>
                   <p class="settings-note" id="training-plan-picker-hint"></p>
                   <div class="training-plan-picker-list" id="training-plan-picker-list" aria-live="polite"></div>
                   <button class="button button--secondary" id="training-plan-picker-manual" type="button" hidden>Freie Übung ohne Katalogbezug</button>
@@ -509,6 +553,7 @@ body.training-plan-picker-open { overflow: hidden; }
   position: sticky;
   bottom: 0;
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 10px 14px;
@@ -517,6 +562,190 @@ body.training-plan-picker-open { overflow: hidden; }
   color: var(--secondary);
   font-size: .78rem;
 }
+.training-plan-footer__meta {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.training-plan-footer__meta span:last-child {
+  color: var(--secondary);
+  font-size: .7rem;
+}
+.training-plan-footer .button {
+  min-width: 104px;
+  flex: 0 0 auto;
+}
+.training-plan-header-actions { display: flex; align-items: center; gap: 6px; }
+.training-plan-distribute-list { display: grid; gap: 6px; margin: 8px 0 12px; }
+.training-plan-distribute-row {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+.training-plan-distribute-row small { color: var(--secondary); }
+.training-plan-shell {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+.training-plan-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--muted);
+}
+.training-plan-mode-tabs button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--secondary);
+  font-weight: 800;
+}
+.training-plan-mode-tabs button[aria-selected="true"] {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgb(15 23 42 / 10%);
+}
+.training-plan-weekbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.training-plan-weekbar > strong {
+  color: var(--secondary);
+  font-size: .82rem;
+  text-align: right;
+}
+.training-plan-mode-panel { display: grid; gap: 10px; min-width: 0; }
+.training-plan-group-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, .55fr);
+  gap: 8px;
+  align-items: end;
+}
+.training-plan-primary-select { max-width: 360px; }
+.training-plan-athlete-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, .55fr);
+  gap: 8px;
+}
+.training-plan-day-tabs {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.training-plan-day-tabs::-webkit-scrollbar { display: none; }
+.training-plan-day-tab {
+  min-width: 64px;
+  min-height: 42px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 5px 8px;
+  background: var(--card);
+  color: var(--secondary);
+  text-align: center;
+}
+.training-plan-day-tab strong,
+.training-plan-day-tab span { display: block; }
+.training-plan-day-tab strong { font-size: .78rem; }
+.training-plan-day-tab span { margin-top: 1px; font-size: .68rem; }
+.training-plan-day-tab[aria-selected="true"] {
+  border-color: #93c5fd;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.training-plan-overview {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  margin-top: 0;
+  overflow: visible;
+}
+.training-plan-group-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 9px 10px;
+  background: var(--card);
+  color: inherit;
+  text-align: left;
+}
+.training-plan-group-row[data-has-plan="true"] {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, var(--card));
+}
+.training-plan-group-row__main strong,
+.training-plan-group-row__main span { display: block; }
+.training-plan-group-row__main strong { font-size: .86rem; }
+.training-plan-group-row__main span {
+  margin-top: 3px;
+  color: var(--secondary);
+  font-size: .73rem;
+}
+.training-plan-group-row__status {
+  display: grid;
+  min-width: 74px;
+  justify-items: end;
+  gap: 2px;
+}
+.training-plan-group-row__status strong { font-size: .78rem; }
+.training-plan-group-row__status span { color: var(--secondary); font-size: .68rem; }
+.training-plan-picker-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, .45fr);
+  gap: 8px;
+  align-items: end;
+}
+.training-plan-picker-filters label { min-width: 0; }
+.training-plan-item > summary,
+.training-plan-child > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.training-plan-item > summary::-webkit-details-marker,
+.training-plan-child > summary::-webkit-details-marker { display: none; }
+.training-plan-item-summary,
+.training-plan-child-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.training-plan-item-summary strong,
+.training-plan-item-summary span,
+.training-plan-child-summary strong,
+.training-plan-child-summary span { display: block; }
+.training-plan-item-summary span,
+.training-plan-child-summary span {
+  margin-top: 2px;
+  color: var(--secondary);
+  font-size: .72rem;
+}
+.training-plan-item-editor {
+  display: grid;
+  gap: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+}
+.training-plan-item[open] > summary,
+.training-plan-child[open] > summary { margin-bottom: 8px; }
 @media (min-width: 900px) {
   .training-plan-week {
     grid-auto-flow: initial;
@@ -544,7 +773,13 @@ body.training-plan-picker-open { overflow: hidden; }
   .training-plan-exercise-grid .training-plan-field--name,
   .training-plan-exercise-grid .training-plan-field--comment { grid-column: 1 / -1; }
   .training-plan-template-picker { grid-template-columns: 1fr; }
-  .training-plan-dialog { max-height: 96vh; border-radius: 18px 18px 0 0; }
+  .training-plan-backdrop { place-items: stretch; }
+  .training-plan-dialog {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
   .training-plan-body { gap: 8px; padding: 8px; }
   .training-plan-note-card,
   .training-plan-items-card { padding: 9px; }
@@ -555,8 +790,19 @@ body.training-plan-picker-open { overflow: hidden; }
   .training-plan-item__actions { flex-wrap: nowrap; }
   .training-plan-close-label { display: none; }
   .training-plan-icon-close { min-width: 40px; width: 40px; padding-inline: 0; }
-  .training-plan-overview-card > .settings-note { display: none; }
-  .training-plan-overview-card { padding: 10px; }
+  .training-plan-shell { padding: 8px; gap: 8px; }
+  .training-plan-weekbar { align-items: stretch; flex-direction: column-reverse; }
+  .training-plan-weekbar > strong { text-align: left; }
+  .training-plan-week-nav { justify-content: space-between; }
+  .training-plan-athlete-controls,
+  .training-plan-group-controls { grid-template-columns: 1fr; }
+  .training-plan-primary-select { max-width: none; }
+  .training-plan-picker-filters { grid-template-columns: 1fr; }
+  .training-plan-group-row { min-height: 54px; padding: 8px 9px; }
+  .training-plan-header { padding: 10px 11px; }
+  .training-plan-footer { padding: 8px 10px max(8px, env(safe-area-inset-bottom)); }
+  .training-plan-footer__meta span:last-child { display: none; }
+  .training-plan-footer .button { min-width: 92px; }
 }
 @media (max-width: 359px) {
   .training-plan-grid { grid-template-columns: 1fr; }
@@ -569,6 +815,8 @@ const trainingPlanElements = Object.freeze({
   quickAction: document.querySelector("#training-plan-quick-action"),
   accessLabel: document.querySelector("#training-plan-access-label"),
   message: document.querySelector("#training-plan-message"),
+  groupPanel: document.querySelector("#training-plan-group-panel"),
+  athletePanel: document.querySelector("#training-plan-athlete-panel"),
   subject: document.querySelector("#training-plan-subject"),
   attendanceFilter: document.querySelector("#training-plan-attendance-filter"),
   weekPrev: document.querySelector("#training-plan-week-prev"),
@@ -577,6 +825,8 @@ const trainingPlanElements = Object.freeze({
   weekLabel: document.querySelector("#training-plan-week-label"),
   week: document.querySelector("#training-plan-week"),
   overviewGroup: document.querySelector("#training-plan-overview-group"),
+  overviewAttendanceFilter: document.querySelector("#training-plan-overview-attendance-filter"),
+  overviewDays: document.querySelector("#training-plan-overview-days"),
   overview: document.querySelector("#training-plan-overview"),
   editor: document.querySelector("#training-plan-editor"),
   editorTitle: document.querySelector("#training-plan-editor-title"),
@@ -585,6 +835,14 @@ const trainingPlanElements = Object.freeze({
   reload: document.querySelector("#training-plan-reload"),
   retry: document.querySelector("#training-plan-retry"),
   close: document.querySelector("#training-plan-close"),
+  save: document.querySelector("#training-plan-save"),
+  prevAthlete: document.querySelector("#training-plan-prev-athlete"),
+  nextAthlete: document.querySelector("#training-plan-next-athlete"),
+  distributeOpen: document.querySelector("#training-plan-distribute-open"),
+  distribute: document.querySelector("#training-plan-distribute"),
+  distributeClose: document.querySelector("#training-plan-distribute-close"),
+  distributeList: document.querySelector("#training-plan-distribute-list"),
+  distributeConfirm: document.querySelector("#training-plan-distribute-confirm"),
   note: document.querySelector("#training-plan-note"),
   addExercise: document.querySelector("#training-plan-add-exercise"),
   addBlock: document.querySelector("#training-plan-add-block"),
@@ -592,6 +850,8 @@ const trainingPlanElements = Object.freeze({
   pickerTitle: document.querySelector("#training-plan-picker-title"),
   pickerClose: document.querySelector("#training-plan-picker-close"),
   pickerSearch: document.querySelector("#training-plan-picker-search"),
+  pickerCategoryWrap: document.querySelector("#training-plan-picker-category-wrap"),
+  pickerCategory: document.querySelector("#training-plan-picker-category"),
   pickerHint: document.querySelector("#training-plan-picker-hint"),
   pickerList: document.querySelector("#training-plan-picker-list"),
   pickerManual: document.querySelector("#training-plan-picker-manual"),
@@ -611,6 +871,9 @@ const trainingPlanElements = Object.freeze({
 let trainingPlansReady = false;
 let trainingPlansCanEdit = false;
 let trainingPlanSubjects = [];
+let trainingPlanViewMode = "group";
+let trainingPlanOverviewDayIndex = 0;
+let trainingPlanOverviewAttendanceFilter = "all";
 let trainingPlanOverviewGroups = [];
 let trainingPlanSelectedOverviewGroupId = "";
 let trainingPlanOverview = null;
@@ -634,11 +897,15 @@ let trainingPlanSaveBackBusy = false;
 let trainingPlanSaveBackItemId = null;
 let trainingPlanSaveBackAudiences = [];
 let trainingPlanSaveBackOperation = 0;
-let trainingPlanSavePending = false;
-let trainingPlanSaveTimer = null;
 let trainingPlanChangeVersion = 0;
 let trainingPlanPickerMode = null;
 let trainingPlanPickerLoading = false;
+let trainingPlanDistributeBusy = false;
+let trainingPlanWeekRequestId = 0;
+let trainingPlanDayRequestId = 0;
+let trainingPlanSessionIdentityId = "";
+const TRAINING_PLAN_LEAVE_BACKUP_KEY =
+  "appbasis.training-plan.leave-backup.v1";
 
 function isTrainingPlanSubject(value) {
   return value !== null &&
@@ -665,13 +932,13 @@ function isTrainingPlanOverview(value) {
     typeof value === "object" &&
     isTrainingPlanOverviewGroup(value.group) &&
     typeof value.weekStart === "string" &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value.weekStart) &&
+    /^\\d{4}-\\d{2}-\\d{2}$/.test(value.weekStart) &&
     typeof value.weekEnd === "string" &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value.weekEnd) &&
+    /^\\d{4}-\\d{2}-\\d{2}$/.test(value.weekEnd) &&
     Array.isArray(value.dates) &&
     value.dates.length === 7 &&
     value.dates.every(
-      (date) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date),
+      (date) => typeof date === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(date),
     ) &&
     Array.isArray(value.rows) &&
     value.rows.every(
@@ -686,12 +953,22 @@ function isTrainingPlanOverview(value) {
             cell !== null &&
             typeof cell === "object" &&
             typeof cell.planDate === "string" &&
-            /^\d{4}-\d{2}-\d{2}$/.test(cell.planDate) &&
+            /^\\d{4}-\\d{2}-\\d{2}$/.test(cell.planDate) &&
             (cell.planId === null || typeof cell.planId === "string") &&
             Number.isSafeInteger(cell.durationMinutes) &&
             cell.durationMinutes >= 0 &&
             Number.isSafeInteger(cell.exerciseCount) &&
-            cell.exerciseCount >= 0,
+            cell.exerciseCount >= 0 &&
+            Array.isArray(cell.attendanceStatuses) &&
+            cell.attendanceStatuses.every(
+              (status) =>
+                status === "open" ||
+                status === "present" ||
+                status === "excused" ||
+                status === "absent",
+            ) &&
+            new Set(cell.attendanceStatuses).size ===
+              cell.attendanceStatuses.length,
         ),
     );
 }
@@ -843,7 +1120,7 @@ function isTrainingPlanAttendance(value) {
     typeof value.sessionId === "string" &&
     value.sessionId.length > 0 &&
     typeof value.sessionDate === "string" &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value.sessionDate) &&
+    /^\\d{4}-\\d{2}-\\d{2}$/.test(value.sessionDate) &&
     (
       value.status === "open" ||
       value.status === "present" ||
@@ -856,6 +1133,8 @@ async function bootstrapTrainingPlans() {
   trainingPlansReady = false;
   trainingPlansCanEdit = false;
   trainingPlanSubjects = [];
+  trainingPlanViewMode = "group";
+  trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
   trainingPlanOverviewGroups = [];
   trainingPlanSelectedOverviewGroupId = "";
   trainingPlanOverview = null;
@@ -867,7 +1146,7 @@ async function bootstrapTrainingPlans() {
   trainingPlanWeekPlans = [];
   trainingPlanWeekAttendance = [];
   trainingPlanWeekLoaded = false;
-  closeTrainingPlanEditor(true);
+  void closeTrainingPlanEditor(true);
   refreshAppAvailability();
   showMessage(trainingPlanElements.message, "");
 
@@ -879,7 +1158,10 @@ async function bootstrapTrainingPlans() {
       payload?.module?.capabilities?.view !== "training-plans:view" ||
       payload?.module?.capabilities?.edit !== "training-plans:edit" ||
       features?.weekView !== true ||
-      features?.autosave !== true ||
+      features?.autosave !== false ||
+      features?.manualSave !== true ||
+      features?.saveOnLeave !== true ||
+      features?.planCopy !== true ||
       features?.optimisticConcurrency !== true ||
       features?.attendanceSummary !== true ||
       features?.attendanceFilter !== true ||
@@ -921,10 +1203,8 @@ async function bootstrapTrainingPlans() {
     renderTrainingPlanSubjects();
     renderTrainingPlanOverviewGroups();
     renderTrainingPlanBlockTemplates();
-    await Promise.all([
-      loadTrainingPlanWeek(),
-      loadTrainingPlanOverview(),
-    ]);
+    renderTrainingPlanMode();
+    await loadTrainingPlanOverview();
   } catch (error) {
     trainingPlansReady = false;
     trainingPlansCanEdit = false;
@@ -939,6 +1219,7 @@ async function bootstrapTrainingPlans() {
     renderTrainingPlanSubjects();
     renderTrainingPlanOverviewGroups();
     renderTrainingPlanBlockTemplates();
+    renderTrainingPlanMode();
     renderTrainingPlanWeek();
     renderTrainingPlanOverview();
     showMessage(
@@ -956,23 +1237,72 @@ function prepareTrainingPlansView() {
   renderTrainingPlanSubjects();
   renderTrainingPlanOverviewGroups();
   renderTrainingPlanBlockTemplates();
+  renderTrainingPlanMode();
   renderTrainingPlanWeek();
   renderTrainingPlanOverview();
   void refreshTrainingPlanDependencies();
+  void loadTrainingPlanActiveView();
+}
+
+function renderTrainingPlanMode() {
+  const groupMode = trainingPlanViewMode === "group";
+  if (trainingPlanElements.groupPanel) {
+    trainingPlanElements.groupPanel.hidden = !groupMode;
+  }
+  if (trainingPlanElements.athletePanel) {
+    trainingPlanElements.athletePanel.hidden = groupMode;
+  }
+  for (const control of document.querySelectorAll("[data-training-plan-mode]")) {
+    control.setAttribute(
+      "aria-selected",
+      control.dataset.trainingPlanMode === trainingPlanViewMode
+        ? "true"
+        : "false",
+    );
+  }
+  trainingPlanUpdateWeekLabel();
+}
+
+async function showTrainingPlanMode(mode) {
+  const next = mode === "athlete" ? "athlete" : "group";
+  if (next === trainingPlanViewMode) return;
+  if (!(await closeTrainingPlanEditor(false))) return;
+  trainingPlanWeekRequestId += 1;
+  trainingPlanViewMode = next;
+  renderTrainingPlanMode();
+  await loadTrainingPlanActiveView();
+}
+
+async function loadTrainingPlanActiveView() {
+  if (trainingPlanViewMode === "group") {
+    if (
+      trainingPlanSelectedOverviewGroupId &&
+      trainingPlanOverview === null &&
+      !trainingPlanOverviewLoading
+    ) {
+      return loadTrainingPlanOverview();
+    }
+    renderTrainingPlanOverview();
+    return true;
+  }
   if (
     trainingPlanSelectedSubjectId &&
     !trainingPlanWeekLoaded &&
     !trainingPlanWeekLoading
   ) {
-    void loadTrainingPlanWeek();
+    return loadTrainingPlanWeek();
   }
-  if (
-    trainingPlanSelectedOverviewGroupId &&
-    trainingPlanOverview === null &&
-    !trainingPlanOverviewLoading
-  ) {
-    void loadTrainingPlanOverview();
-  }
+  renderTrainingPlanWeek();
+  return true;
+}
+
+function trainingPlanUpdateWeekLabel() {
+  if (!trainingPlanElements.weekLabel) return;
+  const end = trainingPlanAddDays(trainingPlanWeekStart, 6);
+  trainingPlanElements.weekLabel.textContent =
+    trainingPlanDateLabel(trainingPlanWeekStart) +
+    " – " +
+    trainingPlanDateLabel(end);
 }
 
 async function refreshTrainingPlanDependencies() {
@@ -1124,6 +1454,7 @@ async function loadTrainingPlanOverview() {
   trainingPlanOverview = null;
   refreshTrainingPlanControls();
   renderTrainingPlanOverview();
+  showMessage(trainingPlanElements.message, "");
 
   try {
     const payload = await requestJson(
@@ -1139,9 +1470,21 @@ async function loadTrainingPlanOverview() {
     ) {
       throw new Error("INVALID_TRAINING_PLAN_OVERVIEW");
     }
+    if (
+      trainingPlanSelectedOverviewGroupId !== groupId ||
+      trainingPlanWeekStart !== weekStart
+    ) {
+      return false;
+    }
     trainingPlanOverview = payload.overview;
     return true;
   } catch (error) {
+    if (
+      trainingPlanSelectedOverviewGroupId !== groupId ||
+      trainingPlanWeekStart !== weekStart
+    ) {
+      return false;
+    }
     showMessage(
       trainingPlanElements.message,
       error?.status === 400
@@ -1150,21 +1493,63 @@ async function loadTrainingPlanOverview() {
     );
     return false;
   } finally {
+    const requestOutdated =
+      trainingPlanSelectedOverviewGroupId !== groupId ||
+      trainingPlanWeekStart !== weekStart;
     trainingPlanOverviewLoading = false;
     refreshTrainingPlanControls();
     renderTrainingPlanOverview();
+    if (
+      requestOutdated &&
+      trainingPlanViewMode === "group" &&
+      trainingPlanOverview === null &&
+      trainingPlanSelectedOverviewGroupId
+    ) {
+      void loadTrainingPlanOverview();
+    }
   }
 }
 
 function renderTrainingPlanOverview() {
   const container = trainingPlanElements.overview;
-  if (!container) return;
+  const days = trainingPlanElements.overviewDays;
+  if (!container || !days) return;
   container.replaceChildren();
+  days.replaceChildren();
+
+  trainingPlanUpdateWeekLabel();
+
+  const dates =
+    trainingPlanOverview?.dates ||
+    Array.from({ length: 7 }, (_, index) =>
+      trainingPlanAddDays(trainingPlanWeekStart, index),
+    );
+  trainingPlanOverviewDayIndex = Math.max(
+    0,
+    Math.min(6, trainingPlanOverviewDayIndex),
+  );
+
+  dates.forEach((date, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "training-plan-day-tab";
+    button.dataset.trainingPlanOverviewDay = String(index);
+    button.setAttribute(
+      "aria-selected",
+      index === trainingPlanOverviewDayIndex ? "true" : "false",
+    );
+    const day = document.createElement("strong");
+    day.textContent = trainingPlanDayLabel(date);
+    const shortDate = document.createElement("span");
+    shortDate.textContent = trainingPlanShortDate(date);
+    button.append(day, shortDate);
+    days.append(button);
+  });
 
   if (!trainingPlanSelectedOverviewGroupId) {
     const empty = document.createElement("p");
     empty.className = "settings-note";
-    empty.textContent = "Für die Übersicht ist keine aktive Trainingsgruppe verfügbar.";
+    empty.textContent = "Für die Gruppenplanung ist keine aktive Trainingsgruppe verfügbar.";
     container.append(empty);
     return;
   }
@@ -1172,95 +1557,200 @@ function renderTrainingPlanOverview() {
   if (trainingPlanOverviewLoading) {
     const loading = document.createElement("p");
     loading.className = "settings-note";
-    loading.textContent = "Gruppenübersicht wird geladen …";
+    loading.textContent = "Gruppenplanung wird geladen …";
     container.append(loading);
     return;
   }
 
   if (!trainingPlanOverview) {
-    const empty = document.createElement("p");
-    empty.className = "settings-note";
-    empty.textContent = "Gruppenübersicht derzeit nicht verfügbar.";
+    const empty = document.createElement("div");
+    empty.className = "training-plan-group-row";
+    const text = document.createElement("div");
+    text.className = "training-plan-group-row__main";
+    const title = document.createElement("strong");
+    title.textContent = "Gruppenplanung derzeit nicht verfügbar";
+    const detail = document.createElement("span");
+    detail.textContent = "Gruppe oder Woche erneut wählen.";
+    text.append(title, detail);
+    empty.append(text);
     container.append(empty);
     return;
   }
 
-  const grid = document.createElement("div");
-  grid.className = "training-plan-overview-grid";
-
-  const athleteHead = document.createElement("div");
-  athleteHead.className = "training-plan-overview-head";
-  athleteHead.textContent = "Athlet";
-  grid.append(athleteHead);
-
-  for (const date of trainingPlanOverview.dates) {
-    const head = document.createElement("div");
-    head.className = "training-plan-overview-head";
-    head.textContent =
-      trainingPlanDayLabel(date) + " " + trainingPlanShortDate(date);
-    grid.append(head);
-  }
+  const date = trainingPlanOverview.dates[trainingPlanOverviewDayIndex];
+  if (!date) return;
 
   if (trainingPlanOverview.rows.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "training-plan-overview-athlete";
-    empty.style.gridColumn = "1 / -1";
+    const empty = document.createElement("p");
+    empty.className = "settings-note";
     empty.textContent = "Keine aktiven Athleten in dieser Gruppe.";
-    grid.append(empty);
-  } else {
-    for (const row of trainingPlanOverview.rows) {
-      const athlete = document.createElement("div");
-      athlete.className = "training-plan-overview-athlete";
-      athlete.textContent = row.subject.displayName;
-      grid.append(athlete);
-
-      for (const cell of row.cells) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "training-plan-overview-cell";
-        button.dataset.trainingPlanOverviewSubject = row.subject.id;
-        button.dataset.trainingPlanOverviewDate = cell.planDate;
-        button.dataset.hasPlan = cell.planId ? "true" : "false";
-
-        const title = document.createElement("strong");
-        title.textContent = cell.planId
-          ? cell.durationMinutes > 0
-            ? String(cell.durationMinutes) + " Min."
-            : "Plan"
-          : trainingPlansCanEdit
-            ? "＋ Plan"
-            : "—";
-
-        const detail = document.createElement("span");
-        detail.textContent = cell.planId
-          ? String(cell.exerciseCount) +
-            " Übung" +
-            (cell.exerciseCount === 1 ? "" : "en")
-          : "Kein Eintrag";
-
-        button.append(title, detail);
-        grid.append(button);
-      }
-    }
+    container.append(empty);
+    return;
   }
 
-  container.append(grid);
+  const visibleRows = trainingPlanOverview.rows.filter((row) => {
+    const cell = row.cells[trainingPlanOverviewDayIndex];
+    if (!cell) return false;
+    if (trainingPlanOverviewAttendanceFilter === "all") return true;
+    if (trainingPlanOverviewAttendanceFilter === "none") {
+      return cell.attendanceStatuses.length === 0;
+    }
+    return cell.attendanceStatuses.includes(
+      trainingPlanOverviewAttendanceFilter,
+    );
+  });
+
+  if (visibleRows.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "settings-note";
+    empty.textContent = "Für diesen Anwesenheitsfilter gibt es keine Athleten.";
+    container.append(empty);
+    return;
+  }
+
+  for (const row of visibleRows) {
+    const cell = row.cells[trainingPlanOverviewDayIndex];
+    if (!cell) continue;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "training-plan-group-row";
+    button.dataset.trainingPlanOverviewSubject = row.subject.id;
+    button.dataset.trainingPlanOverviewDate = cell.planDate;
+    button.dataset.hasPlan = cell.planId ? "true" : "false";
+
+    const main = document.createElement("span");
+    main.className = "training-plan-group-row__main";
+    const name = document.createElement("strong");
+    name.textContent = row.subject.displayName;
+    const detail = document.createElement("span");
+    detail.textContent = cell.planId
+      ? [
+          cell.durationMinutes > 0
+            ? String(cell.durationMinutes) + " Min."
+            : null,
+          String(cell.exerciseCount) +
+            " Übung" +
+            (cell.exerciseCount === 1 ? "" : "en"),
+        ].filter(Boolean).join(" · ")
+      : "Noch kein Trainingsplan";
+    main.append(name, detail);
+
+    const status = document.createElement("span");
+    status.className = "training-plan-group-row__status";
+    const statusTitle = document.createElement("strong");
+    statusTitle.textContent = cell.planId ? "Plan" : trainingPlansCanEdit ? "＋ Plan" : "—";
+    const statusDetail = document.createElement("span");
+    statusDetail.textContent = trainingPlanAttendanceCompactLabel(
+      cell.attendanceStatuses,
+    );
+    status.append(statusTitle, statusDetail);
+
+    button.append(main, status);
+    container.append(button);
+  }
+}
+
+function trainingPlanAttendanceCompactLabel(statuses) {
+  if (!Array.isArray(statuses) || statuses.length === 0) return "kein Eintrag";
+  return statuses
+    .map((status) => {
+      if (status === "present") return "✓ anwesend";
+      if (status === "excused") return "– entschuldigt";
+      if (status === "absent") return "✕ abwesend";
+      if (status === "open") return "? offen";
+      return "";
+    })
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function trainingPlanVisibleOverviewRows() {
+  if (!trainingPlanOverview) return [];
+  return trainingPlanOverview.rows.filter((row) => {
+    const cell = row.cells[trainingPlanOverviewDayIndex];
+    if (!cell) return false;
+    if (trainingPlanOverviewAttendanceFilter === "all") return true;
+    if (trainingPlanOverviewAttendanceFilter === "none") {
+      return cell.attendanceStatuses.length === 0;
+    }
+    return cell.attendanceStatuses.includes(
+      trainingPlanOverviewAttendanceFilter,
+    );
+  });
+}
+
+function trainingPlanDefaultOverviewDayIndex() {
+  const today = trainingPlanLocalIso(new Date());
+  const end = trainingPlanAddDays(trainingPlanWeekStart, 6);
+  if (today < trainingPlanWeekStart || today > end) return 0;
+  const start = new Date(trainingPlanWeekStart + "T12:00:00");
+  const current = new Date(today + "T12:00:00");
+  return Math.max(
+    0,
+    Math.min(6, Math.round((current.getTime() - start.getTime()) / 86400000)),
+  );
 }
 
 async function openTrainingPlanFromOverview(subjectId, date) {
-  if (!closeTrainingPlanEditor(false)) return;
-  if (
-    !trainingPlanSubjects.some((subject) => subject.id === subjectId)
-  ) return;
+  if (!(await closeTrainingPlanEditor(false))) return;
+  if (!trainingPlanSubjects.some((subject) => subject.id === subjectId)) return;
 
+  const requestId = ++trainingPlanDayRequestId;
+  if (trainingPlanSelectedSubjectId !== subjectId) {
+    trainingPlanWeekRequestId += 1;
+    trainingPlanWeekPlans = [];
+    trainingPlanWeekAttendance = [];
+    trainingPlanWeekLoaded = false;
+  }
   trainingPlanSelectedSubjectId = subjectId;
   if (trainingPlanElements.subject) {
     trainingPlanElements.subject.value = subjectId;
   }
-  trainingPlanWeekPlans = [];
-  trainingPlanWeekAttendance = [];
-  const loaded = await loadTrainingPlanWeek();
-  if (loaded) openTrainingPlanEditor(date);
+  showMessage(trainingPlanElements.message, "");
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/training-plans/day?subjectId=" +
+        encodeURIComponent(subjectId) +
+        "&planDate=" +
+        encodeURIComponent(date),
+    );
+    if (
+      payload?.subjectId !== subjectId ||
+      payload?.planDate !== date ||
+      !(
+        payload?.plan === null ||
+        (
+          isTrainingPlanSnapshot(payload?.plan) &&
+          payload.plan.subjectId === subjectId &&
+          payload.plan.planDate === date
+        )
+      )
+    ) {
+      throw new Error("INVALID_TRAINING_PLAN_DAY");
+    }
+    if (
+      requestId !== trainingPlanDayRequestId ||
+      trainingPlanSelectedSubjectId !== subjectId
+    ) {
+      return;
+    }
+    openTrainingPlanEditor(date, payload.plan);
+  } catch (error) {
+    if (
+      requestId !== trainingPlanDayRequestId ||
+      trainingPlanSelectedSubjectId !== subjectId
+    ) {
+      return;
+    }
+    showMessage(
+      trainingPlanElements.message,
+      error?.status === 400
+        ? "Der ausgewählte Tagesplan ist nicht mehr verfügbar."
+        : "Der Tagesplan konnte nicht geladen werden.",
+    );
+  }
 }
 
 function renderTrainingPlanBlockTemplates() {
@@ -1353,6 +1843,7 @@ async function loadTrainingPlanWeek() {
     !trainingPlanSelectedSubjectId
   ) return false;
 
+  const requestId = ++trainingPlanWeekRequestId;
   trainingPlanWeekLoading = true;
   trainingPlanWeekLoaded = false;
   refreshTrainingPlanControls();
@@ -1389,11 +1880,25 @@ async function loadTrainingPlanWeek() {
     ) {
       throw new Error("INVALID_TRAINING_PLAN_WEEK");
     }
+    if (
+      requestId !== trainingPlanWeekRequestId ||
+      trainingPlanSelectedSubjectId !== subjectId ||
+      trainingPlanWeekStart !== weekStart
+    ) {
+      return false;
+    }
     trainingPlanWeekPlans = payload.plans.slice();
     trainingPlanWeekAttendance = payload.attendance.slice();
     trainingPlanWeekLoaded = true;
     return true;
   } catch (error) {
+    if (
+      requestId !== trainingPlanWeekRequestId ||
+      trainingPlanSelectedSubjectId !== subjectId ||
+      trainingPlanWeekStart !== weekStart
+    ) {
+      return false;
+    }
     trainingPlanWeekPlans = [];
     trainingPlanWeekAttendance = [];
     showMessage(
@@ -1404,9 +1909,21 @@ async function loadTrainingPlanWeek() {
     );
     return false;
   } finally {
+    const requestOutdated =
+      requestId !== trainingPlanWeekRequestId ||
+      trainingPlanSelectedSubjectId !== subjectId ||
+      trainingPlanWeekStart !== weekStart;
     trainingPlanWeekLoading = false;
     refreshTrainingPlanControls();
     renderTrainingPlanWeek();
+    if (
+      requestOutdated &&
+      trainingPlanViewMode === "athlete" &&
+      !trainingPlanWeekLoaded &&
+      trainingPlanSelectedSubjectId
+    ) {
+      void loadTrainingPlanWeek();
+    }
   }
 }
 
@@ -1415,13 +1932,7 @@ function renderTrainingPlanWeek() {
   if (!container) return;
   container.replaceChildren();
 
-  if (trainingPlanElements.weekLabel) {
-    const end = trainingPlanAddDays(trainingPlanWeekStart, 6);
-    trainingPlanElements.weekLabel.textContent =
-      trainingPlanDateLabel(trainingPlanWeekStart) +
-      " – " +
-      trainingPlanDateLabel(end);
-  }
+  trainingPlanUpdateWeekLabel();
 
   if (!trainingPlanSelectedSubjectId) {
     const empty = document.createElement("div");
@@ -1576,34 +2087,44 @@ function trainingPlanExerciseCount(items) {
   return count;
 }
 
-function openTrainingPlanEditor(date) {
+function openTrainingPlanEditor(date, planOverride) {
   if (!trainingPlansReady || !trainingPlanSelectedSubjectId) return;
   const plan =
-    trainingPlanWeekPlans.find((value) => value.planDate === date) || null;
+    planOverride === undefined
+      ? trainingPlanWeekPlans.find((value) => value.planDate === date) || null
+      : planOverride;
   trainingPlanEditorDate = date;
   trainingPlanSelected = plan;
   trainingPlanDraft = plan
     ? trainingPlanDraftFromSnapshot(plan)
     : { note: "", items: [] };
-  trainingPlanDirty = false;
+  const recoveredDraft = trainingPlanRestoreLeaveBackup(plan, date);
+  if (recoveredDraft) {
+    trainingPlanDraft = recoveredDraft;
+  }
+  trainingPlanDirty = recoveredDraft !== null;
   trainingPlanConflict = false;
   trainingPlanSaveBusy = false;
   trainingPlanTemplateBusy = false;
   trainingPlanSaveBackBusy = false;
   trainingPlanSaveBackItemId = null;
   trainingPlanSaveBackAudiences = [];
-  trainingPlanSavePending = false;
-  trainingPlanChangeVersion = 0;
-  clearTimeout(trainingPlanSaveTimer);
-  trainingPlanSaveTimer = null;
+  trainingPlanChangeVersion = recoveredDraft ? 1 : 0;
   populateTrainingPlanEditor();
+  if (recoveredDraft) {
+    trainingPlanSetSaveState("dirty", "Wiederhergestellt – bitte speichern");
+  }
 }
 
 function populateTrainingPlanEditor() {
   if (!trainingPlanDraft || !trainingPlanEditorDate) return;
   if (trainingPlanElements.editor) trainingPlanElements.editor.hidden = false;
   if (trainingPlanElements.editorTitle) {
+    const subject = trainingPlanSubjects.find(
+      (candidate) => candidate.id === trainingPlanSelectedSubjectId,
+    );
     trainingPlanElements.editorTitle.textContent =
+      (subject?.displayName ? subject.displayName + " · " : "") +
       trainingPlanDayLabel(trainingPlanEditorDate) +
       ", " +
       trainingPlanDateLabel(trainingPlanEditorDate);
@@ -1620,22 +2141,33 @@ function populateTrainingPlanEditor() {
   refreshTrainingPlanEditorState();
 }
 
-function closeTrainingPlanEditor(force) {
+async function closeTrainingPlanEditor(force) {
+  if (trainingPlanDistributeBusy) {
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Die Verteilung läuft noch. Bitte zuerst abschließen lassen.",
+    );
+    return false;
+  }
+  trainingPlanDayRequestId += 1;
   closeTrainingPlanPicker();
+  closeTrainingPlanDistribution();
   if (!force) {
     if (
       trainingPlanSaveBusy ||
       trainingPlanTemplateBusy ||
       trainingPlanSaveBackBusy
     ) return false;
-    if (
-      (trainingPlanDirty || trainingPlanConflict) &&
-      !window.confirm("Ungespeicherte Änderungen verwerfen?")
-    ) return false;
+    if (trainingPlanConflict) {
+      showMessage(
+        trainingPlanElements.editorMessage,
+        "Der Plan hat einen Konflikt und kann nicht automatisch gespeichert werden. Bitte zuerst neu laden.",
+      );
+      return false;
+    }
+    if (!(await saveTrainingPlanUntilClean())) return false;
   }
   closeTrainingPlanSaveTemplate(true);
-  clearTimeout(trainingPlanSaveTimer);
-  trainingPlanSaveTimer = null;
   trainingPlanEditorDate = null;
   trainingPlanSelected = null;
   trainingPlanDraft = null;
@@ -1643,7 +2175,6 @@ function closeTrainingPlanEditor(force) {
   trainingPlanConflict = false;
   trainingPlanSaveBusy = false;
   trainingPlanTemplateBusy = false;
-  trainingPlanSavePending = false;
   if (trainingPlanElements.editor) trainingPlanElements.editor.hidden = true;
   showMessage(trainingPlanElements.editorMessage, "");
   return true;
@@ -1726,13 +2257,35 @@ function renderTrainingPlanItems() {
   }
 
   trainingPlanDraft.items.forEach((item, index) => {
-    const card = document.createElement("section");
+    const card = document.createElement("details");
     card.className = "training-plan-item";
+    card.open = item.itemId === null;
 
+    const summary = document.createElement("summary");
+    summary.className = "training-plan-item-summary";
+    const summaryMain = document.createElement("span");
+    const title = document.createElement("strong");
+    title.textContent = item.name || (item.kind === "block" ? "Block" : "Übung");
+    const meta = document.createElement("span");
+    meta.textContent = trainingPlanItemCompactSummary(item);
+    const refreshSummary = () => {
+      title.textContent =
+        item.name || (item.kind === "block" ? "Block" : "Übung");
+      meta.textContent = trainingPlanItemCompactSummary(item);
+    };
+    summaryMain.append(title, meta);
+    const chevron = document.createElement("span");
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = "▾";
+    summary.append(summaryMain, chevron);
+    card.append(summary);
+
+    const editor = document.createElement("div");
+    editor.className = "training-plan-item-editor";
     const header = document.createElement("div");
     header.className = "training-plan-item__header";
-    const title = document.createElement("strong");
-    title.textContent = item.kind === "block" ? "Block" : "Übung";
+    const kind = document.createElement("strong");
+    kind.textContent = item.kind === "block" ? "Block bearbeiten" : "Übung bearbeiten";
     const actions = trainingPlanActionButtons(
       index,
       trainingPlanDraft.items.length,
@@ -1741,16 +2294,54 @@ function renderTrainingPlanItems() {
       () => trainingPlanMoveItem(index, 1),
       () => trainingPlanRemoveItem(index),
     );
-    header.append(title, actions);
-    card.append(header);
+    header.append(kind, actions);
+    editor.append(header);
 
     if (item.kind === "block") {
-      card.append(trainingPlanBlockFields(item, index, editable, structural));
+      editor.append(
+        trainingPlanBlockFields(
+          item,
+          index,
+          editable,
+          structural,
+          refreshSummary,
+        ),
+      );
     } else {
-      card.append(trainingPlanExerciseFields(item, editable));
+      editor.append(
+        trainingPlanExerciseFields(item, editable, refreshSummary),
+      );
     }
+    card.append(editor);
     container.append(card);
   });
+}
+
+function trainingPlanItemCompactSummary(item) {
+  if (item.kind === "block") {
+    return [
+      item.durationMinutes === null
+        ? null
+        : String(item.durationMinutes) + " Min.",
+      String(item.exercises.length) +
+        " Übung" +
+        (item.exercises.length === 1 ? "" : "en"),
+      item.note || null,
+    ].filter(Boolean).join(" · ") || "Block";
+  }
+  const prescription = [
+    item.sets && item.repetitions
+      ? item.sets + " × " + item.repetitions
+      : item.sets
+        ? item.sets + " Sätze"
+        : item.repetitions
+          ? item.repetitions + " Wdh."
+          : null,
+    item.amount
+      ? item.amount + (item.unit ? " " + item.unit : "")
+      : null,
+  ].filter(Boolean).join(" · ");
+  return prescription || item.comment || "Übung";
 }
 
 function trainingPlanActionButtons(index, length, enabled, up, down, remove) {
@@ -1776,21 +2367,30 @@ function trainingPlanMiniButton(text, label, handler) {
   return button;
 }
 
-function trainingPlanBlockFields(item, itemIndex, editable, structural) {
+function trainingPlanBlockFields(
+  item,
+  itemIndex,
+  editable,
+  structural,
+  refreshSummary,
+) {
   const wrapper = document.createElement("div");
   const grid = document.createElement("div");
   grid.className = "training-plan-grid";
   grid.append(
     trainingPlanTextField("Name", item.name, 120, editable, (value) => {
       item.name = value;
+      refreshSummary();
       markTrainingPlanDirty();
     }, true),
     trainingPlanNumberField("Dauer (Min.)", item.durationMinutes, editable, (value) => {
       item.durationMinutes = value;
+      refreshSummary();
       markTrainingPlanDirty();
     }),
     trainingPlanTextField("Notiz", item.note, 3000, editable, (value) => {
       item.note = value;
+      refreshSummary();
       markTrainingPlanDirty();
     }, true),
   );
@@ -1830,12 +2430,34 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
   const children = document.createElement("div");
   children.className = "training-plan-child-list";
   item.exercises.forEach((exercise, childIndex) => {
-    const child = document.createElement("section");
+    const child = document.createElement("details");
     child.className = "training-plan-child";
+    child.open = exercise.itemId === null;
+
+    const summary = document.createElement("summary");
+    summary.className = "training-plan-child-summary";
+    const main = document.createElement("span");
+    const title = document.createElement("strong");
+    title.textContent = exercise.name || "Übung " + String(childIndex + 1);
+    const meta = document.createElement("span");
+    meta.textContent = trainingPlanItemCompactSummary(exercise);
+    const refreshChildSummary = () => {
+      title.textContent =
+        exercise.name || "Übung " + String(childIndex + 1);
+      meta.textContent = trainingPlanItemCompactSummary(exercise);
+    };
+    main.append(title, meta);
+    const chevron = document.createElement("span");
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = "▾";
+    summary.append(main, chevron);
+
+    const editor = document.createElement("div");
+    editor.className = "training-plan-item-editor";
     const header = document.createElement("div");
     header.className = "training-plan-item__header";
-    const title = document.createElement("strong");
-    title.textContent = "Übung " + String(childIndex + 1);
+    const label = document.createElement("strong");
+    label.textContent = "Übung " + String(childIndex + 1) + " bearbeiten";
     const actions = trainingPlanActionButtons(
       childIndex,
       item.exercises.length,
@@ -1844,26 +2466,36 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
       () => trainingPlanMoveChild(itemIndex, childIndex, 1),
       () => trainingPlanRemoveChild(itemIndex, childIndex),
     );
-    header.append(title, actions);
-    child.append(header, trainingPlanExerciseFields(exercise, editable));
+    header.append(label, actions);
+    editor.append(
+      header,
+      trainingPlanExerciseFields(
+        exercise,
+        editable,
+        refreshChildSummary,
+      ),
+    );
+    child.append(summary, editor);
     children.append(child);
   });
   if (item.exercises.length > 0) wrapper.append(children);
   return wrapper;
 }
 
-function trainingPlanExerciseFields(item, editable) {
+function trainingPlanExerciseFields(item, editable, refreshSummary) {
   const grid = document.createElement("div");
   grid.className = "training-plan-grid training-plan-exercise-grid";
 
   const name = trainingPlanTextField("Name", item.name, 160, editable, (value) => {
     item.name = value;
+    refreshSummary();
     markTrainingPlanDirty();
   }, true);
   name.classList.add("training-plan-field--name");
 
   const sets = trainingPlanTextField("Sätze", item.sets, 80, editable, (value) => {
     item.sets = value;
+    refreshSummary();
     markTrainingPlanDirty();
   });
   const repetitions = trainingPlanTextField(
@@ -1873,15 +2505,18 @@ function trainingPlanExerciseFields(item, editable) {
     editable,
     (value) => {
       item.repetitions = value;
+      refreshSummary();
       markTrainingPlanDirty();
     },
   );
   const amount = trainingPlanTextField("Menge", item.amount, 80, editable, (value) => {
     item.amount = value;
+    refreshSummary();
     markTrainingPlanDirty();
   });
   const unit = trainingPlanTextField("Einheit", item.unit, 80, editable, (value) => {
     item.unit = value;
+    refreshSummary();
     markTrainingPlanDirty();
   });
   const comment = trainingPlanTextField(
@@ -1891,6 +2526,7 @@ function trainingPlanExerciseFields(item, editable) {
     editable,
     (value) => {
       item.comment = value;
+      refreshSummary();
       markTrainingPlanDirty();
     },
     true,
@@ -2015,6 +2651,7 @@ function closeTrainingPlanSaveTemplate(force) {
   showMessage(trainingPlanElements.saveTemplateMessage, "");
   refreshTrainingPlanTemplateControls();
   refreshTrainingPlanSaveBackButtons();
+  refreshTrainingPlanGroupEditorActions();
   return true;
 }
 
@@ -2292,14 +2929,6 @@ async function addTrainingPlanBlockTemplate() {
     trainingPlanTemplateBusy = false;
     renderTrainingPlanItems();
     refreshTrainingPlanEditorState();
-    if (
-      trainingPlanSavePending &&
-      trainingPlanDirty &&
-      !trainingPlanConflict
-    ) {
-      trainingPlanSavePending = false;
-      scheduleTrainingPlanSave(0);
-    }
   }
 }
 
@@ -2319,12 +2948,19 @@ async function openTrainingPlanPicker(mode) {
   if (trainingPlanElements.pickerManual) {
     trainingPlanElements.pickerManual.hidden = mode !== "exercise";
   }
+  if (trainingPlanElements.pickerCategoryWrap) {
+    trainingPlanElements.pickerCategoryWrap.hidden = mode !== "exercise";
+  }
+  if (trainingPlanElements.pickerCategory) {
+    trainingPlanElements.pickerCategory.value = "";
+  }
   if (trainingPlanElements.pickerTitle) {
     trainingPlanElements.pickerTitle.textContent =
       mode === "exercise" ? "Übung aus Katalog" : "Trainingsblock auswählen";
   }
 
   if (mode === "exercise") {
+    renderTrainingPlanPickerCategories();
     trainingPlanPickerLoading = true;
     renderTrainingPlanPicker();
     try {
@@ -2339,6 +2975,7 @@ async function openTrainingPlanPicker(mode) {
         throw new Error("INVALID_TRAINING_PLAN_EXERCISE_PICKER");
       }
       exerciseCatalogItems = items.slice();
+      renderTrainingPlanPickerCategories();
     } catch {
       showMessage(
         trainingPlanElements.editorMessage,
@@ -2363,6 +3000,31 @@ function closeTrainingPlanPicker() {
   if (trainingPlanElements.pickerList) trainingPlanElements.pickerList.replaceChildren();
 }
 
+function renderTrainingPlanPickerCategories() {
+  const select = trainingPlanElements.pickerCategory;
+  if (!select) return;
+  const selected = select.value;
+  select.replaceChildren();
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "Alle Kategorien";
+  select.append(all);
+  const keys = [...new Set(
+    exerciseCatalogItems
+      .filter((item) => item.isActive)
+      .map((item) => item.categoryKey),
+  )].sort((left, right) =>
+    categoryLabel(left).localeCompare(categoryLabel(right), "de"),
+  );
+  for (const key of keys) {
+    const option = document.createElement("option");
+    option.value = key;
+    option.textContent = categoryLabel(key);
+    select.append(option);
+  }
+  select.value = keys.includes(selected) ? selected : "";
+}
+
 function renderTrainingPlanPicker() {
   const container = trainingPlanElements.pickerList;
   if (!container || trainingPlanPickerMode === null) return;
@@ -2381,8 +3043,10 @@ function renderTrainingPlanPicker() {
   }
 
   if (trainingPlanPickerMode === "exercise") {
+    const categoryKey = trainingPlanElements.pickerCategory?.value || "";
     const items = exerciseCatalogItems
       .filter((item) => item.isActive)
+      .filter((item) => !categoryKey || item.categoryKey === categoryKey)
       .filter((item) => {
         if (!query) return true;
         return [
@@ -2398,7 +3062,7 @@ function renderTrainingPlanPicker() {
 
     if (trainingPlanElements.pickerHint) {
       trainingPlanElements.pickerHint.textContent =
-        "Katalogübung auswählen; Planwerte können danach im Tagesplan angepasst werden.";
+        "Katalogübung auswählen. Die Auswahl bleibt offen, damit mehrere Übungen nacheinander ergänzt werden können.";
     }
     if (items.length === 0) {
       const empty = document.createElement("div");
@@ -2431,6 +3095,18 @@ function renderTrainingPlanPicker() {
     return;
   }
 
+  const selectedGroup = trainingPlanOverviewGroups.find(
+    (group) => group.id === trainingPlanSelectedOverviewGroupId,
+  );
+  const groupTerms = selectedGroup
+    ? [selectedGroup.name, selectedGroup.shortName]
+        .filter(Boolean)
+        .map((value) => String(value).toLocaleLowerCase("de"))
+    : [];
+  const matchScore = (template) => {
+    const audience = template.audienceName.toLocaleLowerCase("de");
+    return groupTerms.some((term) => audience.includes(term)) ? 0 : 1;
+  };
   const templates = trainingPlanBlockTemplates
     .filter((template) =>
       !query ||
@@ -2439,12 +3115,14 @@ function renderTrainingPlanPicker() {
         .includes(query),
     )
     .slice()
-    .sort((left, right) =>
-      left.name.localeCompare(right.name, "de", { sensitivity: "base" }),
+    .sort(
+      (left, right) =>
+        matchScore(left) - matchScore(right) ||
+        left.name.localeCompare(right.name, "de", { sensitivity: "base" }),
     );
   if (trainingPlanElements.pickerHint) {
     trainingPlanElements.pickerHint.textContent =
-      "Aktuelle gespeicherte Blockversionen; neue Blöcke werden beim Öffnen dieser Auswahl nachgeladen.";
+      "Passende Blöcke der gewählten Gruppe stehen oben. Die Auswahl bleibt für mehrere Blöcke geöffnet.";
   }
   if (templates.length === 0) {
     const empty = document.createElement("div");
@@ -2532,8 +3210,8 @@ function handleTrainingPlanPickerClick(event) {
     );
     if (!item || !trainingPlanDraft) return;
     trainingPlanDraft.items.push(trainingPlanExerciseDraftFromCatalog(item));
-    closeTrainingPlanPicker();
     markTrainingPlanDirty(true);
+    trainingPlanSetSaveState("dirty", "Übung hinzugefügt");
     return;
   }
 
@@ -2543,7 +3221,6 @@ function handleTrainingPlanPickerClick(event) {
     if (trainingPlanElements.blockTemplate) {
       trainingPlanElements.blockTemplate.value = value;
     }
-    closeTrainingPlanPicker();
     void addTrainingPlanBlockTemplate();
   }
 }
@@ -2639,43 +3316,36 @@ function markTrainingPlanDirty(render) {
   trainingPlanChangeVersion += 1;
   trainingPlanSetSaveState("dirty", "Ungespeichert");
   refreshTrainingPlanSaveBackButtons();
+  refreshTrainingPlanEditorState();
   if (render) renderTrainingPlanItems();
-  scheduleTrainingPlanSave();
 }
 
-function scheduleTrainingPlanSave(delay) {
-  if (
-    !trainingPlanDirty ||
-    !trainingPlanDraft ||
-    !trainingPlansCanEdit ||
-    trainingPlanConflict
-  ) return;
-  clearTimeout(trainingPlanSaveTimer);
-  trainingPlanSaveTimer = setTimeout(
-    () => void saveTrainingPlan(),
-    delay === undefined ? 550 : delay,
-  );
+async function saveTrainingPlanUntilClean() {
+  while (trainingPlanDirty) {
+    const saved = await saveTrainingPlan();
+    if (!saved) return false;
+  }
+  return true;
 }
 
 async function saveTrainingPlan() {
   if (
     !trainingPlanDraft ||
     !trainingPlanEditorDate ||
-    !trainingPlanDirty ||
     !trainingPlansCanEdit ||
     trainingPlanConflict
-  ) return;
+  ) return false;
+  if (!trainingPlanDirty) return true;
   if (
     trainingPlanSaveBusy ||
     trainingPlanTemplateBusy ||
     trainingPlanSaveBackBusy
   ) {
-    trainingPlanSavePending = true;
-    return;
+    return false;
   }
 
   trainingPlanSaveBusy = true;
-  trainingPlanSavePending = false;
+  refreshTrainingPlanEditorState();
   const version = trainingPlanChangeVersion;
   const existing = trainingPlanSelected;
   const subjectId = trainingPlanSelectedSubjectId;
@@ -2717,18 +3387,21 @@ async function saveTrainingPlan() {
 
     trainingPlanApplySavedIds(trainingPlanDraft, saved.revision.items);
     trainingPlanSelected = saved;
+    trainingPlanClearLeaveBackup(subjectId, planDate);
     replaceTrainingPlanWeekSnapshot(saved);
     if (trainingPlanChangeVersion === version) {
       trainingPlanDirty = false;
       trainingPlanSetSaveState("saved", "Gespeichert");
     } else {
       trainingPlanDirty = true;
-      trainingPlanSavePending = true;
       trainingPlanSetSaveState("dirty", "Weitere Änderungen …");
     }
     showMessage(trainingPlanElements.editorMessage, "");
     if (trainingPlanElements.retry) trainingPlanElements.retry.hidden = true;
     renderTrainingPlanWeek();
+    replaceTrainingPlanOverviewSummary(saved);
+    if (trainingPlanViewMode === "group") renderTrainingPlanOverview();
+    return true;
   } catch (error) {
     if (
       error?.status === 409 &&
@@ -2754,20 +3427,13 @@ async function saveTrainingPlan() {
       );
       if (trainingPlanElements.retry) trainingPlanElements.retry.hidden = false;
     }
+    return false;
   } finally {
     trainingPlanSaveBusy = false;
     if (trainingPlanConflict) {
       renderTrainingPlanItems();
     }
     refreshTrainingPlanEditorState();
-    if (
-      trainingPlanSavePending &&
-      trainingPlanDirty &&
-      !trainingPlanConflict
-    ) {
-      trainingPlanSavePending = false;
-      scheduleTrainingPlanSave(0);
-    }
   }
 }
 
@@ -2850,6 +3516,27 @@ function trainingPlanApplySavedIds(draft, savedItems) {
   });
 }
 
+function replaceTrainingPlanOverviewSummary(saved) {
+  if (!trainingPlanOverview) return;
+  const row = trainingPlanOverview.rows.find(
+    (candidate) => candidate.subject.id === saved.subjectId,
+  );
+  const cell = row?.cells.find(
+    (candidate) => candidate.planDate === saved.planDate,
+  );
+  if (!cell) return;
+  cell.planId = saved.id;
+  cell.durationMinutes = saved.revision.items.reduce(
+    (total, item) =>
+      total +
+      (item.kind === "block" && item.durationMinutes !== null
+        ? item.durationMinutes
+        : 0),
+    0,
+  );
+  cell.exerciseCount = trainingPlanExerciseCount(saved.revision.items);
+}
+
 function replaceTrainingPlanWeekSnapshot(saved) {
   const index = trainingPlanWeekPlans.findIndex(
     (value) => value.planDate === saved.planDate,
@@ -2891,8 +3578,229 @@ async function reloadTrainingPlanEditor() {
   populateTrainingPlanEditor();
 }
 
+function refreshTrainingPlanGroupEditorActions() {
+  const rows = trainingPlanVisibleOverviewRows();
+  const index = rows.findIndex(
+    (row) => row.subject.id === trainingPlanSelectedSubjectId,
+  );
+  const groupMode =
+    trainingPlanViewMode === "group" &&
+    trainingPlanOverview !== null &&
+    trainingPlanEditorDate !== null &&
+    index >= 0;
+
+  if (trainingPlanElements.prevAthlete) {
+    trainingPlanElements.prevAthlete.hidden = !groupMode;
+    trainingPlanElements.prevAthlete.disabled =
+      !groupMode || index <= 0 || trainingPlanSaveBusy;
+  }
+  if (trainingPlanElements.nextAthlete) {
+    trainingPlanElements.nextAthlete.hidden = !groupMode;
+    trainingPlanElements.nextAthlete.disabled =
+      !groupMode || index < 0 || index >= rows.length - 1 || trainingPlanSaveBusy;
+  }
+  if (trainingPlanElements.distributeOpen) {
+    trainingPlanElements.distributeOpen.hidden = !groupMode;
+    trainingPlanElements.distributeOpen.disabled =
+      !groupMode ||
+      !trainingPlansCanEdit ||
+      trainingPlanSaveBusy ||
+      trainingPlanTemplateBusy ||
+      trainingPlanSaveBackBusy ||
+      trainingPlanConflict;
+  }
+}
+
+async function navigateTrainingPlanGroupAthlete(delta) {
+  if (!trainingPlanEditorDate || !trainingPlanOverview) return;
+  const rows = trainingPlanVisibleOverviewRows();
+  const index = rows.findIndex(
+    (row) => row.subject.id === trainingPlanSelectedSubjectId,
+  );
+  const target = rows[index + delta];
+  if (!target) return;
+  const date = trainingPlanEditorDate;
+  if (!(await closeTrainingPlanEditor(false))) return;
+  await openTrainingPlanFromOverview(target.subject.id, date);
+}
+
+function closeTrainingPlanDistribution() {
+  if (trainingPlanDistributeBusy) return false;
+  if (trainingPlanElements.distribute) {
+    trainingPlanElements.distribute.hidden = true;
+  }
+  return true;
+}
+
+function renderTrainingPlanDistribution() {
+  const container = trainingPlanElements.distributeList;
+  if (!container) return;
+  container.replaceChildren();
+  if (trainingPlanElements.distributeClose) {
+    trainingPlanElements.distributeClose.disabled = trainingPlanDistributeBusy;
+  }
+  if (!trainingPlanOverview || !trainingPlanEditorDate) return;
+  const dayIndex = trainingPlanOverview.dates.indexOf(trainingPlanEditorDate);
+  if (dayIndex < 0) return;
+
+  for (const row of trainingPlanVisibleOverviewRows()) {
+    if (row.subject.id === trainingPlanSelectedSubjectId) continue;
+    const cell = row.cells[dayIndex];
+    if (!cell) continue;
+    const label = document.createElement("label");
+    label.className = "training-plan-distribute-row";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = row.subject.id;
+    checkbox.disabled = Boolean(cell.planId) || trainingPlanDistributeBusy;
+    const name = document.createElement("span");
+    name.textContent = row.subject.displayName;
+    const status = document.createElement("small");
+    status.textContent = cell.planId
+      ? "Plan vorhanden"
+      : trainingPlanAttendanceCompactLabel(cell.attendanceStatuses);
+    label.append(checkbox, name, status);
+    container.append(label);
+  }
+
+  if (container.childElementCount === 0) {
+    const empty = document.createElement("p");
+    empty.className = "settings-note";
+    empty.textContent = "Keine weiteren Athleten für diesen Tag verfügbar.";
+    container.append(empty);
+  }
+}
+
+async function openTrainingPlanDistribution() {
+  if (!trainingPlanOverview || !trainingPlanEditorDate || !trainingPlansCanEdit) {
+    return;
+  }
+  if (!(await saveTrainingPlanUntilClean())) return;
+  if (!trainingPlanSelected) {
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Der Plan muss zuerst gespeichert werden, bevor er verteilt werden kann.",
+    );
+    return;
+  }
+  renderTrainingPlanDistribution();
+  if (trainingPlanElements.distribute) {
+    trainingPlanElements.distribute.hidden = false;
+  }
+}
+
+async function distributeTrainingPlan() {
+  if (
+    !trainingPlanSelected ||
+    !trainingPlanEditorDate ||
+    !trainingPlanOverview ||
+    trainingPlanDistributeBusy
+  ) return;
+  const selected = [
+    ...(trainingPlanElements.distributeList?.querySelectorAll(
+      "input[type='checkbox']:checked:not(:disabled)",
+    ) || []),
+  ].map((input) => input.value);
+  if (selected.length === 0) return;
+
+  const sourcePlanId = trainingPlanSelected.id;
+  const expectedSourceRevision = trainingPlanSelected.currentRevision;
+  const targetDate = trainingPlanEditorDate;
+  trainingPlanDistributeBusy = true;
+  if (trainingPlanElements.distributeConfirm) {
+    trainingPlanElements.distributeConfirm.disabled = true;
+  }
+  renderTrainingPlanDistribution();
+
+  let copied = 0;
+  let skipped = 0;
+  let completed = false;
+  try {
+    for (const subjectId of selected) {
+      try {
+        const payload = await requestJson(
+          "/api/modules/training-plans/" +
+            encodeURIComponent(sourcePlanId) +
+            "/copy",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              expectedSourceRevision,
+              targetSubjectId: subjectId,
+              targetDate,
+            }),
+          },
+        );
+        const plan = payload?.plan;
+        if (!isTrainingPlanSnapshot(plan)) {
+          throw new Error("INVALID_TRAINING_PLAN_COPY");
+        }
+        replaceTrainingPlanOverviewSummary(plan);
+        copied += 1;
+      } catch (error) {
+        if (
+          error?.status === 409 &&
+          error?.code === "TRAINING_PLAN_TARGET_OCCUPIED"
+        ) {
+          skipped += 1;
+          continue;
+        }
+        throw error;
+      }
+    }
+    renderTrainingPlanOverview();
+    completed = true;
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Plan auf " +
+        String(copied) +
+        " Athlet" +
+        (copied === 1 ? "en" : "en") +
+        " kopiert" +
+        (skipped > 0 ? "; " + String(skipped) + " bereits belegt." : "."),
+      "success",
+    );
+  } catch (error) {
+    if (
+      error?.status === 409 &&
+      error?.code === "TRAINING_PLAN_CONFLICT"
+    ) {
+      trainingPlanConflict = true;
+      if (trainingPlanElements.reload) {
+        trainingPlanElements.reload.hidden = false;
+      }
+      showMessage(
+        trainingPlanElements.editorMessage,
+        "Der Quellplan wurde inzwischen geändert. Die Verteilung wurde gestoppt. Bitte neu laden.",
+      );
+    } else {
+      showMessage(
+        trainingPlanElements.editorMessage,
+        "Der Plan konnte nicht vollständig verteilt werden.",
+      );
+    }
+  } finally {
+    trainingPlanDistributeBusy = false;
+    if (trainingPlanElements.distributeConfirm) {
+      trainingPlanElements.distributeConfirm.disabled = false;
+    }
+    if (trainingPlanElements.distributeClose) {
+      trainingPlanElements.distributeClose.disabled = false;
+    }
+    if (completed) {
+      closeTrainingPlanDistribution();
+    } else {
+      renderTrainingPlanDistribution();
+    }
+    refreshTrainingPlanEditorState();
+  }
+}
+
 function refreshTrainingPlanEditorState() {
   const readonly = !trainingPlansCanEdit;
+  if (trainingPlanElements.editor) {
+    trainingPlanElements.editor.inert = trainingPlanSaveBusy;
+  }
   if (trainingPlanElements.note) {
     trainingPlanElements.note.disabled =
       readonly || trainingPlanConflict;
@@ -2906,11 +3814,167 @@ function refreshTrainingPlanEditorState() {
         ? "Noch kein gespeicherter Plan."
         : "Neuer Plan";
   }
+  if (trainingPlanElements.save) {
+    trainingPlanElements.save.disabled =
+      readonly ||
+      trainingPlanConflict ||
+      trainingPlanSaveBusy ||
+      trainingPlanTemplateBusy ||
+      trainingPlanSaveBackBusy ||
+      !trainingPlanDirty;
+  }
   if (readonly) {
     trainingPlanSetSaveState("saved", "Nur Lesen");
   } else if (!trainingPlanDirty && !trainingPlanSaveBusy && !trainingPlanConflict) {
     trainingPlanSetSaveState("saved", trainingPlanSelected ? "Gespeichert" : "Noch nicht gespeichert");
   }
+}
+
+function setTrainingPlanSessionIdentity(identityId) {
+  const next =
+    typeof identityId === "string" && identityId.trim().length > 0
+      ? identityId.trim()
+      : "";
+  if (next === trainingPlanSessionIdentityId) return;
+  trainingPlanSessionIdentityId = next;
+
+  try {
+    const raw = localStorage.getItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
+    if (!raw) return;
+    const value = JSON.parse(raw);
+    if (
+      next.length === 0 ||
+      value === null ||
+      typeof value !== "object" ||
+      value.identityId !== next
+    ) {
+      localStorage.removeItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
+    }
+  } catch {
+    try {
+      localStorage.removeItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
+    } catch {}
+  }
+}
+
+function trainingPlanReadLeaveBackup() {
+  try {
+    const raw = localStorage.getItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw);
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      value.version !== 2 ||
+      typeof value.identityId !== "string" ||
+      value.identityId.length === 0 ||
+      value.identityId !== trainingPlanSessionIdentityId ||
+      typeof value.subjectId !== "string" ||
+      typeof value.planDate !== "string" ||
+      !/^\\d{4}-\\d{2}-\\d{2}$/.test(value.planDate) ||
+      !(
+        value.planId === null ||
+        (typeof value.planId === "string" && value.planId.length > 0)
+      ) ||
+      !(
+        value.expectedRevision === null ||
+        (Number.isSafeInteger(value.expectedRevision) &&
+          value.expectedRevision >= 1)
+      ) ||
+      value.draft === null ||
+      typeof value.draft !== "object" ||
+      typeof value.draft.note !== "string" ||
+      !Array.isArray(value.draft.items)
+    ) {
+      throw new Error("INVALID_TRAINING_PLAN_LEAVE_BACKUP");
+    }
+    return value;
+  } catch {
+    try {
+      localStorage.removeItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
+    } catch {}
+    return null;
+  }
+}
+
+function trainingPlanRestoreLeaveBackup(plan, date) {
+  const backup = trainingPlanReadLeaveBackup();
+  if (
+    !backup ||
+    backup.subjectId !== trainingPlanSelectedSubjectId ||
+    backup.planDate !== date
+  ) {
+    return null;
+  }
+
+  const baseStillCurrent =
+    backup.planId === null
+      ? plan === null
+      : plan !== null &&
+        plan.id === backup.planId &&
+        plan.currentRevision === backup.expectedRevision;
+  if (!baseStillCurrent) {
+    trainingPlanClearLeaveBackup(trainingPlanSelectedSubjectId, date);
+    return null;
+  }
+
+  try {
+    return {
+      note: backup.draft.note,
+      items: backup.draft.items.map(trainingPlanCloneItem),
+    };
+  } catch {
+    trainingPlanClearLeaveBackup(trainingPlanSelectedSubjectId, date);
+    return null;
+  }
+}
+
+function trainingPlanWriteLeaveBackup(existing) {
+  if (
+    !trainingPlanDraft ||
+    !trainingPlanEditorDate ||
+    trainingPlanSessionIdentityId.length === 0
+  ) return;
+  try {
+    localStorage.setItem(
+      TRAINING_PLAN_LEAVE_BACKUP_KEY,
+      JSON.stringify({
+        version: 2,
+        identityId: trainingPlanSessionIdentityId,
+        subjectId: trainingPlanSelectedSubjectId,
+        planDate: trainingPlanEditorDate,
+        planId: existing?.id || null,
+        expectedRevision: existing?.currentRevision || null,
+        draft: trainingPlanDraft,
+      }),
+    );
+  } catch {
+    // beforeunload remains the fallback when browser storage is unavailable.
+  }
+}
+
+function trainingPlanClearLeaveBackup(subjectId, planDate) {
+  const backup = trainingPlanReadLeaveBackup();
+  if (
+    !backup ||
+    backup.subjectId !== subjectId ||
+    backup.planDate !== planDate
+  ) return;
+  try {
+    localStorage.removeItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
+  } catch {}
+}
+
+function persistTrainingPlanOnPageHide() {
+  if (
+    !trainingPlanDraft ||
+    !trainingPlanEditorDate ||
+    !trainingPlanDirty ||
+    !trainingPlansCanEdit ||
+    trainingPlanConflict
+  ) return;
+
+  trainingPlanWriteLeaveBackup(trainingPlanSelected);
 }
 
 function trainingPlanSetSaveState(state, text) {
@@ -2962,11 +4026,36 @@ function trainingPlanDateLabel(value) {
   });
 }
 
+for (const control of document.querySelectorAll("[data-training-plan-mode]")) {
+  control.addEventListener("click", () => {
+    void showTrainingPlanMode(control.dataset.trainingPlanMode || "group");
+  });
+}
 trainingPlanElements.overviewGroup?.addEventListener("change", () => {
   trainingPlanSelectedOverviewGroupId =
     trainingPlanElements.overviewGroup?.value || "";
   trainingPlanOverview = null;
   void loadTrainingPlanOverview();
+});
+trainingPlanElements.overviewAttendanceFilter?.addEventListener("change", () => {
+  const value = trainingPlanElements.overviewAttendanceFilter?.value || "all";
+  trainingPlanOverviewAttendanceFilter =
+    value === "present" ||
+    value === "excused" ||
+    value === "absent" ||
+    value === "open" ||
+    value === "none"
+      ? value
+      : "all";
+  renderTrainingPlanOverview();
+});
+trainingPlanElements.overviewDays?.addEventListener("click", (event) => {
+  const control = event.target?.closest?.("[data-training-plan-overview-day]");
+  if (!control) return;
+  const index = Number(control.dataset.trainingPlanOverviewDay);
+  if (!Number.isSafeInteger(index) || index < 0 || index > 6) return;
+  trainingPlanOverviewDayIndex = index;
+  renderTrainingPlanOverview();
 });
 trainingPlanElements.overview?.addEventListener("click", (event) => {
   const control = event.target?.closest?.(
@@ -2979,54 +4068,59 @@ trainingPlanElements.overview?.addEventListener("click", (event) => {
   );
 });
 trainingPlanElements.subject?.addEventListener("change", () => {
-  const nextSubjectId = trainingPlanElements.subject?.value || "";
-  if (!closeTrainingPlanEditor(false)) {
-    if (trainingPlanElements.subject) {
-      trainingPlanElements.subject.value = trainingPlanSelectedSubjectId;
+  void (async () => {
+    const nextSubjectId = trainingPlanElements.subject?.value || "";
+    if (!(await closeTrainingPlanEditor(false))) {
+      if (trainingPlanElements.subject) {
+        trainingPlanElements.subject.value = trainingPlanSelectedSubjectId;
+      }
+      return;
     }
-    return;
-  }
-  trainingPlanSelectedSubjectId = nextSubjectId;
-  trainingPlanWeekPlans = [];
-  trainingPlanWeekAttendance = [];
-  trainingPlanOverview = null;
-  void Promise.all([
-    loadTrainingPlanWeek(),
-    loadTrainingPlanOverview(),
-  ]);
+    trainingPlanSelectedSubjectId = nextSubjectId;
+    trainingPlanWeekPlans = [];
+    trainingPlanWeekAttendance = [];
+    trainingPlanWeekLoaded = false;
+    await loadTrainingPlanWeek();
+  })();
 });
 trainingPlanElements.weekPrev?.addEventListener("click", () => {
-  if (!closeTrainingPlanEditor(false)) return;
-  trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, -7);
-  trainingPlanWeekPlans = [];
-  trainingPlanWeekAttendance = [];
-  trainingPlanOverview = null;
-  void Promise.all([
-    loadTrainingPlanWeek(),
-    loadTrainingPlanOverview(),
-  ]);
+  void (async () => {
+    if (!(await closeTrainingPlanEditor(false))) return;
+    trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, -7);
+    trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
+    trainingPlanWeekPlans = [];
+    trainingPlanWeekAttendance = [];
+    trainingPlanWeekLoaded = false;
+    trainingPlanOverview = null;
+    renderTrainingPlanMode();
+    await loadTrainingPlanActiveView();
+  })();
 });
 trainingPlanElements.weekToday?.addEventListener("click", () => {
-  if (!closeTrainingPlanEditor(false)) return;
-  trainingPlanWeekStart = trainingPlanMonday(new Date());
-  trainingPlanWeekPlans = [];
-  trainingPlanWeekAttendance = [];
-  trainingPlanOverview = null;
-  void Promise.all([
-    loadTrainingPlanWeek(),
-    loadTrainingPlanOverview(),
-  ]);
+  void (async () => {
+    if (!(await closeTrainingPlanEditor(false))) return;
+    trainingPlanWeekStart = trainingPlanMonday(new Date());
+    trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
+    trainingPlanWeekPlans = [];
+    trainingPlanWeekAttendance = [];
+    trainingPlanWeekLoaded = false;
+    trainingPlanOverview = null;
+    renderTrainingPlanMode();
+    await loadTrainingPlanActiveView();
+  })();
 });
 trainingPlanElements.weekNext?.addEventListener("click", () => {
-  if (!closeTrainingPlanEditor(false)) return;
-  trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, 7);
-  trainingPlanWeekPlans = [];
-  trainingPlanWeekAttendance = [];
-  trainingPlanOverview = null;
-  void Promise.all([
-    loadTrainingPlanWeek(),
-    loadTrainingPlanOverview(),
-  ]);
+  void (async () => {
+    if (!(await closeTrainingPlanEditor(false))) return;
+    trainingPlanWeekStart = trainingPlanAddDays(trainingPlanWeekStart, 7);
+    trainingPlanOverviewDayIndex = trainingPlanDefaultOverviewDayIndex();
+    trainingPlanWeekPlans = [];
+    trainingPlanWeekAttendance = [];
+    trainingPlanWeekLoaded = false;
+    trainingPlanOverview = null;
+    renderTrainingPlanMode();
+    await loadTrainingPlanActiveView();
+  })();
 });
 trainingPlanElements.attendanceFilter?.addEventListener("change", () => {
   const value = trainingPlanElements.attendanceFilter?.value || "all";
@@ -3046,12 +4140,33 @@ trainingPlanElements.week?.addEventListener("click", (event) => {
   if (!control) return;
   openTrainingPlanEditor(control.dataset.trainingPlanDay || "");
 });
-trainingPlanElements.close?.addEventListener("click", () => closeTrainingPlanEditor(false));
+trainingPlanElements.close?.addEventListener("click", () => {
+  void closeTrainingPlanEditor(false);
+});
+trainingPlanElements.save?.addEventListener("click", () => {
+  void saveTrainingPlan();
+});
+trainingPlanElements.prevAthlete?.addEventListener("click", () => {
+  void navigateTrainingPlanGroupAthlete(-1);
+});
+trainingPlanElements.nextAthlete?.addEventListener("click", () => {
+  void navigateTrainingPlanGroupAthlete(1);
+});
+trainingPlanElements.distributeOpen?.addEventListener("click", () => {
+  void openTrainingPlanDistribution();
+});
+trainingPlanElements.distributeClose?.addEventListener(
+  "click",
+  closeTrainingPlanDistribution,
+);
+trainingPlanElements.distributeConfirm?.addEventListener("click", () => {
+  void distributeTrainingPlan();
+});
 trainingPlanElements.reload?.addEventListener("click", () => void reloadTrainingPlanEditor());
 trainingPlanElements.retry?.addEventListener("click", () => {
   if (trainingPlanConflict) return;
   trainingPlanDirty = true;
-  scheduleTrainingPlanSave(0);
+  void saveTrainingPlan();
 });
 trainingPlanElements.note?.addEventListener("input", () => {
   if (!trainingPlanDraft) return;
@@ -3066,6 +4181,7 @@ trainingPlanElements.addBlock?.addEventListener("click", () => {
 });
 trainingPlanElements.pickerClose?.addEventListener("click", closeTrainingPlanPicker);
 trainingPlanElements.pickerSearch?.addEventListener("input", renderTrainingPlanPicker);
+trainingPlanElements.pickerCategory?.addEventListener("change", renderTrainingPlanPicker);
 trainingPlanElements.pickerList?.addEventListener("click", handleTrainingPlanPickerClick);
 trainingPlanElements.pickerManual?.addEventListener("click", () => {
   if (!trainingPlanDraft) return;
@@ -3091,6 +4207,7 @@ trainingPlanElements.saveTemplateCancel?.addEventListener("click", () => {
 trainingPlanElements.saveTemplateConfirm?.addEventListener("click", () => {
   void saveTrainingPlanBlockTemplate();
 });
+window.addEventListener("pagehide", persistTrainingPlanOnPageHide);
 document.addEventListener("keydown", (event) => {
   if (
     event.key === "Escape" &&
@@ -3112,7 +4229,8 @@ window.addEventListener("beforeunload", (event) => {
   if (
     !trainingPlanDirty &&
     !trainingPlanSaveBusy &&
-    !trainingPlanSaveBackBusy
+    !trainingPlanSaveBackBusy &&
+    !trainingPlanDistributeBusy
   ) return;
   event.preventDefault();
   event.returnValue = "";

@@ -87,6 +87,8 @@ test("E7B9 acceptance uses only public HTTP contracts and never accepts client-o
     "/api/modules/training-blocks",
     "/api/modules/training-plans",
     "/api/modules/training-plans/week",
+    "/api/modules/training-plans/overview",
+    "/api/modules/training-plans/day",
     "/api/modules/training-plans/block-templates",
   ]) {
     assert.match(source, new RegExp(route.replaceAll("/", "\\/")));
@@ -303,6 +305,46 @@ test("E7B9 acceptance executes the complete isolated public-HTTP happy path", as
         attendance: [{ sessionDate: planDate, status: "present" }],
       });
     }
+    if (
+      method === "GET" &&
+      url.pathname === "/api/modules/training-plans/overview"
+    ) {
+      assert.equal(url.searchParams.get("groupId"), "group-1");
+      assert.equal(url.searchParams.get("weekStart"), planDate);
+      return json({
+        overview: {
+          group: { id: "group-1", name: "E7B9", shortName: "E7B9" },
+          weekStart: planDate,
+          rows: [
+            {
+              subject: { id: "athlete-1" },
+              cells: [
+                {
+                  planDate,
+                  planId: "plan-1",
+                  durationMinutes: 25,
+                  exerciseCount: 1,
+                },
+              ],
+            },
+          ],
+        },
+      });
+    }
+
+    if (
+      method === "GET" &&
+      url.pathname === "/api/modules/training-plans/day"
+    ) {
+      assert.equal(url.searchParams.get("subjectId"), "athlete-1");
+      assert.equal(url.searchParams.get("planDate"), planDate);
+      return json({
+        subjectId: "athlete-1",
+        planDate,
+        plan: planSnapshot(1),
+      });
+    }
+
 
     if (
       method === "POST" &&
@@ -371,8 +413,10 @@ test("E7B9 acceptance executes the complete isolated public-HTTP happy path", as
   assert.deepEqual(result.checks, [
     "login",
     "week-view",
+    "group-overview",
+    "day-view",
     "attendance",
-    "autosave",
+    "manual-save",
     "block-template-adoption",
     "independent-snapshot",
     "save-back",

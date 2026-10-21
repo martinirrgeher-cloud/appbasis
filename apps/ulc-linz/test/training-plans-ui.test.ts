@@ -78,6 +78,81 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
+  it("uses a group-first mobile planning flow with day tabs and a separate athlete view", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain('data-training-plan-mode="group"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('data-training-plan-mode="athlete"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-overview-days"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-group-panel"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-athlete-panel"');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain('let trainingPlanViewMode = "group";');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("showTrainingPlanMode");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("training-plan-group-row");
+    expect(ULC_TRAINING_PLANS_CSS).toContain(".training-plan-day-tabs");
+    expect(ULC_TRAINING_PLANS_CSS).toContain("height: 100dvh");
+  });
+
+  it("keeps the add picker open for multi-add and offers exercise category filtering", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-picker-category"');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("renderTrainingPlanPickerCategories");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain('item.categoryKey === categoryKey');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("Die Auswahl bleibt offen");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("trainingPlanItemCompactSummary");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '"/api/modules/training-plans/day?subjectId="',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "openTrainingPlanEditor(date, payload.plan)",
+    );
+  });
+
+  it("supports attendance-focused group planning, athlete navigation and plan distribution", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-overview-attendance-filter"',
+    );
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-prev-athlete"',
+    );
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-next-athlete"',
+    );
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-distribute"',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanAttendanceCompactLabel",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "cell.attendanceStatuses.includes",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "navigateTrainingPlanGroupAthlete",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '"/copy"',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '"TRAINING_PLAN_TARGET_OCCUPIED"',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "if (trainingPlanDistributeBusy) return false;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "const sourcePlanId = trainingPlanSelected.id;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "const expectedSourceRevision = trainingPlanSelected.currentRevision;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "expectedSourceRevision,\n              targetSubjectId: subjectId,",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "if (completed) {",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "} else {\n      renderTrainingPlanDistribution();",
+    );
+  });
+
   it("loads only Monday-based week data without client-owned organization scope", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       '"/api/modules/training-plans/week?subjectId="',
@@ -91,7 +166,36 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("organizationId");
   });
 
-  it("autosaves with explicit optimistic concurrency and stops on conflicts", () => {
+  it("emits valid ISO date validators for the browser script", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "/^\\d{4}-\\d{2}-\\d{2}$/",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "/^d{4}-d{2}-d{2}$/",
+    );
+  });
+
+  it("scopes recovered leave drafts to the authenticated identity", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "setTrainingPlanSessionIdentity(next?.identity?.identityId);",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'let trainingPlanSessionIdentityId = "";',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "value.identityId !== trainingPlanSessionIdentityId",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "identityId: trainingPlanSessionIdentityId,",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("version: 2,");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "localStorage.removeItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);",
+    );
+  });
+
+  it("uses manual save, saves on controlled leave and keeps optimistic concurrency", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-save"');
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "expectedRevision: existing.currentRevision",
     );
@@ -101,17 +205,75 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       '"TRAINING_PLAN_TARGET_OCCUPIED"',
     );
-    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "delay === undefined ? 550 : delay",
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "scheduleTrainingPlanSave",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "trainingPlanSaveBusy",
+      "async function saveTrainingPlanUntilClean()",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      'window.confirm("Ungespeicherte Änderungen verwerfen?")',
+      "while (trainingPlanDirty)",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      'window.addEventListener("beforeunload"',
+      'window.addEventListener("pagehide", persistTrainingPlanOnPageHide)',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("keepalive: true");
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "TRAINING_PLAN_KEEPALIVE_LIMIT_BYTES",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanWriteLeaveBackup(trainingPlanSelected);",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanRestoreLeaveBackup(plan, date)",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "localStorage.setItem(",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanElements.editor.inert = trainingPlanSaveBusy;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanSaveBusy = true;\n  refreshTrainingPlanEditorState();",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "!trainingPlanSaveBackBusy &&\n    !trainingPlanDistributeBusy",
+    );
+  });
+
+  it("discards stale group overview responses and reloads the current week", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanSelectedOverviewGroupId !== groupId ||\n      trainingPlanWeekStart !== weekStart",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "requestOutdated &&\n      trainingPlanViewMode === \"group\"",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "void loadTrainingPlanOverview();",
+    );
+  });
+
+  it("rejects superseded day-plan and athlete-week responses", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "let trainingPlanWeekRequestId = 0;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "let trainingPlanDayRequestId = 0;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanWeekRequestId += 1;\n  trainingPlanViewMode = next;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "requestId !== trainingPlanDayRequestId ||\n      trainingPlanSelectedSubjectId !== subjectId",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "if (trainingPlanSelectedSubjectId !== subjectId) {\n    trainingPlanWeekRequestId += 1;\n    trainingPlanWeekPlans = [];\n    trainingPlanWeekAttendance = [];\n    trainingPlanWeekLoaded = false;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "requestId !== trainingPlanWeekRequestId ||\n      trainingPlanSelectedSubjectId !== subjectId ||\n      trainingPlanWeekStart !== weekStart",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanDayRequestId += 1;\n  closeTrainingPlanPicker();",
     );
   });
 
@@ -147,7 +309,7 @@ describe("ULC E7B6 training plan block template UI", () => {
 
   it("re-renders week cards only after clearing the loading flag", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "finally {\n    trainingPlanWeekLoading = false;\n    refreshTrainingPlanControls();\n    renderTrainingPlanWeek();\n  }",
+      "trainingPlanWeekLoading = false;\n    refreshTrainingPlanControls();\n    renderTrainingPlanWeek();",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
       "trainingPlanWeekPlans = payload.plans.slice();\n    renderTrainingPlanWeek();",
@@ -157,7 +319,22 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
-  it("keeps active draft inputs mounted across successful autosave completion", () => {
+  it("refreshes compact item summaries without remounting the editor", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "const refreshSummary = () => {",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "const refreshChildSummary = () => {",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanExerciseFields(item, editable, refreshSummary)",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "refreshSummary();\n    markTrainingPlanDirty();",
+    );
+  });
+
+  it("keeps active draft inputs mounted across successful manual save", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "trainingPlanApplySavedIds(trainingPlanDraft, saved.revision.items);",
     );
@@ -280,7 +457,7 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("/api/modules/training-blocks");
   });
 
-  it("serializes template adoption with structural autosave", () => {
+  it("serializes template adoption without triggering background saves", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("let trainingPlanTemplateBusy = false;");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "trainingPlanSaveBusy ||\n    trainingPlanTemplateBusy ||\n    trainingPlanSaveBackBusy",
@@ -289,7 +466,7 @@ describe("ULC E7B6 training plan block template UI", () => {
       "editable &&\n    !trainingPlanSaveBusy &&\n    !trainingPlanTemplateBusy &&\n    !trainingPlanSaveBackBusy;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("trainingPlanBlockDraftFromTemplate(template)");
-    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("scheduleTrainingPlanSave(0);");
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("scheduleTrainingPlanSave");
   });
 
 
@@ -372,7 +549,7 @@ describe("ULC E7B6 training plan block template UI", () => {
   });
 
 
-  it("enables save-back after autosave assigns a previously missing block item id", () => {
+  it("enables save-back after manual save assigns a previously missing block item id", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "saveTemplate.dataset.trainingPlanSaveTemplateIndex = String(itemIndex);",
     );

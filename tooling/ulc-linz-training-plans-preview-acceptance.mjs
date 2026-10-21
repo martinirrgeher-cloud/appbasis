@@ -320,6 +320,53 @@ export async function runUlcTrainingPlansPreviewAcceptance(
     );
   }
 
+  const groupOverviewResponse = await requestJson(
+    baseURL,
+    "/api/modules/training-plans/overview?groupId=" +
+      encodeURIComponent(groupId) +
+      "&weekStart=" +
+      encodeURIComponent(planDate),
+    fetchImpl,
+    { cookie },
+  );
+  const groupOverview = groupOverviewResponse.payload?.overview;
+  const overviewRow = Array.isArray(groupOverview?.rows)
+    ? groupOverview.rows.find((row) => row?.subject?.id === athleteId)
+    : undefined;
+  const overviewCell = Array.isArray(overviewRow?.cells)
+    ? overviewRow.cells.find((cell) => cell?.planDate === planDate)
+    : undefined;
+  if (
+    groupOverview?.group?.id !== groupId ||
+    groupOverview?.weekStart !== planDate ||
+    overviewCell?.planId !== planId ||
+    overviewCell?.durationMinutes !== 25 ||
+    overviewCell?.exerciseCount !== 1
+  ) {
+    throw new UlcTrainingPlansPreviewAcceptanceError(
+      "E7B9 group planning overview did not expose the persisted day plan.",
+    );
+  }
+
+  const dayResponse = await requestJson(
+    baseURL,
+    "/api/modules/training-plans/day?subjectId=" +
+      encodeURIComponent(athleteId) +
+      "&planDate=" +
+      encodeURIComponent(planDate),
+    fetchImpl,
+    { cookie },
+  );
+  if (
+    dayResponse.payload?.subjectId !== athleteId ||
+    dayResponse.payload?.planDate !== planDate ||
+    dayResponse.payload?.plan?.id !== planId
+  ) {
+    throw new UlcTrainingPlansPreviewAcceptanceError(
+      "E7B9 focused day-plan read did not return the persisted plan.",
+    );
+  }
+
   const updateItems = planDraftItems(plan.revision.items);
   const autosaveResponse = await requestJson(
     baseURL,
@@ -332,7 +379,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
       cookie,
       body: {
         expectedRevision: 1,
-        note: "E7B9 autosave verified",
+        note: "E7B9 manual save verified",
         items: updateItems,
       },
     },
@@ -340,7 +387,7 @@ export async function runUlcTrainingPlansPreviewAcceptance(
   plan = requiredPlan(autosaveResponse.payload?.plan);
   if (plan.currentRevision !== 2) {
     throw new UlcTrainingPlansPreviewAcceptanceError(
-      "E7B9 autosave did not advance the plan revision.",
+      "E7B9 manual save did not advance the plan revision.",
     );
   }
 
@@ -445,8 +492,10 @@ export async function runUlcTrainingPlansPreviewAcceptance(
     checks: Object.freeze([
       "login",
       "week-view",
+      "group-overview",
+      "day-view",
       "attendance",
-      "autosave",
+      "manual-save",
       "block-template-adoption",
       "independent-snapshot",
       "save-back",

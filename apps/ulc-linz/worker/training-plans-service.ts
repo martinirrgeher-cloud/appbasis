@@ -40,6 +40,37 @@ export interface UlcTrainingPlanOverviewCell {
   readonly planId: string | null;
   readonly durationMinutes: number;
   readonly exerciseCount: number;
+  readonly attendanceStatuses: readonly UlcTrainingAttendanceSummary["status"][];
+}
+
+export interface UlcTrainingPlanOverviewSummary {
+  readonly subjectId: string;
+  readonly planDate: string;
+  readonly planId: string;
+  readonly durationMinutes: number;
+  readonly exerciseCount: number;
+}
+
+export interface UlcTrainingPlanOverviewReader {
+  listSummaries(
+    organizationId: string,
+    subjectIds: readonly string[],
+    fromDate: string,
+    toDate: string,
+  ): PromiseLike<readonly UlcTrainingPlanOverviewSummary[]>;
+  listAttendanceSummaries(
+    organizationId: string,
+    groupId: string,
+    subjectIds: readonly string[],
+    fromDate: string,
+    toDate: string,
+  ): PromiseLike<
+    readonly Readonly<{
+      subjectId: string;
+      sessionDate: string;
+      status: UlcTrainingAttendanceSummary["status"];
+    }>[]
+  >;
 }
 
 export interface UlcTrainingPlanOverviewRow {
@@ -268,6 +299,7 @@ export interface UlcTrainingPlanService {
   copyCurrentTo(
     organizationId: string,
     sourcePlanId: string,
+    expectedSourceRevision: number,
     targetSubjectId: string,
     targetDate: string,
   ): Promise<TrainingPlanSnapshot | undefined>;
@@ -288,12 +320,14 @@ export function createUlcTrainingPlanService({
   exerciseCatalog,
   attendance,
   blocks,
+  overview,
 }: {
   plans: TrainingPlanService;
   masterdata: UlcTrainingPlanMasterdataReader;
   exerciseCatalog: UlcTrainingPlanExerciseReader;
   attendance: UlcTrainingPlanAttendanceReader;
   blocks: UlcTrainingPlanBlockReader;
+  overview?: UlcTrainingPlanOverviewReader;
 }): UlcTrainingPlanService {
   async function listSubjects(
     organizationId: string,
@@ -387,17 +421,64 @@ export function createUlcTrainingPlanService({
       )
       .sort(compareAthletes);
 
-    const groupPlans = await plans.listForSubjectsDateRange(
-      organizationId,
-      athletes.map((athlete) => athlete.id),
-      start,
-      weekEnd,
-    );
+    const athleteIds = athletes.map((athlete) => athlete.id);
+    const [summaries, attendanceSummaries] = overview
+      ? await Promise.all([
+          overview.listSummaries(
+            organizationId,
+            athleteIds,
+            start,
+            weekEnd,
+          ),
+          overview.listAttendanceSummaries(
+            organizationId,
+            groupId,
+            athleteIds,
+            start,
+            weekEnd,
+          ),
+        ])
+      : [
+          (await plans.listForSubjectsDateRange(
+            organizationId,
+            athleteIds,
+            start,
+            weekEnd,
+          )).map((plan) =>
+            Object.freeze({
+              subjectId: plan.subjectId,
+              planDate: plan.planDate,
+              planId: plan.id,
+              durationMinutes: trainingPlanTotalDuration(plan),
+              exerciseCount: trainingPlanExerciseTotal(plan),
+            }),
+          ),
+          Object.freeze([]),
+        ];
     const plansBySubjectDate = new Map(
-      groupPlans.map(
+      summaries.map(
         (plan) => [plan.subjectId + "\u0000" + plan.planDate, plan] as const,
       ),
     );
+    const attendanceStatusOrder: readonly UlcTrainingAttendanceSummary["status"][] =
+      ["present", "excused", "absent", "open"];
+    const attendanceBySubjectDate = new Map<
+      string,
+      UlcTrainingAttendanceSummary["status"][]
+    >();
+    for (const entry of attendanceSummaries) {
+      const key = entry.subjectId + "\u0000" + entry.sessionDate;
+      const statuses = attendanceBySubjectDate.get(key) ?? [];
+      if (!statuses.includes(entry.status)) {
+        statuses.push(entry.status);
+        statuses.sort(
+          (left, right) =>
+            attendanceStatusOrder.indexOf(left) -
+            attendanceStatusOrder.indexOf(right),
+        );
+      }
+      attendanceBySubjectDate.set(key, statuses);
+    }
     const planRows = athletes.map((athlete) =>
       Object.freeze({
         subject: subjectFromAthlete(athlete),
@@ -405,13 +486,17 @@ export function createUlcTrainingPlanService({
           dates.map((date) => {
             const plan =
               plansBySubjectDate.get(athlete.id + "\u0000" + date) ?? null;
+            const attendanceStatuses = Object.freeze(
+              (attendanceBySubjectDate.get(
+                athlete.id + "\u0000" + date,
+              ) ?? []).slice(),
+            );
             return Object.freeze({
               planDate: date,
-              planId: plan?.id ?? null,
-              durationMinutes:
-                plan === null ? 0 : trainingPlanTotalDuration(plan),
-              exerciseCount:
-                plan === null ? 0 : trainingPlanExerciseTotal(plan),
+              planId: plan?.planId ?? null,
+              durationMinutes: plan?.durationMinutes ?? 0,
+              exerciseCount: plan?.exerciseCount ?? 0,
+              attendanceStatuses,
             });
           }),
         ),
@@ -946,15 +1031,23 @@ export function createUlcTrainingPlanService({
     async copyCurrentTo(
       organizationId: string,
       sourcePlanId: string,
+      expectedSourceRevision: number,
       targetSubjectId: string,
       targetDate: string,
     ) {
       const source = await plans.findCurrent(organizationId, sourcePlanId);
       if (source === undefined) return undefined;
+      if (source.currentRevision !== expectedSourceRevision) {
+        throw new TrainingPlanConflictError(
+          expectedSourceRevision,
+          source.currentRevision,
+        );
+      }
       await assertActiveSubject(organizationId, targetSubjectId);
       const saved = await plans.copyCurrentTo(
         organizationId,
         sourcePlanId,
+        expectedSourceRevision,
         targetSubjectId,
         targetDate,
       );

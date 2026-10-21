@@ -110,7 +110,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsplanung</h2>
-                  <p>Wochenpläne pro Athlet erstellen und automatisch speichern.</p>
+                  <p>Trainingspläne für Gruppen und Athleten erstellen, gezielt speichern und beim Verlassen sichern.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="training-plan-quick-action" type="button" data-open-view="training-plans" disabled>Trainingsplanung öffnen</button>
                 <small id="training-plan-access-label">Berechtigung wird geprüft …</small>
@@ -130,7 +130,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsblöcke</h2>
-                  <p>Trainingsvorlagen zusammenstellen, automatisch speichern und Versionen vergleichen.</p>
+                  <p>Trainingsvorlagen zusammenstellen, bewusst speichern und Versionen vergleichen.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="training-block-quick-action" type="button" data-open-view="training-blocks" disabled>Trainingsblöcke öffnen</button>
                 <small id="training-block-access-label">Berechtigung wird geprüft …</small>
@@ -1652,17 +1652,30 @@ document.addEventListener("keydown", (event) => {
   setAppNavMoreOpen(false);
   if (!elements.masterdataImportPreview?.hidden) closeMasterdataImportPreview();
 });
+async function navigateAppSection(section) {
+  const current = document.querySelector("[data-nav-view].is-active")?.dataset.navView || "home";
+  if (
+    current === "training-plans" &&
+    section !== "training-plans" &&
+    typeof closeTrainingPlanEditor === "function"
+  ) {
+    const closed = await closeTrainingPlanEditor(false);
+    if (!closed) return;
+  }
+  showAppSection(section);
+}
+
 for (const control of document.querySelectorAll("[data-nav-view]")) {
   control.addEventListener("click", () => {
     if (control.disabled) return;
     setAppNavMoreOpen(false);
-    showAppSection(control.dataset.navView || "home");
+    void navigateAppSection(control.dataset.navView || "home");
   });
 }
 for (const control of document.querySelectorAll("[data-open-view]")) {
   control.addEventListener("click", () => {
     if (control.disabled) return;
-    showAppSection(control.dataset.openView || "home");
+    void navigateAppSection(control.dataset.openView || "home");
   });
 }
 
@@ -1760,6 +1773,7 @@ async function acceptSession(next) {
     return;
   }
 
+  setTrainingPlanSessionIdentity(next?.identity?.identityId);
   showView("app");
   showAppSection("home");
   if (elements.welcomeEyebrow) {

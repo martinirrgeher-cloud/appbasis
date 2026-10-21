@@ -107,6 +107,7 @@ describe("training-plans PostgreSQL repository", () => {
     const copy = await service.copyCurrentTo(
       "org-a",
       source.id,
+      source.currentRevision,
       "athlete-b",
       "2026-10-13",
     );

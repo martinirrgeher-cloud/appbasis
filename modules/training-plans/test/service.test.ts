@@ -250,6 +250,7 @@ describe("training-plans service", () => {
     const copied = await service.copyCurrentTo(
       "org-copy",
       source.id,
+      source.currentRevision,
       "athlete-b",
       "2026-10-13",
     );
@@ -322,6 +323,21 @@ describe("training-plans service", () => {
       service.copyCurrentTo(
         "org-copy",
         source.id,
+        1,
+        "athlete-c",
+        "2026-10-14",
+      ),
+    ).rejects.toMatchObject({
+      name: "TrainingPlanConflictError",
+      expectedRevision: 1,
+      currentRevision: 2,
+    });
+
+    await expect(
+      service.copyCurrentTo(
+        "org-copy",
+        source.id,
+        2,
         "athlete-b",
         "2026-10-13",
       ),
@@ -335,6 +351,7 @@ describe("training-plans service", () => {
       service.copyCurrentTo(
         "org-copy",
         source.id,
+        2,
         "athlete-b",
         "2026-10-13",
       ),
@@ -636,6 +653,7 @@ describe("training-plans service", () => {
     const copied = await service.copyCurrentTo(
       "org-copy-ids",
       "source-plan",
+      3,
       "athlete-b",
       "2026-10-13",
     );
