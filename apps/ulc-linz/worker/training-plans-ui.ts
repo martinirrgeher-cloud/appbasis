@@ -905,7 +905,6 @@ let trainingPlanWeekRequestId = 0;
 let trainingPlanDayRequestId = 0;
 const TRAINING_PLAN_LEAVE_BACKUP_KEY =
   "appbasis.training-plan.leave-backup.v1";
-const TRAINING_PLAN_KEEPALIVE_LIMIT_BYTES = 60 * 1024;
 
 function isTrainingPlanSubject(value) {
   return value !== null &&
@@ -2268,6 +2267,11 @@ function renderTrainingPlanItems() {
     title.textContent = item.name || (item.kind === "block" ? "Block" : "Übung");
     const meta = document.createElement("span");
     meta.textContent = trainingPlanItemCompactSummary(item);
+    const refreshSummary = () => {
+      title.textContent =
+        item.name || (item.kind === "block" ? "Block" : "Übung");
+      meta.textContent = trainingPlanItemCompactSummary(item);
+    };
     summaryMain.append(title, meta);
     const chevron = document.createElement("span");
     chevron.setAttribute("aria-hidden", "true");
@@ -2293,9 +2297,19 @@ function renderTrainingPlanItems() {
     editor.append(header);
 
     if (item.kind === "block") {
-      editor.append(trainingPlanBlockFields(item, index, editable, structural));
+      editor.append(
+        trainingPlanBlockFields(
+          item,
+          index,
+          editable,
+          structural,
+          refreshSummary,
+        ),
+      );
     } else {
-      editor.append(trainingPlanExerciseFields(item, editable));
+      editor.append(
+        trainingPlanExerciseFields(item, editable, refreshSummary),
+      );
     }
     card.append(editor);
     container.append(card);
@@ -2352,21 +2366,30 @@ function trainingPlanMiniButton(text, label, handler) {
   return button;
 }
 
-function trainingPlanBlockFields(item, itemIndex, editable, structural) {
+function trainingPlanBlockFields(
+  item,
+  itemIndex,
+  editable,
+  structural,
+  refreshSummary,
+) {
   const wrapper = document.createElement("div");
   const grid = document.createElement("div");
   grid.className = "training-plan-grid";
   grid.append(
     trainingPlanTextField("Name", item.name, 120, editable, (value) => {
       item.name = value;
+      refreshSummary();
       markTrainingPlanDirty();
     }, true),
     trainingPlanNumberField("Dauer (Min.)", item.durationMinutes, editable, (value) => {
       item.durationMinutes = value;
+      refreshSummary();
       markTrainingPlanDirty();
     }),
     trainingPlanTextField("Notiz", item.note, 3000, editable, (value) => {
       item.note = value;
+      refreshSummary();
       markTrainingPlanDirty();
     }, true),
   );
@@ -2417,6 +2440,11 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
     title.textContent = exercise.name || "Übung " + String(childIndex + 1);
     const meta = document.createElement("span");
     meta.textContent = trainingPlanItemCompactSummary(exercise);
+    const refreshChildSummary = () => {
+      title.textContent =
+        exercise.name || "Übung " + String(childIndex + 1);
+      meta.textContent = trainingPlanItemCompactSummary(exercise);
+    };
     main.append(title, meta);
     const chevron = document.createElement("span");
     chevron.setAttribute("aria-hidden", "true");
@@ -2438,7 +2466,14 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
       () => trainingPlanRemoveChild(itemIndex, childIndex),
     );
     header.append(label, actions);
-    editor.append(header, trainingPlanExerciseFields(exercise, editable));
+    editor.append(
+      header,
+      trainingPlanExerciseFields(
+        exercise,
+        editable,
+        refreshChildSummary,
+      ),
+    );
     child.append(summary, editor);
     children.append(child);
   });
@@ -2446,18 +2481,20 @@ function trainingPlanBlockFields(item, itemIndex, editable, structural) {
   return wrapper;
 }
 
-function trainingPlanExerciseFields(item, editable) {
+function trainingPlanExerciseFields(item, editable, refreshSummary) {
   const grid = document.createElement("div");
   grid.className = "training-plan-grid training-plan-exercise-grid";
 
   const name = trainingPlanTextField("Name", item.name, 160, editable, (value) => {
     item.name = value;
+    refreshSummary();
     markTrainingPlanDirty();
   }, true);
   name.classList.add("training-plan-field--name");
 
   const sets = trainingPlanTextField("Sätze", item.sets, 80, editable, (value) => {
     item.sets = value;
+    refreshSummary();
     markTrainingPlanDirty();
   });
   const repetitions = trainingPlanTextField(
@@ -2467,15 +2504,18 @@ function trainingPlanExerciseFields(item, editable) {
     editable,
     (value) => {
       item.repetitions = value;
+      refreshSummary();
       markTrainingPlanDirty();
     },
   );
   const amount = trainingPlanTextField("Menge", item.amount, 80, editable, (value) => {
     item.amount = value;
+    refreshSummary();
     markTrainingPlanDirty();
   });
   const unit = trainingPlanTextField("Einheit", item.unit, 80, editable, (value) => {
     item.unit = value;
+    refreshSummary();
     markTrainingPlanDirty();
   });
   const comment = trainingPlanTextField(
@@ -2485,6 +2525,7 @@ function trainingPlanExerciseFields(item, editable) {
     editable,
     (value) => {
       item.comment = value;
+      refreshSummary();
       markTrainingPlanDirty();
     },
     true,
@@ -3897,42 +3938,7 @@ function persistTrainingPlanOnPageHide() {
     trainingPlanConflict
   ) return;
 
-  const existing = trainingPlanSelected;
-  trainingPlanWriteLeaveBackup(existing);
-
-  const draftPayload = trainingPlanDraftPayload(
-    trainingPlanDraft,
-    existing !== null,
-  );
-  const url = existing
-    ? "/api/modules/training-plans/" +
-      encodeURIComponent(existing.id) +
-      "/update"
-    : "/api/modules/training-plans";
-  const body = existing
-    ? {
-        expectedRevision: existing.currentRevision,
-        ...draftPayload,
-      }
-    : {
-        subjectId: trainingPlanSelectedSubjectId,
-        planDate: trainingPlanEditorDate,
-        ...draftPayload,
-      };
-  const serialized = JSON.stringify(body);
-  const bytes = new TextEncoder().encode(serialized).byteLength;
-  if (bytes > TRAINING_PLAN_KEEPALIVE_LIMIT_BYTES) return;
-
-  void fetch(url, {
-    method: "POST",
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-    },
-    credentials: "same-origin",
-    keepalive: true,
-    body: serialized,
-  });
+  trainingPlanWriteLeaveBackup(trainingPlanSelected);
 }
 
 function trainingPlanSetSaveState(state, text) {

@@ -198,15 +198,12 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       'window.addEventListener("pagehide", persistTrainingPlanOnPageHide)',
     );
-    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("keepalive: true");
-    expect(
-      (ULC_TRAINING_PLANS_SCRIPT.match(/keepalive: true/g) || []).length,
-    ).toBe(1);
-    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("keepalive: true");
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
       "TRAINING_PLAN_KEEPALIVE_LIMIT_BYTES",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "trainingPlanWriteLeaveBackup(existing);",
+      "trainingPlanWriteLeaveBackup(trainingPlanSelected);",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "trainingPlanRestoreLeaveBackup(plan, date)",
@@ -300,6 +297,21 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
       "trainingPlanWeekPlans = [];\n    renderTrainingPlanWeek();\n    showMessage(",
+    );
+  });
+
+  it("refreshes compact item summaries without remounting the editor", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "const refreshSummary = () => {",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "const refreshChildSummary = () => {",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanExerciseFields(item, editable, refreshSummary)",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "refreshSummary();\n    markTrainingPlanDirty();",
     );
   });
 
