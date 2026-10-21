@@ -4786,6 +4786,7 @@ describe("U12 runtime API", () => {
                     planId: "plan-1",
                     durationMinutes: 45,
                     exerciseCount: 3,
+                    attendanceStatuses: [],
                   },
                 ],
               },

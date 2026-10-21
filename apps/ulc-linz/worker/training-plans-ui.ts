@@ -901,6 +901,8 @@ let trainingPlanChangeVersion = 0;
 let trainingPlanPickerMode = null;
 let trainingPlanPickerLoading = false;
 let trainingPlanDistributeBusy = false;
+let trainingPlanWeekRequestId = 0;
+let trainingPlanDayRequestId = 0;
 
 function isTrainingPlanSubject(value) {
   return value !== null &&
@@ -1262,6 +1264,7 @@ async function showTrainingPlanMode(mode) {
   const next = mode === "athlete" ? "athlete" : "group";
   if (next === trainingPlanViewMode) return;
   if (!(await closeTrainingPlanEditor(false))) return;
+  trainingPlanWeekRequestId += 1;
   trainingPlanViewMode = next;
   renderTrainingPlanMode();
   await loadTrainingPlanActiveView();
@@ -1690,6 +1693,7 @@ async function openTrainingPlanFromOverview(subjectId, date) {
   if (!(await closeTrainingPlanEditor(false))) return;
   if (!trainingPlanSubjects.some((subject) => subject.id === subjectId)) return;
 
+  const requestId = ++trainingPlanDayRequestId;
   trainingPlanSelectedSubjectId = subjectId;
   if (trainingPlanElements.subject) {
     trainingPlanElements.subject.value = subjectId;
@@ -1717,8 +1721,20 @@ async function openTrainingPlanFromOverview(subjectId, date) {
     ) {
       throw new Error("INVALID_TRAINING_PLAN_DAY");
     }
+    if (
+      requestId !== trainingPlanDayRequestId ||
+      trainingPlanSelectedSubjectId !== subjectId
+    ) {
+      return;
+    }
     openTrainingPlanEditor(date, payload.plan);
   } catch (error) {
+    if (
+      requestId !== trainingPlanDayRequestId ||
+      trainingPlanSelectedSubjectId !== subjectId
+    ) {
+      return;
+    }
     showMessage(
       trainingPlanElements.message,
       error?.status === 400
@@ -1818,6 +1834,7 @@ async function loadTrainingPlanWeek() {
     !trainingPlanSelectedSubjectId
   ) return false;
 
+  const requestId = ++trainingPlanWeekRequestId;
   trainingPlanWeekLoading = true;
   trainingPlanWeekLoaded = false;
   refreshTrainingPlanControls();
@@ -1854,11 +1871,25 @@ async function loadTrainingPlanWeek() {
     ) {
       throw new Error("INVALID_TRAINING_PLAN_WEEK");
     }
+    if (
+      requestId !== trainingPlanWeekRequestId ||
+      trainingPlanSelectedSubjectId !== subjectId ||
+      trainingPlanWeekStart !== weekStart
+    ) {
+      return false;
+    }
     trainingPlanWeekPlans = payload.plans.slice();
     trainingPlanWeekAttendance = payload.attendance.slice();
     trainingPlanWeekLoaded = true;
     return true;
   } catch (error) {
+    if (
+      requestId !== trainingPlanWeekRequestId ||
+      trainingPlanSelectedSubjectId !== subjectId ||
+      trainingPlanWeekStart !== weekStart
+    ) {
+      return false;
+    }
     trainingPlanWeekPlans = [];
     trainingPlanWeekAttendance = [];
     showMessage(
@@ -1869,9 +1900,21 @@ async function loadTrainingPlanWeek() {
     );
     return false;
   } finally {
+    const requestOutdated =
+      requestId !== trainingPlanWeekRequestId ||
+      trainingPlanSelectedSubjectId !== subjectId ||
+      trainingPlanWeekStart !== weekStart;
     trainingPlanWeekLoading = false;
     refreshTrainingPlanControls();
     renderTrainingPlanWeek();
+    if (
+      requestOutdated &&
+      trainingPlanViewMode === "athlete" &&
+      !trainingPlanWeekLoaded &&
+      trainingPlanSelectedSubjectId
+    ) {
+      void loadTrainingPlanWeek();
+    }
   }
 }
 
@@ -2083,6 +2126,7 @@ function populateTrainingPlanEditor() {
 }
 
 async function closeTrainingPlanEditor(force) {
+  trainingPlanDayRequestId += 1;
   closeTrainingPlanPicker();
   closeTrainingPlanDistribution();
   if (!force) {

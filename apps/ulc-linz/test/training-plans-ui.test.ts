@@ -186,6 +186,27 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
+  it("rejects superseded day-plan and athlete-week responses", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "let trainingPlanWeekRequestId = 0;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "let trainingPlanDayRequestId = 0;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanWeekRequestId += 1;\n  trainingPlanViewMode = next;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "requestId !== trainingPlanDayRequestId ||\n      trainingPlanSelectedSubjectId !== subjectId",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "requestId !== trainingPlanWeekRequestId ||\n      trainingPlanSelectedSubjectId !== subjectId ||\n      trainingPlanWeekStart !== weekStart",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanDayRequestId += 1;\n  closeTrainingPlanPicker();",
+    );
+  });
+
   it("blocks stale week cards while a new subject or week is loading", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "button.disabled = trainingPlanWeekLoading || !trainingPlanWeekLoaded;",
