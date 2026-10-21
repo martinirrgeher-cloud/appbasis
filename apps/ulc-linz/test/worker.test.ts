@@ -5308,12 +5308,14 @@ describe("U12 runtime API", () => {
         async copyCurrentTo(
           organizationId,
           sourcePlanId,
+          expectedSourceRevision,
           targetSubjectId,
           targetDate,
         ) {
           received = {
             organizationId,
             sourcePlanId,
+            expectedSourceRevision,
             targetSubjectId,
             targetDate,
           };
@@ -5348,6 +5350,7 @@ describe("U12 runtime API", () => {
             "content-type": "application/json",
           },
           body: JSON.stringify({
+            expectedSourceRevision: 4,
             targetSubjectId: "athlete-2",
             targetDate: "2026-10-14",
           }),
@@ -5360,6 +5363,7 @@ describe("U12 runtime API", () => {
     expect(received).toEqual({
       organizationId: "verein-server",
       sourcePlanId: "plan-1",
+      expectedSourceRevision: 4,
       targetSubjectId: "athlete-2",
       targetDate: "2026-10-14",
     });
