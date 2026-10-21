@@ -42,6 +42,10 @@ const UPDATE_FIELDS = Object.freeze([
   "note",
   "items",
 ]);
+const COPY_FIELDS = Object.freeze([
+  "targetSubjectId",
+  "targetDate",
+]);
 const SAVE_BLOCK_TEMPLATE_FIELDS = Object.freeze([
   "planId",
   "blockItemId",
@@ -94,7 +98,8 @@ export async function trainingPlansHttpResponse(
   }
   const route = url.pathname.slice(base.length);
   const update = /^([^/]+)\/update$/.exec(route);
-  if (update === null) {
+  const copy = /^([^/]+)\/copy$/.exec(route);
+  if (update === null && copy === null) {
     return trainingPlanNotFound();
   }
   if (request.method !== "POST") {
@@ -113,7 +118,38 @@ export async function trainingPlansHttpResponse(
   if (access instanceof Response) return access;
 
   try {
-    const planId = decodeIdentifier(update[1]);
+    const encodedPlanId = update?.[1] ?? copy?.[1];
+    if (encodedPlanId === undefined) return trainingPlanNotFound();
+    const planId = decodeIdentifier(encodedPlanId);
+
+    if (copy !== null) {
+      const body = await trainingPlanJsonObject(
+        request,
+        COPY_FIELDS,
+        ["targetSubjectId", "targetDate"],
+      );
+      if (
+        typeof body.targetSubjectId !== "string" ||
+        typeof body.targetDate !== "string"
+      ) {
+        throw new InvalidTrainingPlanRequestError();
+      }
+      const plan = await runtime.trainingPlans.copyCurrentTo(
+        access.organizationId,
+        planId,
+        normalizeTrainingPlanIdentifier(
+          body.targetSubjectId,
+          "Training plan copy target subject",
+        ),
+        normalizeTrainingPlanDate(body.targetDate),
+      );
+      if (plan === undefined) return trainingPlanNotFound();
+      return privateJson(
+        { plan: trainingPlanClientSnapshot(plan) },
+        { status: 201 },
+      );
+    }
+
     const body = await trainingPlanUpdateBody(request);
     const current = await runtime.trainingPlans.findCurrent(
       access.organizationId,
@@ -179,6 +215,7 @@ async function trainingPlansModuleResponse(
             attendanceSummary: true,
             attendanceFilter: true,
             groupWeekOverview: true,
+            planCopy: true,
             blockTemplateAdoption: true,
             blockTemplateSaveBack: true,
           },
