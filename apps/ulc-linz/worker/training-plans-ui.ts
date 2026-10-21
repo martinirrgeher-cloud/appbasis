@@ -2046,6 +2046,7 @@ function populateTrainingPlanEditor() {
 
 async function closeTrainingPlanEditor(force) {
   closeTrainingPlanPicker();
+  closeTrainingPlanDistribution();
   if (!force) {
     if (
       trainingPlanSaveBusy ||
@@ -2506,6 +2507,7 @@ function closeTrainingPlanSaveTemplate(force) {
   showMessage(trainingPlanElements.saveTemplateMessage, "");
   refreshTrainingPlanTemplateControls();
   refreshTrainingPlanSaveBackButtons();
+  refreshTrainingPlanGroupEditorActions();
   return true;
 }
 
@@ -3430,6 +3432,193 @@ async function reloadTrainingPlanEditor() {
   populateTrainingPlanEditor();
 }
 
+function refreshTrainingPlanGroupEditorActions() {
+  const rows = trainingPlanVisibleOverviewRows();
+  const index = rows.findIndex(
+    (row) => row.subject.id === trainingPlanSelectedSubjectId,
+  );
+  const groupMode =
+    trainingPlanViewMode === "group" &&
+    trainingPlanOverview !== null &&
+    trainingPlanEditorDate !== null &&
+    index >= 0;
+
+  if (trainingPlanElements.prevAthlete) {
+    trainingPlanElements.prevAthlete.hidden = !groupMode;
+    trainingPlanElements.prevAthlete.disabled =
+      !groupMode || index <= 0 || trainingPlanSaveBusy;
+  }
+  if (trainingPlanElements.nextAthlete) {
+    trainingPlanElements.nextAthlete.hidden = !groupMode;
+    trainingPlanElements.nextAthlete.disabled =
+      !groupMode || index < 0 || index >= rows.length - 1 || trainingPlanSaveBusy;
+  }
+  if (trainingPlanElements.distributeOpen) {
+    trainingPlanElements.distributeOpen.hidden = !groupMode;
+    trainingPlanElements.distributeOpen.disabled =
+      !groupMode ||
+      !trainingPlansCanEdit ||
+      trainingPlanSaveBusy ||
+      trainingPlanTemplateBusy ||
+      trainingPlanSaveBackBusy ||
+      trainingPlanConflict;
+  }
+}
+
+async function navigateTrainingPlanGroupAthlete(delta) {
+  if (!trainingPlanEditorDate || !trainingPlanOverview) return;
+  const rows = trainingPlanVisibleOverviewRows();
+  const index = rows.findIndex(
+    (row) => row.subject.id === trainingPlanSelectedSubjectId,
+  );
+  const target = rows[index + delta];
+  if (!target) return;
+  const date = trainingPlanEditorDate;
+  if (!(await closeTrainingPlanEditor(false))) return;
+  await openTrainingPlanFromOverview(target.subject.id, date);
+}
+
+function closeTrainingPlanDistribution() {
+  trainingPlanDistributeBusy = false;
+  if (trainingPlanElements.distribute) {
+    trainingPlanElements.distribute.hidden = true;
+  }
+}
+
+function renderTrainingPlanDistribution() {
+  const container = trainingPlanElements.distributeList;
+  if (!container) return;
+  container.replaceChildren();
+  if (!trainingPlanOverview || !trainingPlanEditorDate) return;
+  const dayIndex = trainingPlanOverview.dates.indexOf(trainingPlanEditorDate);
+  if (dayIndex < 0) return;
+
+  for (const row of trainingPlanVisibleOverviewRows()) {
+    if (row.subject.id === trainingPlanSelectedSubjectId) continue;
+    const cell = row.cells[dayIndex];
+    if (!cell) continue;
+    const label = document.createElement("label");
+    label.className = "training-plan-distribute-row";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = row.subject.id;
+    checkbox.disabled = Boolean(cell.planId) || trainingPlanDistributeBusy;
+    const name = document.createElement("span");
+    name.textContent = row.subject.displayName;
+    const status = document.createElement("small");
+    status.textContent = cell.planId
+      ? "Plan vorhanden"
+      : trainingPlanAttendanceCompactLabel(cell.attendanceStatus);
+    label.append(checkbox, name, status);
+    container.append(label);
+  }
+
+  if (container.childElementCount === 0) {
+    const empty = document.createElement("p");
+    empty.className = "settings-note";
+    empty.textContent = "Keine weiteren Athleten für diesen Tag verfügbar.";
+    container.append(empty);
+  }
+}
+
+async function openTrainingPlanDistribution() {
+  if (!trainingPlanOverview || !trainingPlanEditorDate || !trainingPlansCanEdit) {
+    return;
+  }
+  if (trainingPlanDirty && !(await saveTrainingPlan())) return;
+  if (!trainingPlanSelected) {
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Der Plan muss zuerst gespeichert werden, bevor er verteilt werden kann.",
+    );
+    return;
+  }
+  renderTrainingPlanDistribution();
+  if (trainingPlanElements.distribute) {
+    trainingPlanElements.distribute.hidden = false;
+  }
+}
+
+async function distributeTrainingPlan() {
+  if (
+    !trainingPlanSelected ||
+    !trainingPlanEditorDate ||
+    !trainingPlanOverview ||
+    trainingPlanDistributeBusy
+  ) return;
+  const selected = [
+    ...(trainingPlanElements.distributeList?.querySelectorAll(
+      "input[type='checkbox']:checked:not(:disabled)",
+    ) || []),
+  ].map((input) => input.value);
+  if (selected.length === 0) return;
+
+  trainingPlanDistributeBusy = true;
+  if (trainingPlanElements.distributeConfirm) {
+    trainingPlanElements.distributeConfirm.disabled = true;
+  }
+  renderTrainingPlanDistribution();
+
+  let copied = 0;
+  let skipped = 0;
+  try {
+    for (const subjectId of selected) {
+      try {
+        const payload = await requestJson(
+          "/api/modules/training-plans/" +
+            encodeURIComponent(trainingPlanSelected.id) +
+            "/copy",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              targetSubjectId: subjectId,
+              targetDate: trainingPlanEditorDate,
+            }),
+          },
+        );
+        const plan = payload?.plan;
+        if (!isTrainingPlanSnapshot(plan)) {
+          throw new Error("INVALID_TRAINING_PLAN_COPY");
+        }
+        replaceTrainingPlanOverviewSummary(plan);
+        copied += 1;
+      } catch (error) {
+        if (
+          error?.status === 409 &&
+          error?.code === "TRAINING_PLAN_TARGET_OCCUPIED"
+        ) {
+          skipped += 1;
+          continue;
+        }
+        throw error;
+      }
+    }
+    renderTrainingPlanOverview();
+    closeTrainingPlanDistribution();
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Plan auf " +
+        String(copied) +
+        " Athlet" +
+        (copied === 1 ? "en" : "en") +
+        " kopiert" +
+        (skipped > 0 ? "; " + String(skipped) + " bereits belegt." : "."),
+      "success",
+    );
+  } catch {
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Der Plan konnte nicht vollständig verteilt werden.",
+    );
+  } finally {
+    trainingPlanDistributeBusy = false;
+    if (trainingPlanElements.distributeConfirm) {
+      trainingPlanElements.distributeConfirm.disabled = false;
+    }
+    refreshTrainingPlanEditorState();
+  }
+}
+
 function refreshTrainingPlanEditorState() {
   const readonly = !trainingPlansCanEdit;
   if (trainingPlanElements.note) {
@@ -3674,6 +3863,22 @@ trainingPlanElements.close?.addEventListener("click", () => {
 });
 trainingPlanElements.save?.addEventListener("click", () => {
   void saveTrainingPlan();
+});
+trainingPlanElements.prevAthlete?.addEventListener("click", () => {
+  void navigateTrainingPlanGroupAthlete(-1);
+});
+trainingPlanElements.nextAthlete?.addEventListener("click", () => {
+  void navigateTrainingPlanGroupAthlete(1);
+});
+trainingPlanElements.distributeOpen?.addEventListener("click", () => {
+  void openTrainingPlanDistribution();
+});
+trainingPlanElements.distributeClose?.addEventListener(
+  "click",
+  closeTrainingPlanDistribution,
+);
+trainingPlanElements.distributeConfirm?.addEventListener("click", () => {
+  void distributeTrainingPlan();
 });
 trainingPlanElements.reload?.addEventListener("click", () => void reloadTrainingPlanEditor());
 trainingPlanElements.retry?.addEventListener("click", () => {
