@@ -1652,17 +1652,30 @@ document.addEventListener("keydown", (event) => {
   setAppNavMoreOpen(false);
   if (!elements.masterdataImportPreview?.hidden) closeMasterdataImportPreview();
 });
+async function navigateAppSection(section) {
+  const current = document.querySelector("[data-nav-view].is-active")?.dataset.navView || "home";
+  if (
+    current === "training-plans" &&
+    section !== "training-plans" &&
+    typeof closeTrainingPlanEditor === "function"
+  ) {
+    const closed = await closeTrainingPlanEditor(false);
+    if (!closed) return;
+  }
+  showAppSection(section);
+}
+
 for (const control of document.querySelectorAll("[data-nav-view]")) {
   control.addEventListener("click", () => {
     if (control.disabled) return;
     setAppNavMoreOpen(false);
-    showAppSection(control.dataset.navView || "home");
+    void navigateAppSection(control.dataset.navView || "home");
   });
 }
 for (const control of document.querySelectorAll("[data-open-view]")) {
   control.addEventListener("click", () => {
     if (control.disabled) return;
-    showAppSection(control.dataset.openView || "home");
+    void navigateAppSection(control.dataset.openView || "home");
   });
 }
 
