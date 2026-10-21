@@ -522,6 +522,7 @@ body.training-plan-picker-open { overflow: hidden; }
   position: sticky;
   bottom: 0;
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 10px 14px;
@@ -529,6 +530,19 @@ body.training-plan-picker-open { overflow: hidden; }
   background: rgb(255 255 255 / 96%);
   color: var(--secondary);
   font-size: .78rem;
+}
+.training-plan-footer__meta {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.training-plan-footer__meta span:last-child {
+  color: var(--secondary);
+  font-size: .7rem;
+}
+.training-plan-footer .button {
+  min-width: 104px;
+  flex: 0 0 auto;
 }
 .training-plan-shell {
   display: grid;
@@ -736,6 +750,8 @@ body.training-plan-picker-open { overflow: hidden; }
   .training-plan-group-row { min-height: 54px; padding: 8px 9px; }
   .training-plan-header { padding: 10px 11px; }
   .training-plan-footer { padding: 8px 10px max(8px, env(safe-area-inset-bottom)); }
+  .training-plan-footer__meta span:last-child { display: none; }
+  .training-plan-footer .button { min-width: 92px; }
 }
 @media (max-width: 359px) {
   .training-plan-grid { grid-template-columns: 1fr; }
@@ -3336,6 +3352,51 @@ function refreshTrainingPlanEditorState() {
   }
 }
 
+function persistTrainingPlanOnPageHide() {
+  if (
+    !trainingPlanDraft ||
+    !trainingPlanEditorDate ||
+    !trainingPlanDirty ||
+    !trainingPlansCanEdit ||
+    trainingPlanConflict ||
+    trainingPlanSaveBusy ||
+    trainingPlanTemplateBusy ||
+    trainingPlanSaveBackBusy
+  ) return;
+
+  const existing = trainingPlanSelected;
+  const draftPayload = trainingPlanDraftPayload(
+    trainingPlanDraft,
+    existing !== null,
+  );
+  const url = existing
+    ? "/api/modules/training-plans/" +
+      encodeURIComponent(existing.id) +
+      "/update"
+    : "/api/modules/training-plans";
+  const body = existing
+    ? {
+        expectedRevision: existing.currentRevision,
+        ...draftPayload,
+      }
+    : {
+        subjectId: trainingPlanSelectedSubjectId,
+        planDate: trainingPlanEditorDate,
+        ...draftPayload,
+      };
+
+  void fetch(url, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+    },
+    credentials: "same-origin",
+    keepalive: true,
+    body: JSON.stringify(body),
+  });
+}
+
 function trainingPlanSetSaveState(state, text) {
   if (!trainingPlanElements.saveState) return;
   trainingPlanElements.saveState.dataset.state = state;
@@ -3538,6 +3599,7 @@ trainingPlanElements.saveTemplateCancel?.addEventListener("click", () => {
 trainingPlanElements.saveTemplateConfirm?.addEventListener("click", () => {
   void saveTrainingPlanBlockTemplate();
 });
+window.addEventListener("pagehide", persistTrainingPlanOnPageHide);
 document.addEventListener("keydown", (event) => {
   if (
     event.key === "Escape" &&
