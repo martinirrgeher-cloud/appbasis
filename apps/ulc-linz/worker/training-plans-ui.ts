@@ -26,9 +26,21 @@ export const ULC_TRAINING_PLANS_HTML = `
               </div>
 
               <section class="training-plan-mode-panel" id="training-plan-group-panel" data-training-plan-mode-panel="group">
-                <label class="training-plan-primary-select">Trainingsgruppe
-                  <select id="training-plan-overview-group"></select>
-                </label>
+                <div class="training-plan-group-controls">
+                  <label class="training-plan-primary-select">Trainingsgruppe
+                    <select id="training-plan-overview-group"></select>
+                  </label>
+                  <label>Anwesenheit
+                    <select id="training-plan-overview-attendance-filter">
+                      <option value="all">Alle</option>
+                      <option value="present">Anwesend</option>
+                      <option value="excused">Entschuldigt</option>
+                      <option value="absent">Abwesend</option>
+                      <option value="open">Offen</option>
+                      <option value="none">Kein Eintrag</option>
+                    </select>
+                  </label>
+                </div>
                 <nav class="training-plan-day-tabs" id="training-plan-overview-days" aria-label="Trainingstag auswählen"></nav>
                 <div class="training-plan-overview" id="training-plan-overview" aria-live="polite"></div>
               </section>
@@ -582,6 +594,12 @@ body.training-plan-picker-open { overflow: hidden; }
   text-align: right;
 }
 .training-plan-mode-panel { display: grid; gap: 10px; min-width: 0; }
+.training-plan-group-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, .55fr);
+  gap: 8px;
+  align-items: end;
+}
 .training-plan-primary-select { max-width: 360px; }
 .training-plan-athlete-controls {
   display: grid;
@@ -744,7 +762,8 @@ body.training-plan-picker-open { overflow: hidden; }
   .training-plan-weekbar { align-items: stretch; flex-direction: column-reverse; }
   .training-plan-weekbar > strong { text-align: left; }
   .training-plan-week-nav { justify-content: space-between; }
-  .training-plan-athlete-controls { grid-template-columns: 1fr; }
+  .training-plan-athlete-controls,
+  .training-plan-group-controls { grid-template-columns: 1fr; }
   .training-plan-primary-select { max-width: none; }
   .training-plan-picker-filters { grid-template-columns: 1fr; }
   .training-plan-group-row { min-height: 54px; padding: 8px 9px; }
@@ -774,6 +793,7 @@ const trainingPlanElements = Object.freeze({
   weekLabel: document.querySelector("#training-plan-week-label"),
   week: document.querySelector("#training-plan-week"),
   overviewGroup: document.querySelector("#training-plan-overview-group"),
+  overviewAttendanceFilter: document.querySelector("#training-plan-overview-attendance-filter"),
   overviewDays: document.querySelector("#training-plan-overview-days"),
   overview: document.querySelector("#training-plan-overview"),
   editor: document.querySelector("#training-plan-editor"),
@@ -814,6 +834,7 @@ let trainingPlansCanEdit = false;
 let trainingPlanSubjects = [];
 let trainingPlanViewMode = "group";
 let trainingPlanOverviewDayIndex = 0;
+let trainingPlanOverviewAttendanceFilter = "all";
 let trainingPlanOverviewGroups = [];
 let trainingPlanSelectedOverviewGroupId = "";
 let trainingPlanOverview = null;
@@ -892,7 +913,14 @@ function isTrainingPlanOverview(value) {
             Number.isSafeInteger(cell.durationMinutes) &&
             cell.durationMinutes >= 0 &&
             Number.isSafeInteger(cell.exerciseCount) &&
-            cell.exerciseCount >= 0,
+            cell.exerciseCount >= 0 &&
+            (
+              cell.attendanceStatus === undefined ||
+              cell.attendanceStatus === "open" ||
+              cell.attendanceStatus === "present" ||
+              cell.attendanceStatus === "excused" ||
+              cell.attendanceStatus === "absent"
+            ),
         ),
     );
 }
