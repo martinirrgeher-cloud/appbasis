@@ -43,6 +43,7 @@ const UPDATE_FIELDS = Object.freeze([
   "items",
 ]);
 const COPY_FIELDS = Object.freeze([
+  "expectedSourceRevision",
   "targetSubjectId",
   "targetDate",
 ]);
@@ -126,7 +127,7 @@ export async function trainingPlansHttpResponse(
       const body = await trainingPlanJsonObject(
         request,
         COPY_FIELDS,
-        ["targetSubjectId", "targetDate"],
+        ["expectedSourceRevision", "targetSubjectId", "targetDate"],
       );
       if (
         typeof body.targetSubjectId !== "string" ||
@@ -137,6 +138,7 @@ export async function trainingPlansHttpResponse(
       const plan = await runtime.trainingPlans.copyCurrentTo(
         access.organizationId,
         planId,
+        requiredRevision(body.expectedSourceRevision),
         normalizeTrainingPlanIdentifier(
           body.targetSubjectId,
           "Training plan copy target subject",
