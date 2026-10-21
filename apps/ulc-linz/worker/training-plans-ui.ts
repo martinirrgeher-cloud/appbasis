@@ -903,6 +903,7 @@ let trainingPlanPickerLoading = false;
 let trainingPlanDistributeBusy = false;
 let trainingPlanWeekRequestId = 0;
 let trainingPlanDayRequestId = 0;
+let trainingPlanSessionIdentityId = "";
 const TRAINING_PLAN_LEAVE_BACKUP_KEY =
   "appbasis.training-plan.leave-backup.v1";
 
@@ -3829,6 +3830,33 @@ function refreshTrainingPlanEditorState() {
   }
 }
 
+function setTrainingPlanSessionIdentity(identityId) {
+  const next =
+    typeof identityId === "string" && identityId.trim().length > 0
+      ? identityId.trim()
+      : "";
+  if (next === trainingPlanSessionIdentityId) return;
+  trainingPlanSessionIdentityId = next;
+
+  try {
+    const raw = localStorage.getItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
+    if (!raw) return;
+    const value = JSON.parse(raw);
+    if (
+      next.length === 0 ||
+      value === null ||
+      typeof value !== "object" ||
+      value.identityId !== next
+    ) {
+      localStorage.removeItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
+    }
+  } catch {
+    try {
+      localStorage.removeItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
+    } catch {}
+  }
+}
+
 function trainingPlanReadLeaveBackup() {
   try {
     const raw = localStorage.getItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);
@@ -3837,7 +3865,10 @@ function trainingPlanReadLeaveBackup() {
     if (
       value === null ||
       typeof value !== "object" ||
-      value.version !== 1 ||
+      value.version !== 2 ||
+      typeof value.identityId !== "string" ||
+      value.identityId.length === 0 ||
+      value.identityId !== trainingPlanSessionIdentityId ||
       typeof value.subjectId !== "string" ||
       typeof value.planDate !== "string" ||
       !/^\\d{4}-\\d{2}-\\d{2}$/.test(value.planDate) ||
@@ -3899,12 +3930,17 @@ function trainingPlanRestoreLeaveBackup(plan, date) {
 }
 
 function trainingPlanWriteLeaveBackup(existing) {
-  if (!trainingPlanDraft || !trainingPlanEditorDate) return;
+  if (
+    !trainingPlanDraft ||
+    !trainingPlanEditorDate ||
+    trainingPlanSessionIdentityId.length === 0
+  ) return;
   try {
     localStorage.setItem(
       TRAINING_PLAN_LEAVE_BACKUP_KEY,
       JSON.stringify({
-        version: 1,
+        version: 2,
+        identityId: trainingPlanSessionIdentityId,
         subjectId: trainingPlanSelectedSubjectId,
         planDate: trainingPlanEditorDate,
         planId: existing?.id || null,

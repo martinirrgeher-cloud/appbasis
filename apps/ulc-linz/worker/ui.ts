@@ -1773,6 +1773,7 @@ async function acceptSession(next) {
     return;
   }
 
+  setTrainingPlanSessionIdentity(next?.identity?.identityId);
   showView("app");
   showAppSection("home");
   if (elements.welcomeEyebrow) {

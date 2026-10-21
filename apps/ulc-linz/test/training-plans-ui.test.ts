@@ -175,6 +175,25 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
+  it("scopes recovered leave drafts to the authenticated identity", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "setTrainingPlanSessionIdentity(next?.identity?.identityId);",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      'let trainingPlanSessionIdentityId = "";',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "value.identityId !== trainingPlanSessionIdentityId",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "identityId: trainingPlanSessionIdentityId,",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("version: 2,");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "localStorage.removeItem(TRAINING_PLAN_LEAVE_BACKUP_KEY);",
+    );
+  });
+
   it("uses manual save, saves on controlled leave and keeps optimistic concurrency", () => {
     expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-save"');
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
