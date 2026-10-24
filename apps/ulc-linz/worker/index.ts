@@ -69,6 +69,10 @@ import {
   UlcKindertrainingNotFoundError,
 } from "./kindertraining-service";
 import {
+  UlcSelfRegistrationModeError,
+  UlcSelfRegistrationNotFoundError,
+} from "./self-registration-service";
+import {
   UlcTrainingBlockParameterError,
   UlcTrainingBlockReferenceError,
 } from "./training-blocks-service";
@@ -210,6 +214,10 @@ export function createGeneratedWorker(
           response = await kindertrainingModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/kindertraining/session") {
           response = await kindertrainingSessionResponse(request, runtime, url);
+        } else if (
+          url.pathname === "/api/modules/kindertraining/registration"
+        ) {
+          response = await selfRegistrationResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/u12") {
           response = await u12ModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/u12/session") {
@@ -1062,6 +1070,237 @@ function trainingBlockNotFound(): Response {
     },
     { status: 404 },
   );
+}
+
+async function selfRegistrationResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return methodNotAllowedFor("GET, POST", "training self-registration");
+  }
+
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) {
+    if (current.status >= 400) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: null,
+        organizationId: null,
+        action: request.method === "GET" ? "view" : "edit",
+        targetId: "kindertraining",
+        reasonCode: "identity-access-denied",
+      });
+    }
+    return current;
+  }
+
+  let access;
+  try {
+    access =
+      request.method === "GET"
+        ? await runtime.selfRegistrationAccess.assertViewAccess(current)
+        : await runtime.selfRegistrationAccess.assertEditAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: "Training self-registration access denied.",
+          },
+        },
+        {
+          status: 403,
+          headers: { "cache-control": "private, no-store" },
+        },
+      );
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+
+  try {
+    if (request.method === "GET") {
+      const sessionDate = selfRegistrationQuery(url);
+      const options = await runtime.selfRegistration.listOptions(
+        access.organizationId,
+        access.athleteId,
+        sessionDate,
+      );
+      return Response.json(
+        { sessionDate, options },
+        { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    if ([...url.searchParams.keys()].length !== 0) {
+      throw new InvalidSelfRegistrationRequestError();
+    }
+    const body = await selfRegistrationJsonBody(request);
+    const option = await runtime.selfRegistration.save(
+      access.organizationId,
+      access.athleteId,
+      access.actorPrincipalId,
+      body,
+    );
+    return Response.json(
+      { option },
+      { headers: { "cache-control": "private, no-store" } },
+    );
+  } catch (error) {
+    if (
+      error instanceof InvalidSelfRegistrationRequestError ||
+      error instanceof UlcTrainingValidationError
+    ) {
+      return Response.json(
+        {
+          error: {
+            code: "INVALID_TRAINING_REGISTRATION",
+            message: "The training registration input is invalid.",
+          },
+        },
+        {
+          status: 400,
+          headers: { "cache-control": "private, no-store" },
+        },
+      );
+    }
+    if (error instanceof UlcSelfRegistrationNotFoundError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: "The training registration target was not found.",
+          },
+        },
+        {
+          status: 404,
+          headers: { "cache-control": "private, no-store" },
+        },
+      );
+    }
+    if (error instanceof UlcSelfRegistrationModeError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: "Self-registration is disabled for this group.",
+          },
+        },
+        {
+          status: 409,
+          headers: { "cache-control": "private, no-store" },
+        },
+      );
+    }
+    if (error instanceof UlcTrainingSessionConflictError) {
+      return Response.json(
+        {
+          error: {
+            code: "TRAINING_REGISTRATION_CONFLICT",
+            message: "The training registration changed concurrently.",
+          },
+        },
+        {
+          status: 409,
+          headers: { "cache-control": "private, no-store" },
+        },
+      );
+    }
+    throw error;
+  }
+}
+
+class InvalidSelfRegistrationRequestError extends Error {}
+
+function selfRegistrationQuery(url: URL): string {
+  const keys = [...url.searchParams.keys()];
+  if (
+    keys.some((key) => key !== "sessionDate") ||
+    url.searchParams.getAll("sessionDate").length !== 1
+  ) {
+    throw new InvalidSelfRegistrationRequestError();
+  }
+  const sessionDate = url.searchParams.get("sessionDate");
+  if (
+    typeof sessionDate !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)
+  ) {
+    throw new InvalidSelfRegistrationRequestError();
+  }
+  return sessionDate;
+}
+
+async function selfRegistrationJsonBody(
+  request: Request,
+): Promise<{
+  groupId: string;
+  sessionDate: string;
+  intention: "unknown" | "attending" | "not_attending" | "maybe";
+  expectedRevision: number | null;
+}> {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    throw new InvalidSelfRegistrationRequestError();
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new InvalidSelfRegistrationRequestError();
+  }
+  const body = value as Record<string, unknown>;
+  const expectedKeys = [
+    "expectedRevision",
+    "groupId",
+    "intention",
+    "sessionDate",
+  ];
+  if (
+    JSON.stringify(Object.keys(body).sort()) !== JSON.stringify(expectedKeys) ||
+    Object.getOwnPropertySymbols(body).length !== 0 ||
+    typeof body.groupId !== "string" ||
+    body.groupId.length === 0 ||
+    body.groupId.length > 200 ||
+    body.groupId.trim() !== body.groupId ||
+    typeof body.sessionDate !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(body.sessionDate) ||
+    !["unknown", "attending", "not_attending", "maybe"].includes(
+      String(body.intention),
+    ) ||
+    !(
+      body.expectedRevision === null ||
+      (Number.isSafeInteger(body.expectedRevision) &&
+        Number(body.expectedRevision) >= 1)
+    )
+  ) {
+    throw new InvalidSelfRegistrationRequestError();
+  }
+  return {
+    groupId: body.groupId,
+    sessionDate: body.sessionDate,
+    intention: body.intention as
+      | "unknown"
+      | "attending"
+      | "not_attending"
+      | "maybe",
+    expectedRevision:
+      body.expectedRevision === null
+        ? null
+        : Number(body.expectedRevision),
+  };
 }
 
 async function kindertrainingModuleResponse(
