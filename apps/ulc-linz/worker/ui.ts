@@ -1965,6 +1965,268 @@ async function acceptSession(next) {
   refreshTrainingBlockCatalogDependency();
 }
 
+async function bootstrapSelfRegistration() {
+  selfRegistrationReady = false;
+  selfRegistrationLoading = false;
+  selfRegistrationSavingGroupId = null;
+  selfRegistrationOptions = [];
+  if (elements.registrationDate && !elements.registrationDate.value) {
+    elements.registrationDate.value = localIsoDate(new Date());
+  }
+  renderSelfRegistration();
+  refreshAppAvailability();
+  await loadSelfRegistration(true);
+}
+
+async function loadSelfRegistration(bootstrap = false) {
+  if (selfRegistrationLoading || (!selfRegistrationReady && !bootstrap)) return;
+  const sessionDate =
+    elements.registrationDate?.value || localIsoDate(new Date());
+  const wasReady = selfRegistrationReady;
+  selfRegistrationLoading = true;
+  showMessage(elements.registrationMessage, "");
+  showMessage(elements.registrationSuccess, "");
+  renderSelfRegistration();
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/kindertraining/registration?sessionDate=" +
+        encodeURIComponent(sessionDate),
+    );
+    if (
+      payload?.sessionDate !== sessionDate ||
+      !Array.isArray(payload?.options) ||
+      !payload.options.every((option) =>
+        isSelfRegistrationOption(option, sessionDate),
+      )
+    ) {
+      throw new Error("INVALID_SELF_REGISTRATION_CONTRACT");
+    }
+    selfRegistrationOptions = payload.options.slice();
+    selfRegistrationReady = true;
+  } catch (error) {
+    selfRegistrationOptions = [];
+    if (!wasReady || error?.status === 403) {
+      selfRegistrationReady = false;
+    }
+    if (error?.status !== 403) {
+      showMessage(
+        elements.registrationMessage,
+        "Die Trainingsanmeldung konnte nicht geladen werden.",
+      );
+    }
+  } finally {
+    selfRegistrationLoading = false;
+    renderSelfRegistration();
+    refreshAppAvailability();
+  }
+}
+
+function isSelfRegistrationOption(option, sessionDate) {
+  return (
+    option !== null &&
+    typeof option === "object" &&
+    option?.sessionDate === sessionDate &&
+    option?.group !== null &&
+    typeof option?.group === "object" &&
+    typeof option.group.id === "string" &&
+    option.group.id.length > 0 &&
+    typeof option.group.name === "string" &&
+    option.group.name.length > 0 &&
+    (option.group.shortName === null ||
+      typeof option.group.shortName === "string") &&
+    (option.sessionState === null ||
+      option.sessionState === "scheduled" ||
+      option.sessionState === "cancelled") &&
+    ["unknown", "attending", "not_attending", "maybe"].includes(
+      option.intention,
+    ) &&
+    (option.revision === null ||
+      (Number.isSafeInteger(option.revision) && option.revision >= 1))
+  );
+}
+
+function selfRegistrationLabel(intention) {
+  return {
+    unknown: "Noch offen",
+    attending: "Ich komme",
+    not_attending: "Abgesagt",
+    maybe: "Vielleicht",
+  }[intention] || "Noch offen";
+}
+
+function renderSelfRegistration() {
+  const container = elements.registrationList;
+  if (!container) return;
+  container.replaceChildren();
+
+  if (selfRegistrationLoading) {
+    const loading = document.createElement("div");
+    loading.className = "card registration-empty";
+    loading.textContent = "Trainingsanmeldung wird geladen …";
+    container.append(loading);
+    return;
+  }
+
+  if (!selfRegistrationReady) return;
+  if (selfRegistrationOptions.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "registration-empty";
+    empty.textContent =
+      "Für dieses Datum ist keine Gruppe mit Selbstanmeldung verfügbar.";
+    container.append(empty);
+    return;
+  }
+
+  for (const option of selfRegistrationOptions) {
+    const card = document.createElement("article");
+    card.className = "card registration-card";
+
+    const head = document.createElement("div");
+    head.className = "registration-card__head";
+    const identity = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = option.group.name;
+    const meta = document.createElement("small");
+    meta.textContent = option.group.shortName
+      ? option.group.shortName + " · " + germanDate(option.sessionDate)
+      : germanDate(option.sessionDate);
+    identity.append(title, meta);
+
+    const current = document.createElement("span");
+    current.className = "registration-current";
+    current.dataset.intention = option.intention;
+    current.textContent = selfRegistrationLabel(option.intention);
+    head.append(identity, current);
+    card.append(head);
+
+    if (option.sessionState === "cancelled") {
+      const cancelled = document.createElement("p");
+      cancelled.className = "registration-cancelled";
+      cancelled.textContent = "Dieses Training wurde abgesagt.";
+      card.append(cancelled);
+      container.append(card);
+      continue;
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "registration-actions";
+    for (const action of [
+      { intention: "attending", label: "Komme" },
+      { intention: "maybe", label: "Vielleicht" },
+      { intention: "not_attending", label: "Absage" },
+      { intention: "unknown", label: "Offen" },
+    ]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "button button--secondary registration-action";
+      button.dataset.registrationGroup = option.group.id;
+      button.dataset.intention = action.intention;
+      button.textContent = action.label;
+      button.setAttribute(
+        "aria-pressed",
+        option.intention === action.intention ? "true" : "false",
+      );
+      button.disabled =
+        selfRegistrationSavingGroupId !== null ||
+        selfRegistrationLoading;
+      actions.append(button);
+    }
+    card.append(actions);
+    container.append(card);
+  }
+}
+
+async function handleSelfRegistrationClick(event) {
+  const control = event.target?.closest?.("[data-registration-group]");
+  if (
+    !control ||
+    !selfRegistrationReady ||
+    selfRegistrationLoading ||
+    selfRegistrationSavingGroupId !== null
+  ) {
+    return;
+  }
+  const groupId = control.dataset.registrationGroup || "";
+  const intention = control.dataset.intention || "";
+  if (
+    !groupId ||
+    !["unknown", "attending", "not_attending", "maybe"].includes(intention)
+  ) {
+    return;
+  }
+  const option = selfRegistrationOptions.find(
+    (candidate) => candidate.group.id === groupId,
+  );
+  if (!option || option.sessionState === "cancelled") return;
+
+  selfRegistrationSavingGroupId = groupId;
+  showMessage(elements.registrationMessage, "");
+  showMessage(elements.registrationSuccess, "");
+  renderSelfRegistration();
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/kindertraining/registration",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          expectedRevision: option.revision,
+          groupId,
+          intention,
+          sessionDate: option.sessionDate,
+        }),
+      },
+    );
+    const saved = payload?.option;
+    if (!isSelfRegistrationOption(saved, option.sessionDate)) {
+      throw new Error("INVALID_SELF_REGISTRATION_SAVE");
+    }
+    selfRegistrationOptions = selfRegistrationOptions.map((candidate) =>
+      candidate.group.id === groupId ? saved : candidate,
+    );
+    showMessage(
+      elements.registrationSuccess,
+      "Trainingsanmeldung gespeichert: " +
+        saved.group.name +
+        " – " +
+        selfRegistrationLabel(saved.intention) +
+        ".",
+      "success",
+    );
+  } catch (error) {
+    if (
+      error?.status === 409 &&
+      error?.code === "TRAINING_REGISTRATION_CONFLICT"
+    ) {
+      showMessage(
+        elements.registrationMessage,
+        "Die Anmeldung wurde zwischenzeitlich geändert. Der aktuelle Stand wird neu geladen.",
+      );
+      selfRegistrationSavingGroupId = null;
+      await loadSelfRegistration();
+      return;
+    }
+    showMessage(
+      elements.registrationMessage,
+      error?.status === 404
+        ? "Die Trainingsgruppe ist für dieses Datum nicht mehr verfügbar."
+        : error?.status === 409
+          ? "Für dieses Training ist die Selbstanmeldung nicht mehr möglich."
+          : "Die Trainingsanmeldung konnte nicht gespeichert werden.",
+    );
+  } finally {
+    selfRegistrationSavingGroupId = null;
+    renderSelfRegistration();
+  }
+}
+
+function prepareSelfRegistrationView() {
+  if (elements.registrationDate && !elements.registrationDate.value) {
+    elements.registrationDate.value = localIsoDate(new Date());
+  }
+}
+
 async function bootstrapKindertraining() {
   kindertrainingReady = false;
   kindertrainingGroups = [];
@@ -2082,6 +2344,7 @@ async function bootstrapMasterdata() {
 function isAppNavigationAvailable(section) {
   if (section === "home") return true;
   if (section === "masterdata") return masterdataReady;
+  if (section === "registration") return selfRegistrationReady;
   if (section === "kindertraining") return kindertrainingReady;
   if (section === "exercise-catalog") return exerciseCatalogReady;
   if (section === "training-blocks") return trainingBlocksReady;
@@ -2168,6 +2431,14 @@ function syncAppNavigationActive(section) {
 
 function refreshAppAvailability() {
   refreshAppNavigation();
+  if (elements.registrationDate) {
+    elements.registrationDate.disabled =
+      selfRegistrationLoading || selfRegistrationSavingGroupId !== null;
+  }
+  if (elements.registrationReload) {
+    elements.registrationReload.disabled =
+      selfRegistrationLoading || selfRegistrationSavingGroupId !== null;
+  }
   refreshTrainingBlockControls();
   refreshTrainingPlanControls();
   if (elements.exerciseCatalogQuickAction) {
@@ -2186,6 +2457,17 @@ function refreshAppAvailability() {
   if (elements.countdownAccessLabel) {
     elements.countdownAccessLabel.textContent = countdownReady
       ? "Für deinen Benutzer freigeschaltet."
+      : "Für deinen Benutzer derzeit nicht freigeschaltet.";
+  }
+  if (elements.registrationDashboard) {
+    elements.registrationDashboard.hidden = !selfRegistrationReady;
+  }
+  if (elements.registrationQuickAction) {
+    elements.registrationQuickAction.disabled = !selfRegistrationReady;
+  }
+  if (elements.registrationAccessLabel) {
+    elements.registrationAccessLabel.textContent = selfRegistrationReady
+      ? "Für deine Athleten-Identität freigeschaltet."
       : "Für deinen Benutzer derzeit nicht freigeschaltet.";
   }
   if (elements.kindertrainingQuickAction) {
@@ -2239,6 +2521,7 @@ function showAppSection(section) {
     section === "home" ||
     ((section === "useful" || section === "countdown") && countdownReady) ||
     (section === "masterdata" && masterdataReady) ||
+    (section === "registration" && selfRegistrationReady) ||
     (section === "kindertraining" && kindertrainingReady) ||
     (section === "exercise-catalog" && exerciseCatalogReady) ||
     (section === "training-blocks" && trainingBlocksReady) ||
@@ -2255,6 +2538,7 @@ function showAppSection(section) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   if (target === "masterdata") void loadMasterdata();
+  if (target === "registration") prepareSelfRegistrationView();
   if (target === "kindertraining") prepareKindertrainingView();
   if (target === "exercise-catalog") prepareExerciseCatalogView();
   if (target === "training-blocks") prepareTrainingBlocksView();
