@@ -474,6 +474,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                   <div>
                     <p class="eyebrow">Trainingseinheit</p>
                     <h2 id="kindertraining-title">Kindertraining</h2>
+                    <p class="settings-note" id="kindertraining-mode"></p>
                   </div>
                   <span id="kindertraining-save-state">Noch nicht gespeichert</span>
                 </div>
@@ -1330,6 +1331,7 @@ const elements = {
   kindertrainingLoad: document.querySelector("#kindertraining-load"),
   kindertrainingSession: document.querySelector("#kindertraining-session"),
   kindertrainingTitle: document.querySelector("#kindertraining-title"),
+  kindertrainingMode: document.querySelector("#kindertraining-mode"),
   kindertrainingSaveState: document.querySelector("#kindertraining-save-state"),
   kindertrainingState: document.querySelector("#kindertraining-state"),
   kindertrainingNote: document.querySelector("#kindertraining-note"),
@@ -2189,6 +2191,9 @@ function isKindertrainingSnapshot(snapshot, groupId, sessionDate) {
     snapshot === null ||
     typeof snapshot !== "object" ||
     snapshot?.group?.id !== groupId ||
+    !["trainer_roll_call", "self_registration"].includes(
+      snapshot?.group?.attendanceMode,
+    ) ||
     snapshot?.sessionDate !== sessionDate ||
     !Array.isArray(snapshot?.participants)
   ) {
@@ -2232,6 +2237,12 @@ function renderKindertrainingSnapshot() {
   if (elements.kindertrainingTitle) {
     elements.kindertrainingTitle.textContent =
       snapshot.group.name + " · " + germanDate(snapshot.sessionDate);
+  }
+  if (elements.kindertrainingMode) {
+    elements.kindertrainingMode.textContent =
+      snapshot.group.attendanceMode === "self_registration"
+        ? "Modus: Selbstanmeldung + Trainerbestätigung"
+        : "Modus: Anwesenheit durch Trainer";
   }
   if (elements.kindertrainingSaveState) {
     elements.kindertrainingSaveState.textContent = snapshot.session
