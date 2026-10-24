@@ -134,30 +134,32 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-training-blocks-parity-preview.mjs verify
 
-      - name: Inspect current athletes-v3 preview state
+      - name: Inspect current attendance preview state
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
-        run: node ./tooling/ulc-linz-athletes-v3-preview.mjs inspect
+        run: node ./tooling/ulc-linz-attendance-preview.mjs inspect
 
-      - name: Apply athletes schema v3
+      - name: Apply attendance schemas v4/v9
         if: inputs.operation == 'migrate'
         env:
+          APPBASIS_GENERATED_APP_ID: ulc-linz
+          APPBASIS_MIGRATION_TARGET: appbasis_ulc_linz_preview
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
           APPBASIS_APPLY_MIGRATIONS: "1"
-          APPBASIS_APPLY_ATHLETES_V3_PREVIEW: "1"
-        run: node ./tooling/ulc-linz-athletes-v3-preview.mjs apply
+          APPBASIS_APPLY_ATTENDANCE_PREVIEW: "1"
+        run: node ./tooling/ulc-linz-attendance-preview.mjs apply
 
-      - name: Require current athletes-v3 schema before runtime operation
+      - name: Require current attendance schema before runtime operation
         if: inputs.operation != 'inspect'
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
-        run: node ./tooling/ulc-linz-athletes-v3-preview.mjs verify
+        run: node ./tooling/ulc-linz-attendance-preview.mjs verify
 
       - name: Inspect current training-blocks-v3 preview state
         env:
@@ -420,7 +422,7 @@ jobs:
           READY=0
           for attempt in $(seq 1 20); do
             if HTML="$(curl --fail-with-body --silent --show-error "$APPBASIS_GENERATED_PREVIEW_URL/" 2>/dev/null)"; then
-              if grep -F 'id="training-plan-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-attendance-filter"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-block-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-save-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview-group"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview"' <<<"$HTML" >/dev/null; then
+              if grep -F 'id="registration-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="registration-list"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-attendance-filter"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-block-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-save-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview-group"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview"' <<<"$HTML" >/dev/null; then
                 READY=1
                 break
               fi
@@ -428,7 +430,7 @@ jobs:
             if [ "$attempt" -lt 20 ]; then sleep 2; fi
           done
           test "$READY" = '1' || {
-            echo 'The deployed preview did not converge to the E7B9 training-planning UI.' >&2
+            echo 'The deployed preview did not converge to the E7B9 training-planning and attendance UI.' >&2
             exit 1
           }
 
@@ -437,6 +439,15 @@ jobs:
             401|403) ;;
             *)
               echo "Unauthenticated training-plans API returned unexpected HTTP $STATUS." >&2
+              exit 1
+              ;;
+          esac
+
+          REGISTRATION_STATUS="$(curl --silent --show-error --output "$RUNNER_TEMP/e7b9-registration-api.json"             --write-out '%{http_code}'             "$APPBASIS_GENERATED_PREVIEW_URL/api/modules/kindertraining/registration?sessionDate=2026-10-24")"
+          case "$REGISTRATION_STATUS" in
+            401|403) ;;
+            *)
+              echo "Unauthenticated self-registration API returned unexpected HTTP $REGISTRATION_STATUS." >&2
               exit 1
               ;;
           esac
