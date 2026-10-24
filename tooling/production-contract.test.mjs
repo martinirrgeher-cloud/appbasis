@@ -15,35 +15,11 @@ import {
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
-test("ULC production composition evaluates only selected modules and reports modular blockers", async () => {
-  const result = await evaluateAppProductionComposition(
-    repositoryRoot,
-    "ulc-linz",
+test("ULC production composition fails closed after attendance changes bound production evidence", async () => {
+  await assert.rejects(
+    () => evaluateAppProductionComposition(repositoryRoot, "ulc-linz"),
+    /Production evidence drifted: modules\/athletes\/src\/postgres-masterdata-repository\.ts/,
   );
-
-  assert.equal(result.application, "ulc-linz");
-  assert.deepEqual(
-    result.modules.map((entry) => entry.moduleId),
-    [
-      "countdown",
-      "athletes",
-      "exercise-catalog",
-      "training-blocks",
-      "training-plans",
-    ],
-  );
-  assert.equal(
-    result.modules.some((entry) => entry.moduleId === "tasks"),
-    false,
-  );
-  assert.equal(result.compositionReady, false);
-  assert.deepEqual(
-    result.modules
-      .filter((entry) => entry.status === "blocked")
-      .map((entry) => entry.moduleId),
-    ["exercise-catalog", "training-blocks"],
-  );
-  assert.equal(result.productionReleaseAuthorized, false);
 });
 
 test("module contracts fail closed on database/status mismatch", () => {
