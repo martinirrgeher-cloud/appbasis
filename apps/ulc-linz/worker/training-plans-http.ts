@@ -212,7 +212,7 @@ async function trainingPlansModuleResponse(
             weekView: true,
             autosave: false,
             manualSave: true,
-            saveOnLeave: true,
+            confirmOnLeave: true,
             optimisticConcurrency: true,
             attendanceSummary: true,
             attendanceFilter: true,
