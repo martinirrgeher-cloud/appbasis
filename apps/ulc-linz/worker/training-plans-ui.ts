@@ -1203,7 +1203,7 @@ async function bootstrapTrainingPlans() {
       features?.weekView !== true ||
       features?.autosave !== false ||
       features?.manualSave !== true ||
-      features?.saveOnLeave !== true ||
+      features?.confirmOnLeave !== true ||
       features?.planCopy !== true ||
       features?.optimisticConcurrency !== true ||
       features?.attendanceSummary !== true ||
@@ -3779,12 +3779,20 @@ async function openTrainingPlanDistribution() {
   if (!trainingPlanOverview || !trainingPlanEditorDate || !trainingPlansCanEdit) {
     return;
   }
-  if (!(await saveTrainingPlanUntilClean())) return;
+  if (trainingPlanDirty) {
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Bitte den Plan zuerst mit 💾 speichern. Ungespeicherte Änderungen werden nicht automatisch verteilt.",
+    );
+    trainingPlanElements.save?.focus();
+    return;
+  }
   if (!trainingPlanSelected) {
     showMessage(
       trainingPlanElements.editorMessage,
       "Der Plan muss zuerst gespeichert werden, bevor er verteilt werden kann.",
     );
+    trainingPlanElements.save?.focus();
     return;
   }
   renderTrainingPlanDistribution();
