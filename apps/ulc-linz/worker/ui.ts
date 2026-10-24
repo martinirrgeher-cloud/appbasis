@@ -1125,6 +1125,31 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 .kindertraining-participant__identity { display: grid; gap: 3px; }
 .kindertraining-participant__identity strong { font-size: .9rem; }
 .kindertraining-participant__identity span { color: var(--secondary); font-size: .72rem; }
+.kindertraining-registration {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: var(--muted);
+  color: var(--secondary);
+  font-size: .7rem;
+  font-weight: 750;
+}
+.kindertraining-registration[data-intention="attending"] {
+  background: #dcfce7;
+  color: #166534;
+}
+.kindertraining-registration[data-intention="not_attending"] {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.kindertraining-registration[data-intention="maybe"] {
+  background: #fef3c7;
+  color: #92400e;
+}
 .kindertraining-statuses {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -2217,6 +2242,14 @@ function isKindertrainingSnapshot(snapshot, groupId, sessionDate) {
       participant.athleteId.length === 0 ||
       typeof participant?.firstName !== "string" ||
       typeof participant?.lastName !== "string" ||
+      !["unknown", "attending", "not_attending", "maybe"].includes(
+        participant?.intention,
+      ) ||
+      !(
+        participant?.registrationRevision === null ||
+        (Number.isSafeInteger(participant?.registrationRevision) &&
+          participant.registrationRevision >= 1)
+      ) ||
       !["open", "present", "excused", "absent"].includes(participant?.status) ||
       ids.has(participant.athleteId)
     ) {
@@ -2293,6 +2326,18 @@ function renderKindertrainingParticipants() {
         ? "Jahrgang nicht erfasst"
         : "Jahrgang " + String(participant.birthYear);
     identity.append(name, meta);
+    if (snapshot.group.attendanceMode === "self_registration") {
+      const registration = document.createElement("span");
+      registration.className = "kindertraining-registration";
+      registration.dataset.intention = participant.intention;
+      registration.textContent = {
+        unknown: "Voranmeldung: offen",
+        attending: "Voranmeldung: kommt",
+        not_attending: "Voranmeldung: abgesagt",
+        maybe: "Voranmeldung: vielleicht",
+      }[participant.intention] || "Voranmeldung: offen";
+      identity.append(registration);
+    }
 
     const statuses = document.createElement("div");
     statuses.className = "kindertraining-statuses";
