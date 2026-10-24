@@ -37,6 +37,7 @@ function masterdataSnapshot(): AthleteMasterdataSnapshot {
         name: "U12",
         shortName: "KT",
         description: null,
+        attendanceMode: "trainer_roll_call",
         isActive: true,
         sortOrder: 10,
       },
@@ -111,6 +112,7 @@ function storedSession(): UlcTrainingSessionSnapshot {
       note: "Halle",
     },
     revision: "41",
+    registrations: [],
     attendance: [
       {
         organizationId: ORGANIZATION_ID,
@@ -145,6 +147,7 @@ describe("ULC U12 service", () => {
                 name: "Altgruppe",
                 shortName: null,
                 description: null,
+                attendanceMode: "trainer_roll_call",
                 isActive: false,
                 sortOrder: 20,
               },
@@ -267,6 +270,7 @@ describe("ULC U12 service", () => {
               note: input.note ?? null,
             },
             revision: "42",
+            registrations: [],
             attendance: attendance.map((entry) => ({
               organizationId,
               sessionId: "session-new",
