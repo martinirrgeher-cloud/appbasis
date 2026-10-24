@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { IdentityPostgresProvisioningOwner } from "@appbasis/identity/postgres-runtime";
 import {
   capabilityId,
+  InMemoryPermissionStore,
   principalId,
   roleId,
   type PermissionStore,
@@ -12,6 +13,8 @@ import {
   createUlcLinzAthleteUserProvisioningService,
   UlcLinzAthleteUserProvisioningConflictError,
 } from "../worker/athlete-user-provisioning";
+import { createUlcLinzSelfRegistrationAccessService } from "../worker/self-registration-access";
+import { PostgresUlcLinzScopePersistence } from "../worker/scope-persistence";
 
 function identityState(identityId = "identity-athlete-1") {
   return {
@@ -61,6 +64,7 @@ describe("ULC athlete user provisioning", () => {
         return identityState();
       },
     };
+    let selfRelationPresent = false;
     const sql = {
       async unsafe(query: string) {
         if (query.includes("INSERT INTO ulc_linz_membership")) {
@@ -73,8 +77,57 @@ describe("ULC athlete user provisioning", () => {
             },
           ];
         }
+        if (query.includes("INSERT INTO ulc_linz_subject_scope")) {
+          selfRelationPresent = true;
+          return [];
+        }
+        if (
+          query.includes(
+            "SELECT organization_id, subject_id, relation_type",
+          )
+        ) {
+          return selfRelationPresent
+            ? [
+                {
+                  organization_id: "verein-1",
+                  subject_id: "athlete-1",
+                  relation_type: "self",
+                },
+              ]
+            : [];
+        }
         if (query.includes("INSERT INTO appbasis_permission_principal")) {
           return [];
+        }
+        if (
+          query.includes("membership.subject_id AS athlete_id") &&
+          query.includes("athlete.is_active AS athlete_active")
+        ) {
+          return [
+            {
+              organization_id: "verein-1",
+              athlete_id: "athlete-1",
+              source_role: "athlete",
+              active: true,
+              athlete_active: true,
+            },
+          ];
+        }
+        if (
+          query.includes(
+            "SELECT organization_id, source_role, active",
+          )
+        ) {
+          return [
+            {
+              organization_id: "verein-1",
+              source_role: "athlete",
+              active: true,
+            },
+          ];
+        }
+        if (query.includes("SELECT 1 AS present")) {
+          return selfRelationPresent ? [{ present: 1 }] : [];
         }
         throw new Error("unexpected SQL");
       },
@@ -156,6 +209,61 @@ describe("ULC athlete user provisioning", () => {
         expectedRevokes: [],
       },
     });
+
+    const view = capabilityId("ulc-linz:module:kindertraining:view");
+    const edit = capabilityId("ulc-linz:module:kindertraining:edit");
+    const scopePersistence = new PostgresUlcLinzScopePersistence(sql);
+    const selfRegistrationAccess =
+      createUlcLinzSelfRegistrationAccessService({
+        sql,
+        permissions: new InMemoryPermissionStore({
+          knownCapabilities: [view, edit],
+          roles: [
+            {
+              roleId: roleId("ulc-linz:athlete"),
+              capabilities: [],
+            },
+          ],
+          principals: [
+            {
+              principalId: principalId("identity-athlete-1"),
+              roleIds: [roleId("ulc-linz:athlete")],
+              grants: [view, edit],
+              revokes: [],
+            },
+          ],
+        }),
+        memberships: scopePersistence,
+        subjectScopes: scopePersistence,
+      });
+
+    const current = {
+      identity: {
+        identityId: "identity-athlete-1",
+        username: "athlete.a",
+        displayName: "Athlete A",
+        contactEmail: null,
+        personId: null,
+        mustChangePassword: false,
+        createdAt: new Date("2026-10-24T00:00:00.000Z"),
+        updatedAt: new Date("2026-10-24T00:00:00.000Z"),
+        passwordChangedAt: new Date("2026-10-24T00:05:00.000Z"),
+        disabledAt: null,
+        accountStatus: "active" as const,
+      },
+      sessionToken: "session-athlete-1",
+      access: "full" as const,
+    };
+
+    await expect(
+      selfRegistrationAccess.assertViewAccess(current),
+    ).resolves.toEqual({
+      organizationId: "verein-1",
+      actorPrincipalId: "identity-athlete-1",
+      athleteId: "athlete-1",
+    });
+      },
+    });
   });
 
   it("fails closed when the athlete is already linked to another identity", async () => {
@@ -212,6 +320,22 @@ describe("ULC athlete user provisioning", () => {
                 subject_id: "athlete-1",
                 source_role: "athlete",
                 active: true,
+              },
+            ];
+          }
+          if (query.includes("INSERT INTO ulc_linz_subject_scope")) {
+            return [];
+          }
+          if (
+            query.includes(
+              "SELECT organization_id, subject_id, relation_type",
+            )
+          ) {
+            return [
+              {
+                organization_id: "verein-1",
+                subject_id: "athlete-1",
+                relation_type: "self",
               },
             ];
           }
