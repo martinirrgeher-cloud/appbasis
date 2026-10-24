@@ -66,12 +66,13 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
         <nav class="app-nav" aria-label="Hauptnavigation">
           <div class="app-nav__primary" id="app-nav-primary">
             <button class="app-nav__link is-active" type="button" data-nav-view="home" data-nav-priority="0">Start</button>
-            <button class="app-nav__link" type="button" data-nav-view="kindertraining" data-nav-priority="1" hidden disabled>Training</button>
-            <button class="app-nav__link" type="button" data-nav-view="training-plans" data-nav-priority="2" hidden disabled>Planung</button>
-            <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="3" hidden disabled>Übungen</button>
-            <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="4" hidden disabled>Blöcke</button>
-            <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="5" hidden disabled>Stammdaten</button>
-            <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="6" hidden disabled>Nützliches</button>
+            <button class="app-nav__link" type="button" data-nav-view="registration" data-nav-priority="1" hidden disabled>Anmeldung</button>
+            <button class="app-nav__link" type="button" data-nav-view="kindertraining" data-nav-priority="2" hidden disabled>Training</button>
+            <button class="app-nav__link" type="button" data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung</button>
+            <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="4" hidden disabled>Übungen</button>
+            <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="5" hidden disabled>Blöcke</button>
+            <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="6" hidden disabled>Stammdaten</button>
+            <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="7" hidden disabled>Nützliches</button>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" hidden>Mehr</button>
           </div>
           <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden></div>
@@ -94,6 +95,16 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary dashboard-action" id="masterdata-quick-action" type="button" data-open-view="masterdata" disabled>Stammdaten öffnen</button>
                 <small id="masterdata-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card dashboard-card--primary" id="registration-dashboard" hidden>
+                <div>
+                  <p class="eyebrow">Training</p>
+                  <h2>Trainingsanmeldung</h2>
+                  <p>Für deine Trainingsgruppe anmelden, absagen oder „vielleicht“ auswählen.</p>
+                </div>
+                <button class="button button--primary dashboard-action" id="registration-quick-action" type="button" data-open-view="registration" disabled>Anmeldung öffnen</button>
+                <small id="registration-access-label">Berechtigung wird geprüft …</small>
               </article>
 
               <article class="card dashboard-card dashboard-card--primary">
@@ -443,6 +454,26 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               </footer>
             </section>
           </div>
+
+          <section class="app-section" data-app-section="registration" id="registration" hidden>
+            <section class="hero">
+              <p class="eyebrow">Training</p>
+              <h1>Trainingsanmeldung</h1>
+              <p class="summary">Gib für deine Trainingsgruppen an, ob du kommst.</p>
+            </section>
+
+            <p class="message message--error" id="registration-message" role="alert" hidden></p>
+            <p class="message message--success" id="registration-success" role="status" hidden></p>
+
+            <section class="card registration-selector">
+              <label>Datum
+                <input id="registration-date" type="date" required />
+              </label>
+              <button class="button button--secondary" id="registration-reload" type="button">Neu laden</button>
+            </section>
+
+            <div class="registration-list" id="registration-list" aria-live="polite"></div>
+          </section>
 
           <section class="app-section" data-app-section="kindertraining" id="kindertraining" hidden>
             <section class="hero">
@@ -1068,6 +1099,95 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
 }
+.registration-selector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 12px;
+}
+.registration-selector .button { min-height: var(--touch); }
+.registration-list { display: grid; gap: 10px; }
+.registration-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+.registration-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.registration-card__head strong { display: block; }
+.registration-card__head small {
+  display: block;
+  margin-top: 2px;
+  color: var(--secondary);
+}
+.registration-current {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--muted);
+  color: var(--secondary);
+  font-size: .72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.registration-current[data-intention="attending"] {
+  background: #dcfce7;
+  color: #166534;
+}
+.registration-current[data-intention="not_attending"] {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.registration-current[data-intention="maybe"] {
+  background: #fef3c7;
+  color: #92400e;
+}
+.registration-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.registration-action {
+  min-height: 44px;
+  padding: 6px 4px;
+  font-size: .72rem;
+}
+.registration-action[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: #dbeafe;
+  color: var(--accent);
+}
+.registration-action[data-intention="attending"][aria-pressed="true"] {
+  border-color: #86efac;
+  background: #dcfce7;
+  color: #166534;
+}
+.registration-action[data-intention="not_attending"][aria-pressed="true"] {
+  border-color: #fecaca;
+  background: #fee2e2;
+  color: #991b1b;
+}
+.registration-action[data-intention="maybe"][aria-pressed="true"] {
+  border-color: #fde68a;
+  background: #fef3c7;
+  color: #92400e;
+}
+.registration-cancelled {
+  color: var(--danger);
+  font-weight: 750;
+}
+.registration-empty {
+  padding: 18px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--control-radius);
+  color: #64748b;
+  text-align: center;
+}
 .kindertraining-selector .settings-grid {
   grid-template-columns: minmax(0, 1.25fr) minmax(120px, .75fr);
   gap: 8px;
@@ -1301,6 +1421,7 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
     padding-top: 4px;
   }
   .masterdata-form .settings-grid,
+  .registration-selector,
   .kindertraining-selector .settings-grid,
   .kindertraining-session-card .settings-grid {
     grid-template-columns: 1fr;
@@ -1347,6 +1468,14 @@ const elements = {
   countdownAccessLabel: document.querySelector("#countdown-access-label"),
   masterdataQuickAction: document.querySelector("#masterdata-quick-action"),
   masterdataAccessLabel: document.querySelector("#masterdata-access-label"),
+  registrationDashboard: document.querySelector("#registration-dashboard"),
+  registrationQuickAction: document.querySelector("#registration-quick-action"),
+  registrationAccessLabel: document.querySelector("#registration-access-label"),
+  registrationMessage: document.querySelector("#registration-message"),
+  registrationSuccess: document.querySelector("#registration-success"),
+  registrationDate: document.querySelector("#registration-date"),
+  registrationReload: document.querySelector("#registration-reload"),
+  registrationList: document.querySelector("#registration-list"),
   kindertrainingQuickAction: document.querySelector("#kindertraining-quick-action"),
   kindertrainingAccessLabel: document.querySelector("#kindertraining-access-label"),
   kindertrainingMessage: document.querySelector("#kindertraining-message"),
@@ -1513,6 +1642,7 @@ const MASTERDATA_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 const APP_NAV_PRIORITY = Object.freeze([
   "home",
+  "registration",
   "kindertraining",
   "training-plans",
   "exercise-catalog",
@@ -1526,6 +1656,10 @@ let busy = false;
 let countdownReady = false;
 let masterdataReady = false;
 let masterdataCanEdit = false;
+let selfRegistrationReady = false;
+let selfRegistrationLoading = false;
+let selfRegistrationSavingGroupId = null;
+let selfRegistrationOptions = [];
 let kindertrainingReady = false;
 let kindertrainingLoading = false;
 let kindertrainingGroups = [];
@@ -1651,6 +1785,11 @@ elements.trainerIdentityLoad?.addEventListener("click", () => void loadTrainerId
 elements.trainerUserForm?.addEventListener("submit", (event) => void createTrainerUser(event));
 elements.trainerIdentityForm?.addEventListener("submit", (event) => void bindTrainerIdentity(event));
 elements.trainerIdentityIdentity?.addEventListener("change", syncTrainerIdentitySelection);
+elements.registrationReload?.addEventListener("click", () => void loadSelfRegistration());
+elements.registrationDate?.addEventListener("change", () => void loadSelfRegistration());
+elements.registrationList?.addEventListener("click", (event) => {
+  void handleSelfRegistrationClick(event);
+});
 elements.kindertrainingLoad?.addEventListener("click", () => void loadKindertraining());
 elements.kindertrainingSave?.addEventListener("click", () => void saveKindertraining());
 elements.kindertrainingAllPresent?.addEventListener("click", () => setAllKindertrainingStatuses("present"));
@@ -1817,6 +1956,7 @@ async function acceptSession(next) {
   await Promise.all([
     bootstrapCountdown(),
     bootstrapMasterdata(),
+    bootstrapSelfRegistration(),
     bootstrapKindertraining(),
     bootstrapExerciseCatalog(),
     bootstrapTrainingBlocks(),
@@ -1853,12 +1993,16 @@ async function bootstrapKindertraining() {
           group.id.length > 0 &&
           typeof group?.name === "string" &&
           group.name.length > 0 &&
-          (group.shortName === null || typeof group.shortName === "string"),
+          (group.shortName === null || typeof group.shortName === "string") &&
+          ["trainer_roll_call", "self_registration"].includes(
+            group.attendanceMode,
+          ),
       )
       .map((group) => ({
         id: group.id,
         name: group.name,
         shortName: group.shortName,
+        attendanceMode: group.attendanceMode,
       }));
     if (kindertrainingGroups.length !== groups.length) {
       throw new Error("INVALID_KINDERTRAINING_GROUPS");
