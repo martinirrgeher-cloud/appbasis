@@ -3649,6 +3649,133 @@ describe("generated identity+permissions Worker entrypoint", () => {
 });
 
 
+describe("Athlete user administration API", () => {
+  it("creates an athlete user only from server-owned admin scope and session", async () => {
+    let received: unknown = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        trainerIdentityAccess: {
+          async assertAdminAccess() {
+            return {
+              organizationId: "verein-server",
+              actorPrincipalId: "identity-worker-1",
+            };
+          },
+        },
+        athleteUserProvisioning: {
+          async createAthleteUser(input) {
+            received = input;
+            return {
+              identityId: "identity-athlete-new",
+              username: input.username,
+              displayName: input.displayName,
+              athleteId: input.athleteId,
+              mustChangePassword: true as const,
+            };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/athlete-users", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          username: "athlete.a",
+          displayName: "Athlete A",
+          temporaryPassword: "Startpasswort-1",
+          contactEmail: "athlete.a@example.test",
+          athleteId: "athlete-1",
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(201);
+    expect(received).toEqual({
+      organizationId: "verein-server",
+      actorPrincipalId: "identity-worker-1",
+      username: "athlete.a",
+      displayName: "Athlete A",
+      temporaryPassword: "Startpasswort-1",
+      contactEmail: "athlete.a@example.test",
+      athleteId: "athlete-1",
+    });
+
+    const rejectedClientScope = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/athlete-users", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          organizationId: "verein-client",
+          username: "athlete.b",
+          displayName: "Athlete B",
+          temporaryPassword: "Startpasswort-2",
+          athleteId: "athlete-2",
+        }),
+      }),
+      validEnv,
+    );
+    expect(rejectedClientScope.status).toBe(400);
+  });
+
+  it("rejects non-admin athlete user creation before provisioning", async () => {
+    let provisioningCalls = 0;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        trainerIdentityAccess: {
+          async assertAdminAccess() {
+            throw new UlcLinzAuthorizationDeniedError();
+          },
+        },
+        athleteUserProvisioning: {
+          async createAthleteUser(input) {
+            provisioningCalls += 1;
+            return {
+              identityId: "should-not-exist",
+              username: input.username,
+              displayName: input.displayName,
+              athleteId: input.athleteId,
+              mustChangePassword: true as const,
+            };
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/athlete-users", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          username: "athlete.a",
+          displayName: "Athlete A",
+          temporaryPassword: "Startpasswort-1",
+          athleteId: "athlete-1",
+        }),
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(403);
+    expect(provisioningCalls).toBe(0);
+  });
+});
+
 describe("Trainer user administration API", () => {
   it("creates a trainer user only from server-owned admin scope and session", async () => {
     let received: unknown = null;
