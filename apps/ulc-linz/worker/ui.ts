@@ -220,6 +220,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                         <button class="button button--secondary" id="athlete-detail-edit" type="button"><span aria-hidden="true">✎</span> Bearbeiten</button>
                         <button class="button button--secondary" id="athlete-detail-contact-new" type="button"><span aria-hidden="true">＋</span> Kontakt</button>
                         <button class="button button--secondary" id="athlete-detail-group-new" type="button"><span aria-hidden="true">＋</span> Gruppe</button>
+                        <button class="button button--secondary" id="athlete-detail-user" type="button"><span aria-hidden="true">👤</span> Benutzer</button>
                         <button class="button button--danger" id="athlete-detail-deactivate" type="button"><span aria-hidden="true">⏸</span> Deaktivieren</button>
                       </div>
                       <section class="masterdata-athlete-contacts">
@@ -276,6 +277,25 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                       <div class="masterdata-form-actions">
                         <button class="button button--primary" type="submit">Zuordnung anlegen</button>
                         <button class="button button--secondary" id="athlete-group-cancel" type="button">Zurück</button>
+                      </div>
+                    </form>
+
+                    <form class="card masterdata-form masterdata-overlay-form" id="athlete-user-form" hidden>
+                      <div class="section-heading">
+                        <div><p class="eyebrow">Benutzer</p><h2>Athleten-Benutzer anlegen</h2></div>
+                      </div>
+                      <p class="settings-note">Der Benutzer wird direkt mit diesem Athleten verknüpft. Beim ersten Login muss das temporäre Passwort geändert werden.</p>
+                      <p class="message message--error" id="athlete-user-message" role="alert" hidden></p>
+                      <p class="message message--success" id="athlete-user-success" role="status" hidden></p>
+                      <div class="settings-grid">
+                        <label>Benutzername<input id="athlete-user-username" minlength="3" maxlength="30" pattern="[a-z0-9._]+" autocomplete="off" required /></label>
+                        <label>Anzeigename<input id="athlete-user-display-name" maxlength="120" autocomplete="off" required /></label>
+                        <label>E-Mail optional<input id="athlete-user-email" type="email" maxlength="320" autocomplete="off" /></label>
+                        <label>Temporäres Passwort<input id="athlete-user-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required /></label>
+                      </div>
+                      <div class="masterdata-form-actions">
+                        <button class="button button--primary" type="submit">Benutzer anlegen</button>
+                        <button class="button button--secondary" id="athlete-user-cancel" type="button">Zurück</button>
                       </div>
                     </form>
                   </div>
@@ -1520,7 +1540,16 @@ const elements = {
   athleteDetailEdit: document.querySelector("#athlete-detail-edit"),
   athleteDetailContactNew: document.querySelector("#athlete-detail-contact-new"),
   athleteDetailGroupNew: document.querySelector("#athlete-detail-group-new"),
+  athleteDetailUser: document.querySelector("#athlete-detail-user"),
   athleteDetailDeactivate: document.querySelector("#athlete-detail-deactivate"),
+  athleteUserForm: document.querySelector("#athlete-user-form"),
+  athleteUserMessage: document.querySelector("#athlete-user-message"),
+  athleteUserSuccess: document.querySelector("#athlete-user-success"),
+  athleteUserUsername: document.querySelector("#athlete-user-username"),
+  athleteUserDisplayName: document.querySelector("#athlete-user-display-name"),
+  athleteUserEmail: document.querySelector("#athlete-user-email"),
+  athleteUserPassword: document.querySelector("#athlete-user-password"),
+  athleteUserCancel: document.querySelector("#athlete-user-cancel"),
   trainerList: document.querySelector("#trainer-list"),
   trainerNew: document.querySelector("#trainer-new"),
   trainerOverlay: document.querySelector("#trainer-overlay"),
@@ -1739,6 +1768,9 @@ elements.athleteDetailEdit?.addEventListener("click", () => {
 });
 elements.athleteDetailContactNew?.addEventListener("click", openNewMasterdataAthleteContact);
 elements.athleteDetailGroupNew?.addEventListener("click", openNewMasterdataAthleteGroup);
+elements.athleteDetailUser?.addEventListener("click", openMasterdataAthleteUser);
+elements.athleteUserForm?.addEventListener("submit", (event) => void createAthleteUser(event));
+elements.athleteUserCancel?.addEventListener("click", () => showMasterdataAthleteOverlayMode("detail"));
 elements.athleteDetailDeactivate?.addEventListener("click", () => {
   const athlete = selectedMasterdataAthlete();
   if (athlete) void deactivateMasterdataEntity({ type: "athlete", id: athlete.id });
@@ -4424,6 +4456,7 @@ function closeMasterdataAthleteOverlay() {
   elements.athleteForm?.reset();
   elements.athleteContactForm?.reset();
   elements.athleteGroupForm?.reset();
+  elements.athleteUserForm?.reset();
   refreshMasterdataEditMode();
   if (elements.athleteOverlay) elements.athleteOverlay.hidden = true;
   document.body.classList.remove("masterdata-athlete-overlay-open");
@@ -4440,6 +4473,9 @@ function showMasterdataAthleteOverlayMode(mode) {
   }
   if (elements.athleteGroupForm) {
     elements.athleteGroupForm.hidden = mode !== "group";
+  }
+  if (elements.athleteUserForm) {
+    elements.athleteUserForm.hidden = mode !== "user";
   }
   if (elements.athleteEditCancel) {
     elements.athleteEditCancel.hidden = mode !== "athlete";
@@ -4495,6 +4531,7 @@ function renderMasterdataAthleteOverlay(snapshot) {
     elements.athleteDetailEdit,
     elements.athleteDetailContactNew,
     elements.athleteDetailGroupNew,
+    elements.athleteDetailUser,
   ]) {
     if (control) control.disabled = !editable;
   }
@@ -4545,6 +4582,69 @@ function openNewMasterdataAthleteGroup() {
     elements.athleteGroupStartedOn.value = localDateValue(new Date());
   }
   showMasterdataAthleteOverlayMode("group");
+}
+
+function openMasterdataAthleteUser() {
+  const athlete = selectedMasterdataAthlete();
+  if (!athlete || !masterdataCanEdit || athlete.isActive === false) return;
+  elements.athleteUserForm?.reset();
+  showMessage(elements.athleteUserMessage, "");
+  showMessage(elements.athleteUserSuccess, "");
+  if (elements.athleteUserDisplayName) {
+    elements.athleteUserDisplayName.value =
+      String(athlete.firstName || "") + " " + String(athlete.lastName || "");
+  }
+  showMasterdataAthleteOverlayMode("user");
+  elements.athleteUserUsername?.focus();
+}
+
+async function createAthleteUser(event) {
+  event.preventDefault();
+  const athlete = selectedMasterdataAthlete();
+  if (!athlete || !masterdataCanEdit || athlete.isActive === false) return;
+
+  const username = elements.athleteUserUsername?.value.trim() || "";
+  const displayName = elements.athleteUserDisplayName?.value.trim() || "";
+  const contactEmail = elements.athleteUserEmail?.value.trim() || "";
+  const temporaryPassword = elements.athleteUserPassword?.value || "";
+
+  showMessage(elements.athleteUserMessage, "");
+  showMessage(elements.athleteUserSuccess, "");
+
+  try {
+    await requestJson("/api/admin/athlete-users", {
+      method: "POST",
+      body: JSON.stringify({
+        username,
+        displayName,
+        temporaryPassword,
+        athleteId: athlete.id,
+        ...(contactEmail ? { contactEmail } : {}),
+      }),
+    });
+    elements.athleteUserForm?.reset();
+    if (elements.athleteUserDisplayName) {
+      elements.athleteUserDisplayName.value =
+        String(athlete.firstName || "") + " " + String(athlete.lastName || "");
+    }
+    showMessage(
+      elements.athleteUserSuccess,
+      "Athleten-Benutzer wurde angelegt. Beim ersten Login ist ein Passwortwechsel erforderlich.",
+    );
+  } catch (error) {
+    showMessage(
+      elements.athleteUserMessage,
+      error?.status === 403
+        ? "Athleten-Benutzer können nur von Administratoren angelegt werden."
+        : error?.status === 404
+          ? "Der ausgewählte Athlet ist nicht mehr verfügbar."
+          : error?.status === 409
+            ? "Benutzername oder Athlet ist bereits mit einem aktiven Benutzer verknüpft."
+            : error?.status === 400
+              ? "Bitte Benutzername, Passwort und Eingaben prüfen."
+              : "Der Athleten-Benutzer konnte nicht angelegt werden.",
+    );
+  }
 }
 
 function beginMasterdataEdit(action) {

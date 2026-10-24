@@ -81,6 +81,7 @@ import {
 } from "./trainer-identity-admin-access";
 import { PostgresUlcLinzTrainerIdentityLinks } from "./trainer-identity-postgres";
 import { createUlcLinzTrainerUserProvisioningService } from "./trainer-user-provisioning";
+import { createUlcLinzAthleteUserProvisioningService } from "./athlete-user-provisioning";
 import {
   createPostgresUlcLinzSecurityEventLogger,
   type BufferedUlcLinzSecurityEventLogger,
@@ -104,6 +105,9 @@ export interface GeneratedPostgresApplicationRuntime {
   >;
   trainerUserProvisioning: ReturnType<
     typeof createUlcLinzTrainerUserProvisioningService
+  >;
+  athleteUserProvisioning: ReturnType<
+    typeof createUlcLinzAthleteUserProvisioningService
   >;
   athleteMasterdata: Pick<
     PostgresAthleteMasterdataRepository,
@@ -248,15 +252,23 @@ export async function createGeneratedPostgresApplicationRuntime(
       });
     const trainerIdentityLinks =
       new PostgresUlcLinzTrainerIdentityLinks(applicationSql);
+    const accessAdministration = new PostgresPrincipalAccessAdministration(
+      identityRuntime.sql,
+    );
     const trainerUserProvisioning =
       createUlcLinzTrainerUserProvisioningService({
         identityProvisioning: identityRuntime.provisioningIdentity,
         sql: applicationSql,
         permissions,
-        accessAdministration: new PostgresPrincipalAccessAdministration(
-          identityRuntime.sql,
-        ),
+        accessAdministration,
         trainerIdentityLinks,
+      });
+    const athleteUserProvisioning =
+      createUlcLinzAthleteUserProvisioningService({
+        identityProvisioning: identityRuntime.provisioningIdentity,
+        sql: applicationSql,
+        permissions,
+        accessAdministration,
       });
     const athleteMasterdataRepository =
       new PostgresAthleteMasterdataRepository(applicationSql);
@@ -474,6 +486,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       trainerIdentityAccess,
       trainerIdentityLinks,
       trainerUserProvisioning,
+      athleteUserProvisioning,
       athleteMasterdata,
       kindertraining,
       selfRegistration,

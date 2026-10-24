@@ -422,7 +422,7 @@ jobs:
           READY=0
           for attempt in $(seq 1 20); do
             if HTML="$(curl --fail-with-body --silent --show-error "$APPBASIS_GENERATED_PREVIEW_URL/" 2>/dev/null)"; then
-              if grep -F 'id="registration-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="registration-list"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-attendance-filter"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-block-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-save-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview-group"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview"' <<<"$HTML" >/dev/null; then
+              if grep -F 'id="registration-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="registration-list"' <<<"$HTML" >/dev/null                 && grep -F 'id="athlete-user-form"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-attendance-filter"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-block-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-save-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview-group"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview"' <<<"$HTML" >/dev/null; then
                 READY=1
                 break
               fi
@@ -459,6 +459,14 @@ jobs:
           APPBASIS_PREVIEW_USER_USERNAME: preview.admin
           APPBASIS_PREVIEW_USER_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_PASSWORD }}
         run: node ./tooling/ulc-linz-training-plans-preview-acceptance.mjs
+
+      - name: Run authenticated attendance dual-mode acceptance
+        if: inputs.operation == 'accept'
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_PREVIEW_USER_USERNAME: preview.admin
+          APPBASIS_PREVIEW_USER_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_PASSWORD }}
+        run: node ./tooling/ulc-linz-attendance-preview-acceptance.mjs
 
       - name: Record E7B9 preview operation
         run: |

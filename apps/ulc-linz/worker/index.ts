@@ -89,6 +89,10 @@ import {
   UlcLinzTrainerUserProvisioningConflictError,
   UlcLinzTrainerUserProvisioningNotFoundError,
 } from "./trainer-user-provisioning";
+import {
+  UlcLinzAthleteUserProvisioningConflictError,
+  UlcLinzAthleteUserProvisioningNotFoundError,
+} from "./athlete-user-provisioning";
 import { recordUlcLinzSecurityEvent } from "./security-events";
 import { generatedUiResponse } from "./ui";
 import {
@@ -222,6 +226,8 @@ export function createGeneratedWorker(
           response = await u12ModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/u12/session") {
           response = await u12SessionResponse(request, runtime, url);
+        } else if (url.pathname === "/api/admin/athlete-users") {
+          response = await athleteUserAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-users") {
           response = await trainerUserAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-identities") {
@@ -1917,6 +1923,157 @@ function u12GroupNotFound(): Response {
   );
 }
 
+
+async function athleteUserAdminResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return methodNotAllowedFor("POST", "Athlete user administration");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return invalidAthleteUserRequest();
+  }
+
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) {
+    if (current.status >= 400) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: null,
+        organizationId: null,
+        action: "edit",
+        targetId: "athlete-user-admin",
+        reasonCode: "identity-access-denied",
+      });
+    }
+    return current;
+  }
+
+  let access: Readonly<{ organizationId: string; actorPrincipalId: string }>;
+  try {
+    access = await runtime.trainerIdentityAccess.assertAdminAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: "Athlete user administration access denied.",
+          },
+        },
+        { status: 403 },
+      );
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+
+  try {
+    const body = await athleteUserJsonBody(request);
+    const athleteUser = await runtime.athleteUserProvisioning.createAthleteUser({
+      organizationId: access.organizationId,
+      actorPrincipalId: access.actorPrincipalId,
+      username: body.username as string,
+      displayName: body.displayName as string,
+      temporaryPassword: body.temporaryPassword as string,
+      athleteId: body.athleteId as string,
+      ...(body.contactEmail === undefined
+        ? {}
+        : { contactEmail: body.contactEmail as string }),
+    });
+    return Response.json({ athleteUser }, { status: 201 });
+  } catch (error) {
+    if (
+      error instanceof InvalidAthleteUserRequestError ||
+      error instanceof TypeError
+    ) {
+      return invalidAthleteUserRequest();
+    }
+    if (error instanceof UlcLinzAthleteUserProvisioningNotFoundError) {
+      return Response.json(
+        {
+          error: {
+            code: "ATHLETE_USER_TARGET_NOT_FOUND",
+            message: "The selected athlete is no longer available.",
+          },
+        },
+        { status: 404 },
+      );
+    }
+    if (error instanceof UlcLinzAthleteUserProvisioningConflictError) {
+      return Response.json(
+        {
+          error: {
+            code: "ATHLETE_USER_CONFLICT",
+            message: "The username or athlete conflicts with existing active state.",
+          },
+        },
+        { status: 409 },
+      );
+    }
+    throw error;
+  }
+}
+
+function invalidAthleteUserRequest(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "INVALID_ATHLETE_USER_REQUEST",
+        message: "The athlete user input is invalid.",
+      },
+    },
+    { status: 400 },
+  );
+}
+
+class InvalidAthleteUserRequestError extends Error {}
+
+async function athleteUserJsonBody(
+  request: Request,
+): Promise<Record<string, unknown>> {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    throw new InvalidAthleteUserRequestError();
+  }
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new InvalidAthleteUserRequestError();
+  }
+  const body = value as Record<string, unknown>;
+  const keys = Object.keys(body).sort();
+  const allowedWithoutEmail = ["athleteId", "displayName", "temporaryPassword", "username"];
+  const allowedWithEmail = ["contactEmail", ...allowedWithoutEmail].sort();
+  const validKeys =
+    JSON.stringify(keys) === JSON.stringify(allowedWithoutEmail) ||
+    JSON.stringify(keys) === JSON.stringify(allowedWithEmail);
+  if (
+    !validKeys ||
+    Object.getOwnPropertySymbols(body).length !== 0 ||
+    !validTrainerUsername(body.username) ||
+    !validTrainerDisplayName(body.displayName) ||
+    !validTemporaryPassword(body.temporaryPassword) ||
+    !validRequestIdentifier(body.athleteId) ||
+    (body.contactEmail !== undefined && !validContactEmail(body.contactEmail))
+  ) {
+    throw new InvalidAthleteUserRequestError();
+  }
+  return body;
+}
 
 async function trainerUserAdminResponse(
   request: Request,
