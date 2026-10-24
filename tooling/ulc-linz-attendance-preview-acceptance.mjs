@@ -51,7 +51,7 @@ export async function runUlcAttendancePreviewAcceptance(
     options.password,
     "APPBASIS_PREVIEW_USER_PASSWORD",
   );
-  const sessionDate = isoDate(now());
+  const sessionDate = viennaIsoDate(now());
   const adminCookie = await authenticateFull({
     baseURL,
     username: options.adminUsername,
@@ -742,13 +742,33 @@ async function requestJson(
   return result;
 }
 
-function isoDate(value) {
+function viennaIsoDate(value) {
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
     throw new UlcAttendancePreviewAcceptanceError(
       "Attendance acceptance current date is invalid.",
     );
   }
-  return value.toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Vienna",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  if (
+    !/^\d{4}$/.test(values.year ?? "") ||
+    !/^\d{2}$/.test(values.month ?? "") ||
+    !/^\d{2}$/.test(values.day ?? "")
+  ) {
+    throw new UlcAttendancePreviewAcceptanceError(
+      "Attendance acceptance Vienna date could not be resolved.",
+    );
+  }
+  return values.year + "-" + values.month + "-" + values.day;
 }
 
 function cookiePair(value) {
