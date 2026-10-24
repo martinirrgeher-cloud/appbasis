@@ -18,6 +18,7 @@ export interface UlcKindertrainingGroupOption {
   readonly id: string;
   readonly name: string;
   readonly shortName: string | null;
+  readonly attendanceMode: TrainingGroup["attendanceMode"];
 }
 
 export interface UlcKindertrainingParticipant {
@@ -33,6 +34,7 @@ export interface UlcKindertrainingSnapshot {
     id: string;
     name: string;
     shortName: string | null;
+    attendanceMode: TrainingGroup["attendanceMode"];
   }>;
   readonly sessionDate: string;
   readonly session: Readonly<{
@@ -127,6 +129,7 @@ export function createUlcKindertrainingService({
             id: group.id,
             name: group.name,
             shortName: group.shortName,
+            attendanceMode: group.attendanceMode,
           }),
         )
         .sort(
@@ -341,6 +344,7 @@ function presentSnapshot(
       id: context.group.id,
       name: context.group.name,
       shortName: context.group.shortName,
+      attendanceMode: context.group.attendanceMode,
     }),
     sessionDate: context.sessionDate,
     session:
