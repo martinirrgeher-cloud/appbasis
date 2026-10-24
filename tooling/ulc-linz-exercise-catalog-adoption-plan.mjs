@@ -357,14 +357,18 @@ function assertRepositoryState({
     );
   }
   const sourceOwner = sourceOwners[0];
+  const pinnedSourceMigrationIndex = contract.source.ownerSchemaVersion - 1;
   if (
     sourceOwner.root !== contract.source.ownerRoot ||
-    sourceOwner.schemaVersion !== contract.source.ownerSchemaVersion ||
+    !Number.isSafeInteger(sourceOwner.schemaVersion) ||
+    sourceOwner.schemaVersion < contract.source.ownerSchemaVersion ||
     !Array.isArray(sourceOwner.migrations) ||
-    !sourceOwner.migrations.includes(contract.source.migration.path)
+    sourceOwner.migrations.length < contract.source.ownerSchemaVersion ||
+    sourceOwner.migrations[pinnedSourceMigrationIndex] !==
+      contract.source.migration.path
   ) {
     throw new Error(
-      "ULC exercise-catalog source owner contract does not match the current manifest.",
+      "ULC exercise-catalog source owner contract does not preserve the pinned adoption baseline.",
     );
   }
 
