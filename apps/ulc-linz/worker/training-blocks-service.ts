@@ -405,6 +405,12 @@ function validateParameterOverrides(
   for (const override of occurrence.parameterOverrides) {
     const definition = definitions.get(override.key);
     if (definition === undefined) {
+      if (
+        override.key === "sets" ||
+        override.key === "repetitions"
+      ) {
+        continue;
+      }
       throw new UlcTrainingBlockParameterError(
         exercise.id,
         override.key,
