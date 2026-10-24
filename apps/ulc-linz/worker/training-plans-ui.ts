@@ -76,7 +76,8 @@ export const ULC_TRAINING_PLANS_HTML = `
                   <div class="training-plan-header-actions">
                     <button class="button button--secondary training-plan-mini" id="training-plan-prev-athlete" type="button" aria-label="Vorheriger Athlet" title="Vorheriger Athlet">←</button>
                     <button class="button button--secondary training-plan-mini" id="training-plan-next-athlete" type="button" aria-label="Nächster Athlet" title="Nächster Athlet">→</button>
-                    <button class="button button--secondary" id="training-plan-distribute-open" type="button">Verteilen</button>
+                    <button class="button button--secondary training-plan-distribute-button" id="training-plan-distribute-open" type="button"><span aria-hidden="true">↗</span><span>Verteilen</span></button>
+                    <button class="button button--primary training-plan-save-icon" id="training-plan-save" type="button" aria-label="Trainingsplan speichern" title="Speichern"><span aria-hidden="true">💾</span></button>
                     <button class="button button--secondary training-plan-icon-close" id="training-plan-close" type="button" aria-label="Tagesplan schließen" title="Schließen"><span aria-hidden="true">✕</span><span class="training-plan-close-label">Schließen</span></button>
                   </div>
                 </header>
@@ -116,13 +117,27 @@ export const ULC_TRAINING_PLANS_HTML = `
                 <footer class="training-plan-footer">
                   <div class="training-plan-footer__meta">
                     <span id="training-plan-editor-meta"></span>
-                    <span>Beim Schließen oder Wechseln wird automatisch gespeichert.</span>
+                    <span>Ungespeicherte Änderungen werden beim Verlassen bestätigt.</span>
                   </div>
-                  <button class="button button--primary" id="training-plan-save" type="button">Speichern</button>
                 </footer>
               </section>
             </div>
 
+            <div class="training-plan-picker-backdrop" id="training-plan-leave-dialog" hidden>
+              <section class="training-plan-picker-dialog training-plan-leave-dialog" role="dialog" aria-modal="true" aria-labelledby="training-plan-leave-title">
+                <header class="training-plan-header">
+                  <div><p class="eyebrow">Ungespeicherte Änderungen</p><h2 id="training-plan-leave-title">Tagesplan verlassen?</h2></div>
+                </header>
+                <div class="training-plan-picker-body">
+                  <p class="settings-note">Du hast Änderungen, die noch nicht gespeichert wurden.</p>
+                  <div class="training-plan-leave-actions">
+                    <button class="button button--primary" id="training-plan-leave-save" type="button">Speichern &amp; verlassen</button>
+                    <button class="button button--danger" id="training-plan-leave-discard" type="button">Änderungen verwerfen</button>
+                    <button class="button button--secondary" id="training-plan-leave-stay" type="button">Zurück zum Plan</button>
+                  </div>
+                </div>
+              </section>
+            </div>
 
             <div class="training-plan-picker-backdrop" id="training-plan-distribute" hidden>
               <section class="training-plan-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="training-plan-distribute-title">
@@ -400,6 +415,25 @@ export const ULC_TRAINING_PLANS_CSS = `
   background: rgb(255 255 255 / 96%);
 }
 .training-plan-header h2 { margin: 2px 0 4px; }
+.training-plan-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+.training-plan-save-icon {
+  min-width: 42px;
+  width: 42px;
+  min-height: 42px;
+  padding-inline: 0;
+  font-size: 1.05rem;
+}
+.training-plan-distribute-button { gap: 5px; }
+.training-plan-leave-actions {
+  display: grid;
+  gap: 8px;
+}
 .training-plan-save-state {
   display: inline-flex;
   border-radius: 999px;
@@ -790,6 +824,9 @@ body.training-plan-picker-open { overflow: hidden; }
   .training-plan-item__actions { flex-wrap: nowrap; }
   .training-plan-close-label { display: none; }
   .training-plan-icon-close { min-width: 40px; width: 40px; padding-inline: 0; }
+  .training-plan-header-actions { flex-wrap: nowrap; }
+  .training-plan-distribute-button { padding-inline: 9px; }
+  .training-plan-save-icon { min-width: 40px; width: 40px; min-height: 40px; }
   .training-plan-shell { padding: 8px; gap: 8px; }
   .training-plan-weekbar { align-items: stretch; flex-direction: column-reverse; }
   .training-plan-weekbar > strong { text-align: left; }
@@ -843,6 +880,10 @@ const trainingPlanElements = Object.freeze({
   distributeClose: document.querySelector("#training-plan-distribute-close"),
   distributeList: document.querySelector("#training-plan-distribute-list"),
   distributeConfirm: document.querySelector("#training-plan-distribute-confirm"),
+  leaveDialog: document.querySelector("#training-plan-leave-dialog"),
+  leaveSave: document.querySelector("#training-plan-leave-save"),
+  leaveDiscard: document.querySelector("#training-plan-leave-discard"),
+  leaveStay: document.querySelector("#training-plan-leave-stay"),
   note: document.querySelector("#training-plan-note"),
   addExercise: document.querySelector("#training-plan-add-exercise"),
   addBlock: document.querySelector("#training-plan-add-block"),
@@ -900,7 +941,9 @@ let trainingPlanSaveBackOperation = 0;
 let trainingPlanChangeVersion = 0;
 let trainingPlanPickerMode = null;
 let trainingPlanPickerLoading = false;
+let trainingPlanPickerAddedCounts = new Map();
 let trainingPlanDistributeBusy = false;
+let trainingPlanLeaveResolver = null;
 let trainingPlanWeekRequestId = 0;
 let trainingPlanDayRequestId = 0;
 let trainingPlanSessionIdentityId = "";
@@ -1160,7 +1203,7 @@ async function bootstrapTrainingPlans() {
       features?.weekView !== true ||
       features?.autosave !== false ||
       features?.manualSave !== true ||
-      features?.saveOnLeave !== true ||
+      features?.confirmOnLeave !== true ||
       features?.planCopy !== true ||
       features?.optimisticConcurrency !== true ||
       features?.attendanceSummary !== true ||
@@ -2141,6 +2184,27 @@ function populateTrainingPlanEditor() {
   refreshTrainingPlanEditorState();
 }
 
+function requestTrainingPlanLeaveDecision() {
+  if (!trainingPlanDirty) return Promise.resolve("discard");
+  if (trainingPlanLeaveResolver !== null) return Promise.resolve("stay");
+  if (trainingPlanElements.leaveDialog) {
+    trainingPlanElements.leaveDialog.hidden = false;
+  }
+  return new Promise((resolve) => {
+    trainingPlanLeaveResolver = resolve;
+    queueMicrotask(() => trainingPlanElements.leaveSave?.focus());
+  });
+}
+
+function resolveTrainingPlanLeaveDecision(decision) {
+  if (trainingPlanElements.leaveDialog) {
+    trainingPlanElements.leaveDialog.hidden = true;
+  }
+  const resolve = trainingPlanLeaveResolver;
+  trainingPlanLeaveResolver = null;
+  if (resolve) resolve(decision);
+}
+
 async function closeTrainingPlanEditor(force) {
   if (trainingPlanDistributeBusy) {
     showMessage(
@@ -2158,14 +2222,21 @@ async function closeTrainingPlanEditor(force) {
       trainingPlanTemplateBusy ||
       trainingPlanSaveBackBusy
     ) return false;
-    if (trainingPlanConflict) {
-      showMessage(
-        trainingPlanElements.editorMessage,
-        "Der Plan hat einen Konflikt und kann nicht automatisch gespeichert werden. Bitte zuerst neu laden.",
-      );
-      return false;
+    if (trainingPlanDirty) {
+      const decision = await requestTrainingPlanLeaveDecision();
+      if (decision === "stay") return false;
+      if (decision === "save" && !(await saveTrainingPlanUntilClean())) {
+        return false;
+      }
+      if (decision === "discard" && trainingPlanEditorDate) {
+        trainingPlanClearLeaveBackup(
+          trainingPlanSelectedSubjectId,
+          trainingPlanEditorDate,
+        );
+      }
     }
-    if (!(await saveTrainingPlanUntilClean())) return false;
+  } else {
+    resolveTrainingPlanLeaveDecision("stay");
   }
   closeTrainingPlanSaveTemplate(true);
   trainingPlanEditorDate = null;
@@ -2319,6 +2390,14 @@ function renderTrainingPlanItems() {
 
 function trainingPlanItemCompactSummary(item) {
   if (item.kind === "block") {
+    const names = item.exercises
+      .map((exercise) => exercise.name)
+      .filter(Boolean);
+    const exerciseSummary =
+      names.length === 0
+        ? null
+        : names.slice(0, 3).join(", ") +
+          (names.length > 3 ? " +" + String(names.length - 3) : "");
     return [
       item.durationMinutes === null
         ? null
@@ -2326,6 +2405,7 @@ function trainingPlanItemCompactSummary(item) {
       String(item.exercises.length) +
         " Übung" +
         (item.exercises.length === 1 ? "" : "en"),
+      exerciseSummary,
       item.note || null,
     ].filter(Boolean).join(" · ") || "Block";
   }
@@ -2341,7 +2421,9 @@ function trainingPlanItemCompactSummary(item) {
       ? item.amount + (item.unit ? " " + item.unit : "")
       : null,
   ].filter(Boolean).join(" · ");
-  return prescription || item.comment || "Übung";
+  return [prescription || null, item.comment || null]
+    .filter(Boolean)
+    .join(" · ") || "Übung";
 }
 
 function trainingPlanActionButtons(index, length, enabled, up, down, remove) {
@@ -2865,10 +2947,10 @@ async function addTrainingPlanBlockTemplate() {
     trainingPlanSaveBusy ||
     trainingPlanTemplateBusy ||
     trainingPlanSaveBackBusy
-  ) return;
+  ) return false;
 
   const summary = selectedTrainingPlanBlockTemplate();
-  if (summary === null) return;
+  if (summary === null) return false;
 
   const editorDate = trainingPlanEditorDate;
   trainingPlanTemplateBusy = true;
@@ -2895,7 +2977,7 @@ async function addTrainingPlanBlockTemplate() {
       trainingPlanEditorDate !== editorDate ||
       !trainingPlanDraft
     ) {
-      return;
+      return false;
     }
 
     trainingPlanDraft.items.push(
@@ -2905,6 +2987,7 @@ async function addTrainingPlanBlockTemplate() {
       trainingPlanElements.blockTemplate.value = "";
     }
     markTrainingPlanDirty(true);
+    return true;
   } catch (error) {
     if (error?.status === 404) {
       trainingPlanBlockTemplates = trainingPlanBlockTemplates.filter(
@@ -2925,6 +3008,7 @@ async function addTrainingPlanBlockTemplate() {
         "Die Blockvorlage konnte nicht geladen werden.",
       );
     }
+    return false;
   } finally {
     trainingPlanTemplateBusy = false;
     renderTrainingPlanItems();
@@ -2942,6 +3026,7 @@ async function openTrainingPlanPicker(mode) {
     trainingPlanSaveBackBusy
   ) return;
   trainingPlanPickerMode = mode;
+  trainingPlanPickerAddedCounts = new Map();
   if (trainingPlanElements.picker) trainingPlanElements.picker.hidden = false;
   document.body.classList.add("training-plan-picker-open");
   if (trainingPlanElements.pickerSearch) trainingPlanElements.pickerSearch.value = "";
@@ -3088,7 +3173,10 @@ function renderTrainingPlanPicker() {
       main.append(title, meta);
       const icon = document.createElement("span");
       icon.className = "training-plan-picker-option__icon";
-      icon.textContent = "＋";
+      const addedCount =
+        trainingPlanPickerAddedCounts.get("exercise:" + item.id) || 0;
+      icon.textContent = addedCount > 0 ? "✓ " + String(addedCount) + "×" : "＋";
+      button.dataset.addedCount = String(addedCount);
       button.append(main, icon);
       container.append(button);
     }
@@ -3152,10 +3240,21 @@ function renderTrainingPlanPicker() {
     main.append(title, meta);
     const icon = document.createElement("span");
     icon.className = "training-plan-picker-option__icon";
-    icon.textContent = "＋";
+    const addedCount =
+      trainingPlanPickerAddedCounts.get(
+        "block:" + template.id + "::" + String(template.currentRevision),
+      ) || 0;
+    icon.textContent = addedCount > 0 ? "✓ " + String(addedCount) + "×" : "＋";
+    button.dataset.addedCount = String(addedCount);
     button.append(main, icon);
     container.append(button);
   }
+}
+
+function trainingPlanPickerRecordAdded(key) {
+  const count = trainingPlanPickerAddedCounts.get(key) || 0;
+  trainingPlanPickerAddedCounts.set(key, count + 1);
+  renderTrainingPlanPicker();
 }
 
 function trainingPlanExerciseDraftFromCatalog(item) {
@@ -3200,7 +3299,7 @@ function trainingPlanExerciseDraftFromCatalog(item) {
   };
 }
 
-function handleTrainingPlanPickerClick(event) {
+async function handleTrainingPlanPickerClick(event) {
   const exerciseButton = event.target.closest("[data-training-plan-pick-exercise]");
   if (exerciseButton) {
     const item = exerciseCatalogItems.find(
@@ -3212,6 +3311,7 @@ function handleTrainingPlanPickerClick(event) {
     trainingPlanDraft.items.push(trainingPlanExerciseDraftFromCatalog(item));
     markTrainingPlanDirty(true);
     trainingPlanSetSaveState("dirty", "Übung hinzugefügt");
+    trainingPlanPickerRecordAdded("exercise:" + item.id);
     return;
   }
 
@@ -3221,7 +3321,11 @@ function handleTrainingPlanPickerClick(event) {
     if (trainingPlanElements.blockTemplate) {
       trainingPlanElements.blockTemplate.value = value;
     }
-    void addTrainingPlanBlockTemplate();
+    const added = await addTrainingPlanBlockTemplate();
+    if (added) {
+      trainingPlanPickerRecordAdded("block:" + value);
+      trainingPlanSetSaveState("dirty", "Block hinzugefügt");
+    }
   }
 }
 
@@ -3675,12 +3779,20 @@ async function openTrainingPlanDistribution() {
   if (!trainingPlanOverview || !trainingPlanEditorDate || !trainingPlansCanEdit) {
     return;
   }
-  if (!(await saveTrainingPlanUntilClean())) return;
+  if (trainingPlanDirty) {
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Bitte den Plan zuerst mit 💾 speichern. Ungespeicherte Änderungen werden nicht automatisch verteilt.",
+    );
+    trainingPlanElements.save?.focus();
+    return;
+  }
   if (!trainingPlanSelected) {
     showMessage(
       trainingPlanElements.editorMessage,
       "Der Plan muss zuerst gespeichert werden, bevor er verteilt werden kann.",
     );
+    trainingPlanElements.save?.focus();
     return;
   }
   renderTrainingPlanDistribution();
@@ -4162,6 +4274,15 @@ trainingPlanElements.distributeClose?.addEventListener(
 trainingPlanElements.distributeConfirm?.addEventListener("click", () => {
   void distributeTrainingPlan();
 });
+trainingPlanElements.leaveSave?.addEventListener("click", () => {
+  resolveTrainingPlanLeaveDecision("save");
+});
+trainingPlanElements.leaveDiscard?.addEventListener("click", () => {
+  resolveTrainingPlanLeaveDecision("discard");
+});
+trainingPlanElements.leaveStay?.addEventListener("click", () => {
+  resolveTrainingPlanLeaveDecision("stay");
+});
 trainingPlanElements.reload?.addEventListener("click", () => void reloadTrainingPlanEditor());
 trainingPlanElements.retry?.addEventListener("click", () => {
   if (trainingPlanConflict) return;
@@ -4209,6 +4330,14 @@ trainingPlanElements.saveTemplateConfirm?.addEventListener("click", () => {
 });
 window.addEventListener("pagehide", persistTrainingPlanOnPageHide);
 document.addEventListener("keydown", (event) => {
+  if (
+    event.key === "Escape" &&
+    trainingPlanElements.leaveDialog &&
+    !trainingPlanElements.leaveDialog.hidden
+  ) {
+    resolveTrainingPlanLeaveDecision("stay");
+    return;
+  }
   if (
     event.key === "Escape" &&
     trainingPlanElements.picker &&

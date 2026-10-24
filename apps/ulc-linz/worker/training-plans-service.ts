@@ -1107,24 +1107,13 @@ function trainingBlockExerciseFromPlan(
     );
   }
 
-  const byKey = new Map(
-    catalog.parameters.map((parameter) => [parameter.key, parameter] as const),
-  );
   const overrides: Array<{ key: string; value: string }> = [];
 
+  addNamedPlanOverride(overrides, "sets", exercise.sets);
   addNamedPlanOverride(
     overrides,
-    byKey,
-    "sets",
-    exercise.sets,
-    catalog.id,
-  );
-  addNamedPlanOverride(
-    overrides,
-    byKey,
     "repetitions",
     exercise.repetitions,
-    catalog.id,
   );
 
   if (exercise.amount === null) {
@@ -1192,19 +1181,10 @@ function trainingBlockExerciseFromPlan(
 
 function addNamedPlanOverride(
   overrides: Array<{ key: string; value: string }>,
-  byKey: ReadonlyMap<string, ExerciseCatalogItem["parameters"][number]>,
   key: "sets" | "repetitions",
   value: string | null,
-  exerciseId: string,
 ): void {
   if (value === null) return;
-  const parameter = byKey.get(key);
-  if (parameter === undefined) {
-    throw new UlcTrainingPlanTemplateSaveError(
-      "parameter-unavailable",
-      exerciseId,
-    );
-  }
   overrides.push({ key, value });
 }
 
@@ -1287,7 +1267,10 @@ function materializeBlockTemplate(
     );
     if (
       occurrence.parameterOverrides.some(
-        (value) => !definitions.has(value.key),
+        (value) =>
+          !definitions.has(value.key) &&
+          value.key !== "sets" &&
+          value.key !== "repetitions",
       )
     ) {
       return null;
@@ -1331,15 +1314,17 @@ function materializeBlockTemplate(
       effective.find(
         (value) => value.parameter.key === "repetitions",
       ) ?? null;
+    const setsValue =
+      overrides.get("sets") ?? setsParameter?.value ?? null;
+    const repetitionsValue =
+      overrides.get("repetitions") ?? repetitionsParameter?.value ?? null;
     const sets =
-      setsParameter !== null &&
-      isCompactTrainingPlanValue(setsParameter.value)
-        ? setsParameter.value
+      setsValue !== null && isCompactTrainingPlanValue(setsValue)
+        ? setsValue
         : null;
     const repetitions =
-      repetitionsParameter !== null &&
-      isCompactTrainingPlanValue(repetitionsParameter.value)
-        ? repetitionsParameter.value
+      repetitionsValue !== null && isCompactTrainingPlanValue(repetitionsValue)
+        ? repetitionsValue
         : null;
     const planningValues = effective.filter(
       (value) =>

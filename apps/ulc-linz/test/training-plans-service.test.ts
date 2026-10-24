@@ -674,6 +674,54 @@ describe("ULC training plan block template adoption", () => {
     });
   });
 
+  it("materializes block-level sets and repetitions without catalog definitions", async () => {
+    const exercise = catalogItem("exercise-1", { name: "Sprünge" });
+    const block = blockSnapshot({
+      revision: Object.freeze({
+        organizationId: "org-1",
+        blockId: "block-1",
+        revision: 3,
+        name: "Sprungblock",
+        audienceId: "group-active",
+        audienceIds: Object.freeze(["group-active"]),
+        durationMinutes: 20,
+        note: null,
+        exercises: Object.freeze([
+          {
+            itemId: "occurrence-prescription",
+            exerciseId: "exercise-1",
+            note: "Sauber landen",
+            parameterOverrides: Object.freeze([
+              { key: "sets", value: "4", sortOrder: 0 },
+              { key: "repetitions", value: "6-8", sortOrder: 1 },
+            ]),
+            sortOrder: 0,
+          },
+        ]),
+        createdAt: "2026-10-10T12:00:00.000Z",
+      }),
+    });
+    const { service } = createService({
+      exercises: [exercise],
+      blocks: [block],
+    });
+
+    await expect(
+      service.findBlockTemplate("org-1", "block-1", 3),
+    ).resolves.toMatchObject({
+      item: {
+        exercises: [
+          {
+            sourceExerciseId: "exercise-1",
+            sets: "4",
+            repetitions: "6-8",
+            comment: "Sauber landen",
+          },
+        ],
+      },
+    });
+  });
+
   it("preserves long text parameters without forcing them into the compact amount field", async () => {
     const longNote = "x".repeat(500);
     const exercise = catalogItem("exercise-1", {
@@ -1347,6 +1395,55 @@ describe("ULC training plan block template save-back", () => {
         },
       },
     ]);
+  });
+
+  it("saves sets and repetitions back even when the catalog has no matching parameters", async () => {
+    const exercise = catalogItem("exercise-plain");
+    const base = createService({
+      exercises: [exercise],
+      ids: ["plan-standard-values", "plan-block", "plan-exercise"],
+    });
+    const plan = await base.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-16",
+      items: [
+        {
+          kind: "block",
+          name: "Planblock",
+          exercises: [
+            {
+              sourceExerciseId: exercise.id,
+              name: "Sprünge",
+              sets: "5",
+              repetitions: "6",
+            },
+          ],
+        },
+      ],
+    });
+    const block = plan.revision.items[0];
+    if (block?.kind !== "block") throw new Error("Expected block.");
+
+    await base.service.saveBlockAsTemplate("org-1", {
+      planId: plan.id,
+      blockItemId: block.itemId,
+      expectedRevision: 1,
+      audienceId: ACTIVE_GROUP.id,
+    });
+
+    expect(base.getCreatedBlockInputs()[0]).toMatchObject({
+      input: {
+        exercises: [
+          {
+            exerciseId: exercise.id,
+            parameterOverrides: [
+              { key: "sets", value: "5" },
+              { key: "repetitions", value: "6" },
+            ],
+          },
+        ],
+      },
+    });
   });
 
   it("uses the persisted block name by default and never updates source provenance", async () => {

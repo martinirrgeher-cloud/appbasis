@@ -97,6 +97,8 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain('item.categoryKey === categoryKey');
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("Die Auswahl bleibt offen");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("trainingPlanItemCompactSummary");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("trainingPlanPickerAddedCounts");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain('"✓ " + String(addedCount) + "×"');
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       '"/api/modules/training-plans/day?subjectId="',
     );
@@ -151,6 +153,19 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "} else {\n      renderTrainingPlanDistribution();",
     );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "Ungespeicherte Änderungen werden nicht automatisch verteilt.",
+    );
+    const distributionStart = ULC_TRAINING_PLANS_SCRIPT.indexOf(
+      "async function openTrainingPlanDistribution()",
+    );
+    const distributionEnd = ULC_TRAINING_PLANS_SCRIPT.indexOf(
+      "async function distributeTrainingPlan()",
+      distributionStart,
+    );
+    expect(
+      ULC_TRAINING_PLANS_SCRIPT.slice(distributionStart, distributionEnd),
+    ).not.toContain("saveTrainingPlanUntilClean()");
   });
 
   it("loads only Monday-based week data without client-owned organization scope", () => {
@@ -194,8 +209,19 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
-  it("uses manual save, saves on controlled leave and keeps optimistic concurrency", () => {
+  it("uses manual save, prompts on controlled leave and keeps optimistic concurrency", () => {
     expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-save"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-leave-dialog"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain("Speichern &amp; verlassen");
+    expect(ULC_TRAINING_PLANS_HTML).toContain("Änderungen verwerfen");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("requestTrainingPlanLeaveDecision");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain('decision === "discard"');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "features?.confirmOnLeave !== true",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "features?.saveOnLeave !== true",
+    );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "expectedRevision: existing.currentRevision",
     );
@@ -317,6 +343,13 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
       "trainingPlanWeekPlans = [];\n    renderTrainingPlanWeek();\n    showMessage(",
     );
+  });
+
+  it("shows comments and block exercise names in compact summaries", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("names.slice(0, 3).join");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("item.comment || null");
+    expect(ULC_TRAINING_PLANS_HTML).toContain("training-plan-save-icon");
+    expect(ULC_TRAINING_PLANS_HTML).toContain("↗");
   });
 
   it("refreshes compact item summaries without remounting the editor", () => {
