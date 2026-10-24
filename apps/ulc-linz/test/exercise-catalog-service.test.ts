@@ -23,6 +23,7 @@ function group(
     name: id === "group-1" ? "Sprint" : "Technik",
     shortName: null,
     description: null,
+    attendanceMode: "trainer_roll_call",
     isActive,
     sortOrder: id === "group-1" ? 10 : 20,
   };
