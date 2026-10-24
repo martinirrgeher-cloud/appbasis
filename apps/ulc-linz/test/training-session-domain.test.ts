@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   UlcTrainingValidationError,
   createUlcTrainingAttendance,
+  createUlcTrainingRegistration,
   createUlcTrainingSession,
   normalizeUlcTrainingAttendanceSet,
 } from "../worker/training-session-domain";
@@ -41,6 +42,46 @@ describe("ULC training session domain", () => {
         }).status,
       ).toBe(status);
     }
+  });
+
+  it("normalizes independent athlete registration intentions and revisions", () => {
+    expect(
+      createUlcTrainingRegistration({
+        organizationId: "verein-1",
+        sessionId: "session-1",
+        athleteId: "athlete-1",
+        intention: "maybe",
+        revision: 3,
+        updatedByIdentityId: "identity-athlete-1",
+      }),
+    ).toEqual({
+      organizationId: "verein-1",
+      sessionId: "session-1",
+      athleteId: "athlete-1",
+      intention: "maybe",
+      revision: 3,
+      updatedByIdentityId: "identity-athlete-1",
+    });
+    expect(() =>
+      createUlcTrainingRegistration({
+        organizationId: "verein-1",
+        sessionId: "session-1",
+        athleteId: "athlete-1",
+        intention: "present" as "maybe",
+        revision: 1,
+        updatedByIdentityId: "identity-athlete-1",
+      }),
+    ).toThrow(UlcTrainingValidationError);
+    expect(() =>
+      createUlcTrainingRegistration({
+        organizationId: "verein-1",
+        sessionId: "session-1",
+        athleteId: "athlete-1",
+        intention: "attending",
+        revision: 0,
+        updatedByIdentityId: "identity-athlete-1",
+      }),
+    ).toThrow(UlcTrainingValidationError);
   });
 
   it("rejects unsupported modules, dates, states and oversized notes", () => {
