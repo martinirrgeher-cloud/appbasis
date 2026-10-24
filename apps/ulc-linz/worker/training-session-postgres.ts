@@ -344,6 +344,25 @@ export class PostgresUlcTrainingSessionRepository {
     }
     nonNegativeInteger(rows[0], "deleted_stale_attendance_count");
 
+    const registrationRows = await this.#sql.unsafe(
+      `SELECT organization_id,
+              session_id,
+              athlete_id,
+              intention,
+              revision,
+              updated_by_identity_id
+       FROM ulc_linz_training_registration
+       WHERE organization_id = $1
+         AND session_id = $2
+       ORDER BY athlete_id ASC`,
+      [session.organizationId, session.id],
+    );
+    const registrations = Object.freeze(
+      registrationRows.map((row) =>
+        registrationFromRow(row, session.organizationId, session.id),
+      ),
+    );
+
     return Object.freeze({
       session,
       revision: rowRevision(rows[0]),
@@ -357,7 +376,7 @@ export class PostgresUlcTrainingSessionRepository {
           }),
         ),
       ),
-      registrations: Object.freeze([]),
+      registrations,
     });
   }
 
