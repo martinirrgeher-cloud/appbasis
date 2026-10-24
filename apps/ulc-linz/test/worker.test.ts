@@ -140,6 +140,7 @@ function runtime(
         name: input.name,
         shortName: input.shortName ?? null,
         description: input.description ?? null,
+        attendanceMode: input.attendanceMode ?? "trainer_roll_call",
         isActive: true,
         sortOrder: input.sortOrder ?? 100,
       };
@@ -203,6 +204,7 @@ function runtime(
         name: input.name,
         shortName: input.shortName,
         description: input.description,
+        attendanceMode: input.attendanceMode,
         isActive: true,
         sortOrder: input.sortOrder,
       };
@@ -277,15 +279,41 @@ function runtime(
       return kindertrainingOrganizationAccess("verein-1");
     },
   },
+  selfRegistrationAccess: GeneratedPostgresApplicationRuntime["selfRegistrationAccess"] = {
+    async assertViewAccess() {
+      return {
+        organizationId: "verein-1",
+        actorPrincipalId: currentIdentity.identity.identityId,
+        athleteId: "athlete-self",
+      };
+    },
+    async assertEditAccess() {
+      return {
+        organizationId: "verein-1",
+        actorPrincipalId: currentIdentity.identity.identityId,
+        athleteId: "athlete-self",
+      };
+    },
+  },
   kindertraining: GeneratedPostgresApplicationRuntime["kindertraining"] = {
     async listGroups() {
       return [
-        { id: "group-test", name: "Kindertraining", shortName: "KT" },
+        {
+          id: "group-test",
+          name: "Kindertraining",
+          shortName: "KT",
+          attendanceMode: "trainer_roll_call",
+        },
       ];
     },
     async readSnapshot(_organizationId, groupId, sessionDate) {
       return {
-        group: { id: groupId, name: "Kindertraining", shortName: "KT" },
+        group: {
+          id: groupId,
+          name: "Kindertraining",
+          shortName: "KT",
+          attendanceMode: "trainer_roll_call",
+        },
         sessionDate,
         session: null,
         participants: [],
@@ -293,7 +321,12 @@ function runtime(
     },
     async saveSession(_organizationId, input) {
       return {
-        group: { id: input.groupId, name: "Kindertraining", shortName: "KT" },
+        group: {
+          id: input.groupId,
+          name: "Kindertraining",
+          shortName: "KT",
+          attendanceMode: "trainer_roll_call",
+        },
         sessionDate: input.sessionDate,
         session: {
           id: "session-test",
@@ -306,8 +339,33 @@ function runtime(
           firstName: "Test",
           lastName: "Athlet",
           birthYear: null,
+          intention: "unknown",
+          registrationRevision: null,
           status: entry.status,
         })),
+      };
+    },
+  },
+  selfRegistration: GeneratedPostgresApplicationRuntime["selfRegistration"] = {
+    async listOptions(_organizationId, _athleteId, sessionDate) {
+      return [
+        {
+          group: { id: "group-self", name: "Selbstanmeldung", shortName: "SA" },
+          sessionDate,
+          sessionState: null,
+          intention: "unknown",
+          revision: null,
+        },
+      ];
+    },
+    async save(_organizationId, _athleteId, _actorIdentityId, input) {
+      return {
+        group: { id: input.groupId, name: "Selbstanmeldung", shortName: "SA" },
+        sessionDate: input.sessionDate,
+        sessionState: "scheduled",
+        intention: input.intention,
+        revision:
+          input.expectedRevision === null ? 1 : input.expectedRevision + 1,
       };
     },
   },
@@ -410,6 +468,7 @@ function runtime(
       },
     },
     kindertrainingAccess,
+    selfRegistrationAccess,
     u12Access,
     trainerIdentityAccess: {
       async assertAdminAccess() {
@@ -445,6 +504,7 @@ function runtime(
     },
     athleteMasterdata,
     kindertraining,
+    selfRegistration,
     u12,
     trainingBlocks: {
       async listAudiences() {
@@ -697,9 +757,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
   it("opens the authenticated app on the dashboard and gates each module navigation independently", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="5" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" data-nav-priority="1" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="useful" data-nav-priority="6" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="6" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="registration" data-nav-priority="1" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" data-nav-priority="2" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="useful" data-nav-priority="7" hidden disabled');
     expect(ULC_LINZ_APP_HTML).not.toContain('data-nav-view="settings"');
     expect(ULC_LINZ_APP_HTML).toContain('data-app-section="countdown"');
     expect(ULC_LINZ_APP_HTML).toContain('class="card countdown-settings"');
@@ -719,10 +780,16 @@ describe("generated identity+permissions Worker entrypoint", () => {
       "elements.masterdataQuickAction.disabled = !masterdataReady;",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "elements.registrationQuickAction.disabled = !registrationReady;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
       "elements.kindertrainingQuickAction.disabled = !kindertrainingReady;",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '(section === "masterdata" && masterdataReady)',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '(section === "registration" && registrationReady)',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '(section === "kindertraining" && kindertrainingReady)',
@@ -3872,7 +3939,12 @@ describe("Kindertraining runtime API", () => {
           async listGroups(organizationId) {
             receivedOrganization = organizationId;
             return [
-              { id: "group-1", name: "Kindertraining", shortName: "KT" },
+              {
+                id: "group-1",
+                name: "Kindertraining",
+                shortName: "KT",
+                attendanceMode: "trainer_roll_call",
+              },
             ];
           },
         },
@@ -3892,7 +3964,12 @@ describe("Kindertraining runtime API", () => {
       module: { moduleId: "kindertraining" },
       access: { view: true },
       trainingGroups: [
-        { id: "group-1", name: "Kindertraining", shortName: "KT" },
+        {
+                id: "group-1",
+                name: "Kindertraining",
+                shortName: "KT",
+                attendanceMode: "trainer_roll_call",
+              },
       ],
     });
   });
@@ -3927,7 +4004,12 @@ describe("Kindertraining runtime API", () => {
           async listGroups(organizationId) {
             expect(organizationId).toBe("verein-server");
             return [
-              { id: "group-1", name: "Kindertraining", shortName: "KT" },
+              {
+                id: "group-1",
+                name: "Kindertraining",
+                shortName: "KT",
+                attendanceMode: "trainer_roll_call",
+              },
               { id: "group-2", name: "Unerlaubt", shortName: "X" },
             ];
           },
@@ -3958,7 +4040,12 @@ describe("Kindertraining runtime API", () => {
     expect(moduleResponse.status).toBe(200);
     await expect(moduleResponse.json()).resolves.toMatchObject({
       trainingGroups: [
-        { id: "group-1", name: "Kindertraining", shortName: "KT" },
+        {
+                id: "group-1",
+                name: "Kindertraining",
+                shortName: "KT",
+                attendanceMode: "trainer_roll_call",
+              },
       ],
     });
 
@@ -4048,7 +4135,12 @@ describe("Kindertraining runtime API", () => {
           async readSnapshot(organizationId, groupId, sessionDate) {
             received = { organizationId, groupId, sessionDate };
             return {
-              group: { id: groupId, name: "Kindertraining", shortName: "KT" },
+              group: {
+          id: groupId,
+          name: "Kindertraining",
+          shortName: "KT",
+          attendanceMode: "trainer_roll_call",
+        },
               sessionDate,
               session: null,
               participants: [],
@@ -4095,6 +4187,7 @@ describe("Kindertraining runtime API", () => {
                 id: input.groupId,
                 name: "Kindertraining",
                 shortName: "KT",
+                attendanceMode: "trainer_roll_call",
               },
               sessionDate: input.sessionDate,
               session: {
