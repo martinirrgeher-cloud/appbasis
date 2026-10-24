@@ -97,10 +97,10 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <small id="masterdata-access-label">Berechtigung wird geprüft …</small>
               </article>
 
-              <article class="card dashboard-card dashboard-card--primary" id="registration-dashboard" hidden>
+              <article class="card dashboard-card dashboard-card--primary" id="registration-dashboard">
                 <div>
                   <p class="eyebrow">Training</p>
-                  <h2>Trainingsanmeldung</h2>
+                  <h2>Meine Trainingsanmeldung</h2>
                   <p>Für deine Trainingsgruppe anmelden, absagen oder „vielleicht“ auswählen.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="registration-quick-action" type="button" data-open-view="registration" disabled>Anmeldung öffnen</button>
@@ -110,10 +110,10 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <article class="card dashboard-card dashboard-card--primary">
                 <div>
                   <p class="eyebrow">Training</p>
-                  <h2>Kindertraining</h2>
-                  <p>Anwesenheit für eine Trainingsgruppe und einen Trainingstag direkt am Smartphone erfassen.</p>
+                  <h2>Anwesenheit</h2>
+                  <p>Voranmeldungen einer Trainingsgruppe prüfen und die tatsächliche Anwesenheit für einen Trainingstag erfassen.</p>
                 </div>
-                <button class="button button--primary dashboard-action" id="kindertraining-quick-action" type="button" data-open-view="kindertraining" disabled>Kindertraining öffnen</button>
+                <button class="button button--primary dashboard-action" id="kindertraining-quick-action" type="button" data-open-view="kindertraining" disabled>Anwesenheit öffnen</button>
                 <small id="kindertraining-access-label">Berechtigung wird geprüft …</small>
               </article>
 
@@ -163,7 +163,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                   <h2>Weitere Bereiche folgen</h2>
                   <p>Die bestehenden ULC-Funktionen werden schrittweise und kontrolliert in AppBasis übernommen.</p>
                 </div>
-                <span class="dashboard-status">Stammdaten · Kindertraining</span>
+                <span class="dashboard-status">Stammdaten · Anwesenheit · Trainingsplanung</span>
               </article>
             </section>
           </section>
@@ -478,8 +478,8 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
           <section class="app-section" data-app-section="kindertraining" id="kindertraining" hidden>
             <section class="hero">
               <p class="eyebrow">Training</p>
-              <h1>Kindertraining</h1>
-              <p class="summary">Training auswählen, Anwesenheit erfassen und gemeinsam speichern.</p>
+              <h1>Anwesenheit</h1>
+              <p class="summary">Training auswählen, Voranmeldungen prüfen und die tatsächliche Anwesenheit erfassen.</p>
             </section>
 
             <p class="message message--error" id="kindertraining-message" role="alert" hidden></p>
@@ -504,7 +504,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div class="section-heading">
                   <div>
                     <p class="eyebrow">Trainingseinheit</p>
-                    <h2 id="kindertraining-title">Kindertraining</h2>
+                    <h2 id="kindertraining-title">Anwesenheit</h2>
                     <p class="settings-note" id="kindertraining-mode"></p>
                   </div>
                   <span id="kindertraining-save-state">Noch nicht gespeichert</span>
@@ -2273,7 +2273,7 @@ async function bootstrapKindertraining() {
     if (kindertrainingGroups.length === 0) {
       showMessage(
         elements.kindertrainingMessage,
-        "Für Kindertraining ist noch keine aktive Trainingsgruppe angelegt.",
+        "Für die Anwesenheit ist noch keine aktive Trainingsgruppe angelegt.",
       );
     }
   } catch (error) {
@@ -2283,8 +2283,8 @@ async function bootstrapKindertraining() {
     showMessage(
       elements.kindertrainingMessage,
       error?.status === 403
-        ? "Für Kindertraining fehlt die Berechtigung."
-        : "Kindertraining ist derzeit nicht verfügbar.",
+        ? "Für Anwesenheit fehlt die Berechtigung."
+        : "Anwesenheit ist derzeit nicht verfügbar.",
     );
   }
   refreshAppAvailability();
@@ -2460,7 +2460,7 @@ function refreshAppAvailability() {
       : "Für deinen Benutzer derzeit nicht freigeschaltet.";
   }
   if (elements.registrationDashboard) {
-    elements.registrationDashboard.hidden = !selfRegistrationReady;
+    elements.registrationDashboard.hidden = false;
   }
   if (elements.registrationQuickAction) {
     elements.registrationQuickAction.disabled = !selfRegistrationReady;
@@ -2468,7 +2468,7 @@ function refreshAppAvailability() {
   if (elements.registrationAccessLabel) {
     elements.registrationAccessLabel.textContent = selfRegistrationReady
       ? "Für deine Athleten-Identität freigeschaltet."
-      : "Für deinen Benutzer derzeit nicht freigeschaltet.";
+      : "Nur mit einem verknüpften Athletenkonto verfügbar.";
   }
   if (elements.kindertrainingQuickAction) {
     elements.kindertrainingQuickAction.disabled = !kindertrainingReady;
@@ -2629,10 +2629,10 @@ async function loadKindertraining() {
     showMessage(
       elements.kindertrainingMessage,
       error?.status === 403
-        ? "Für dieses Kindertraining fehlt die Berechtigung."
+        ? "Für die Anwesenheit dieser Trainingsgruppe fehlt die Berechtigung."
         : error?.status === 404
           ? "Die Trainingsgruppe wurde nicht gefunden."
-          : "Das Kindertraining konnte nicht geladen werden.",
+          : "Die Anwesenheit konnte nicht geladen werden.",
     );
   } finally {
     setKindertrainingLoading(false);
@@ -2924,12 +2924,12 @@ async function saveKindertraining() {
     showMessage(
       elements.kindertrainingMessage,
       error?.status === 403
-        ? "Du darfst dieses Kindertraining ansehen, aber nicht speichern."
+        ? "Du darfst diese Anwesenheit ansehen, aber nicht speichern."
         : conflict
           ? "Dieses Training wurde inzwischen von jemand anderem geändert. Bitte neu laden, bevor du weiter speicherst."
           : error?.status === 400
             ? "Die Teilnehmerliste hat sich geändert. Bitte das Training neu laden."
-            : "Das Kindertraining konnte nicht gespeichert werden.",
+            : "Die Anwesenheit konnte nicht gespeichert werden.",
     );
     if (conflict && elements.kindertrainingSaveState) {
       elements.kindertrainingSaveState.textContent = "Konflikt – neu laden";
