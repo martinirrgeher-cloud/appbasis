@@ -78,11 +78,12 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
     assert.deepEqual(plan.changes.databaseMigrationDelta?.addedOwner, {
       id: "athletes",
       root: "modules/athletes",
-      schemaVersion: 3,
+      schemaVersion: 4,
       migrations: [
         "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
         "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
         "modules/athletes/migrations/0002_appbasis_athlete_contacts.sql",
+        "modules/athletes/migrations/0003_appbasis_training_group_attendance_mode.sql",
       ],
     });
     assert.deepEqual(await snapshotPublicationState(root), beforePlan);
@@ -127,7 +128,7 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
     assert.equal(migration.application, "ulc-linz");
     assert.equal(migration.moduleId, "athletes");
     assert.equal(migration.repositoryState, "published-target");
-    assert.equal(migration.migrationCount, 3);
+    assert.equal(migration.migrationCount, 4);
     assert.ok(migration.statementCount > 0);
     assert.ok(migration.baselineMarkerCount > 0);
     assert.ok(migration.targetMarkerCount > 0);
@@ -231,6 +232,11 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
       const masterdata = await verification.client`
         SELECT
           (SELECT count(*)::int FROM appbasis_training_group) AS groups,
+          (
+            SELECT attendance_mode
+            FROM appbasis_training_group
+            WHERE id = 'group-u14'
+          ) AS attendance_mode,
           (SELECT count(*)::int FROM appbasis_athlete) AS athletes,
           (SELECT count(*)::int FROM appbasis_trainer) AS trainers,
           (SELECT count(*)::int FROM appbasis_athlete_group_membership) AS athlete_memberships,
@@ -239,6 +245,7 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
       assert.deepEqual(
         masterdata.map((row) => ({
           groups: row.groups,
+          attendance_mode: row.attendance_mode,
           athletes: row.athletes,
           trainers: row.trainers,
           athlete_memberships: row.athlete_memberships,
@@ -247,6 +254,7 @@ test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", asy
         [
           {
             groups: 1,
+            attendance_mode: "trainer_roll_call",
             athletes: 1,
             trainers: 1,
             athlete_memberships: 1,
