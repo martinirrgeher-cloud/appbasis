@@ -5,7 +5,7 @@
   "source": {
     "ownerId": "ulc-linz-lifecycle",
     "ownerRoot": "apps/ulc-linz",
-    "ownerSchemaVersion": 8,
+    "ownerSchemaVersion": 9,
     "migration": {
       "path": "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
       "gitBlobSha1": "2f3d68b95c2973654c919b629ced456f05f2af8a"
