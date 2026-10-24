@@ -46,6 +46,11 @@ import {
 } from "./kindertraining-access";
 import { createUlcKindertrainingService } from "./kindertraining-service";
 import {
+  createUlcLinzSelfRegistrationAccessService,
+  type UlcLinzSelfRegistrationAccessService,
+} from "./self-registration-access";
+import { createUlcSelfRegistrationService } from "./self-registration-service";
+import {
   createUlcLinzU12AccessService,
   type UlcLinzU12AccessService,
 } from "./u12-access";
@@ -90,6 +95,7 @@ export interface GeneratedPostgresApplicationRuntime {
   trainingBlocksAccess: UlcLinzTrainingBlocksAccessService;
   trainingPlansAccess: UlcLinzTrainingPlansAccessService;
   kindertrainingAccess: UlcLinzKindertrainingAccessService;
+  selfRegistrationAccess: UlcLinzSelfRegistrationAccessService;
   u12Access: UlcLinzU12AccessService;
   trainerIdentityAccess: UlcLinzTrainerIdentityAdminAccessService;
   trainerIdentityLinks: Pick<
@@ -118,6 +124,7 @@ export interface GeneratedPostgresApplicationRuntime {
     | "deactivateTrainer"
   >;
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
+  selfRegistration: ReturnType<typeof createUlcSelfRegistrationService>;
   u12: ReturnType<typeof createUlcU12Service>;
   exerciseCatalog: ReturnType<typeof createUlcExerciseCatalogService>;
   trainingBlocks: UlcTrainingBlockService;
@@ -216,6 +223,14 @@ export async function createGeneratedPostgresApplicationRuntime(
       subjectScopes: scopes,
       securityEvents,
     });
+    const selfRegistrationAccess =
+      createUlcLinzSelfRegistrationAccessService({
+        sql: applicationSql,
+        permissions,
+        memberships: scopes,
+        subjectScopes: scopes,
+        securityEvents,
+      });
     const u12Access = createUlcLinzU12AccessService({
       sql: applicationSql,
       permissions,
@@ -412,6 +427,10 @@ export async function createGeneratedPostgresApplicationRuntime(
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
     });
+    const selfRegistration = createUlcSelfRegistrationService({
+      masterdata: athleteMasterdata,
+      sessions: trainingSessions,
+    });
     const u12 = createUlcU12Service({
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
@@ -450,12 +469,14 @@ export async function createGeneratedPostgresApplicationRuntime(
       trainingBlocksAccess,
       trainingPlansAccess,
       kindertrainingAccess,
+      selfRegistrationAccess,
       u12Access,
       trainerIdentityAccess,
       trainerIdentityLinks,
       trainerUserProvisioning,
       athleteMasterdata,
       kindertraining,
+      selfRegistration,
       u12,
       exerciseCatalog,
       trainingBlocks,
