@@ -84,18 +84,18 @@ function criterion(app, id) {
   return app.productionReadiness.criteria.find((candidate) => candidate.id === id);
 }
 
-test("Factory keeps C/D operationally open while current repository and B evidence are verified", async () => {
+test("Factory keeps B/C/D open when attendance changes the role contract", async () => {
   const root = await createFactoryFixture();
   try {
     const snapshot = await loadFactorySnapshot(root);
     const app = snapshot.apps[0];
 
     assert.equal(app.appId, "ulc-linz");
-    assert.equal(app.productionReadiness.verifiedCount, 2);
+    assert.equal(app.productionReadiness.verifiedCount, 1);
     assert.equal(app.productionReadiness.requiredCount, 12);
     assert.equal(app.productionReadiness.productionReady, false);
     assert.equal(criterion(app, "secretsOutsideAppManifests").status, "verified");
-    assert.equal(criterion(app, "rolesAndPermissions").status, "verified");
+    assert.equal(criterion(app, "rolesAndPermissions").status, "open");
     assert.equal(criterion(app, "deletionConcept").status, "open");
     assert.equal(criterion(app, "retention").status, "open");
     assert.equal(criterion(app, "dataRegion").status, "open");
