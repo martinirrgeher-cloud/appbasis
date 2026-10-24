@@ -51,18 +51,11 @@ function canonicalCatalogResponse(sql) {
   return null;
 }
 
-test("loads only the canonical schema-v8 exercise catalog migration", async () => {
-  const plan = await loadUlcLinzPreviewExerciseCatalogUpgradePlan();
-  assert.equal(plan.application, "ulc-linz");
-  assert.equal(plan.ownerId, "ulc-linz-lifecycle");
-  assert.equal(
-    plan.migration.relativePath,
-    "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
+test("schema-v8 exercise catalog preview upgrade remains historical after lifecycle advances", async () => {
+  await assert.rejects(
+    loadUlcLinzPreviewExerciseCatalogUpgradePlan(),
+    /expected schema-v8 target/,
   );
-  assert.ok(plan.migration.statements.length >= 4);
-  const sql = plan.migration.statements.join("\n");
-  for (const table of TARGETS) assert.match(sql, new RegExp(table));
-  assert.doesNotMatch(sql, /\bREFERENCES\b/i);
 });
 
 test("applies the exact schema-v8 delta transactionally after the schema-v7 baseline", async () => {
