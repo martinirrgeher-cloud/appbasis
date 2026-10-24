@@ -146,6 +146,52 @@ export class PostgresUlcTrainingSessionRepository {
     });
   }
 
+  async ensureScheduledSession(
+    organizationId: string,
+    moduleId: UlcTrainingModule,
+    groupId: string,
+    sessionDate: string,
+  ): Promise<UlcTrainingSessionSnapshot> {
+    const proposed = createUlcTrainingSession(
+      { moduleId, groupId, sessionDate },
+      {
+        id: requiredGeneratedId(this.#createId()),
+        organizationId,
+      },
+    );
+    await this.#sql.unsafe(
+      `INSERT INTO ulc_linz_training_session (
+         id,
+         organization_id,
+         module_id,
+         group_id,
+         session_date,
+         state,
+         note
+       )
+       VALUES ($1, $2, $3, $4, $5::date, 'scheduled', NULL)
+       ON CONFLICT (organization_id, module_id, group_id, session_date)
+       DO NOTHING`,
+      [
+        proposed.id,
+        proposed.organizationId,
+        proposed.moduleId,
+        proposed.groupId,
+        proposed.sessionDate,
+      ],
+    );
+    const snapshot = await this.readSession(
+      proposed.organizationId,
+      proposed.moduleId,
+      proposed.groupId,
+      proposed.sessionDate,
+    );
+    if (snapshot === null || snapshot.session.state !== "scheduled") {
+      throw new UlcTrainingSessionConflictError();
+    }
+    return snapshot;
+  }
+
   async listAttendanceForAthleteDateRange(
     organizationId: string,
     athleteId: string,
