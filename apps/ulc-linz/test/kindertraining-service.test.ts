@@ -24,6 +24,7 @@ function masterdataSnapshot(): AthleteMasterdataSnapshot {
         name: "Kindertraining",
         shortName: "KT",
         description: null,
+        attendanceMode: "trainer_roll_call",
         isActive: true,
         sortOrder: 10,
       },
@@ -112,6 +113,24 @@ function storedSession(): UlcTrainingSessionSnapshot {
         status: "excused",
       },
     ],
+    registrations: [
+      {
+        organizationId: ORGANIZATION_ID,
+        sessionId: "session-1",
+        athleteId: "athlete-1",
+        intention: "attending",
+        revision: 2,
+        updatedByIdentityId: "identity-athlete-1",
+      },
+      {
+        organizationId: ORGANIZATION_ID,
+        sessionId: "session-1",
+        athleteId: "athlete-2",
+        intention: "not_attending",
+        revision: 1,
+        updatedByIdentityId: "identity-athlete-2",
+      },
+    ],
   };
 }
 
@@ -132,6 +151,7 @@ describe("ULC Kindertraining service", () => {
                 name: "Altgruppe",
                 shortName: null,
                 description: null,
+                attendanceMode: "trainer_roll_call",
                 isActive: false,
                 sortOrder: 20,
               },
@@ -154,6 +174,7 @@ describe("ULC Kindertraining service", () => {
         id: GROUP_ID,
         name: "Kindertraining",
         shortName: "KT",
+        attendanceMode: "trainer_roll_call",
       },
     ]);
   });
@@ -182,6 +203,7 @@ describe("ULC Kindertraining service", () => {
         id: GROUP_ID,
         name: "Kindertraining",
         shortName: "KT",
+        attendanceMode: "trainer_roll_call",
       },
       sessionDate: DATE,
       session: {
@@ -196,6 +218,8 @@ describe("ULC Kindertraining service", () => {
           firstName: "Anna",
           lastName: "Auer",
           birthYear: 2017,
+          intention: "attending",
+          registrationRevision: 2,
           status: "present",
         },
         {
@@ -203,6 +227,8 @@ describe("ULC Kindertraining service", () => {
           firstName: "Berta",
           lastName: "Zeller",
           birthYear: 2016,
+          intention: "not_attending",
+          registrationRevision: 1,
           status: "excused",
         },
       ],
@@ -257,6 +283,7 @@ describe("ULC Kindertraining service", () => {
               athleteId: entry.athleteId,
               status: entry.status,
             })),
+            registrations: [],
           };
         },
       },
