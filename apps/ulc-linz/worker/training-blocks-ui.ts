@@ -381,19 +381,28 @@ export const ULC_TRAINING_BLOCKS_CSS = `
   padding: 0;
   font-size: .86rem;
 }
-.training-block-exercise__note {
+.training-block-exercise__editor {
   margin-top: 7px;
   border-top: 1px solid var(--border);
   padding-top: 6px;
 }
-.training-block-exercise__note summary {
+.training-block-exercise__editor > summary {
   color: var(--secondary);
   cursor: pointer;
-  font-size: .74rem;
+  font-size: .78rem;
   font-weight: 750;
 }
-.training-block-exercise__note input { margin-top: 6px; }
+.training-block-exercise__comment {
+  display: block;
+  margin-top: 8px;
+}
+.training-block-exercise__comment input { margin-top: 4px; }
 .training-block-parameters { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
+.training-block-parameters--prescription {
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--muted);
+}
 .training-block-parameter { min-width: 0; }
 .training-block-parameter input { min-height: 40px; }
 .training-block-parameter small { display: block; margin-top: 3px; color: var(--secondary); }
@@ -1383,6 +1392,46 @@ function trainingBlockParameterValue(draft, parameter) {
   return override ? override.value : parameter.defaultValue || "";
 }
 
+function trainingBlockParameterValueByKey(draft, item, key) {
+  const override = draft.parameterOverrides.find(
+    (value) => value.key === key,
+  );
+  if (override) return override.value;
+  const parameter = item?.parameters.find((value) => value.key === key);
+  return parameter?.defaultValue || "";
+}
+
+function trainingBlockExerciseCompactSummary(draft, item) {
+  const sets = trainingBlockParameterValueByKey(draft, item, "sets");
+  const repetitions =
+    trainingBlockParameterValueByKey(draft, item, "repetitions");
+  const prescription =
+    sets && repetitions
+      ? sets + " × " + repetitions
+      : sets
+        ? sets + " Sätze"
+        : repetitions
+          ? repetitions + " Wdh."
+          : "";
+  return [prescription, draft.note || ""]
+    .filter(Boolean)
+    .join(" · ") || "Planwerte bearbeiten";
+}
+
+function refreshTrainingBlockExerciseCompactSummary(index) {
+  if (!trainingBlockDraft) return;
+  const draft = trainingBlockDraft.exercises[index];
+  if (!draft) return;
+  const summary = trainingBlockElements.exercises?.querySelector(
+    '[data-training-block-exercise-summary="' + String(index) + '"]',
+  );
+  if (!summary) return;
+  summary.textContent = trainingBlockExerciseCompactSummary(
+    draft,
+    trainingBlockExerciseItem(draft.exerciseId),
+  );
+}
+
 function renderTrainingBlockExercises() {
   const container = trainingBlockElements.exercises;
   if (!container || !trainingBlockDraft) return;
@@ -1439,24 +1488,69 @@ function renderTrainingBlockExercises() {
     header.append(title, actions);
     row.append(header);
 
-    const noteDetails = document.createElement("details");
-    noteDetails.className = "training-block-exercise__note";
-    noteDetails.open = Boolean(draft.note);
-    const noteSummary = document.createElement("summary");
-    noteSummary.textContent = draft.note ? "Notiz bearbeiten" : "Notiz";
+    const editor = document.createElement("details");
+    editor.className = "training-block-exercise__editor";
+    const editorSummary = document.createElement("summary");
+    editorSummary.dataset.trainingBlockExerciseSummary = String(index);
+    editorSummary.textContent = trainingBlockExerciseCompactSummary(draft, item);
+    editor.append(editorSummary);
+
+    if (item) {
+      const prescription = document.createElement("div");
+      prescription.className =
+        "training-block-parameters training-block-parameters--prescription";
+      for (const definition of [
+        { key: "sets", label: "Sätze" },
+        { key: "repetitions", label: "Wdh." },
+      ]) {
+        const catalogParameter = item.parameters.find(
+          (parameter) => parameter.key === definition.key,
+        );
+        const label = document.createElement("label");
+        label.className = "training-block-parameter";
+        label.textContent = definition.label;
+        const input = document.createElement("input");
+        input.maxLength = 80;
+        input.placeholder = "Optional";
+        input.value = trainingBlockParameterValueByKey(
+          draft,
+          item,
+          definition.key,
+        );
+        input.disabled = !editable || item.isActive === false;
+        input.dataset.trainingBlockParameterIndex = String(index);
+        input.dataset.trainingBlockParameterKey = definition.key;
+        input.dataset.trainingBlockParameterDefault =
+          catalogParameter?.defaultValue || "";
+        const hint = document.createElement("small");
+        hint.textContent =
+          catalogParameter?.defaultValue
+            ? "Katalogstandard: " + catalogParameter.defaultValue
+            : "Freier Planwert";
+        label.append(input, hint);
+        prescription.append(label);
+      }
+      editor.append(prescription);
+    }
+
+    const noteLabel = document.createElement("label");
+    noteLabel.className = "training-block-exercise__comment";
+    noteLabel.textContent = "Kommentar";
     const noteInput = document.createElement("input");
     noteInput.maxLength = 2000;
     noteInput.placeholder = "Optional";
     noteInput.value = draft.note || "";
     noteInput.disabled = !editable || item?.isActive === false;
     noteInput.dataset.trainingBlockExerciseNote = String(index);
-    noteDetails.append(noteSummary, noteInput);
-    row.append(noteDetails);
+    noteLabel.append(noteInput);
+    editor.append(noteLabel);
 
     if (item) {
-      const currentKeys = new Set(
-        item.parameters.map((parameter) => parameter.key),
-      );
+      const currentKeys = new Set([
+        ...item.parameters.map((parameter) => parameter.key),
+        "sets",
+        "repetitions",
+      ]);
       const obsoleteCount = draft.parameterOverrides.filter(
         (override) => !currentKeys.has(override.key),
       ).length;
@@ -1466,17 +1560,21 @@ function renderTrainingBlockExercises() {
         obsolete.textContent =
           String(obsoleteCount) +
           " veraltete(r) Parameterwert(e) werden beim nächsten Speichern entfernt.";
-        row.append(obsolete);
+        editor.append(obsolete);
       }
-    }
 
-    if (item && item.parameters.length > 0) {
-      const parameters = document.createElement("div");
-      parameters.className = "training-block-parameters";
-      item.parameters
+      const additionalParameters = item.parameters
+        .filter(
+          (parameter) =>
+            parameter.key !== "sets" &&
+            parameter.key !== "repetitions",
+        )
         .slice()
-        .sort((a, b) => a.sortOrder - b.sortOrder)
-        .forEach((parameter) => {
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+      if (additionalParameters.length > 0) {
+        const parameters = document.createElement("div");
+        parameters.className = "training-block-parameters";
+        additionalParameters.forEach((parameter) => {
           const label = document.createElement("label");
           label.className = "training-block-parameter";
           label.textContent =
@@ -1506,8 +1604,10 @@ function renderTrainingBlockExercises() {
           label.append(input, hint);
           parameters.append(label);
         });
-      row.append(parameters);
+        editor.append(parameters);
+      }
     }
+    row.append(editor);
     container.append(row);
   });
 }
@@ -1569,7 +1669,11 @@ function trainingBlockDraftPayload() {
       const currentKeys =
         item === null
           ? null
-          : new Set(item.parameters.map((parameter) => parameter.key));
+          : new Set([
+              ...item.parameters.map((parameter) => parameter.key),
+              "sets",
+              "repetitions",
+            ]);
       return {
         ...(exercise.itemId ? { itemId: exercise.itemId } : {}),
         exerciseId: exercise.exerciseId,
@@ -1610,8 +1714,19 @@ function trainingBlockParameterError(payload) {
 
     for (const override of exercise.parameterOverrides) {
       const definition = definitions.get(override.key);
-      if (!definition) continue;
+      if (
+        !definition &&
+        override.key !== "sets" &&
+        override.key !== "repetitions"
+      ) continue;
       const value = String(override.value);
+      if (
+        (override.key === "sets" || override.key === "repetitions") &&
+        Array.from(value).length > 80
+      ) {
+        return item.name + ": Planwert ist zu lang.";
+      }
+      if (!definition) continue;
       if (Array.from(value).length > 500 || value.trim().length === 0) {
         return item.name + ": " + definition.label + " ist ungültig.";
       }
@@ -2055,6 +2170,7 @@ function handleTrainingBlockExerciseInput(event) {
     const index = Number(noteIndex);
     if (trainingBlockDraft.exercises[index]) {
       trainingBlockDraft.exercises[index].note = event.target.value || "";
+      refreshTrainingBlockExerciseCompactSummary(index);
       markTrainingBlockDirty();
     }
     return;
@@ -2067,15 +2183,24 @@ function handleTrainingBlockExerciseInput(event) {
   if (!draft) return;
   const item = trainingBlockExerciseItem(draft.exerciseId);
   const parameter = item?.parameters.find((value) => value.key === key);
-  if (!parameter) return;
+  const standardKey = key === "sets" || key === "repetitions";
+  if (!parameter && !standardKey) return;
   const value = event.target.value;
-  const standard = parameter.defaultValue || "";
+  const standard = parameter?.defaultValue || "";
   draft.parameterOverrides = draft.parameterOverrides.filter(
     (override) => override.key !== key,
   );
-  if (value !== standard || (parameter.isRequired && parameter.defaultValue === null)) {
+  if (
+    value !== "" &&
+    (
+      parameter === undefined ||
+      value !== standard ||
+      (parameter.isRequired && parameter.defaultValue === null)
+    )
+  ) {
     draft.parameterOverrides.push({ key, value });
   }
+  refreshTrainingBlockExerciseCompactSummary(index);
   markTrainingBlockDirty();
 }
 
