@@ -69,6 +69,7 @@ const ACTIVE_GROUP: TrainingGroup = Object.freeze({
   name: "U16",
   shortName: "U16",
   description: null,
+  attendanceMode: "trainer_roll_call",
   isActive: true,
   sortOrder: 10,
 });
