@@ -403,6 +403,12 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                         <label>Name<input id="group-name" minlength="2" maxlength="100" required /></label>
                         <label>Kurzname<input id="group-short-name" maxlength="20" /></label>
                         <label>Beschreibung<input id="group-description" maxlength="1000" /></label>
+                        <label>Anwesenheit
+                          <select id="group-attendance-mode">
+                            <option value="trainer_roll_call">Trainer-Erfassung</option>
+                            <option value="self_registration">Selbstanmeldung</option>
+                          </select>
+                        </label>
                         <label>Sortierung<input id="group-sort-order" type="number" min="0" max="10000" value="100" inputmode="numeric" /></label>
                       </div>
                       <div class="masterdata-form-actions">
@@ -1416,6 +1422,7 @@ const elements = {
   groupName: document.querySelector("#group-name"),
   groupShortName: document.querySelector("#group-short-name"),
   groupDescription: document.querySelector("#group-description"),
+  groupAttendanceMode: document.querySelector("#group-attendance-mode"),
   groupSortOrder: document.querySelector("#group-sort-order"),
   groupFormTitle: document.querySelector("#group-form-title"),
   groupSubmitButton: document.querySelector("#group-submit-button"),
@@ -3825,6 +3832,9 @@ function openNewMasterdataGroup() {
   masterdataGroupOverlayId = null;
   masterdataEdit = null;
   elements.groupForm?.reset();
+  if (elements.groupAttendanceMode) {
+    elements.groupAttendanceMode.value = "trainer_roll_call";
+  }
   if (elements.groupSortOrder) elements.groupSortOrder.value = "100";
   refreshMasterdataEditMode();
   showMasterdataGroupOverlayMode("group");
@@ -3838,6 +3848,9 @@ function closeMasterdataGroupOverlay() {
   masterdataGroupOverlayId = null;
   masterdataEdit = null;
   elements.groupForm?.reset();
+  if (elements.groupAttendanceMode) {
+    elements.groupAttendanceMode.value = "trainer_roll_call";
+  }
   if (elements.groupSortOrder) elements.groupSortOrder.value = "100";
   refreshMasterdataEditMode();
   if (elements.groupOverlay) elements.groupOverlay.hidden = true;
@@ -3865,6 +3878,9 @@ function renderMasterdataGroupOverlay(snapshot) {
   if (elements.groupOverlayMeta) {
     elements.groupOverlayMeta.textContent = [
       group.shortName || null,
+      group.attendanceMode === "self_registration"
+        ? "Selbstanmeldung"
+        : "Trainer-Erfassung",
       group.isActive === false ? "inaktiv" : "aktiv",
     ].filter(Boolean).join(" · ");
   }
@@ -4081,6 +4097,12 @@ function beginMasterdataEdit(action) {
     if (elements.groupName) elements.groupName.value = String(item.name || "");
     if (elements.groupShortName) elements.groupShortName.value = String(item.shortName || "");
     if (elements.groupDescription) elements.groupDescription.value = String(item.description || "");
+    if (elements.groupAttendanceMode) {
+      elements.groupAttendanceMode.value =
+        item.attendanceMode === "self_registration"
+          ? "self_registration"
+          : "trainer_roll_call";
+    }
     if (elements.groupSortOrder) elements.groupSortOrder.value = String(item.sortOrder ?? 100);
     masterdataGroupOverlayId = id;
     showMasterdataGroupOverlayMode("group");
@@ -4102,6 +4124,9 @@ function cancelMasterdataEdit() {
   }
   if (previousType === "group") {
     elements.groupForm?.reset();
+    if (elements.groupAttendanceMode) {
+      elements.groupAttendanceMode.value = "trainer_roll_call";
+    }
     if (elements.groupSortOrder) elements.groupSortOrder.value = "100";
     if (masterdataGroupOverlayId) showMasterdataGroupOverlayMode("detail");
   }
@@ -4263,6 +4288,10 @@ async function createMasterdataGroup(event) {
       name: elements.groupName?.value ?? "",
       shortName: emptyToNull(elements.groupShortName?.value),
       description: emptyToNull(elements.groupDescription?.value),
+      attendanceMode:
+        elements.groupAttendanceMode?.value === "self_registration"
+          ? "self_registration"
+          : "trainer_roll_call",
       sortOrder: Number(sortOrderRaw),
     },
     elements.groupForm,
@@ -4368,8 +4397,13 @@ async function submitMasterdataForm(path, body, form) {
     }
 
     form?.reset();
-    if (form === elements.groupForm && elements.groupSortOrder) {
-      elements.groupSortOrder.value = "100";
+    if (form === elements.groupForm) {
+      if (elements.groupAttendanceMode) {
+        elements.groupAttendanceMode.value = "trainer_roll_call";
+      }
+      if (elements.groupSortOrder) {
+        elements.groupSortOrder.value = "100";
+      }
     }
     if (form === elements.athleteGroupForm && elements.athleteGroupStartedOn) {
       elements.athleteGroupStartedOn.value = localDateValue(new Date());
