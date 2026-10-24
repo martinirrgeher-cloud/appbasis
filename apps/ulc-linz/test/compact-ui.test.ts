@@ -33,6 +33,22 @@ describe("ULC E4D.5 compact mobile layout", () => {
     expect(ULC_LINZ_APP_CSS).toContain("bottom: calc(100% + 6px);");
   });
 
+  it("keeps athlete registration visible while preserving role-gated access", () => {
+    expect(ULC_LINZ_APP_HTML).toContain(
+      'id="registration-dashboard">',
+    );
+    expect(ULC_LINZ_APP_HTML).not.toContain(
+      'id="registration-dashboard" hidden',
+    );
+    expect(ULC_LINZ_APP_HTML).toContain("<h2>Meine Trainingsanmeldung</h2>");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "elements.registrationDashboard.hidden = false;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"Nur mit einem verknüpften Athletenkonto verfügbar."',
+    );
+  });
+
   it("reduces vertical chrome without shrinking core touch targets below 44px", () => {
     expect(ULC_LINZ_APP_CSS).toContain("--touch: 44px;");
     expect(ULC_LINZ_APP_CSS).toContain(
