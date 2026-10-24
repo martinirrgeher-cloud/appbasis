@@ -279,6 +279,38 @@ describe("ULC training block adapter", () => {
     }
   });
 
+  it("accepts standard sets and repetitions even without catalog definitions", async () => {
+    const exercise = catalogItem("exercise-prescription");
+    const { service } = createService({ exercises: [exercise] });
+
+    await expect(
+      service.create("org-1", {
+        name: "Prescription",
+        audienceId: "group-active",
+        exercises: [
+          {
+            exerciseId: exercise.id,
+            parameterOverrides: [
+              { key: "sets", value: "4" },
+              { key: "repetitions", value: "8-10" },
+            ],
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      revision: {
+        exercises: [
+          {
+            parameterOverrides: [
+              { key: "sets", value: "4", sortOrder: 0 },
+              { key: "repetitions", value: "8-10", sortOrder: 1 },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
   it("requires an override when a required catalog parameter has no default", async () => {
     const exercise = catalogItem("exercise-required", {
       parameters: Object.freeze([
