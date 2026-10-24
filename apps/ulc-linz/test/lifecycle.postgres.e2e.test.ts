@@ -268,6 +268,7 @@ async function applyManifestMigrations(
       migration !== "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql" &&
       migration !== "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql" &&
       migration !== "modules/athletes/migrations/0002_appbasis_athlete_contacts.sql" &&
+      migration !== "modules/athletes/migrations/0003_appbasis_training_group_attendance_mode.sql" &&
       migration !== "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql" &&
       migration !== "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql" &&
       migration !== "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql" &&
@@ -284,7 +285,8 @@ async function applyManifestMigrations(
       migration !== "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql" &&
       migration !== "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql" &&
       migration !== "apps/ulc-linz/migrations/0006_ulc_linz_training_module_groups.sql" &&
-      migration !== "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql"
+      migration !== "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql" &&
+      migration !== "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql"
     ) {
       throw new Error("ULC lifecycle E2E encountered an unexpected migration owner.");
     }
