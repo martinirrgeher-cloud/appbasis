@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { IdentityHttpService } from "@appbasis/identity/http";
 import { InMemoryPermissionStore } from "@appbasis/permissions";
 import { createAthletesWorkbook } from "@appbasis/athletes";
+import type { AthleteMasterdataSnapshot } from "@appbasis/athletes";
 
 
 import { UlcLinzAuthorizationDeniedError } from "../worker/authorization";
@@ -2493,7 +2494,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     let readCalls = 0;
     let mutationCalls = 0;
     const base = runtime();
-    const snapshot = {
+    const snapshot: AthleteMasterdataSnapshot = {
       trainingGroups: [
         {
           id: "group-1",
@@ -2615,7 +2616,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     let createCalls = 0;
     let membershipCalls = 0;
     const base = runtime();
-    const snapshot = {
+    const snapshot: AthleteMasterdataSnapshot = {
       trainingGroups: [
         {
           id: "group-1",
@@ -2739,7 +2740,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
   it("rejects stale E6F4B apply tokens before any mutation", async () => {
     let mutations = 0;
     const base = runtime();
-    const snapshot = {
+    const snapshot: AthleteMasterdataSnapshot = {
       trainingGroups: [
         {
           id: "group-1",
