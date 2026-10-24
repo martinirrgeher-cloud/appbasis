@@ -262,8 +262,6 @@ describe("ULC athlete user provisioning", () => {
       actorPrincipalId: "identity-athlete-1",
       athleteId: "athlete-1",
     });
-      },
-    });
   });
 
   it("fails closed when the athlete is already linked to another identity", async () => {
