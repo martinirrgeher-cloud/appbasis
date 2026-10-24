@@ -5,6 +5,7 @@ import {
   ATTENDANCE_PREVIEW_ATHLETE_USERNAME,
   ATTENDANCE_PREVIEW_GROUP_NAME,
   runUlcAttendancePreviewAcceptance,
+  UlcAttendancePreviewAcceptanceError,
 } from "./ulc-linz-attendance-preview-acceptance.mjs";
 
 test("attendance preview acceptance provisions an athlete login and proves registration is independent from actual attendance", async () => {
@@ -12,6 +13,8 @@ test("attendance preview acceptance provisions an athlete login and proves regis
   const sessionDate = "2026-10-24";
   const calls = [];
   let temporaryPassword = null;
+  const provisioningPasswords = [];
+  let interruptAfterProvisioning = true;
   let groupCreated = false;
   let athleteCreated = false;
   let membershipCreated = false;
@@ -111,6 +114,10 @@ test("attendance preview acceptance provisions an athlete login and proves regis
         return json({ error: { code: "INVALID_CREDENTIALS" } }, 401);
       }
       if (!passwordChanged && body.password === temporaryPassword) {
+        if (interruptAfterProvisioning) {
+          interruptAfterProvisioning = false;
+          throw new Error("simulated interruption after athlete provisioning");
+        }
         return json(
           {
             access: "password-change-required",
@@ -173,7 +180,16 @@ test("attendance preview acceptance provisions an athlete login and proves regis
     if (method === "POST" && url.pathname === "/api/admin/athlete-users") {
       assert.equal(body.athleteId, "athlete-1");
       assert.equal(body.username, ATTENDANCE_PREVIEW_ATHLETE_USERNAME);
-      temporaryPassword = body.temporaryPassword;
+      if (temporaryPassword === null) {
+        temporaryPassword = body.temporaryPassword;
+      } else {
+        assert.equal(
+          body.temporaryPassword,
+          temporaryPassword,
+          "acceptance retry must reuse the recoverable temporary credential",
+        );
+      }
+      provisioningPasswords.push(body.temporaryPassword);
       athleteProvisioned = true;
       return json({ athleteUser: { identityId: "identity-athlete-1" } }, 201);
     }
@@ -268,17 +284,28 @@ test("attendance preview acceptance provisions an athlete login and proves regis
     );
   };
 
+  const acceptanceOptions = {
+    baseURL: "https://appbasis-ulc-linz.example.workers.dev",
+    adminUsername: "preview.admin",
+    password,
+  };
+  const acceptanceDependencies = {
+    fetchImpl,
+    randomUUID: () => "01234567-89ab-cdef-0123-456789abcdef",
+    now: () => new Date("2026-10-24T12:00:00.000Z"),
+  };
+
+  await assert.rejects(
+    runUlcAttendancePreviewAcceptance(
+      acceptanceOptions,
+      acceptanceDependencies,
+    ),
+    UlcAttendancePreviewAcceptanceError,
+  );
+
   const result = await runUlcAttendancePreviewAcceptance(
-    {
-      baseURL: "https://appbasis-ulc-linz.example.workers.dev",
-      adminUsername: "preview.admin",
-      password,
-    },
-    {
-      fetchImpl,
-      randomUUID: () => "01234567-89ab-cdef-0123-456789abcdef",
-      now: () => new Date("2026-10-24T12:00:00.000Z"),
-    },
+    acceptanceOptions,
+    acceptanceDependencies,
   );
 
   assert.equal(result.status, "ok");
@@ -287,6 +314,9 @@ test("attendance preview acceptance provisions an athlete login and proves regis
   assert.equal(result.sessionDate, sessionDate);
   assert.equal(intention, "attending");
   assert.equal(actualStatus, "open");
+  assert.equal(provisioningPasswords.length, 2);
+  assert.equal(provisioningPasswords[0], provisioningPasswords[1]);
+  assert.equal(passwordChanged, true);
   assert.ok(
     calls.some(
       (call) =>
