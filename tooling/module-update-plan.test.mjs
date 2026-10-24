@@ -214,7 +214,7 @@ test("recognizes the real ULC Stammdaten installation as a deterministic no-op",
     manifestSchemaVersion: 1,
     packageName: "@appbasis/athletes",
     packageVersion: "0.0.0",
-    databaseSchemaVersion: 3,
+    databaseSchemaVersion: 4,
   });
   assert.equal(plan.changes.appDefinition, null);
   assert.equal(plan.changes.packageDependency, null);
