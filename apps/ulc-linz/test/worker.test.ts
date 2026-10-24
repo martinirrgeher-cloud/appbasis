@@ -503,6 +503,17 @@ function runtime(
         };
       },
     },
+    athleteUserProvisioning: {
+      async createAthleteUser(input) {
+        return {
+          identityId: "identity-athlete-created",
+          username: input.username,
+          displayName: input.displayName,
+          athleteId: input.athleteId,
+          mustChangePassword: true,
+        };
+      },
+    },
     athleteMasterdata,
     kindertraining,
     selfRegistration,
