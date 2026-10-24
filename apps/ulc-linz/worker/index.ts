@@ -3441,6 +3441,7 @@ async function athletesMasterdataMutationResponse(
         "name",
         "shortName",
         "description",
+        "attendanceMode",
         "sortOrder",
       ]);
       const trainingGroup = await runtime.athleteMasterdata.createTrainingGroup(
@@ -3453,6 +3454,13 @@ async function athletesMasterdataMutationResponse(
           ...(body.description === undefined
             ? {}
             : { description: body.description as string | null }),
+          ...(body.attendanceMode === undefined
+            ? {}
+            : {
+                attendanceMode: body.attendanceMode as
+                  | "trainer_roll_call"
+                  | "self_registration",
+              }),
           ...(body.sortOrder === undefined
             ? {}
             : { sortOrder: body.sortOrder as number }),
@@ -3692,8 +3700,8 @@ async function athletesMasterdataMutationResponse(
 
       const body = await athletesJsonBody(
         request,
-        ["name", "shortName", "description", "sortOrder"],
-        ["name", "shortName", "description", "sortOrder"],
+        ["name", "shortName", "description", "attendanceMode", "sortOrder"],
+        ["name", "shortName", "description", "attendanceMode", "sortOrder"],
       );
       const trainingGroup =
         await runtime.athleteMasterdata.updateTrainingGroup(
@@ -3703,6 +3711,9 @@ async function athletesMasterdataMutationResponse(
             name: body.name as string,
             shortName: body.shortName as string | null,
             description: body.description as string | null,
+            attendanceMode: body.attendanceMode as
+              | "trainer_roll_call"
+              | "self_registration",
             sortOrder: body.sortOrder as number,
           },
         );
