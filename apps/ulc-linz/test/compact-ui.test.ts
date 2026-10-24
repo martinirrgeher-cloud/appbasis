@@ -13,10 +13,13 @@ describe("ULC E4D.5 compact mobile layout", () => {
       'data-nav-view="home" data-nav-priority="0">Start',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="kindertraining" data-nav-priority="1" hidden disabled>Training',
+      'data-nav-view="registration" data-nav-priority="1" hidden disabled>Anmeldung',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="training-plans" data-nav-priority="2" hidden disabled>Planung',
+      'data-nav-view="kindertraining" data-nav-priority="2" hidden disabled>Training',
+    );
+    expect(ULC_LINZ_APP_HTML).toContain(
+      'data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
       'id="app-nav-more" type="button" aria-expanded="false"',
