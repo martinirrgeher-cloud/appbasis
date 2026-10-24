@@ -139,6 +139,13 @@ export function createUlcLinzAthleteUserProvisioningService({
         athleteId,
       });
 
+      await ensureAthleteSelfRelation({
+        sql,
+        identityId: identity.identityId,
+        organizationId,
+        athleteId,
+      });
+
       await ensureAthleteAccess({
         sql,
         permissions,
@@ -246,6 +253,60 @@ function assertAthleteMembership(
     row.subject_id !== athleteId ||
     row.source_role !== "athlete" ||
     row.active !== true
+  ) {
+    throw new UlcLinzAthleteUserProvisioningConflictError();
+  }
+}
+
+async function ensureAthleteSelfRelation({
+  sql,
+  identityId,
+  organizationId,
+  athleteId,
+}: {
+  readonly sql: UlcLinzAthleteUserProvisioningSqlClient;
+  readonly identityId: string;
+  readonly organizationId: string;
+  readonly athleteId: string;
+}): Promise<void> {
+  await sql.unsafe(
+    `INSERT INTO ulc_linz_subject_scope (
+       identity_id,
+       organization_id,
+       subject_id,
+       relation_type
+     )
+     SELECT membership.identity_id,
+            membership.organization_id,
+            membership.subject_id,
+            'self'
+     FROM ulc_linz_membership AS membership
+     INNER JOIN appbasis_athlete AS athlete
+       ON athlete.id = membership.subject_id
+      AND athlete.organization_id = membership.organization_id
+      AND athlete.is_active = true
+     WHERE membership.identity_id = $1
+       AND membership.organization_id = $2
+       AND membership.subject_id = $3
+       AND membership.source_role = 'athlete'
+       AND membership.active = true
+     ON CONFLICT (identity_id, organization_id, subject_id, relation_type)
+     DO NOTHING`,
+    [identityId, organizationId, athleteId],
+  );
+
+  const rows = await sql.unsafe(
+    `SELECT organization_id, subject_id, relation_type
+     FROM ulc_linz_subject_scope
+     WHERE identity_id = $1
+     ORDER BY organization_id ASC, subject_id ASC, relation_type ASC`,
+    [identityId],
+  );
+  if (
+    rows.length !== 1 ||
+    rows[0]?.organization_id !== organizationId ||
+    rows[0]?.subject_id !== athleteId ||
+    rows[0]?.relation_type !== "self"
   ) {
     throw new UlcLinzAthleteUserProvisioningConflictError();
   }
