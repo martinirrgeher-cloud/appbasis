@@ -4345,6 +4345,113 @@ describe("Kindertraining runtime API", () => {
   });
 });
 
+describe("Training self-registration runtime API", () => {
+  it("uses only the server-derived athlete scope and rejects client-owned athlete ids", async () => {
+    const calls: unknown[] = [];
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      selfRegistrationAccess: {
+        ...base.selfRegistrationAccess,
+        async assertEditAccess(current) {
+          expect(current.identity.identityId).toBe(
+            currentIdentity.identity.identityId,
+          );
+          return {
+            organizationId: "verein-server",
+            actorPrincipalId: currentIdentity.identity.identityId,
+            athleteId: "athlete-server",
+          };
+        },
+      },
+      selfRegistration: {
+        ...base.selfRegistration,
+        async save(organizationId, athleteId, actorIdentityId, input) {
+          calls.push({
+            organizationId,
+            athleteId,
+            actorIdentityId,
+            input,
+          });
+          return {
+            group: {
+              id: input.groupId,
+              name: "Selbstanmeldung",
+              shortName: "SA",
+            },
+            sessionDate: input.sessionDate,
+            sessionState: "scheduled" as const,
+            intention: input.intention,
+            revision:
+              input.expectedRevision === null
+                ? 1
+                : input.expectedRevision + 1,
+          };
+        },
+      },
+    }));
+
+    const accepted = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/kindertraining/registration",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            groupId: "group-self",
+            sessionDate: "2026-09-27",
+            intention: "attending",
+            expectedRevision: null,
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(accepted.status).toBe(200);
+    expect(calls).toEqual([
+      {
+        organizationId: "verein-server",
+        athleteId: "athlete-server",
+        actorIdentityId: currentIdentity.identity.identityId,
+        input: {
+          groupId: "group-self",
+          sessionDate: "2026-09-27",
+          intention: "attending",
+          expectedRevision: null,
+        },
+      },
+    ]);
+
+    const rejected = await worker.fetch(
+      new Request(
+        "https://ulc.example.test/api/modules/kindertraining/registration",
+        {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            athleteId: "athlete-client",
+            groupId: "group-self",
+            sessionDate: "2026-09-27",
+            intention: "attending",
+            expectedRevision: null,
+          }),
+        },
+      ),
+      validEnv,
+    );
+
+    expect(rejected.status).toBe(400);
+    expect(calls).toHaveLength(1);
+  });
+});
+
 describe("U12 runtime API", () => {
   it("returns active U12 groups from the server-authorized organization", async () => {
     let receivedOrganization: string | null = null;
