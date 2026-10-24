@@ -67,6 +67,9 @@ async function createFactoryFixture({ rolePolicy } = {}) {
   evidencePaths.add(
     "modules/athletes/migrations/0002_appbasis_athlete_contacts.sql",
   );
+  evidencePaths.add(
+    "modules/athletes/migrations/0003_appbasis_training_group_attendance_mode.sql",
+  );
 
   for (const path of evidencePaths) {
     const destination = join(root, path);
