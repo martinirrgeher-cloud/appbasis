@@ -100,16 +100,19 @@ export class PostgresAthleteMasterdataRepository {
     });
     const rows = await this.#client.unsafe(
       `INSERT INTO appbasis_training_group (
-         id, organization_id, name, short_name, description, is_active, sort_order
+         id, organization_id, name, short_name, description, attendance_mode,
+         is_active, sort_order
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, organization_id, name, short_name, description, is_active, sort_order`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, organization_id, name, short_name, description,
+                 attendance_mode, is_active, sort_order`,
       [
         group.id,
         group.organizationId,
         group.name,
         group.shortName,
         group.description,
+        group.attendanceMode,
         group.isActive,
         group.sortOrder,
       ],
@@ -349,18 +352,21 @@ export class PostgresAthleteMasterdataRepository {
        SET name = $3,
            short_name = $4,
            description = $5,
-           sort_order = $6,
+           attendance_mode = $6,
+           sort_order = $7,
            updated_at = now()
        WHERE id = $1
          AND organization_id = $2
          AND is_active = true
-       RETURNING id, organization_id, name, short_name, description, is_active, sort_order`,
+       RETURNING id, organization_id, name, short_name, description,
+                 attendance_mode, is_active, sort_order`,
       [
         group.id,
         group.organizationId,
         group.name,
         group.shortName,
         group.description,
+        group.attendanceMode,
         group.sortOrder,
       ],
     );
@@ -950,7 +956,8 @@ export class PostgresAthleteMasterdataRepository {
 
     const trainingGroups = (
       await this.#client.unsafe(
-        `SELECT id, organization_id, name, short_name, description, is_active, sort_order
+        `SELECT id, organization_id, name, short_name, description,
+                attendance_mode, is_active, sort_order
          FROM appbasis_training_group
          WHERE organization_id = $1
          ORDER BY sort_order ASC, name ASC, id ASC`,
@@ -1153,6 +1160,7 @@ function trainingGroupFromRow(
     name: rowString(row, 'name'),
     shortName: rowNullableString(row, 'short_name'),
     description: rowNullableString(row, 'description'),
+    attendanceMode: rowTrainingGroupAttendanceMode(row['attendance_mode']),
     isActive: rowBoolean(row, 'is_active'),
     sortOrder: rowInteger(row, 'sort_order'),
   };
@@ -1272,6 +1280,15 @@ function rowNullableString(
   const value = row[key];
   if (value === null) return null;
   if (typeof value !== 'string') invalidRow();
+  return value;
+}
+
+function rowTrainingGroupAttendanceMode(
+  value: unknown,
+): TrainingGroup['attendanceMode'] {
+  if (value !== 'trainer_roll_call' && value !== 'self_registration') {
+    invalidRow();
+  }
   return value;
 }
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { AthleteMasterdataSnapshot } from "../src/index";
+
 import {
   ATHLETES_EXCHANGE_ACTIVE_HEADER,
   ATHLETES_EXCHANGE_CONTRACT_HEADER,
@@ -11,7 +13,7 @@ import {
   createAthletesWorkbook,
 } from "../src/index";
 
-const snapshot = {
+const snapshot: AthleteMasterdataSnapshot = {
   trainingGroups: [
     {
       id: "group-1",
@@ -19,6 +21,7 @@ const snapshot = {
       name: "Sprint",
       shortName: "SP",
       description: null,
+      attendanceMode: "trainer_roll_call",
       isActive: true,
       sortOrder: 10,
     },
@@ -28,6 +31,7 @@ const snapshot = {
       name: "Sprung",
       shortName: "SJ",
       description: null,
+      attendanceMode: "trainer_roll_call",
       isActive: true,
       sortOrder: 20,
     },
@@ -37,6 +41,7 @@ const snapshot = {
       name: "Archivgruppe",
       shortName: null,
       description: null,
+      attendanceMode: "trainer_roll_call",
       isActive: false,
       sortOrder: 30,
     },

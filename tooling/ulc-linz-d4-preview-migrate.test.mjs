@@ -35,26 +35,37 @@ test("rejects the generic preview environment as ULC migration target", async ()
 test("appends the preview-only security isolation after the canonical ULC migrations", async () => {
   const { plan } = await loadUlcLinzD4PreviewMigrationPlan();
 
-  assert.equal(plan.length, 28);
+  assert.equal(plan.length, 30);
+  assert.ok(
+    plan.some(
+      ({ relativePath }) =>
+        relativePath ===
+        "modules/athletes/migrations/0003_appbasis_training_group_attendance_mode.sql",
+    ),
+  );
   assert.equal(
-    plan.at(-6)?.relativePath,
+    plan.at(-7)?.relativePath,
     "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
   );
   assert.equal(
-    plan.at(-5)?.relativePath,
+    plan.at(-6)?.relativePath,
     "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
   );
   assert.equal(
-    plan.at(-4)?.relativePath,
+    plan.at(-5)?.relativePath,
     "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql",
   );
   assert.equal(
-    plan.at(-3)?.relativePath,
+    plan.at(-4)?.relativePath,
     "apps/ulc-linz/migrations/0006_ulc_linz_training_module_groups.sql",
   );
   assert.equal(
-    plan.at(-2)?.relativePath,
+    plan.at(-3)?.relativePath,
     "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
+  );
+  assert.equal(
+    plan.at(-2)?.relativePath,
+    "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql",
   );
   assert.equal(
     plan.at(-1)?.relativePath,
@@ -123,7 +134,7 @@ test("executes canonical migrations and preview isolation in one transaction", a
   );
 
   assert.equal(beginCount, 1);
-  assert.equal(result.migrationCount, 28);
+  assert.equal(result.migrationCount, 30);
   const canonicalIndex = statements.findIndex((sql) =>
     sql.includes("GRANT INSERT (") &&
     sql.includes("TO ulc_linz_security_event_ingest"),

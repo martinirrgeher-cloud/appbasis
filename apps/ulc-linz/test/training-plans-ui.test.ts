@@ -11,9 +11,9 @@ import {
 } from "../worker/ui";
 
 describe("ULC E7B6 training plan block template UI", () => {
-  it("adds planning as the second training-focused primary navigation candidate", () => {
+  it("keeps planning after registration and training in primary navigation", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="training-plans" data-nav-priority="2" hidden disabled>Planung',
+      'data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
       'id="training-plan-quick-action"',

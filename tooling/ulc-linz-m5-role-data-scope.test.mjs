@@ -66,12 +66,18 @@ test("pins ULC source roles and individual permission mapping", () => {
     sourceRole: "athlete",
     semantics: "defaults-only",
     view: [
-      "performance_registration",
-      "training_overview",
-      "training_documentation",
       "countdown",
+      "kindertraining",
+      "performance_registration",
+      "training_documentation",
+      "training_overview",
     ],
-    edit: ["performance_registration", "training_documentation", "countdown"],
+    edit: [
+      "countdown",
+      "kindertraining",
+      "performance_registration",
+      "training_documentation",
+    ],
   });
   assert.deepEqual(policy.permissionTemplates.parent, {
     sourceRole: "parent",

@@ -94,16 +94,19 @@ describe("ULC E6A exercise catalog schema", () => {
     );
   });
 
-  it("publishes the catalog migration as the canonical schema-v8 tail", async () => {
+  it("keeps the catalog migration pinned at schema position 8 after later lifecycle migrations", async () => {
     const manifest = JSON.parse(await readFile(manifestUrl, "utf8"));
     const owner = manifest.owners.find(
       (candidate: { id?: unknown }) =>
         candidate.id === "ulc-linz-lifecycle",
     );
 
-    expect(owner?.schemaVersion).toBe(8);
-    expect(owner?.migrations?.at(-1)).toBe(
+    expect(owner?.schemaVersion).toBe(9);
+    expect(owner?.migrations?.[7]).toBe(
       "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
+    );
+    expect(owner?.migrations?.[8]).toBe(
+      "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql",
     );
   });
 });

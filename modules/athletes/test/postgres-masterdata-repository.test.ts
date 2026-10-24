@@ -13,6 +13,7 @@ describe('PostgresAthleteMasterdataRepository', () => {
           name: 'U14',
           short_name: 'U14',
           description: null,
+          attendance_mode: 'trainer_roll_call',
           is_active: true,
           sort_order: 10,
         },
@@ -416,6 +417,7 @@ describe('PostgresAthleteMasterdataRepository', () => {
         name: 'U14',
         shortName: 'U14',
         description: null,
+        attendanceMode: 'trainer_roll_call',
         sortOrder: 10,
       }),
     ).resolves.toBeNull();

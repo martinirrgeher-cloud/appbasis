@@ -13,6 +13,9 @@ describe("ULC training session PostgreSQL persistence", () => {
       {
         async unsafe(query, parameters) {
           calls.push({ query, parameters });
+          if (query.includes("FROM ulc_linz_training_registration")) {
+            return [];
+          }
           return [
             {
               id: "session-existing",
@@ -47,7 +50,7 @@ describe("ULC training session PostgreSQL persistence", () => {
       "7",
     );
 
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
     expect(calls[0]?.query).toContain("updated_session AS");
     expect(calls[0]?.query).toContain("xmin::text = $9::text");
     expect(calls[0]?.query).toContain("inserted_session AS");
@@ -87,6 +90,7 @@ describe("ULC training session PostgreSQL persistence", () => {
           status: "excused",
         },
       ],
+      registrations: [],
     });
   });
 
@@ -110,14 +114,21 @@ describe("ULC training session PostgreSQL persistence", () => {
               },
             ];
           }
-          return [
-            {
-              organization_id: "verein-1",
-              session_id: "session-1",
-              athlete_id: "athlete-1",
-              status: "open",
-            },
-          ];
+          if (query.includes("FROM ulc_linz_training_attendance")) {
+            return [
+              {
+                organization_id: "verein-1",
+                session_id: "session-1",
+                athlete_id: "athlete-1",
+                status: "open",
+              },
+            ];
+          }
+          if (query.includes("FROM ulc_linz_training_registration")) {
+            return [];
+          }
+          throw new Error("Unexpected query");
+
         },
       },
       () => "validation-id",
@@ -133,8 +144,10 @@ describe("ULC training session PostgreSQL persistence", () => {
     expect(queries[0]).toContain("organization_id = $1");
     expect(queries[0]).toContain("module_id = $2");
     expect(queries[1]).toContain("organization_id = $1");
+    expect(queries[2]).toContain("ulc_linz_training_registration");
     expect(result?.revision).toBe("11");
     expect(result?.attendance[0]?.athleteId).toBe("athlete-1");
+    expect(result?.registrations).toEqual([]);
   });
 
   it("lists scheduled attendance only for one athlete, organization and date range", async () => {
@@ -300,6 +313,101 @@ describe("ULC training session PostgreSQL persistence", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toContain("saved_session AS MATERIALIZED");
+  });
+
+  it("creates a scheduled session idempotently before self-registration", async () => {
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    const repository = new PostgresUlcTrainingSessionRepository(
+      {
+        async unsafe(query, parameters) {
+          calls.push({ query, parameters });
+          if (query.includes("INSERT INTO ulc_linz_training_session")) {
+            return [];
+          }
+          if (query.includes("FROM ulc_linz_training_session")) {
+            return [{
+              id: "session-existing",
+              organization_id: "verein-1",
+              module_id: "kindertraining",
+              group_id: "group-1",
+              session_date: "2026-09-27",
+              state: "scheduled",
+              note: null,
+              revision: "3",
+            }];
+          }
+          return [];
+        },
+      },
+      () => "session-proposed",
+    );
+
+    await expect(
+      repository.ensureScheduledSession(
+        "verein-1",
+        "kindertraining",
+        "group-1",
+        "2026-09-27",
+      ),
+    ).resolves.toMatchObject({
+      session: { id: "session-existing", state: "scheduled" },
+      registrations: [],
+    });
+    expect(calls[0]?.query).toContain("ON CONFLICT");
+    expect(calls[0]?.parameters?.[0]).toBe("session-proposed");
+  });
+
+  it("stores registration revisions with one immutable change row", async () => {
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    const repository = new PostgresUlcTrainingSessionRepository(
+      {
+        async unsafe(query, parameters) {
+          calls.push({ query, parameters });
+          return [{
+            organization_id: "verein-1",
+            session_id: "session-1",
+            athlete_id: "athlete-1",
+            intention: "attending",
+            revision: 2,
+            updated_by_identity_id: "identity-athlete-1",
+            change_count: 1,
+          }];
+        },
+      },
+      () => "registration-change-1",
+    );
+
+    await expect(
+      repository.saveRegistration(
+        "verein-1",
+        "session-1",
+        "athlete-1",
+        "attending",
+        1,
+        "identity-athlete-1",
+      ),
+    ).resolves.toEqual({
+      organizationId: "verein-1",
+      sessionId: "session-1",
+      athleteId: "athlete-1",
+      intention: "attending",
+      revision: 2,
+      updatedByIdentityId: "identity-athlete-1",
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.query).toContain(
+      "INSERT INTO ulc_linz_training_registration_change",
+    );
+    expect(calls[0]?.query).toContain("registration.revision = $5::int");
+    expect(calls[0]?.parameters).toEqual([
+      "verein-1",
+      "session-1",
+      "athlete-1",
+      "attending",
+      1,
+      "identity-athlete-1",
+      "registration-change-1",
+    ]);
   });
 
   it("fails closed when the database returns a foreign organization", async () => {

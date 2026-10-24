@@ -191,6 +191,16 @@
     },
     {
       "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_training_registration",
+      "privacyClass": "athlete-training-registration-intent"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_training_registration_change",
+      "privacyClass": "athlete-training-registration-history"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
       "table": "ulc_linz_trainer_identity_audit",
       "privacyClass": "audit-security-data"
     },
@@ -330,6 +340,8 @@
     "trainer-training-membership",
     "training-session-data",
     "athlete-training-attendance",
+    "athlete-training-registration-history",
+    "athlete-training-registration-intent",
     "training-module-configuration",
     "exercise-catalog-configuration",
     "exercise-catalog-user-preference",

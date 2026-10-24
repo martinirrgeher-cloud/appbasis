@@ -66,12 +66,13 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
         <nav class="app-nav" aria-label="Hauptnavigation">
           <div class="app-nav__primary" id="app-nav-primary">
             <button class="app-nav__link is-active" type="button" data-nav-view="home" data-nav-priority="0">Start</button>
-            <button class="app-nav__link" type="button" data-nav-view="kindertraining" data-nav-priority="1" hidden disabled>Training</button>
-            <button class="app-nav__link" type="button" data-nav-view="training-plans" data-nav-priority="2" hidden disabled>Planung</button>
-            <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="3" hidden disabled>Übungen</button>
-            <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="4" hidden disabled>Blöcke</button>
-            <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="5" hidden disabled>Stammdaten</button>
-            <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="6" hidden disabled>Nützliches</button>
+            <button class="app-nav__link" type="button" data-nav-view="registration" data-nav-priority="1" hidden disabled>Anmeldung</button>
+            <button class="app-nav__link" type="button" data-nav-view="kindertraining" data-nav-priority="2" hidden disabled>Training</button>
+            <button class="app-nav__link" type="button" data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung</button>
+            <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="4" hidden disabled>Übungen</button>
+            <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="5" hidden disabled>Blöcke</button>
+            <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="6" hidden disabled>Stammdaten</button>
+            <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="7" hidden disabled>Nützliches</button>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" hidden>Mehr</button>
           </div>
           <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden></div>
@@ -94,6 +95,16 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary dashboard-action" id="masterdata-quick-action" type="button" data-open-view="masterdata" disabled>Stammdaten öffnen</button>
                 <small id="masterdata-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card dashboard-card--primary" id="registration-dashboard" hidden>
+                <div>
+                  <p class="eyebrow">Training</p>
+                  <h2>Trainingsanmeldung</h2>
+                  <p>Für deine Trainingsgruppe anmelden, absagen oder „vielleicht“ auswählen.</p>
+                </div>
+                <button class="button button--primary dashboard-action" id="registration-quick-action" type="button" data-open-view="registration" disabled>Anmeldung öffnen</button>
+                <small id="registration-access-label">Berechtigung wird geprüft …</small>
               </article>
 
               <article class="card dashboard-card dashboard-card--primary">
@@ -403,6 +414,12 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                         <label>Name<input id="group-name" minlength="2" maxlength="100" required /></label>
                         <label>Kurzname<input id="group-short-name" maxlength="20" /></label>
                         <label>Beschreibung<input id="group-description" maxlength="1000" /></label>
+                        <label>Anwesenheit
+                          <select id="group-attendance-mode">
+                            <option value="trainer_roll_call">Trainer-Erfassung</option>
+                            <option value="self_registration">Selbstanmeldung</option>
+                          </select>
+                        </label>
                         <label>Sortierung<input id="group-sort-order" type="number" min="0" max="10000" value="100" inputmode="numeric" /></label>
                       </div>
                       <div class="masterdata-form-actions">
@@ -438,6 +455,26 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             </section>
           </div>
 
+          <section class="app-section" data-app-section="registration" id="registration" hidden>
+            <section class="hero">
+              <p class="eyebrow">Training</p>
+              <h1>Trainingsanmeldung</h1>
+              <p class="summary">Gib für deine Trainingsgruppen an, ob du kommst.</p>
+            </section>
+
+            <p class="message message--error" id="registration-message" role="alert" hidden></p>
+            <p class="message message--success" id="registration-success" role="status" hidden></p>
+
+            <section class="card registration-selector">
+              <label>Datum
+                <input id="registration-date" type="date" required />
+              </label>
+              <button class="button button--secondary" id="registration-reload" type="button">Neu laden</button>
+            </section>
+
+            <div class="registration-list" id="registration-list" aria-live="polite"></div>
+          </section>
+
           <section class="app-section" data-app-section="kindertraining" id="kindertraining" hidden>
             <section class="hero">
               <p class="eyebrow">Training</p>
@@ -468,6 +505,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                   <div>
                     <p class="eyebrow">Trainingseinheit</p>
                     <h2 id="kindertraining-title">Kindertraining</h2>
+                    <p class="settings-note" id="kindertraining-mode"></p>
                   </div>
                   <span id="kindertraining-save-state">Noch nicht gespeichert</span>
                 </div>
@@ -1061,6 +1099,95 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
 }
+.registration-selector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 12px;
+}
+.registration-selector .button { min-height: var(--touch); }
+.registration-list { display: grid; gap: 10px; }
+.registration-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+.registration-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.registration-card__head strong { display: block; }
+.registration-card__head small {
+  display: block;
+  margin-top: 2px;
+  color: var(--secondary);
+}
+.registration-current {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--muted);
+  color: var(--secondary);
+  font-size: .72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.registration-current[data-intention="attending"] {
+  background: #dcfce7;
+  color: #166534;
+}
+.registration-current[data-intention="not_attending"] {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.registration-current[data-intention="maybe"] {
+  background: #fef3c7;
+  color: #92400e;
+}
+.registration-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.registration-action {
+  min-height: 44px;
+  padding: 6px 4px;
+  font-size: .72rem;
+}
+.registration-action[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: #dbeafe;
+  color: var(--accent);
+}
+.registration-action[data-intention="attending"][aria-pressed="true"] {
+  border-color: #86efac;
+  background: #dcfce7;
+  color: #166534;
+}
+.registration-action[data-intention="not_attending"][aria-pressed="true"] {
+  border-color: #fecaca;
+  background: #fee2e2;
+  color: #991b1b;
+}
+.registration-action[data-intention="maybe"][aria-pressed="true"] {
+  border-color: #fde68a;
+  background: #fef3c7;
+  color: #92400e;
+}
+.registration-cancelled {
+  color: var(--danger);
+  font-weight: 750;
+}
+.registration-empty {
+  padding: 18px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--control-radius);
+  color: #64748b;
+  text-align: center;
+}
 .kindertraining-selector .settings-grid {
   grid-template-columns: minmax(0, 1.25fr) minmax(120px, .75fr);
   gap: 8px;
@@ -1118,6 +1245,31 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 .kindertraining-participant__identity { display: grid; gap: 3px; }
 .kindertraining-participant__identity strong { font-size: .9rem; }
 .kindertraining-participant__identity span { color: var(--secondary); font-size: .72rem; }
+.kindertraining-registration {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: var(--muted);
+  color: var(--secondary);
+  font-size: .7rem;
+  font-weight: 750;
+}
+.kindertraining-registration[data-intention="attending"] {
+  background: #dcfce7;
+  color: #166534;
+}
+.kindertraining-registration[data-intention="not_attending"] {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.kindertraining-registration[data-intention="maybe"] {
+  background: #fef3c7;
+  color: #92400e;
+}
 .kindertraining-statuses {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1269,6 +1421,7 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
     padding-top: 4px;
   }
   .masterdata-form .settings-grid,
+  .registration-selector,
   .kindertraining-selector .settings-grid,
   .kindertraining-session-card .settings-grid {
     grid-template-columns: 1fr;
@@ -1315,6 +1468,14 @@ const elements = {
   countdownAccessLabel: document.querySelector("#countdown-access-label"),
   masterdataQuickAction: document.querySelector("#masterdata-quick-action"),
   masterdataAccessLabel: document.querySelector("#masterdata-access-label"),
+  registrationDashboard: document.querySelector("#registration-dashboard"),
+  registrationQuickAction: document.querySelector("#registration-quick-action"),
+  registrationAccessLabel: document.querySelector("#registration-access-label"),
+  registrationMessage: document.querySelector("#registration-message"),
+  registrationSuccess: document.querySelector("#registration-success"),
+  registrationDate: document.querySelector("#registration-date"),
+  registrationReload: document.querySelector("#registration-reload"),
+  registrationList: document.querySelector("#registration-list"),
   kindertrainingQuickAction: document.querySelector("#kindertraining-quick-action"),
   kindertrainingAccessLabel: document.querySelector("#kindertraining-access-label"),
   kindertrainingMessage: document.querySelector("#kindertraining-message"),
@@ -1324,6 +1485,7 @@ const elements = {
   kindertrainingLoad: document.querySelector("#kindertraining-load"),
   kindertrainingSession: document.querySelector("#kindertraining-session"),
   kindertrainingTitle: document.querySelector("#kindertraining-title"),
+  kindertrainingMode: document.querySelector("#kindertraining-mode"),
   kindertrainingSaveState: document.querySelector("#kindertraining-save-state"),
   kindertrainingState: document.querySelector("#kindertraining-state"),
   kindertrainingNote: document.querySelector("#kindertraining-note"),
@@ -1416,6 +1578,7 @@ const elements = {
   groupName: document.querySelector("#group-name"),
   groupShortName: document.querySelector("#group-short-name"),
   groupDescription: document.querySelector("#group-description"),
+  groupAttendanceMode: document.querySelector("#group-attendance-mode"),
   groupSortOrder: document.querySelector("#group-sort-order"),
   groupFormTitle: document.querySelector("#group-form-title"),
   groupSubmitButton: document.querySelector("#group-submit-button"),
@@ -1479,6 +1642,7 @@ const MASTERDATA_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 const APP_NAV_PRIORITY = Object.freeze([
   "home",
+  "registration",
   "kindertraining",
   "training-plans",
   "exercise-catalog",
@@ -1492,6 +1656,10 @@ let busy = false;
 let countdownReady = false;
 let masterdataReady = false;
 let masterdataCanEdit = false;
+let selfRegistrationReady = false;
+let selfRegistrationLoading = false;
+let selfRegistrationSavingGroupId = null;
+let selfRegistrationOptions = [];
 let kindertrainingReady = false;
 let kindertrainingLoading = false;
 let kindertrainingGroups = [];
@@ -1617,6 +1785,11 @@ elements.trainerIdentityLoad?.addEventListener("click", () => void loadTrainerId
 elements.trainerUserForm?.addEventListener("submit", (event) => void createTrainerUser(event));
 elements.trainerIdentityForm?.addEventListener("submit", (event) => void bindTrainerIdentity(event));
 elements.trainerIdentityIdentity?.addEventListener("change", syncTrainerIdentitySelection);
+elements.registrationReload?.addEventListener("click", () => void loadSelfRegistration());
+elements.registrationDate?.addEventListener("change", () => void loadSelfRegistration());
+elements.registrationList?.addEventListener("click", (event) => {
+  void handleSelfRegistrationClick(event);
+});
 elements.kindertrainingLoad?.addEventListener("click", () => void loadKindertraining());
 elements.kindertrainingSave?.addEventListener("click", () => void saveKindertraining());
 elements.kindertrainingAllPresent?.addEventListener("click", () => setAllKindertrainingStatuses("present"));
@@ -1783,12 +1956,275 @@ async function acceptSession(next) {
   await Promise.all([
     bootstrapCountdown(),
     bootstrapMasterdata(),
+    bootstrapSelfRegistration(),
     bootstrapKindertraining(),
     bootstrapExerciseCatalog(),
     bootstrapTrainingBlocks(),
     bootstrapTrainingPlans(),
   ]);
   refreshTrainingBlockCatalogDependency();
+}
+
+async function bootstrapSelfRegistration() {
+  selfRegistrationReady = false;
+  selfRegistrationLoading = false;
+  selfRegistrationSavingGroupId = null;
+  selfRegistrationOptions = [];
+  if (elements.registrationDate && !elements.registrationDate.value) {
+    elements.registrationDate.value = localIsoDate(new Date());
+  }
+  renderSelfRegistration();
+  refreshAppAvailability();
+  await loadSelfRegistration(true);
+}
+
+async function loadSelfRegistration(bootstrap = false) {
+  if (selfRegistrationLoading || (!selfRegistrationReady && !bootstrap)) return;
+  const sessionDate =
+    elements.registrationDate?.value || localIsoDate(new Date());
+  const wasReady = selfRegistrationReady;
+  selfRegistrationLoading = true;
+  showMessage(elements.registrationMessage, "");
+  showMessage(elements.registrationSuccess, "");
+  renderSelfRegistration();
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/kindertraining/registration?sessionDate=" +
+        encodeURIComponent(sessionDate),
+    );
+    if (
+      payload?.sessionDate !== sessionDate ||
+      !Array.isArray(payload?.options) ||
+      !payload.options.every((option) =>
+        isSelfRegistrationOption(option, sessionDate),
+      )
+    ) {
+      throw new Error("INVALID_SELF_REGISTRATION_CONTRACT");
+    }
+    selfRegistrationOptions = payload.options.slice();
+    selfRegistrationReady = true;
+  } catch (error) {
+    selfRegistrationOptions = [];
+    if (!wasReady || error?.status === 403) {
+      selfRegistrationReady = false;
+    }
+    if (error?.status !== 403) {
+      showMessage(
+        elements.registrationMessage,
+        "Die Trainingsanmeldung konnte nicht geladen werden.",
+      );
+    }
+  } finally {
+    selfRegistrationLoading = false;
+    renderSelfRegistration();
+    refreshAppAvailability();
+  }
+}
+
+function isSelfRegistrationOption(option, sessionDate) {
+  return (
+    option !== null &&
+    typeof option === "object" &&
+    option?.sessionDate === sessionDate &&
+    option?.group !== null &&
+    typeof option?.group === "object" &&
+    typeof option.group.id === "string" &&
+    option.group.id.length > 0 &&
+    typeof option.group.name === "string" &&
+    option.group.name.length > 0 &&
+    (option.group.shortName === null ||
+      typeof option.group.shortName === "string") &&
+    (option.sessionState === null ||
+      option.sessionState === "scheduled" ||
+      option.sessionState === "cancelled") &&
+    ["unknown", "attending", "not_attending", "maybe"].includes(
+      option.intention,
+    ) &&
+    (option.revision === null ||
+      (Number.isSafeInteger(option.revision) && option.revision >= 1))
+  );
+}
+
+function selfRegistrationLabel(intention) {
+  return {
+    unknown: "Noch offen",
+    attending: "Ich komme",
+    not_attending: "Abgesagt",
+    maybe: "Vielleicht",
+  }[intention] || "Noch offen";
+}
+
+function renderSelfRegistration() {
+  const container = elements.registrationList;
+  if (!container) return;
+  container.replaceChildren();
+
+  if (selfRegistrationLoading) {
+    const loading = document.createElement("div");
+    loading.className = "card registration-empty";
+    loading.textContent = "Trainingsanmeldung wird geladen …";
+    container.append(loading);
+    return;
+  }
+
+  if (!selfRegistrationReady) return;
+  if (selfRegistrationOptions.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "registration-empty";
+    empty.textContent =
+      "Für dieses Datum ist keine Gruppe mit Selbstanmeldung verfügbar.";
+    container.append(empty);
+    return;
+  }
+
+  for (const option of selfRegistrationOptions) {
+    const card = document.createElement("article");
+    card.className = "card registration-card";
+
+    const head = document.createElement("div");
+    head.className = "registration-card__head";
+    const identity = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = option.group.name;
+    const meta = document.createElement("small");
+    meta.textContent = option.group.shortName
+      ? option.group.shortName + " · " + germanDate(option.sessionDate)
+      : germanDate(option.sessionDate);
+    identity.append(title, meta);
+
+    const current = document.createElement("span");
+    current.className = "registration-current";
+    current.dataset.intention = option.intention;
+    current.textContent = selfRegistrationLabel(option.intention);
+    head.append(identity, current);
+    card.append(head);
+
+    if (option.sessionState === "cancelled") {
+      const cancelled = document.createElement("p");
+      cancelled.className = "registration-cancelled";
+      cancelled.textContent = "Dieses Training wurde abgesagt.";
+      card.append(cancelled);
+      container.append(card);
+      continue;
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "registration-actions";
+    for (const action of [
+      { intention: "attending", label: "Komme" },
+      { intention: "maybe", label: "Vielleicht" },
+      { intention: "not_attending", label: "Absage" },
+      { intention: "unknown", label: "Offen" },
+    ]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "button button--secondary registration-action";
+      button.dataset.registrationGroup = option.group.id;
+      button.dataset.intention = action.intention;
+      button.textContent = action.label;
+      button.setAttribute(
+        "aria-pressed",
+        option.intention === action.intention ? "true" : "false",
+      );
+      button.disabled =
+        selfRegistrationSavingGroupId !== null ||
+        selfRegistrationLoading;
+      actions.append(button);
+    }
+    card.append(actions);
+    container.append(card);
+  }
+}
+
+async function handleSelfRegistrationClick(event) {
+  const control = event.target?.closest?.("[data-registration-group]");
+  if (
+    !control ||
+    !selfRegistrationReady ||
+    selfRegistrationLoading ||
+    selfRegistrationSavingGroupId !== null
+  ) {
+    return;
+  }
+  const groupId = control.dataset.registrationGroup || "";
+  const intention = control.dataset.intention || "";
+  if (
+    !groupId ||
+    !["unknown", "attending", "not_attending", "maybe"].includes(intention)
+  ) {
+    return;
+  }
+  const option = selfRegistrationOptions.find(
+    (candidate) => candidate.group.id === groupId,
+  );
+  if (!option || option.sessionState === "cancelled") return;
+
+  selfRegistrationSavingGroupId = groupId;
+  showMessage(elements.registrationMessage, "");
+  showMessage(elements.registrationSuccess, "");
+  renderSelfRegistration();
+
+  try {
+    const payload = await requestJson(
+      "/api/modules/kindertraining/registration",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          expectedRevision: option.revision,
+          groupId,
+          intention,
+          sessionDate: option.sessionDate,
+        }),
+      },
+    );
+    const saved = payload?.option;
+    if (!isSelfRegistrationOption(saved, option.sessionDate)) {
+      throw new Error("INVALID_SELF_REGISTRATION_SAVE");
+    }
+    selfRegistrationOptions = selfRegistrationOptions.map((candidate) =>
+      candidate.group.id === groupId ? saved : candidate,
+    );
+    showMessage(
+      elements.registrationSuccess,
+      "Trainingsanmeldung gespeichert: " +
+        saved.group.name +
+        " – " +
+        selfRegistrationLabel(saved.intention) +
+        ".",
+      "success",
+    );
+  } catch (error) {
+    if (
+      error?.status === 409 &&
+      error?.code === "TRAINING_REGISTRATION_CONFLICT"
+    ) {
+      showMessage(
+        elements.registrationMessage,
+        "Die Anmeldung wurde zwischenzeitlich geändert. Der aktuelle Stand wird neu geladen.",
+      );
+      selfRegistrationSavingGroupId = null;
+      await loadSelfRegistration();
+      return;
+    }
+    showMessage(
+      elements.registrationMessage,
+      error?.status === 404
+        ? "Die Trainingsgruppe ist für dieses Datum nicht mehr verfügbar."
+        : error?.status === 409
+          ? "Für dieses Training ist die Selbstanmeldung nicht mehr möglich."
+          : "Die Trainingsanmeldung konnte nicht gespeichert werden.",
+    );
+  } finally {
+    selfRegistrationSavingGroupId = null;
+    renderSelfRegistration();
+  }
+}
+
+function prepareSelfRegistrationView() {
+  if (elements.registrationDate && !elements.registrationDate.value) {
+    elements.registrationDate.value = localIsoDate(new Date());
+  }
 }
 
 async function bootstrapKindertraining() {
@@ -1819,12 +2255,16 @@ async function bootstrapKindertraining() {
           group.id.length > 0 &&
           typeof group?.name === "string" &&
           group.name.length > 0 &&
-          (group.shortName === null || typeof group.shortName === "string"),
+          (group.shortName === null || typeof group.shortName === "string") &&
+          ["trainer_roll_call", "self_registration"].includes(
+            group.attendanceMode,
+          ),
       )
       .map((group) => ({
         id: group.id,
         name: group.name,
         shortName: group.shortName,
+        attendanceMode: group.attendanceMode,
       }));
     if (kindertrainingGroups.length !== groups.length) {
       throw new Error("INVALID_KINDERTRAINING_GROUPS");
@@ -1904,6 +2344,7 @@ async function bootstrapMasterdata() {
 function isAppNavigationAvailable(section) {
   if (section === "home") return true;
   if (section === "masterdata") return masterdataReady;
+  if (section === "registration") return selfRegistrationReady;
   if (section === "kindertraining") return kindertrainingReady;
   if (section === "exercise-catalog") return exerciseCatalogReady;
   if (section === "training-blocks") return trainingBlocksReady;
@@ -1990,6 +2431,14 @@ function syncAppNavigationActive(section) {
 
 function refreshAppAvailability() {
   refreshAppNavigation();
+  if (elements.registrationDate) {
+    elements.registrationDate.disabled =
+      selfRegistrationLoading || selfRegistrationSavingGroupId !== null;
+  }
+  if (elements.registrationReload) {
+    elements.registrationReload.disabled =
+      selfRegistrationLoading || selfRegistrationSavingGroupId !== null;
+  }
   refreshTrainingBlockControls();
   refreshTrainingPlanControls();
   if (elements.exerciseCatalogQuickAction) {
@@ -2008,6 +2457,17 @@ function refreshAppAvailability() {
   if (elements.countdownAccessLabel) {
     elements.countdownAccessLabel.textContent = countdownReady
       ? "Für deinen Benutzer freigeschaltet."
+      : "Für deinen Benutzer derzeit nicht freigeschaltet.";
+  }
+  if (elements.registrationDashboard) {
+    elements.registrationDashboard.hidden = !selfRegistrationReady;
+  }
+  if (elements.registrationQuickAction) {
+    elements.registrationQuickAction.disabled = !selfRegistrationReady;
+  }
+  if (elements.registrationAccessLabel) {
+    elements.registrationAccessLabel.textContent = selfRegistrationReady
+      ? "Für deine Athleten-Identität freigeschaltet."
       : "Für deinen Benutzer derzeit nicht freigeschaltet.";
   }
   if (elements.kindertrainingQuickAction) {
@@ -2061,6 +2521,7 @@ function showAppSection(section) {
     section === "home" ||
     ((section === "useful" || section === "countdown") && countdownReady) ||
     (section === "masterdata" && masterdataReady) ||
+    (section === "registration" && selfRegistrationReady) ||
     (section === "kindertraining" && kindertrainingReady) ||
     (section === "exercise-catalog" && exerciseCatalogReady) ||
     (section === "training-blocks" && trainingBlocksReady) ||
@@ -2077,6 +2538,7 @@ function showAppSection(section) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   if (target === "masterdata") void loadMasterdata();
+  if (target === "registration") prepareSelfRegistrationView();
   if (target === "kindertraining") prepareKindertrainingView();
   if (target === "exercise-catalog") prepareExerciseCatalogView();
   if (target === "training-blocks") prepareTrainingBlocksView();
@@ -2182,6 +2644,9 @@ function isKindertrainingSnapshot(snapshot, groupId, sessionDate) {
     snapshot === null ||
     typeof snapshot !== "object" ||
     snapshot?.group?.id !== groupId ||
+    !["trainer_roll_call", "self_registration"].includes(
+      snapshot?.group?.attendanceMode,
+    ) ||
     snapshot?.sessionDate !== sessionDate ||
     !Array.isArray(snapshot?.participants)
   ) {
@@ -2205,6 +2670,14 @@ function isKindertrainingSnapshot(snapshot, groupId, sessionDate) {
       participant.athleteId.length === 0 ||
       typeof participant?.firstName !== "string" ||
       typeof participant?.lastName !== "string" ||
+      !["unknown", "attending", "not_attending", "maybe"].includes(
+        participant?.intention,
+      ) ||
+      !(
+        participant?.registrationRevision === null ||
+        (Number.isSafeInteger(participant?.registrationRevision) &&
+          participant.registrationRevision >= 1)
+      ) ||
       !["open", "present", "excused", "absent"].includes(participant?.status) ||
       ids.has(participant.athleteId)
     ) {
@@ -2225,6 +2698,12 @@ function renderKindertrainingSnapshot() {
   if (elements.kindertrainingTitle) {
     elements.kindertrainingTitle.textContent =
       snapshot.group.name + " · " + germanDate(snapshot.sessionDate);
+  }
+  if (elements.kindertrainingMode) {
+    elements.kindertrainingMode.textContent =
+      snapshot.group.attendanceMode === "self_registration"
+        ? "Modus: Selbstanmeldung + Trainerbestätigung"
+        : "Modus: Anwesenheit durch Trainer";
   }
   if (elements.kindertrainingSaveState) {
     elements.kindertrainingSaveState.textContent = snapshot.session
@@ -2275,6 +2754,18 @@ function renderKindertrainingParticipants() {
         ? "Jahrgang nicht erfasst"
         : "Jahrgang " + String(participant.birthYear);
     identity.append(name, meta);
+    if (snapshot.group.attendanceMode === "self_registration") {
+      const registration = document.createElement("span");
+      registration.className = "kindertraining-registration";
+      registration.dataset.intention = participant.intention;
+      registration.textContent = {
+        unknown: "Voranmeldung: offen",
+        attending: "Voranmeldung: kommt",
+        not_attending: "Voranmeldung: abgesagt",
+        maybe: "Voranmeldung: vielleicht",
+      }[participant.intention] || "Voranmeldung: offen";
+      identity.append(registration);
+    }
 
     const statuses = document.createElement("div");
     statuses.className = "kindertraining-statuses";
@@ -3825,6 +4316,9 @@ function openNewMasterdataGroup() {
   masterdataGroupOverlayId = null;
   masterdataEdit = null;
   elements.groupForm?.reset();
+  if (elements.groupAttendanceMode) {
+    elements.groupAttendanceMode.value = "trainer_roll_call";
+  }
   if (elements.groupSortOrder) elements.groupSortOrder.value = "100";
   refreshMasterdataEditMode();
   showMasterdataGroupOverlayMode("group");
@@ -3838,6 +4332,9 @@ function closeMasterdataGroupOverlay() {
   masterdataGroupOverlayId = null;
   masterdataEdit = null;
   elements.groupForm?.reset();
+  if (elements.groupAttendanceMode) {
+    elements.groupAttendanceMode.value = "trainer_roll_call";
+  }
   if (elements.groupSortOrder) elements.groupSortOrder.value = "100";
   refreshMasterdataEditMode();
   if (elements.groupOverlay) elements.groupOverlay.hidden = true;
@@ -3865,6 +4362,9 @@ function renderMasterdataGroupOverlay(snapshot) {
   if (elements.groupOverlayMeta) {
     elements.groupOverlayMeta.textContent = [
       group.shortName || null,
+      group.attendanceMode === "self_registration"
+        ? "Selbstanmeldung"
+        : "Trainer-Erfassung",
       group.isActive === false ? "inaktiv" : "aktiv",
     ].filter(Boolean).join(" · ");
   }
@@ -4081,6 +4581,12 @@ function beginMasterdataEdit(action) {
     if (elements.groupName) elements.groupName.value = String(item.name || "");
     if (elements.groupShortName) elements.groupShortName.value = String(item.shortName || "");
     if (elements.groupDescription) elements.groupDescription.value = String(item.description || "");
+    if (elements.groupAttendanceMode) {
+      elements.groupAttendanceMode.value =
+        item.attendanceMode === "self_registration"
+          ? "self_registration"
+          : "trainer_roll_call";
+    }
     if (elements.groupSortOrder) elements.groupSortOrder.value = String(item.sortOrder ?? 100);
     masterdataGroupOverlayId = id;
     showMasterdataGroupOverlayMode("group");
@@ -4102,6 +4608,9 @@ function cancelMasterdataEdit() {
   }
   if (previousType === "group") {
     elements.groupForm?.reset();
+    if (elements.groupAttendanceMode) {
+      elements.groupAttendanceMode.value = "trainer_roll_call";
+    }
     if (elements.groupSortOrder) elements.groupSortOrder.value = "100";
     if (masterdataGroupOverlayId) showMasterdataGroupOverlayMode("detail");
   }
@@ -4263,6 +4772,10 @@ async function createMasterdataGroup(event) {
       name: elements.groupName?.value ?? "",
       shortName: emptyToNull(elements.groupShortName?.value),
       description: emptyToNull(elements.groupDescription?.value),
+      attendanceMode:
+        elements.groupAttendanceMode?.value === "self_registration"
+          ? "self_registration"
+          : "trainer_roll_call",
       sortOrder: Number(sortOrderRaw),
     },
     elements.groupForm,
@@ -4368,8 +4881,13 @@ async function submitMasterdataForm(path, body, form) {
     }
 
     form?.reset();
-    if (form === elements.groupForm && elements.groupSortOrder) {
-      elements.groupSortOrder.value = "100";
+    if (form === elements.groupForm) {
+      if (elements.groupAttendanceMode) {
+        elements.groupAttendanceMode.value = "trainer_roll_call";
+      }
+      if (elements.groupSortOrder) {
+        elements.groupSortOrder.value = "100";
+      }
     }
     if (form === elements.athleteGroupForm && elements.athleteGroupStartedOn) {
       elements.athleteGroupStartedOn.value = localDateValue(new Date());

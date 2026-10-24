@@ -2,6 +2,11 @@ import { deflateRawSync } from "node:zlib";
 
 import { describe, expect, it } from "vitest";
 
+import type {
+  AthleteMasterdataSnapshot,
+  TrainingGroup,
+} from "../src/index";
+
 import {
   ATHLETES_EXCHANGE_ID_HEADER,
   ATHLETES_IMPORT_MAX_FILE_BYTES,
@@ -12,13 +17,14 @@ import {
   previewAthletesImport,
 } from "../src/index";
 
-const groups = [
+const groups: TrainingGroup[] = [
   {
     id: "group-1",
     organizationId: "verein-1",
     name: "Sprint",
     shortName: "SP",
     description: null,
+    attendanceMode: "trainer_roll_call",
     isActive: true,
     sortOrder: 10,
   },
@@ -28,6 +34,7 @@ const groups = [
     name: "Sprung",
     shortName: "SJ",
     description: null,
+    attendanceMode: "trainer_roll_call",
     isActive: true,
     sortOrder: 20,
   },
@@ -43,7 +50,7 @@ const anna = {
   isActive: true,
 };
 
-const baseSnapshot = {
+const baseSnapshot: AthleteMasterdataSnapshot = {
   trainingGroups: groups,
   athletes: [anna],
   athleteContacts: [],

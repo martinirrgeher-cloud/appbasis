@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { AthleteMasterdataSnapshot } from "@appbasis/athletes";
+import type {
+  AthleteMasterdataSnapshot,
+  TrainingGroup,
+} from "@appbasis/athletes";
 
 import {
   createUlcExerciseCatalogService,
@@ -16,13 +19,14 @@ function group(
   id: string,
   isActive = true,
   organizationId = ORGANIZATION_ID,
-) {
+): TrainingGroup {
   return {
     id,
     organizationId,
     name: id === "group-1" ? "Sprint" : "Technik",
     shortName: null,
     description: null,
+    attendanceMode: "trainer_roll_call",
     isActive,
     sortOrder: id === "group-1" ? 10 : 20,
   };

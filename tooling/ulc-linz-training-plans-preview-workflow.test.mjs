@@ -40,19 +40,19 @@ test("E7B9 workflow keeps inspect read-only and gates every preview mutation exp
   );
   assert.match(
     workflow,
-    /ulc-linz-athletes-v3-preview\.mjs inspect/,
+    /ulc-linz-attendance-preview\.mjs inspect/,
   );
   assert.match(
     workflow,
-    /APPBASIS_APPLY_ATHLETES_V3_PREVIEW: "1"/,
+    /APPBASIS_APPLY_ATTENDANCE_PREVIEW: "1"/,
   );
   assert.match(
     workflow,
-    /ulc-linz-athletes-v3-preview\.mjs apply/,
+    /ulc-linz-attendance-preview\.mjs apply/,
   );
   assert.match(
     workflow,
-    /ulc-linz-athletes-v3-preview\.mjs verify/,
+    /ulc-linz-attendance-preview\.mjs verify/,
   );
   assert.match(
     workflow,
@@ -149,6 +149,8 @@ test("E7B9 remote acceptance is separately gated and pins the complete training-
     /ulc-linz-training-plans-preview-acceptance\.mjs/,
   );
   for (const marker of [
+    'id="registration-quick-action"',
+    'id="registration-list"',
     'id="training-plan-quick-action"',
     'id="training-plan-attendance-filter"',
     'id="training-plan-block-template"',
@@ -159,6 +161,10 @@ test("E7B9 remote acceptance is separately gated and pins the complete training-
   assert.match(
     workflow,
     /Unauthenticated training-plans API returned unexpected HTTP/,
+  );
+  assert.match(
+    workflow,
+    /Unauthenticated self-registration API returned unexpected HTTP/,
   );
   assert.match(workflow, /401\|403/);
 });

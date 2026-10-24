@@ -6,6 +6,7 @@ import type {
 import {
   UlcTrainingValidationError,
   type UlcTrainingAttendanceStatus,
+  type UlcTrainingRegistrationIntention,
   type UlcTrainingSessionState,
 } from "./training-session-domain";
 import type {
@@ -18,6 +19,7 @@ export interface UlcKindertrainingGroupOption {
   readonly id: string;
   readonly name: string;
   readonly shortName: string | null;
+  readonly attendanceMode: TrainingGroup["attendanceMode"];
 }
 
 export interface UlcKindertrainingParticipant {
@@ -25,6 +27,8 @@ export interface UlcKindertrainingParticipant {
   readonly firstName: string;
   readonly lastName: string;
   readonly birthYear: number | null;
+  readonly intention: UlcTrainingRegistrationIntention;
+  readonly registrationRevision: number | null;
   readonly status: UlcTrainingAttendanceStatus;
 }
 
@@ -33,6 +37,7 @@ export interface UlcKindertrainingSnapshot {
     id: string;
     name: string;
     shortName: string | null;
+    attendanceMode: TrainingGroup["attendanceMode"];
   }>;
   readonly sessionDate: string;
   readonly session: Readonly<{
@@ -127,6 +132,7 @@ export function createUlcKindertrainingService({
             id: group.id,
             name: group.name,
             shortName: group.shortName,
+            attendanceMode: group.attendanceMode,
           }),
         )
         .sort(
@@ -313,6 +319,32 @@ function presentSnapshot(
     throw new UlcKindertrainingConsistencyError();
   }
 
+  const registrationByAthlete = new Map<
+    string,
+    Readonly<{
+      intention: UlcTrainingRegistrationIntention;
+      revision: number;
+    }>
+  >();
+  if (stored !== null) {
+    for (const registration of stored.registrations) {
+      if (
+        registration.organizationId !== context.organizationId ||
+        registration.sessionId !== stored.session.id ||
+        registrationByAthlete.has(registration.athleteId)
+      ) {
+        throw new UlcKindertrainingConsistencyError();
+      }
+      registrationByAthlete.set(
+        registration.athleteId,
+        Object.freeze({
+          intention: registration.intention,
+          revision: registration.revision,
+        }),
+      );
+    }
+  }
+
   const statusByAthlete = new Map<string, UlcTrainingAttendanceStatus>();
   if (stored !== null) {
     for (const attendance of stored.attendance) {
@@ -330,7 +362,10 @@ function presentSnapshot(
   const participantIds = new Set(
     context.participants.map((participant) => participant.athleteId),
   );
-  for (const athleteId of statusByAthlete.keys()) {
+  for (const athleteId of [
+    ...statusByAthlete.keys(),
+    ...registrationByAthlete.keys(),
+  ]) {
     if (!participantIds.has(athleteId)) {
       throw new UlcKindertrainingConsistencyError();
     }
@@ -341,6 +376,7 @@ function presentSnapshot(
       id: context.group.id,
       name: context.group.name,
       shortName: context.group.shortName,
+      attendanceMode: context.group.attendanceMode,
     }),
     sessionDate: context.sessionDate,
     session:
@@ -356,6 +392,12 @@ function presentSnapshot(
       context.participants.map((participant) =>
         Object.freeze({
           ...participant,
+          intention:
+            registrationByAthlete.get(participant.athleteId)?.intention ??
+            "unknown",
+          registrationRevision:
+            registrationByAthlete.get(participant.athleteId)?.revision ??
+            null,
           status: statusByAthlete.get(participant.athleteId) ?? "open",
         }),
       ),

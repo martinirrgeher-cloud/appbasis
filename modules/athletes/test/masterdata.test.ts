@@ -27,7 +27,7 @@ describe("Stammdaten domain contract", () => {
     });
   });
 
-  it("normalizes a training group without leaking UI-only module settings into the foundation", () => {
+  it("normalizes a training group with the backward-compatible attendance default", () => {
     expect(
       createTrainingGroup(
         {
@@ -43,6 +43,7 @@ describe("Stammdaten domain contract", () => {
       name: "U14",
       shortName: "U14",
       description: "Nachwuchsgruppe",
+      attendanceMode: "trainer_roll_call",
       isActive: true,
       sortOrder: 100,
     });
@@ -133,6 +134,7 @@ describe("Stammdaten domain contract", () => {
           name: " U16 ",
           shortName: null,
           description: " Sprint ",
+          attendanceMode: "self_registration",
           sortOrder: 20,
         },
         context,
@@ -141,6 +143,7 @@ describe("Stammdaten domain contract", () => {
       name: "U16",
       shortName: null,
       description: "Sprint",
+      attendanceMode: "self_registration",
       sortOrder: 20,
       isActive: true,
     });

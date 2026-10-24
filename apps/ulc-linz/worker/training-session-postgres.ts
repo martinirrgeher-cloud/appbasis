@@ -1,10 +1,13 @@
 import {
+  createUlcTrainingRegistration,
   createUlcTrainingSession,
   normalizeUlcTrainingAttendanceSet,
   UlcTrainingValidationError,
   type CreateUlcTrainingSessionInput,
   type UlcTrainingAttendance,
   type UlcTrainingModule,
+  type UlcTrainingRegistration,
+  type UlcTrainingRegistrationIntention,
   type UlcTrainingSession,
 } from "./training-session-domain";
 
@@ -21,6 +24,7 @@ export interface UlcTrainingSessionSnapshot {
   readonly session: UlcTrainingSession;
   readonly revision: string;
   readonly attendance: readonly UlcTrainingAttendance[];
+  readonly registrations: readonly UlcTrainingRegistration[];
 }
 
 export interface UlcTrainingAttendanceSummary {
@@ -115,12 +119,77 @@ export class PostgresUlcTrainingSessionRepository {
         attendanceFromRow(row, expected.organizationId, session.id),
       ),
     );
+    const registrationRows = await this.#sql.unsafe(
+      `SELECT organization_id,
+              session_id,
+              athlete_id,
+              intention,
+              revision,
+              updated_by_identity_id
+       FROM ulc_linz_training_registration
+       WHERE organization_id = $1
+         AND session_id = $2
+       ORDER BY athlete_id ASC`,
+      [expected.organizationId, session.id],
+    );
+    const registrations = Object.freeze(
+      registrationRows.map((row) =>
+        registrationFromRow(row, expected.organizationId, session.id),
+      ),
+    );
 
     return Object.freeze({
       session,
       revision: rowRevision(rows[0]),
       attendance,
+      registrations,
     });
+  }
+
+  async ensureScheduledSession(
+    organizationId: string,
+    moduleId: UlcTrainingModule,
+    groupId: string,
+    sessionDate: string,
+  ): Promise<UlcTrainingSessionSnapshot> {
+    const proposed = createUlcTrainingSession(
+      { moduleId, groupId, sessionDate },
+      {
+        id: requiredGeneratedId(this.#createId()),
+        organizationId,
+      },
+    );
+    await this.#sql.unsafe(
+      `INSERT INTO ulc_linz_training_session (
+         id,
+         organization_id,
+         module_id,
+         group_id,
+         session_date,
+         state,
+         note
+       )
+       VALUES ($1, $2, $3, $4, $5::date, 'scheduled', NULL)
+       ON CONFLICT (organization_id, module_id, group_id, session_date)
+       DO NOTHING`,
+      [
+        proposed.id,
+        proposed.organizationId,
+        proposed.moduleId,
+        proposed.groupId,
+        proposed.sessionDate,
+      ],
+    );
+    const snapshot = await this.readSession(
+      proposed.organizationId,
+      proposed.moduleId,
+      proposed.groupId,
+      proposed.sessionDate,
+    );
+    if (snapshot === null || snapshot.session.state !== "scheduled") {
+      throw new UlcTrainingSessionConflictError();
+    }
+    return snapshot;
   }
 
   async listAttendanceForAthleteDateRange(
@@ -321,6 +390,25 @@ export class PostgresUlcTrainingSessionRepository {
     }
     nonNegativeInteger(rows[0], "deleted_stale_attendance_count");
 
+    const registrationRows = await this.#sql.unsafe(
+      `SELECT organization_id,
+              session_id,
+              athlete_id,
+              intention,
+              revision,
+              updated_by_identity_id
+       FROM ulc_linz_training_registration
+       WHERE organization_id = $1
+         AND session_id = $2
+       ORDER BY athlete_id ASC`,
+      [session.organizationId, session.id],
+    );
+    const registrations = Object.freeze(
+      registrationRows.map((row) =>
+        registrationFromRow(row, session.organizationId, session.id),
+      ),
+    );
+
     return Object.freeze({
       session,
       revision: rowRevision(rows[0]),
@@ -334,8 +422,169 @@ export class PostgresUlcTrainingSessionRepository {
           }),
         ),
       ),
+      registrations,
     });
   }
+
+  async saveRegistration(
+    organizationId: string,
+    sessionId: string,
+    athleteId: string,
+    intention: UlcTrainingRegistrationIntention,
+    expectedRevision: number | null,
+    actorIdentityId: string,
+  ): Promise<UlcTrainingRegistration> {
+    const organization = requiredInputIdentifier(
+      organizationId,
+      "Organization id",
+    );
+    const session = requiredInputIdentifier(sessionId, "Training session id");
+    const athlete = requiredInputIdentifier(athleteId, "Athlete id");
+    const actor = requiredInputIdentifier(
+      actorIdentityId,
+      "Registration actor identity id",
+    );
+    const normalized = createUlcTrainingRegistration({
+      organizationId: organization,
+      sessionId: session,
+      athleteId: athlete,
+      intention,
+      revision: expectedRevision ?? 1,
+      updatedByIdentityId: actor,
+    });
+    const changeId = requiredGeneratedId(this.#createId());
+
+    const rows = await this.#sql.unsafe(
+      `WITH scoped_session AS MATERIALIZED (
+         SELECT id
+         FROM ulc_linz_training_session
+         WHERE organization_id = $1
+           AND id = $2
+           AND state = 'scheduled'
+       ),
+       updated_registration AS (
+         UPDATE ulc_linz_training_registration AS registration
+         SET intention = $4,
+             revision = registration.revision + 1,
+             updated_by_identity_id = $6,
+             updated_at = now()
+         WHERE registration.organization_id = $1
+           AND registration.session_id = $2
+           AND registration.athlete_id = $3
+           AND $5::int IS NOT NULL
+           AND registration.revision = $5::int
+           AND EXISTS (
+             SELECT 1 FROM scoped_session WHERE id = registration.session_id
+           )
+         RETURNING organization_id,
+                   session_id,
+                   athlete_id,
+                   intention,
+                   revision,
+                   updated_by_identity_id
+       ),
+       inserted_registration AS (
+         INSERT INTO ulc_linz_training_registration (
+           organization_id,
+           session_id,
+           athlete_id,
+           intention,
+           revision,
+           updated_by_identity_id
+         )
+         SELECT $1, session.id, $3, $4, 1, $6
+         FROM scoped_session AS session
+         WHERE $5::int IS NULL
+         ON CONFLICT (session_id, athlete_id) DO NOTHING
+         RETURNING organization_id,
+                   session_id,
+                   athlete_id,
+                   intention,
+                   revision,
+                   updated_by_identity_id
+       ),
+       saved_registration AS MATERIALIZED (
+         SELECT * FROM updated_registration
+         UNION ALL
+         SELECT * FROM inserted_registration
+       ),
+       inserted_change AS (
+         INSERT INTO ulc_linz_training_registration_change (
+           id,
+           organization_id,
+           session_id,
+           athlete_id,
+           intention,
+           revision,
+           actor_identity_id
+         )
+         SELECT $7,
+                organization_id,
+                session_id,
+                athlete_id,
+                intention,
+                revision,
+                $6
+         FROM saved_registration
+         RETURNING id
+       )
+       SELECT registration.organization_id,
+              registration.session_id,
+              registration.athlete_id,
+              registration.intention,
+              registration.revision,
+              registration.updated_by_identity_id,
+              (SELECT count(*)::int FROM inserted_change) AS change_count
+       FROM saved_registration AS registration`,
+      [
+        normalized.organizationId,
+        normalized.sessionId,
+        normalized.athleteId,
+        normalized.intention,
+        expectedRevision,
+        normalized.updatedByIdentityId,
+        changeId,
+      ],
+    );
+
+    if (rows.length === 0) {
+      throw new UlcTrainingSessionConflictError();
+    }
+    if (
+      rows.length !== 1 ||
+      rows[0] === undefined ||
+      nonNegativeInteger(rows[0], "change_count") !== 1
+    ) {
+      blocked();
+    }
+    return registrationFromRow(
+      rows[0],
+      normalized.organizationId,
+      normalized.sessionId,
+    );
+  }
+}
+
+function registrationFromRow(
+  row: Record<string, unknown>,
+  expectedOrganizationId: string,
+  expectedSessionId: string,
+): UlcTrainingRegistration {
+  const registration = createUlcTrainingRegistration({
+    organizationId: rowString(row, "organization_id"),
+    sessionId: rowString(row, "session_id"),
+    athleteId: rowString(row, "athlete_id"),
+    intention: rowRegistrationIntention(row.intention),
+    revision: rowPositiveInteger(row, "revision"),
+    updatedByIdentityId: rowString(row, "updated_by_identity_id"),
+  });
+  if (
+    registration.organizationId !== expectedOrganizationId ||
+    registration.sessionId !== expectedSessionId
+  ) {
+    blocked();
+  }
+  return registration;
 }
 
 function attendanceSummaryFromRow(
@@ -414,6 +663,20 @@ function rowSessionState(
   value: unknown,
 ): UlcTrainingSession["state"] {
   if (value !== "scheduled" && value !== "cancelled") blocked();
+  return value;
+}
+
+function rowRegistrationIntention(
+  value: unknown,
+): UlcTrainingRegistrationIntention {
+  if (
+    value !== "unknown" &&
+    value !== "attending" &&
+    value !== "not_attending" &&
+    value !== "maybe"
+  ) {
+    blocked();
+  }
   return value;
 }
 
@@ -505,6 +768,21 @@ function rowNullableString(
   const value = row[key];
   if (value === null) return null;
   if (typeof value !== "string") blocked();
+  return value;
+}
+
+function rowPositiveInteger(
+  row: Record<string, unknown>,
+  key: string,
+): number {
+  const value = row[key];
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 1
+  ) {
+    blocked();
+  }
   return value;
 }
 

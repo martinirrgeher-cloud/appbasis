@@ -44,11 +44,12 @@
     },
     {
       "id": "athletes",
-      "schemaVersion": 3,
+      "schemaVersion": 4,
       "migrations": [
         "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
         "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
-        "modules/athletes/migrations/0002_appbasis_athlete_contacts.sql"
+        "modules/athletes/migrations/0002_appbasis_athlete_contacts.sql",
+        "modules/athletes/migrations/0003_appbasis_training_group_attendance_mode.sql"
       ],
       "lifecycleStatus": "deletion-retention-restore-repository-verified-production-activation-pending",
       "notes": [
@@ -113,7 +114,7 @@
     },
     {
       "id": "ulc-linz-lifecycle",
-      "schemaVersion": 8,
+      "schemaVersion": 9,
       "migrations": [
         "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
         "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -122,7 +123,8 @@
         "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
         "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql",
         "apps/ulc-linz/migrations/0006_ulc_linz_training_module_groups.sql",
-        "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql"
+        "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
+        "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql"
       ],
       "lifecycleStatus": "training-and-catalog-data-lifecycle-pending",
       "notes": [
@@ -139,6 +141,7 @@
         "delete-marker-retention-35-days",
         "restore-reconciliation-requires-authoritative-newer-database-or-recovery-point-before-promotion",
         "app-owned-training-session-and-attendance-lifecycle-pending",
+        "app-owned-training-registration-and-change-history-lifecycle-pending",
         "trainer-identity-link-audit-is-append-only-and-atomically-written-with-membership-subject-changes",
         "trainer-identity-audit-12-month-purge-activation-pending-schema-deploy",
         "app-owned-exercise-catalog-configuration-not-personal",
@@ -375,6 +378,22 @@
       "id": "ulc_linz_training_attendance",
       "owner": "ulc-linz-lifecycle",
       "privacyClass": "athlete-training-attendance",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "ulc_linz_training_registration_change",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "athlete-training-registration-history",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "ulc_linz_training_registration",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "athlete-training-registration-intent",
       "retentionPolicy": "pending-training-data-lifecycle-contract",
       "deletionEvidence": "fail-closed-pending-lifecycle",
       "retentionEvidence": "fail-closed-pending-lifecycle"

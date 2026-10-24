@@ -11,7 +11,7 @@ import {
 describe("ULC E6C exercise catalog UI", () => {
   it("ships a compact catalog page with overlay filters and a separated tabbed editor", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="exercise-catalog" data-nav-priority="3" hidden disabled',
+      'data-nav-view="exercise-catalog" data-nav-priority="4" hidden disabled',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-app-section="exercise-catalog"',
