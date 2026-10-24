@@ -10,6 +10,11 @@ const migrationPath = resolve(
   "migrations",
   "0004_ulc_linz_training_sessions.sql",
 );
+const registrationMigrationPath = resolve(
+  appRoot,
+  "migrations",
+  "0008_ulc_linz_session_registration.sql",
+);
 
 describe("ULC shared training schema", () => {
   it("keeps Kindertraining, U12 and U14 in one app-owned persistence contract", async () => {
@@ -30,5 +35,28 @@ describe("ULC shared training schema", () => {
       'CHECK ("note" IS NULL OR char_length("note") <= 3000)',
     );
     expect(sql).not.toMatch(/\bREFERENCES\b/i);
+  });
+
+  it("stores self-registration separately from trainer-confirmed attendance with immutable history", async () => {
+    const sql = await readFile(registrationMigrationPath, "utf8");
+
+    expect(sql).toContain(
+      "CREATE TABLE ulc_linz_training_registration",
+    );
+    expect(sql).toContain(
+      "CREATE TABLE ulc_linz_training_registration_change",
+    );
+    expect(sql).toContain(
+      "PRIMARY KEY (session_id, athlete_id)",
+    );
+    expect(sql).toContain(
+      "UNIQUE (session_id, athlete_id, revision)",
+    );
+    expect(sql).toContain(
+      "CHECK (intention IN ('unknown', 'attending', 'not_attending', 'maybe'))",
+    );
+    expect(sql).toContain("updated_by_identity_id text NOT NULL");
+    expect(sql).toContain("actor_identity_id text NOT NULL");
+    expect(sql).not.toContain("status text");
   });
 });
