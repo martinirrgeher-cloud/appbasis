@@ -24,6 +24,17 @@ describe("ULC E4C Kindertraining UI", () => {
     );
   });
 
+  it("presents trainer-facing attendance with current terminology", () => {
+    expect(ULC_LINZ_APP_HTML).toContain("<h2>Anwesenheit</h2>");
+    expect(ULC_LINZ_APP_HTML).toContain("Anwesenheit öffnen");
+    expect(ULC_LINZ_APP_HTML).toContain("<h1>Anwesenheit</h1>");
+    expect(ULC_LINZ_APP_HTML).toContain(
+      "Voranmeldungen prüfen und die tatsächliche Anwesenheit erfassen.",
+    );
+    expect(ULC_LINZ_APP_HTML).not.toContain("<h2>Kindertraining</h2>");
+    expect(ULC_LINZ_APP_HTML).not.toContain("<h1>Kindertraining</h1>");
+  });
+
   it("uses only the server-owned Kindertraining API contracts", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       'requestJson("/api/modules/kindertraining")',
