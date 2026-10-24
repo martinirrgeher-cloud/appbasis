@@ -781,7 +781,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       "elements.masterdataQuickAction.disabled = !masterdataReady;",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      "elements.registrationQuickAction.disabled = !registrationReady;",
+      "elements.registrationQuickAction.disabled = !selfRegistrationReady;",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "elements.kindertrainingQuickAction.disabled = !kindertrainingReady;",
@@ -790,7 +790,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       '(section === "masterdata" && masterdataReady)',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      '(section === "registration" && registrationReady)',
+      '(section === "registration" && selfRegistrationReady)',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '(section === "kindertraining" && kindertrainingReady)',
@@ -799,7 +799,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
 
   it("ships training-block mobile UI with explicit version commits, group filter, history and parity metadata", () => {
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="4" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="5" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain("<h1>Trainingsblöcke</h1>");
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-editor"');
     expect(ULC_LINZ_APP_HTML).toContain('minlength="1" maxlength="120"');
@@ -3245,6 +3245,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
             name: "U14",
             shortName: "U14",
             description: null,
+            attendanceMode: "trainer_roll_call",
             sortOrder: 10,
           }),
         },
