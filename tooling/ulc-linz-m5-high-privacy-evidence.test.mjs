@@ -59,8 +59,8 @@ test("derives stable access, least-privilege, secret and operator requirements f
   assert.deepEqual(evidence, {
     securityPrivacyGate: false,
     backupRestoreBeforeProduction: false,
-    accessControl: true,
-    privilegeModel: true,
+    accessControl: false,
+    privilegeModel: false,
     secretsInNormalAppManifest: true,
     privilegedControlPlanePublicIngress: false,
     operatorUseCaseAssessment: true,
