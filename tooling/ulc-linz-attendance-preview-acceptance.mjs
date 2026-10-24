@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 const DEFAULT_ADMIN_USERNAME = "preview.admin";
@@ -361,8 +362,7 @@ async function ensureAthleteLogin({
     );
   }
 
-  const temporaryPassword =
-    "Tmp!" + randomUUID().replaceAll("-", "").slice(0, 28);
+  const temporaryPassword = previewAthleteTemporaryPassword(password);
   await requestJson(
     baseURL,
     "/api/admin/athlete-users",
@@ -420,6 +420,20 @@ async function ensureAthleteLogin({
     password,
     fetchImpl,
   });
+}
+
+function previewAthleteTemporaryPassword(password) {
+  const secret = requiredCredential(
+    password,
+    "APPBASIS_PREVIEW_USER_PASSWORD",
+  );
+  return (
+    "Tmp!" +
+    createHmac("sha256", secret)
+      .update("ulc-linz-preview-athlete-bootstrap-v1")
+      .digest("hex")
+      .slice(0, 32)
+  );
 }
 
 async function authenticateFull({
