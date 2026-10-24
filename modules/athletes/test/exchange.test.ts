@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { AthleteMasterdataSnapshot } from "../src/index";
+
 import {
   ATHLETES_EXCHANGE_ACTIVE_HEADER,
   ATHLETES_EXCHANGE_CONTRACT_HEADER,
@@ -11,7 +13,7 @@ import {
   createAthletesWorkbook,
 } from "../src/index";
 
-const snapshot = {
+const snapshot: AthleteMasterdataSnapshot = {
   trainingGroups: [
     {
       id: "group-1",
