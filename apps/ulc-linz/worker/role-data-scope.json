@@ -72,15 +72,17 @@
       "sourceRole": "athlete",
       "semantics": "defaults-only",
       "view": [
+        "countdown",
+        "kindertraining",
         "performance_registration",
-        "training_overview",
         "training_documentation",
-        "countdown"
+        "training_overview"
       ],
       "edit": [
+        "countdown",
+        "kindertraining",
         "performance_registration",
-        "training_documentation",
-        "countdown"
+        "training_documentation"
       ]
     },
     "parent": {
