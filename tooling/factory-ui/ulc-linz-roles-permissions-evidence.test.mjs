@@ -55,7 +55,7 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-test("emits app-specific M5-B evidence only for the approved ULC role, persistence and acceptance contracts", async () => {
+test("keeps M5-B open after the attendance role contract changes", async () => {
   const root = await createFixture();
   try {
     assert.deepEqual(
@@ -63,7 +63,7 @@ test("emits app-specific M5-B evidence only for the approved ULC role, persisten
         root,
         VALID_ULC_DEFINITION,
       ),
-      { rolesAndPermissions: true },
+      {},
     );
   } finally {
     await rm(root, { recursive: true, force: true });
