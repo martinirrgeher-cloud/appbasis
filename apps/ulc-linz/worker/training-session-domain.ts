@@ -6,6 +6,12 @@ export type UlcTrainingAttendanceStatus =
   | "excused"
   | "absent";
 
+export type UlcTrainingRegistrationIntention =
+  | "unknown"
+  | "attending"
+  | "not_attending"
+  | "maybe";
+
 export interface UlcTrainingSession {
   readonly id: string;
   readonly organizationId: string;
@@ -29,6 +35,15 @@ export interface UlcTrainingAttendance {
   readonly sessionId: string;
   readonly athleteId: string;
   readonly status: UlcTrainingAttendanceStatus;
+}
+
+export interface UlcTrainingRegistration {
+  readonly organizationId: string;
+  readonly sessionId: string;
+  readonly athleteId: string;
+  readonly intention: UlcTrainingRegistrationIntention;
+  readonly revision: number;
+  readonly updatedByIdentityId: string;
 }
 
 export class UlcTrainingValidationError extends Error {
@@ -72,6 +87,29 @@ export function createUlcTrainingAttendance(
   });
 }
 
+export function createUlcTrainingRegistration(
+  input: {
+    readonly organizationId: string;
+    readonly sessionId: string;
+    readonly athleteId: string;
+    readonly intention: UlcTrainingRegistrationIntention;
+    readonly revision: number;
+    readonly updatedByIdentityId: string;
+  },
+): UlcTrainingRegistration {
+  return Object.freeze({
+    organizationId: requiredIdentifier(input.organizationId, "Organization id"),
+    sessionId: requiredIdentifier(input.sessionId, "Training session id"),
+    athleteId: requiredIdentifier(input.athleteId, "Athlete id"),
+    intention: requiredRegistrationIntention(input.intention),
+    revision: positiveRevision(input.revision),
+    updatedByIdentityId: requiredIdentifier(
+      input.updatedByIdentityId,
+      "Registration actor identity id",
+    ),
+  });
+}
+
 export function normalizeUlcTrainingAttendanceSet(
   inputs: readonly {
     readonly organizationId: string;
@@ -105,6 +143,31 @@ function requiredSessionState(value: unknown): UlcTrainingSessionState {
     throw new UlcTrainingValidationError("Training session state is invalid.");
   }
   return value;
+}
+
+function requiredRegistrationIntention(
+  value: unknown,
+): UlcTrainingRegistrationIntention {
+  if (
+    value !== "unknown" &&
+    value !== "attending" &&
+    value !== "not_attending" &&
+    value !== "maybe"
+  ) {
+    throw new UlcTrainingValidationError(
+      "Training registration intention is invalid.",
+    );
+  }
+  return value;
+}
+
+function positiveRevision(value: unknown): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 1) {
+    throw new UlcTrainingValidationError(
+      "Training registration revision is invalid.",
+    );
+  }
+  return Number(value);
 }
 
 function requiredAttendanceStatus(
