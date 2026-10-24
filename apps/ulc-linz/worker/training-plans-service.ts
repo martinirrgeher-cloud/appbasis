@@ -1107,24 +1107,13 @@ function trainingBlockExerciseFromPlan(
     );
   }
 
-  const byKey = new Map(
-    catalog.parameters.map((parameter) => [parameter.key, parameter] as const),
-  );
   const overrides: Array<{ key: string; value: string }> = [];
 
+  addNamedPlanOverride(overrides, "sets", exercise.sets);
   addNamedPlanOverride(
     overrides,
-    byKey,
-    "sets",
-    exercise.sets,
-    catalog.id,
-  );
-  addNamedPlanOverride(
-    overrides,
-    byKey,
     "repetitions",
     exercise.repetitions,
-    catalog.id,
   );
 
   if (exercise.amount === null) {
@@ -1192,17 +1181,10 @@ function trainingBlockExerciseFromPlan(
 
 function addNamedPlanOverride(
   overrides: Array<{ key: string; value: string }>,
-  byKey: ReadonlyMap<string, ExerciseCatalogItem["parameters"][number]>,
   key: "sets" | "repetitions",
   value: string | null,
-  exerciseId: string,
 ): void {
   if (value === null) return;
-  const parameter = byKey.get(key);
-  if (parameter === undefined) {
-    overrides.push({ key, value });
-    return;
-  }
   overrides.push({ key, value });
 }
 
