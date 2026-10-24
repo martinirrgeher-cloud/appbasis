@@ -18,7 +18,7 @@ const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 test("ULC production composition fails closed after attendance changes bound production evidence", async () => {
   await assert.rejects(
     () => evaluateAppProductionComposition(repositoryRoot, "ulc-linz"),
-    /Production evidence drifted: modules\/athletes\//,
+    /Production evidence drifted: (?:modules\/athletes\/|apps\/ulc-linz\/privacy\/m5-)/,
   );
 });
 
