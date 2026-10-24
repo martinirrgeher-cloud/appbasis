@@ -153,6 +153,19 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "} else {\n      renderTrainingPlanDistribution();",
     );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "Ungespeicherte Änderungen werden nicht automatisch verteilt.",
+    );
+    const distributionStart = ULC_TRAINING_PLANS_SCRIPT.indexOf(
+      "async function openTrainingPlanDistribution()",
+    );
+    const distributionEnd = ULC_TRAINING_PLANS_SCRIPT.indexOf(
+      "async function distributeTrainingPlan()",
+      distributionStart,
+    );
+    expect(
+      ULC_TRAINING_PLANS_SCRIPT.slice(distributionStart, distributionEnd),
+    ).not.toContain("saveTrainingPlanUntilClean()");
   });
 
   it("loads only Monday-based week data without client-owned organization scope", () => {
@@ -203,6 +216,12 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_HTML).toContain("Änderungen verwerfen");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("requestTrainingPlanLeaveDecision");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain('decision === "discard"');
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "features?.confirmOnLeave !== true",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+      "features?.saveOnLeave !== true",
+    );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "expectedRevision: existing.currentRevision",
     );
