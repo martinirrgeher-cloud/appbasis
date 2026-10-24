@@ -3,12 +3,17 @@ export interface EntityContext {
   readonly organizationId: string;
 }
 
+export type TrainingGroupAttendanceMode =
+  | 'trainer_roll_call'
+  | 'self_registration';
+
 export interface TrainingGroup {
   readonly id: string;
   readonly organizationId: string;
   readonly name: string;
   readonly shortName: string | null;
   readonly description: string | null;
+  readonly attendanceMode: TrainingGroupAttendanceMode;
   readonly isActive: boolean;
   readonly sortOrder: number;
 }
@@ -17,6 +22,7 @@ export interface CreateTrainingGroupInput {
   readonly name: string;
   readonly shortName?: string | null;
   readonly description?: string | null;
+  readonly attendanceMode?: TrainingGroupAttendanceMode;
   readonly sortOrder?: number;
 }
 
@@ -24,6 +30,7 @@ export interface UpdateTrainingGroupInput {
   readonly name: string;
   readonly shortName: string | null;
   readonly description: string | null;
+  readonly attendanceMode: TrainingGroupAttendanceMode;
   readonly sortOrder: number;
 }
 
@@ -151,6 +158,9 @@ export function createTrainingGroup(
     name: requiredText(input.name, 'Training group name', 2, 100),
     shortName: optionalText(input.shortName, 'Training group short name', 20),
     description: optionalText(input.description, 'Training group description', 1000),
+    attendanceMode: trainingGroupAttendanceMode(
+      input.attendanceMode ?? 'trainer_roll_call',
+    ),
     isActive: true,
     sortOrder: integerInRange(input.sortOrder ?? 100, 'Training group sort order', 0, 10000),
   };
@@ -319,6 +329,17 @@ function requiredText(
     );
   }
   return normalized;
+}
+
+function trainingGroupAttendanceMode(
+  value: unknown,
+): TrainingGroupAttendanceMode {
+  if (value !== 'trainer_roll_call' && value !== 'self_registration') {
+    throw new MasterdataValidationError(
+      'Training group attendance mode is invalid.',
+    );
+  }
+  return value;
 }
 
 function optionalText(
