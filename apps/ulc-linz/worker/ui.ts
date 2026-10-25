@@ -3154,6 +3154,9 @@ function renderKindertrainingWeek() {
 function refreshKindertrainingWeekControls() {
   const hasGroup = Boolean(elements.kindertrainingGroup?.value);
   const busyWeek = kindertrainingLoading || kindertrainingWeekSaving;
+  if (elements.kindertrainingGroup) {
+    elements.kindertrainingGroup.disabled = !kindertrainingReady || busyWeek;
+  }
   for (const control of [
     elements.kindertrainingWeekPrev,
     elements.kindertrainingWeekNext,
@@ -3296,6 +3299,7 @@ async function reloadKindertrainingWeek() {
 }
 
 async function handleKindertrainingWeekGroupChange() {
+  if (kindertrainingLoading || kindertrainingWeekSaving) return;
   const nextGroupId = elements.kindertrainingGroup?.value || "";
   if (
     kindertrainingWeekDirtyDates.size > 0 &&
