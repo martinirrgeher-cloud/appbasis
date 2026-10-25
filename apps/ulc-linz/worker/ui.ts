@@ -2152,6 +2152,8 @@ async function handleSignOut() {
     resetAttendanceSessionState();
     resetMasterdataSessionState();
     resetTrainingBlockSessionState();
+    resetExerciseCatalogSessionState();
+    resetTrainingPlanSessionState();
     setAppNavMoreOpen(false);
     showView("login");
     if (elements.loginPassword) elements.loginPassword.value = "";
