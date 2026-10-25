@@ -51,6 +51,8 @@ describe("ULC weekly self-registration and account switching", () => {
     expect(signOutScript).toContain("resetAttendanceSessionState();");
     expect(signOutScript).toContain("resetMasterdataSessionState();");
     expect(signOutScript).toContain("resetTrainingBlockSessionState();");
+    expect(signOutScript).toContain("resetExerciseCatalogSessionState();");
+    expect(signOutScript).toContain("resetTrainingPlanSessionState();");
     expect(signOutScript).toContain('showView("login");');
     expect(signOutScript).toContain('elements.currentPassword.value = "";');
     expect(signOutScript).toContain('elements.newPassword.value = "";');
