@@ -1992,34 +1992,34 @@ function closeTrainingBlockEditor(force = false) {
       trainingBlockElements.reload.hidden = false;
       trainingBlockElements.reload.textContent = "Übersicht neu laden";
     }
-    return;
+    return false;
   }
   if (!force && trainingBlockDeactivateBusy) {
     showMessage(
       trainingBlockElements.editorMessage,
       "Archivieren läuft noch. Der Editor bleibt bis zum Abschluss gesperrt.",
     );
-    return;
+    return false;
   }
   if (!force && trainingBlockReloadBusy) {
     showMessage(
       trainingBlockElements.editorMessage,
       "Der aktuelle Stand wird geladen. Der Editor bleibt bis zum Abschluss gesperrt.",
     );
-    return;
+    return false;
   }
   if (!force && trainingBlockSaveBusy) {
     showMessage(
       trainingBlockElements.editorMessage,
       "Speichern läuft noch. Bitte den laufenden Speichervorgang abschließen lassen.",
     );
-    return;
+    return false;
   }
   if (!force && trainingBlockDirty) {
     const message = trainingBlockConflict
       ? "Es gibt lokale Änderungen mit einem Versionskonflikt. Lokale Änderungen wirklich verwerfen?"
       : "Es gibt noch nicht gespeicherte Änderungen. Trotzdem schließen?";
-    if (!window.confirm(message)) return;
+    if (!window.confirm(message)) return false;
   }
   if (trainingBlockSaveTimer !== null) {
     clearTimeout(trainingBlockSaveTimer);
@@ -2040,6 +2040,26 @@ function closeTrainingBlockEditor(force = false) {
   scrollTrainingBlockEditorTop();
   document.body.classList.remove("training-block-editor-open");
   showMessage(trainingBlockElements.editorMessage, "");
+  return true;
+}
+
+async function prepareTrainingBlockForSessionEnd() {
+  while (trainingBlockSaveBusy) {
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+  }
+  if (
+    trainingBlockFavoriteBusy ||
+    trainingBlockDeactivateBusy ||
+    trainingBlockDuplicateBusy ||
+    trainingBlockReloadBusy
+  ) {
+    showMessage(
+      trainingBlockElements.editorMessage,
+      "Im Trainingsblock läuft noch ein Vorgang. Bitte zuerst abschließen lassen.",
+    );
+    return false;
+  }
+  return closeTrainingBlockEditor(false);
 }
 
 function retryTrainingBlockSave() {
