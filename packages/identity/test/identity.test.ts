@@ -106,6 +106,21 @@ describe("IdentityService", () => {
     ).resolves.toMatchObject({ access: "full" });
   });
 
+  it("ends the requested session explicitly", async () => {
+    const auth = new FakeAuthProvider();
+    const service = new IdentityService(
+      auth,
+      new FakeStateStore(),
+      () => fixedNow,
+    );
+
+    await service.endSession("better-auth.session_token=session-value");
+
+    expect(auth.endedSessions).toEqual([
+      "better-auth.session_token=session-value",
+    ]);
+  });
+
   it("rejects a disabled identity and ends the newly created session", async () => {
     const auth = new FakeAuthProvider();
     const state = new FakeStateStore();
