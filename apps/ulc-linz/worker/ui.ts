@@ -2056,7 +2056,6 @@ function resetAttendanceSessionState() {
   }
   showMessage(elements.kindertrainingMessage, "");
   showMessage(elements.kindertrainingSuccess, "");
-  setKindertrainingLoading(false);
 
   refreshAppAvailability();
 }
