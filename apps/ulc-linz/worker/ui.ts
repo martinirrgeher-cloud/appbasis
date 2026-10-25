@@ -1733,6 +1733,7 @@ let busy = false;
 let countdownReady = false;
 let masterdataReady = false;
 let masterdataCanEdit = false;
+let attendanceSessionGeneration = 0;
 let selfRegistrationReady = false;
 let selfRegistrationLoading = false;
 let selfRegistrationSavingKey = null;
@@ -2023,6 +2024,43 @@ async function handlePasswordChange(event) {
   }
 }
 
+function resetAttendanceSessionState() {
+  attendanceSessionGeneration += 1;
+
+  selfRegistrationReady = false;
+  selfRegistrationLoading = false;
+  selfRegistrationSavingKey = null;
+  selfRegistrationWeekStart = "";
+  selfRegistrationOptions = [];
+  showMessage(elements.registrationMessage, "");
+  showMessage(elements.registrationSuccess, "");
+  renderSelfRegistrationWeekLabel();
+  renderSelfRegistration();
+
+  kindertrainingReady = false;
+  kindertrainingLoading = false;
+  kindertrainingGroups = [];
+  kindertrainingSnapshot = null;
+  renderKindertrainingGroups();
+  if (elements.kindertrainingSession) {
+    elements.kindertrainingSession.hidden = true;
+  }
+  if (elements.kindertrainingParticipants) {
+    elements.kindertrainingParticipants.replaceChildren();
+  }
+  if (elements.kindertrainingSummary) {
+    elements.kindertrainingSummary.replaceChildren();
+  }
+  if (elements.kindertrainingCount) {
+    elements.kindertrainingCount.textContent = "0 Teilnehmer";
+  }
+  showMessage(elements.kindertrainingMessage, "");
+  showMessage(elements.kindertrainingSuccess, "");
+  setKindertrainingLoading(false);
+
+  refreshAppAvailability();
+}
+
 function resetMasterdataSessionState() {
   masterdataSessionGeneration += 1;
   masterdataReady = false;
@@ -2112,6 +2150,7 @@ async function handleSignOut() {
     await requestJson("/api/auth/sign-out", { method: "POST" });
     resetCountdown();
     setTrainingPlanSessionIdentity("");
+    resetAttendanceSessionState();
     resetMasterdataSessionState();
     setAppNavMoreOpen(false);
     showView("login");
@@ -2159,6 +2198,7 @@ async function acceptSession(next) {
 }
 
 async function bootstrapSelfRegistration() {
+  const generation = attendanceSessionGeneration;
   selfRegistrationReady = false;
   selfRegistrationLoading = false;
   selfRegistrationSavingKey = null;
@@ -2174,6 +2214,7 @@ async function bootstrapSelfRegistration() {
       "/api/modules/kindertraining/registration?sessionDate=" +
         encodeURIComponent(probeDate),
     );
+    if (generation !== attendanceSessionGeneration) return;
     if (
       probe?.sessionDate !== probeDate ||
       !Array.isArray(probe?.options) ||
@@ -2186,6 +2227,7 @@ async function bootstrapSelfRegistration() {
     selfRegistrationReady = true;
     await loadSelfRegistration(true, new Map([[probeDate, probe]]));
   } catch (error) {
+    if (generation !== attendanceSessionGeneration) return;
     selfRegistrationReady = false;
     selfRegistrationOptions = [];
     if (error?.status !== 403) {
@@ -2204,6 +2246,7 @@ async function loadSelfRegistration(
   prefetched = new Map(),
 ) {
   if (selfRegistrationLoading || (!selfRegistrationReady && !bootstrap)) return;
+  const generation = attendanceSessionGeneration;
   const weekStart =
     selfRegistrationWeekStart || localWeekStart(new Date());
   const dates = registrationWeekDates(weekStart);
@@ -2226,6 +2269,7 @@ async function loadSelfRegistration(
             ),
       ),
     );
+    if (generation !== attendanceSessionGeneration) return;
     const options = [];
     for (let index = 0; index < dates.length; index += 1) {
       const sessionDate = dates[index];
@@ -2245,6 +2289,7 @@ async function loadSelfRegistration(
     selfRegistrationOptions = options;
     selfRegistrationReady = true;
   } catch (error) {
+    if (generation !== attendanceSessionGeneration) return;
     selfRegistrationOptions = [];
     if (!wasReady || error?.status === 403) {
       selfRegistrationReady = false;
@@ -2256,10 +2301,12 @@ async function loadSelfRegistration(
       );
     }
   } finally {
-    selfRegistrationLoading = false;
-    renderSelfRegistrationWeekLabel();
-    renderSelfRegistration();
-    refreshAppAvailability();
+    if (generation === attendanceSessionGeneration) {
+      selfRegistrationLoading = false;
+      renderSelfRegistrationWeekLabel();
+      renderSelfRegistration();
+      refreshAppAvailability();
+    }
   }
 }
 
@@ -2408,6 +2455,7 @@ function renderSelfRegistration() {
 }
 
 async function handleSelfRegistrationClick(event) {
+  const generation = attendanceSessionGeneration;
   const control = event.target?.closest?.("[data-registration-group]");
   if (
     !control ||
@@ -2453,6 +2501,7 @@ async function handleSelfRegistrationClick(event) {
         }),
       },
     );
+    if (generation !== attendanceSessionGeneration) return;
     const saved = payload?.option;
     if (!isSelfRegistrationOption(saved, sessionDate)) {
       throw new Error("INVALID_SELF_REGISTRATION_SAVE");
@@ -2474,6 +2523,7 @@ async function handleSelfRegistrationClick(event) {
       "success",
     );
   } catch (error) {
+    if (generation !== attendanceSessionGeneration) return;
     if (
       error?.status === 409 &&
       error?.code === "TRAINING_REGISTRATION_CONFLICT"
@@ -2495,9 +2545,11 @@ async function handleSelfRegistrationClick(event) {
           : "Die Trainingsanmeldung konnte nicht gespeichert werden.",
     );
   } finally {
-    selfRegistrationSavingKey = null;
-    renderSelfRegistration();
-    refreshAppAvailability();
+    if (generation === attendanceSessionGeneration) {
+      selfRegistrationSavingKey = null;
+      renderSelfRegistration();
+      refreshAppAvailability();
+    }
   }
 }
 
@@ -2573,6 +2625,7 @@ function germanWeekday(value) {
 }
 
 async function bootstrapKindertraining() {
+  const generation = attendanceSessionGeneration;
   kindertrainingReady = false;
   kindertrainingGroups = [];
   kindertrainingSnapshot = null;
@@ -2586,6 +2639,7 @@ async function bootstrapKindertraining() {
 
   try {
     const payload = await requestJson("/api/modules/kindertraining");
+    if (generation !== attendanceSessionGeneration) return;
     const groups = payload?.trainingGroups;
     kindertrainingReady =
       payload?.module?.moduleId === "kindertraining" &&
@@ -2622,6 +2676,7 @@ async function bootstrapKindertraining() {
       );
     }
   } catch (error) {
+    if (generation !== attendanceSessionGeneration) return;
     kindertrainingReady = false;
     kindertrainingGroups = [];
     renderKindertrainingGroups();
@@ -2632,7 +2687,9 @@ async function bootstrapKindertraining() {
         : "Anwesenheit ist derzeit nicht verfügbar.",
     );
   }
-  refreshAppAvailability();
+  if (generation === attendanceSessionGeneration) {
+    refreshAppAvailability();
+  }
 }
 
 async function bootstrapCountdown() {
@@ -2946,6 +3003,7 @@ function resetKindertrainingSelection() {
 
 async function loadKindertraining() {
   if (!kindertrainingReady || kindertrainingLoading) return;
+  const generation = attendanceSessionGeneration;
   const groupId = elements.kindertrainingGroup?.value || "";
   const sessionDate = elements.kindertrainingDate?.value || "";
   if (!groupId || !sessionDate) {
@@ -2966,6 +3024,7 @@ async function loadKindertraining() {
         "&sessionDate=" +
         encodeURIComponent(sessionDate),
     );
+    if (generation !== attendanceSessionGeneration) return;
     const snapshot = payload?.snapshot;
     if (!isKindertrainingSnapshot(snapshot, groupId, sessionDate)) {
       throw new Error("INVALID_KINDERTRAINING_SNAPSHOT");
@@ -2973,6 +3032,7 @@ async function loadKindertraining() {
     kindertrainingSnapshot = snapshot;
     renderKindertrainingSnapshot();
   } catch (error) {
+    if (generation !== attendanceSessionGeneration) return;
     kindertrainingSnapshot = null;
     if (elements.kindertrainingSession) elements.kindertrainingSession.hidden = true;
     showMessage(
@@ -2984,7 +3044,9 @@ async function loadKindertraining() {
           : "Die Anwesenheit konnte nicht geladen werden.",
     );
   } finally {
-    setKindertrainingLoading(false);
+    if (generation === attendanceSessionGeneration) {
+      setKindertrainingLoading(false);
+    }
   }
 }
 
@@ -3230,6 +3292,7 @@ async function saveKindertraining() {
   if (!kindertrainingReady || kindertrainingLoading || !kindertrainingSnapshot) {
     return;
   }
+  const generation = attendanceSessionGeneration;
   const groupId = elements.kindertrainingGroup?.value || "";
   const sessionDate = elements.kindertrainingDate?.value || "";
   if (
@@ -3261,6 +3324,7 @@ async function saveKindertraining() {
         })),
       }),
     });
+    if (generation !== attendanceSessionGeneration) return;
     const snapshot = payload?.snapshot;
     if (!isKindertrainingSnapshot(snapshot, groupId, sessionDate)) {
       throw new Error("INVALID_KINDERTRAINING_SAVE");
@@ -3269,6 +3333,7 @@ async function saveKindertraining() {
     renderKindertrainingSnapshot();
     showMessage(elements.kindertrainingSuccess, "Training wurde gespeichert.");
   } catch (error) {
+    if (generation !== attendanceSessionGeneration) return;
     const conflict = error?.status === 409;
     showMessage(
       elements.kindertrainingMessage,
@@ -3284,7 +3349,9 @@ async function saveKindertraining() {
       elements.kindertrainingSaveState.textContent = "Konflikt – neu laden";
     }
   } finally {
-    setKindertrainingLoading(false);
+    if (generation === attendanceSessionGeneration) {
+      setKindertrainingLoading(false);
+    }
   }
 }
 
