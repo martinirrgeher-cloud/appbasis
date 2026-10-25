@@ -615,6 +615,7 @@ const trainingBlockElements = Object.freeze({
   infoClose: document.querySelector("#training-block-info-close"),
 });
 
+let trainingBlockSessionGeneration = 0;
 let trainingBlocksReady = false;
 let trainingBlocksCanEdit = false;
 let trainingBlocks = [];
@@ -720,6 +721,7 @@ function isTrainingBlockSnapshot(value) {
 }
 
 async function bootstrapTrainingBlocks() {
+  const generation = trainingBlockSessionGeneration;
   trainingBlocksReady = false;
   trainingBlocksCanEdit = false;
   trainingBlocks = [];
@@ -729,6 +731,7 @@ async function bootstrapTrainingBlocks() {
   showMessage(trainingBlockElements.message, "");
   try {
     const payload = await requestJson("/api/modules/training-blocks");
+    if (generation !== trainingBlockSessionGeneration) return;
     const blocks = payload?.blocks;
     const audiences = payload?.audiences;
     const features = payload?.module?.features;
@@ -759,6 +762,7 @@ async function bootstrapTrainingBlocks() {
     renderTrainingBlockAudienceFilter();
     renderTrainingBlocks();
   } catch (error) {
+    if (generation !== trainingBlockSessionGeneration) return;
     showMessage(
       trainingBlockElements.message,
       error?.status === 403
@@ -766,7 +770,9 @@ async function bootstrapTrainingBlocks() {
         : "Trainingsblöcke sind derzeit nicht verfügbar.",
     );
   }
-  refreshAppAvailability();
+  if (generation === trainingBlockSessionGeneration) {
+    refreshAppAvailability();
+  }
 }
 
 function prepareTrainingBlocksView() {
@@ -778,10 +784,14 @@ function prepareTrainingBlocksView() {
 }
 
 async function refreshTrainingBlockAudienceDependency() {
+  const generation = trainingBlockSessionGeneration;
   const requestId = ++trainingBlockAudienceRequestId;
   try {
     const payload = await requestJson("/api/modules/training-blocks");
-    if (requestId !== trainingBlockAudienceRequestId) return;
+    if (
+      generation !== trainingBlockSessionGeneration ||
+      requestId !== trainingBlockAudienceRequestId
+    ) return;
     if (
       payload?.module?.moduleId !== "training_blocks" ||
       payload?.access?.view !== true ||
@@ -804,7 +814,10 @@ async function refreshTrainingBlockAudienceDependency() {
       refreshTrainingBlockEditorLock();
     }
   } catch {
-    if (requestId !== trainingBlockAudienceRequestId) return;
+    if (
+      generation !== trainingBlockSessionGeneration ||
+      requestId !== trainingBlockAudienceRequestId
+    ) return;
     showMessage(
       trainingBlockElements.message,
       "Trainingsgruppen konnten nicht aktualisiert werden. Der zuletzt geladene Stand bleibt sichtbar.",
@@ -2041,6 +2054,31 @@ function closeTrainingBlockEditor(force = false) {
   document.body.classList.remove("training-block-editor-open");
   showMessage(trainingBlockElements.editorMessage, "");
   return true;
+}
+
+function resetTrainingBlockSessionState() {
+  trainingBlockSessionGeneration += 1;
+  trainingBlockAudienceRequestId += 1;
+  trainingBlockOpenRequestId += 1;
+  trainingBlockHistoryRequestId += 1;
+  trainingBlockRevisionRequestId += 1;
+  trainingBlockCompareRequestId += 1;
+  trainingBlockInfoRequestId += 1;
+  trainingBlockFavoriteRequestId += 1;
+
+  trainingBlocksReady = false;
+  trainingBlocksCanEdit = false;
+  trainingBlocks = [];
+  trainingBlockAudiences = [];
+  trainingBlockInfoItem = null;
+  trainingBlockInfoPrivateMedia = [];
+  trainingBlockInfoPrivateMediaAvailable = false;
+  closeTrainingBlockEditor(true);
+  invalidateTrainingBlockComparison();
+  renderTrainingBlockAudienceFilter();
+  renderTrainingBlocks();
+  refreshTrainingBlockControls();
+  showMessage(trainingBlockElements.message, "");
 }
 
 async function prepareTrainingBlockForSessionEnd() {
