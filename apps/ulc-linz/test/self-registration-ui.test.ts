@@ -35,6 +35,9 @@ describe("ULC weekly self-registration and account switching", () => {
     const countdownDecisionIndex = signOutScript.indexOf(
       "Der Countdown läuft noch. Wirklich abmelden und den Countdown beenden?",
     );
+    const lockIndex = signOutScript.indexOf(
+      "setAuthenticatedAppInteractionLocked(true)",
+    );
     const revokeIndex = signOutScript.indexOf(
       'requestJson("/api/auth/sign-out", { method: "POST" })',
     );
@@ -45,7 +48,8 @@ describe("ULC weekly self-registration and account switching", () => {
     expect(closeBlockIndex).toBeGreaterThan(closeEditorIndex);
     expect(closeExerciseIndex).toBeGreaterThan(closeBlockIndex);
     expect(countdownDecisionIndex).toBeGreaterThan(closeExerciseIndex);
-    expect(revokeIndex).toBeGreaterThan(countdownDecisionIndex);
+    expect(lockIndex).toBeGreaterThan(countdownDecisionIndex);
+    expect(revokeIndex).toBeGreaterThan(lockIndex);
     expect(signOutScript).toContain("resetCountdown();");
     expect(signOutScript).toContain('setTrainingPlanSessionIdentity("");');
     expect(signOutScript).toContain("resetAttendanceSessionState();");
@@ -54,6 +58,9 @@ describe("ULC weekly self-registration and account switching", () => {
     expect(signOutScript).toContain("resetExerciseCatalogSessionState();");
     expect(signOutScript).toContain("resetTrainingPlanSessionState();");
     expect(signOutScript).toContain('showView("login");');
+    expect(signOutScript).toContain(
+      "setAuthenticatedAppInteractionLocked(false)",
+    );
     expect(signOutScript).toContain('elements.currentPassword.value = "";');
     expect(signOutScript).toContain('elements.newPassword.value = "";');
     expect(signOutScript).toContain('elements.confirmPassword.value = "";');
