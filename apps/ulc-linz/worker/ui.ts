@@ -2079,10 +2079,42 @@ async function bootstrapSelfRegistration() {
   renderSelfRegistrationWeekLabel();
   renderSelfRegistration();
   refreshAppAvailability();
-  await loadSelfRegistration(true);
+
+  const probeDate = localIsoDate(new Date());
+  try {
+    const probe = await requestJson(
+      "/api/modules/kindertraining/registration?sessionDate=" +
+        encodeURIComponent(probeDate),
+    );
+    if (
+      probe?.sessionDate !== probeDate ||
+      !Array.isArray(probe?.options) ||
+      !probe.options.every((option) =>
+        isSelfRegistrationOption(option, probeDate),
+      )
+    ) {
+      throw new Error("INVALID_SELF_REGISTRATION_CONTRACT");
+    }
+    selfRegistrationReady = true;
+    await loadSelfRegistration(true, new Map([[probeDate, probe]]));
+  } catch (error) {
+    selfRegistrationReady = false;
+    selfRegistrationOptions = [];
+    if (error?.status !== 403) {
+      showMessage(
+        elements.registrationMessage,
+        "Die Trainingsanmeldung konnte nicht geladen werden.",
+      );
+    }
+    renderSelfRegistration();
+    refreshAppAvailability();
+  }
 }
 
-async function loadSelfRegistration(bootstrap = false) {
+async function loadSelfRegistration(
+  bootstrap = false,
+  prefetched = new Map(),
+) {
   if (selfRegistrationLoading || (!selfRegistrationReady && !bootstrap)) return;
   const weekStart =
     selfRegistrationWeekStart || localWeekStart(new Date());
@@ -2098,10 +2130,12 @@ async function loadSelfRegistration(bootstrap = false) {
   try {
     const payloads = await Promise.all(
       dates.map((sessionDate) =>
-        requestJson(
-          "/api/modules/kindertraining/registration?sessionDate=" +
-            encodeURIComponent(sessionDate),
-        ),
+        prefetched.has(sessionDate)
+          ? Promise.resolve(prefetched.get(sessionDate))
+          : requestJson(
+              "/api/modules/kindertraining/registration?sessionDate=" +
+                encodeURIComponent(sessionDate),
+            ),
       ),
     );
     const options = [];
