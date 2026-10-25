@@ -28,6 +28,7 @@ const identity: IdentityHttpService = {
   async getCurrentIdentity(sessionToken) {
     return sessionToken === currentIdentity.sessionToken ? currentIdentity : null;
   },
+  async endSession() {},
   async changeRequiredPassword() {
     return currentIdentity;
   },
@@ -38,6 +39,28 @@ describe("generated AppBasis identity runtime", () => {
     const response = await createGeneratedApp({ identity }).request("/api/health");
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ status: "ok" });
+  });
+
+  it("exposes explicit sign-out through the shared identity contract", async () => {
+    let endedSession = "";
+    const app = createGeneratedApp({
+      identity: {
+        ...identity,
+        async endSession(sessionToken) {
+          endedSession = sessionToken;
+        },
+      },
+      secureCookies: false,
+    });
+
+    const response = await app.request("/api/auth/sign-out", {
+      method: "POST",
+      headers: { cookie: "better-auth.session_token=test-token" },
+    });
+
+    expect(response.status).toBe(204);
+    expect(endedSession).toBe("better-auth.session_token=test-token");
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 
   it("uses the shared identity HTTP contract", async () => {
