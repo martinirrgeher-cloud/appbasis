@@ -48,6 +48,7 @@ describe("ULC weekly self-registration and account switching", () => {
     expect(revokeIndex).toBeGreaterThan(countdownDecisionIndex);
     expect(signOutScript).toContain("resetCountdown();");
     expect(signOutScript).toContain('setTrainingPlanSessionIdentity("");');
+    expect(signOutScript).toContain("resetAttendanceSessionState();");
     expect(signOutScript).toContain("resetMasterdataSessionState();");
     expect(signOutScript).toContain('showView("login");');
     expect(signOutScript).toContain('elements.currentPassword.value = "";');
@@ -76,6 +77,33 @@ describe("ULC weekly self-registration and account switching", () => {
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "elements.trainerIdentityList?.replaceChildren();",
+    );
+  });
+
+  it("invalidates attendance and registration requests across account switches", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "let attendanceSessionGeneration = 0;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "attendanceSessionGeneration += 1;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "const generation = attendanceSessionGeneration;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "if (generation !== attendanceSessionGeneration) return;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "if (generation === attendanceSessionGeneration) {",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "selfRegistrationOptions = [];",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "kindertrainingSnapshot = null;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "elements.kindertrainingParticipants.replaceChildren();",
     );
   });
 
