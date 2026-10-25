@@ -235,4 +235,21 @@ describe("ULC E6C exercise catalog UI", () => {
 
     expect(result.status, result.stderr).toBe(0);
   });
+  it("invalidates catalog data and background detail loads across account switches", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "let exerciseCatalogSessionGeneration = 0;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "exerciseCatalogSessionGeneration += 1;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "generation !== exerciseCatalogSessionGeneration",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("exerciseCatalogItems = [];");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("exerciseCatalogGroups = [];");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "resetExerciseCatalogSessionState",
+    );
+  });
+
 });
