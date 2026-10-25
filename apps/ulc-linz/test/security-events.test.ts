@@ -114,7 +114,6 @@ describe("ULC Linz M5-F audit and security logging", () => {
       async getCurrentIdentity() {
         return null;
       },
-      async endSession() {},
       async changeRequiredPassword() {
         throw new Error("Backend details must not reach the security event.");
       },
@@ -321,7 +320,6 @@ describe("ULC Linz M5-F audit and security logging", () => {
       async getCurrentIdentity() {
         return null;
       },
-      async endSession() {},
       async changeRequiredPassword() {
         throw new Error("password backend unavailable");
       },
@@ -355,7 +353,6 @@ describe("ULC Linz M5-F audit and security logging", () => {
       async getCurrentIdentity() {
         return null;
       },
-      async endSession() {},
       async changeRequiredPassword() {
         return currentIdentity();
       },
