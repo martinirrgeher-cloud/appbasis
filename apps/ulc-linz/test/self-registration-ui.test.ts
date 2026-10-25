@@ -41,6 +41,9 @@ describe("ULC weekly self-registration and account switching", () => {
     expect(signOutScript).toContain("resetCountdown();");
     expect(signOutScript).toContain('setTrainingPlanSessionIdentity("");');
     expect(signOutScript).toContain('showView("login");');
+    expect(signOutScript).toContain('elements.currentPassword.value = "";');
+    expect(signOutScript).toContain('elements.newPassword.value = "";');
+    expect(signOutScript).toContain('elements.confirmPassword.value = "";');
     expect(signOutScript).not.toContain("window.location.reload();");
   });
 
