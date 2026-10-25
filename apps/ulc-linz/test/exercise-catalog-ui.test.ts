@@ -250,6 +250,12 @@ describe("ULC E6C exercise catalog UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "resetExerciseCatalogSessionState",
     );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "const generation = exerciseCatalogSessionGeneration;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "if (generation !== exerciseCatalogSessionGeneration) return;",
+    );
   });
 
 });
