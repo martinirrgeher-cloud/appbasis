@@ -2079,6 +2079,7 @@ function resetMasterdataSessionState() {
   trainerIdentityAdminReady = false;
   trainerIdentityLoading = false;
   trainerIdentityBindings = [];
+  elements.trainerUserForm?.reset();
   if (elements.trainerIdentityWorkspace) {
     elements.trainerIdentityWorkspace.hidden = true;
   }
