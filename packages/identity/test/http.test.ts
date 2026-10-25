@@ -139,7 +139,7 @@ describe("identity HTTP adapter", () => {
 
   it("expires the browser cookie when the server session is already invalid", async () => {
     const identity = identityService();
-    vi.mocked(identity.endSession).mockRejectedValueOnce(
+    vi.mocked(identity.endSession!).mockRejectedValueOnce(
       new IdentityError("SESSION_INVALID", "already expired"),
     );
     const handlers = createIdentityHttpHandlers({ identity, secureCookies: true });
