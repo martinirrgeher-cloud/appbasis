@@ -30,6 +30,8 @@ describe("ULC weekly self-registration and account switching", () => {
       "const dates = registrationWeekDates(weekStart);",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain("Promise.all(");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("new Map([[probeDate, probe]])");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("prefetched.has(sessionDate)");
     expect(ULC_LINZ_APP_SCRIPT).toContain("Array.from({ length: 7 }");
     expect(ULC_LINZ_APP_SCRIPT).toContain("offset * 7");
     expect(ULC_LINZ_APP_CSS).toContain(".registration-week-nav {");
