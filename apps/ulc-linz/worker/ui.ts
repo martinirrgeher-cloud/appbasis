@@ -64,6 +64,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
       </main>
 
       <div id="app-view" hidden>
+        <p class="message message--error app-session-message" id="app-session-message" role="alert" hidden></p>
         <nav class="app-nav" aria-label="Hauptnavigation">
           <div class="app-nav__primary" id="app-nav-primary">
             <button class="app-nav__link is-active" type="button" data-nav-view="home" data-nav-priority="0">Start</button>
@@ -775,6 +776,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .message { margin: 8px 0 0; padding: 9px 10px; border-radius: var(--control-radius); font-size: .84rem; }
 .message--error { background: var(--danger-surface); color: var(--danger); }
 .message--success { background: #dcfce7; color: #166534; }
+.app-session-message {
+  position: fixed;
+  right: 12px;
+  bottom: 66px;
+  left: 12px;
+  z-index: 30;
+  width: min(calc(100% - 24px), 52rem);
+  margin: 0 auto;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 16%);
+}
 .app-nav {
   position: fixed;
   right: 0;
@@ -1514,6 +1525,7 @@ const elements = {
   passwordMessage: document.querySelector("#password-message"),
   passwordSignOut: document.querySelector("#password-sign-out"),
   appSignOut: document.querySelector("#app-sign-out"),
+  appSessionMessage: document.querySelector("#app-session-message"),
   welcomeEyebrow: document.querySelector("#welcome-eyebrow"),
   appMessage: document.querySelector("#app-message"),
   countdownQuickAction: document.querySelector("#countdown-quick-action"),
@@ -2014,15 +2026,15 @@ async function handleSignOut() {
   busy = true;
   if (elements.appSignOut) elements.appSignOut.disabled = true;
   if (elements.passwordSignOut) elements.passwordSignOut.disabled = true;
-  showMessage(elements.appMessage, "");
+  showMessage(elements.appSessionMessage, "");
+  showMessage(elements.passwordMessage, "");
   try {
     await requestJson("/api/auth/sign-out", { method: "POST" });
     window.location.reload();
   } catch {
-    showMessage(
-      elements.appMessage,
-      "Abmelden ist fehlgeschlagen. Bitte erneut versuchen.",
-    );
+    const message = "Abmelden ist fehlgeschlagen. Bitte erneut versuchen.";
+    showMessage(elements.appSessionMessage, message);
+    showMessage(elements.passwordMessage, message);
     busy = false;
     if (elements.appSignOut) elements.appSignOut.disabled = false;
     if (elements.passwordSignOut) elements.passwordSignOut.disabled = false;
