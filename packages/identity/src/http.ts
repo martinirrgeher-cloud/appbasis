@@ -64,12 +64,8 @@ export function createIdentityHttpHandlers(
 
   async function signOut(request: Request): Promise<Response> {
     const sessionToken = requestCookie(request);
-    if (sessionToken === null) return sessionInvalid();
-
-    try {
-      await options.identity.endSession(sessionToken);
-    } catch (error) {
-      return identityErrorResponse(error);
+    if (sessionToken === null) {
+      return new Response(null, { status: 204 });
     }
 
     const headers = new Headers();
@@ -77,6 +73,20 @@ export function createIdentityHttpHandlers(
     if (cookieName !== null) {
       headers.set("Set-Cookie", expiredSessionCookie(cookieName, secureCookies));
     }
+
+    try {
+      await options.identity.endSession(sessionToken);
+    } catch (error) {
+      if (
+        error instanceof IdentityError &&
+        (error.code === "SESSION_INVALID" ||
+          error.code === "IDENTITY_STATE_MISSING")
+      ) {
+        return new Response(null, { status: 204, headers });
+      }
+      return identityErrorResponse(error);
+    }
+
     return new Response(null, { status: 204, headers });
   }
 
