@@ -1743,6 +1743,7 @@ let kindertrainingLoading = false;
 let kindertrainingGroups = [];
 let kindertrainingSnapshot = null;
 let masterdataLoading = false;
+let masterdataSessionGeneration = 0;
 let masterdataExchangeBusy = false;
 let masterdataImportPreviewData = null;
 let masterdataImportPreviewToken = null;
@@ -2022,12 +2023,74 @@ async function handlePasswordChange(event) {
   }
 }
 
+function resetMasterdataSessionState() {
+  masterdataSessionGeneration += 1;
+  masterdataReady = false;
+  masterdataCanEdit = false;
+  masterdataLoading = false;
+  masterdataExchangeBusy = false;
+  masterdataSnapshot = null;
+  masterdataEdit = null;
+  masterdataContactEdit = null;
+  masterdataSwipeStart = null;
+
+  closeMasterdataImportPreview();
+  closeMasterdataAthleteOverlay();
+  closeMasterdataTrainerOverlay();
+  closeMasterdataGroupOverlay();
+
+  trainerIdentityAdminReady = false;
+  trainerIdentityLoading = false;
+  trainerIdentityBindings = [];
+  if (elements.trainerIdentityWorkspace) {
+    elements.trainerIdentityWorkspace.hidden = true;
+  }
+  elements.trainerIdentityList?.replaceChildren();
+  setTrainerIdentityControlsDisabled(false);
+
+  elements.athleteList?.replaceChildren();
+  elements.trainerList?.replaceChildren();
+  elements.groupList?.replaceChildren();
+  if (elements.athleteCount) elements.athleteCount.textContent = "(0)";
+  if (elements.trainerCount) elements.trainerCount.textContent = "(0)";
+  if (elements.groupCount) elements.groupCount.textContent = "(0)";
+  if (elements.masterdataImportFile) elements.masterdataImportFile.value = "";
+  elements.masterdataImportSummary?.replaceChildren();
+  elements.masterdataImportIssues?.replaceChildren();
+  elements.masterdataImportRows?.replaceChildren();
+
+  showMessage(elements.masterdataMessage, "");
+  showMessage(elements.masterdataSuccess, "");
+  showMessage(elements.trainerIdentityMessage, "");
+  showMessage(elements.trainerIdentitySuccess, "");
+  refreshAppAvailability();
+}
+
 async function handleSignOut() {
   if (busy) return;
 
+  if (masterdataExchangeBusy || trainerIdentityLoading) {
+    showMessage(
+      elements.appSessionMessage,
+      "In den Stammdaten läuft noch ein Vorgang. Bitte zuerst abschließen lassen.",
+    );
+    return;
+  }
   if (
     typeof closeTrainingPlanEditor === "function" &&
     !(await closeTrainingPlanEditor(false))
+  ) {
+    return;
+  }
+  if (
+    typeof prepareTrainingBlockForSessionEnd === "function" &&
+    !(await prepareTrainingBlockForSessionEnd())
+  ) {
+    return;
+  }
+  if (
+    typeof prepareExerciseCatalogForSessionEnd === "function" &&
+    !prepareExerciseCatalogForSessionEnd()
   ) {
     return;
   }
@@ -2049,6 +2112,7 @@ async function handleSignOut() {
     await requestJson("/api/auth/sign-out", { method: "POST" });
     resetCountdown();
     setTrainingPlanSessionIdentity("");
+    resetMasterdataSessionState();
     setAppNavMoreOpen(false);
     showView("login");
     if (elements.loginPassword) elements.loginPassword.value = "";
@@ -3764,10 +3828,12 @@ async function loadMasterdata(force = false) {
     renderMasterdata(masterdataSnapshot);
     return true;
   }
+  const generation = masterdataSessionGeneration;
   masterdataLoading = true;
   showMessage(elements.masterdataMessage, "");
   try {
     const payload = await requestJson("/api/modules/athletes/masterdata");
+    if (generation !== masterdataSessionGeneration) return false;
     const snapshot = payload?.masterdata;
     if (
       !Array.isArray(snapshot?.athletes) ||
@@ -3783,6 +3849,7 @@ async function loadMasterdata(force = false) {
     renderMasterdata(snapshot);
     return true;
   } catch (error) {
+    if (generation !== masterdataSessionGeneration) return false;
     masterdataSnapshot = null;
     showMessage(
       elements.masterdataMessage,
@@ -3792,7 +3859,9 @@ async function loadMasterdata(force = false) {
     );
     return false;
   } finally {
-    masterdataLoading = false;
+    if (generation === masterdataSessionGeneration) {
+      masterdataLoading = false;
+    }
   }
 }
 
@@ -4174,19 +4243,23 @@ async function fetchTrainerIdentityBindings() {
 
 async function loadTrainerIdentityAdmin() {
   if (trainerIdentityLoading) return;
+  const generation = masterdataSessionGeneration;
   trainerIdentityLoading = true;
   trainerIdentityAdminReady = false;
   setTrainerIdentityControlsDisabled(true);
   showMessage(elements.trainerIdentityMessage, "");
   showMessage(elements.trainerIdentitySuccess, "");
   try {
-    trainerIdentityBindings = await fetchTrainerIdentityBindings();
+    const bindings = await fetchTrainerIdentityBindings();
+    if (generation !== masterdataSessionGeneration) return;
+    trainerIdentityBindings = bindings;
     trainerIdentityAdminReady = true;
     if (elements.trainerIdentityWorkspace) {
       elements.trainerIdentityWorkspace.hidden = false;
     }
     renderTrainerIdentityAdmin();
   } catch (error) {
+    if (generation !== masterdataSessionGeneration) return;
     trainerIdentityBindings = [];
     if (elements.trainerIdentityWorkspace) {
       elements.trainerIdentityWorkspace.hidden = true;
@@ -4198,8 +4271,10 @@ async function loadTrainerIdentityAdmin() {
         : "Die Trainer-Benutzerzuordnung konnte nicht geladen werden.",
     );
   } finally {
-    trainerIdentityLoading = false;
-    setTrainerIdentityControlsDisabled(false);
+    if (generation === masterdataSessionGeneration) {
+      trainerIdentityLoading = false;
+      setTrainerIdentityControlsDisabled(false);
+    }
   }
 }
 
