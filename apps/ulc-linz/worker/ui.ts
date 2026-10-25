@@ -511,72 +511,45 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <section class="hero">
               <p class="eyebrow">Training</p>
               <h1>Anwesenheit</h1>
-              <p class="summary">Training auswählen, Voranmeldungen prüfen und die tatsächliche Anwesenheit erfassen.</p>
+              <p class="summary">Die ganze Trainingswoche im Blick: Voranmeldungen prüfen und die tatsächliche Anwesenheit gesammelt erfassen.</p>
             </section>
 
             <p class="message message--error" id="kindertraining-message" role="alert" hidden></p>
             <p class="message message--success" id="kindertraining-success" role="status" hidden></p>
 
-            <section class="card kindertraining-selector">
-              <div class="settings-grid">
-                <label>Trainingsgruppe
-                  <select id="kindertraining-group" required>
-                    <option value="">Gruppe wählen</option>
-                  </select>
-                </label>
-                <label>Datum
-                  <input id="kindertraining-date" type="date" required />
-                </label>
+            <section class="card kindertraining-week-toolbar">
+              <label>Trainingsgruppe
+                <select id="kindertraining-group" required>
+                  <option value="">Gruppe wählen</option>
+                </select>
+              </label>
+              <div class="kindertraining-week-nav">
+                <button class="button button--secondary kindertraining-week-arrow" id="kindertraining-week-prev" type="button" aria-label="Vorherige Woche">‹</button>
+                <div class="kindertraining-week-title">
+                  <strong id="kindertraining-week-label">Diese Woche</strong>
+                  <small>Montag bis Sonntag</small>
+                </div>
+                <button class="button button--secondary kindertraining-week-arrow" id="kindertraining-week-next" type="button" aria-label="Nächste Woche">›</button>
               </div>
-              <button class="button button--secondary" id="kindertraining-load" type="button">Training laden</button>
+              <div class="kindertraining-week-actions">
+                <button class="button button--secondary" id="kindertraining-week-current" type="button">Diese Woche</button>
+                <button class="button button--secondary" id="kindertraining-week-reload" type="button">↻ Neu laden</button>
+              </div>
             </section>
 
-            <section class="kindertraining-session" id="kindertraining-session" hidden>
-              <section class="card kindertraining-session-card">
-                <div class="section-heading">
-                  <div>
-                    <p class="eyebrow">Trainingseinheit</p>
-                    <h2 id="kindertraining-title">Anwesenheit</h2>
-                    <p class="settings-note" id="kindertraining-mode"></p>
-                  </div>
-                  <span id="kindertraining-save-state">Noch nicht gespeichert</span>
+            <section class="kindertraining-week" id="kindertraining-week" hidden>
+              <div class="card kindertraining-week-savebar">
+                <div>
+                  <strong id="kindertraining-week-state">Gespeichert</strong>
+                  <small>Voranmeldung und Anwesenheit werden getrennt dargestellt.</small>
                 </div>
-
-                <div class="settings-grid">
-                  <label>Status
-                    <select id="kindertraining-state">
-                      <option value="scheduled">Geplant</option>
-                      <option value="cancelled">Abgesagt</option>
-                    </select>
-                  </label>
-                  <label class="kindertraining-note-label">Notiz
-                    <textarea id="kindertraining-note" maxlength="3000" rows="3" placeholder="Optional"></textarea>
-                  </label>
-                </div>
-              </section>
-
-              <section class="card kindertraining-attendance-card">
-                <div class="section-heading">
-                  <div>
-                    <p class="eyebrow">Anwesenheit</p>
-                    <h2>Teilnehmer</h2>
-                  </div>
-                  <span id="kindertraining-count">0</span>
-                </div>
-
-                <div class="kindertraining-summary" id="kindertraining-summary" aria-live="polite"></div>
-                <div class="kindertraining-bulk-actions" aria-label="Anwesenheit gesammelt setzen">
-                  <button class="button button--secondary" id="kindertraining-all-present" type="button">Alle anwesend</button>
-                  <button class="button button--secondary" id="kindertraining-all-open" type="button">Alle offen</button>
-                </div>
-                <div class="kindertraining-participants" id="kindertraining-participants" aria-live="polite"></div>
-              </section>
-
-              <button class="button button--primary kindertraining-save" id="kindertraining-save" type="button">Training speichern</button>
+                <button class="button button--primary" id="kindertraining-week-save" type="button" disabled>Woche speichern</button>
+              </div>
+              <div class="kindertraining-week-days" id="kindertraining-week-days" aria-live="polite"></div>
             </section>
           </section>
 
-${ULC_EXERCISE_CATALOG_HTML}
+          ${ULC_EXERCISE_CATALOG_HTML}
 ${ULC_TRAINING_BLOCKS_HTML}
 ${ULC_TRAINING_PLANS_HTML}
 
@@ -1503,6 +1476,184 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 ${ULC_EXERCISE_CATALOG_CSS}
 ${ULC_TRAINING_BLOCKS_CSS}
 ${ULC_TRAINING_PLANS_CSS}
+
+.kindertraining-week-toolbar {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 12px;
+}
+
+.kindertraining-week-nav {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.kindertraining-week-arrow {
+  min-width: 44px;
+  padding-inline: 0;
+  font-size: 1.25rem;
+}
+
+.kindertraining-week-title {
+  min-width: 0;
+  text-align: center;
+}
+
+.kindertraining-week-title strong,
+.kindertraining-week-title small {
+  display: block;
+}
+
+.kindertraining-week-title small {
+  margin-top: 2px;
+  color: var(--secondary);
+  font-size: .7rem;
+}
+
+.kindertraining-week-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.kindertraining-week {
+  display: grid;
+  gap: 10px;
+}
+
+.kindertraining-week-savebar {
+  position: sticky;
+  top: 6px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.kindertraining-week-savebar strong,
+.kindertraining-week-savebar small {
+  display: block;
+}
+
+.kindertraining-week-savebar small {
+  margin-top: 2px;
+  color: var(--secondary);
+  font-size: .7rem;
+}
+
+.kindertraining-week-savebar .button {
+  flex: 0 0 auto;
+}
+
+.kindertraining-week-days {
+  display: grid;
+  gap: 8px;
+}
+
+.kindertraining-week-day {
+  overflow: hidden;
+  padding: 0;
+}
+
+.kindertraining-day-toggle {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(92px, .7fr) minmax(0, 1.8fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: white;
+  color: inherit;
+  padding: 11px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kindertraining-day-title strong,
+.kindertraining-day-title small {
+  display: block;
+}
+
+.kindertraining-day-title small {
+  margin-top: 2px;
+  color: var(--secondary);
+  font-size: .7rem;
+}
+
+.kindertraining-day-registration-summary {
+  min-width: 0;
+  color: var(--secondary);
+  font-size: .72rem;
+  line-height: 1.35;
+}
+
+.kindertraining-day-marker {
+  font-weight: 900;
+  color: var(--secondary);
+}
+
+.kindertraining-day-details {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.kindertraining-day-details > :first-child {
+  margin-top: 10px;
+}
+
+.kindertraining-day-session-controls {
+  display: grid;
+  grid-template-columns: minmax(100px, .6fr) minmax(0, 1.4fr);
+  gap: 8px;
+}
+
+.kindertraining-day-session-controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--secondary);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.kindertraining-day-session-controls input,
+.kindertraining-day-session-controls select {
+  width: 100%;
+}
+
+.kindertraining-week-empty {
+  padding: 18px;
+  color: var(--secondary);
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .kindertraining-day-toggle {
+    grid-template-columns: minmax(80px, .8fr) minmax(0, 1.8fr) auto;
+  }
+
+  .kindertraining-day-registration-summary {
+    font-size: .67rem;
+  }
+
+  .kindertraining-day-session-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .kindertraining-week-savebar {
+    align-items: stretch;
+  }
+
+  .kindertraining-week-savebar .button {
+    min-width: 108px;
+  }
+}
 `;
 
 export const ULC_LINZ_APP_SCRIPT = `const SETTINGS_KEY = "ulc-linz.countdown.settings.v1";
@@ -1549,6 +1700,15 @@ const elements = {
   kindertrainingMessage: document.querySelector("#kindertraining-message"),
   kindertrainingSuccess: document.querySelector("#kindertraining-success"),
   kindertrainingGroup: document.querySelector("#kindertraining-group"),
+  kindertrainingWeekPrev: document.querySelector("#kindertraining-week-prev"),
+  kindertrainingWeekNext: document.querySelector("#kindertraining-week-next"),
+  kindertrainingWeekCurrent: document.querySelector("#kindertraining-week-current"),
+  kindertrainingWeekReload: document.querySelector("#kindertraining-week-reload"),
+  kindertrainingWeekLabel: document.querySelector("#kindertraining-week-label"),
+  kindertrainingWeek: document.querySelector("#kindertraining-week"),
+  kindertrainingWeekState: document.querySelector("#kindertraining-week-state"),
+  kindertrainingWeekDays: document.querySelector("#kindertraining-week-days"),
+  kindertrainingWeekSave: document.querySelector("#kindertraining-week-save"),
   kindertrainingDate: document.querySelector("#kindertraining-date"),
   kindertrainingLoad: document.querySelector("#kindertraining-load"),
   kindertrainingSession: document.querySelector("#kindertraining-session"),
@@ -1736,13 +1896,20 @@ let masterdataCanEdit = false;
 let attendanceSessionGeneration = 0;
 let selfRegistrationReady = false;
 let selfRegistrationLoading = false;
-let selfRegistrationSavingKey = null;
+let selfRegistrationSavingKeys = new Set();
 let selfRegistrationWeekStart = "";
 let selfRegistrationOptions = [];
 let kindertrainingReady = false;
 let kindertrainingLoading = false;
 let kindertrainingGroups = [];
 let kindertrainingSnapshot = null;
+let kindertrainingWeekStart = "";
+let kindertrainingWeekSnapshots = [];
+let kindertrainingWeekDirtyDates = new Set();
+let kindertrainingWeekExpandedDates = new Set();
+let kindertrainingWeekSaving = false;
+let kindertrainingWeekLoadId = 0;
+let kindertrainingLoadedGroupId = "";
 let masterdataLoading = false;
 let masterdataSessionGeneration = 0;
 let masterdataExchangeBusy = false;
@@ -1877,15 +2044,15 @@ elements.registrationWeekCurrent?.addEventListener("click", () => void moveSelfR
 elements.registrationList?.addEventListener("click", (event) => {
   void handleSelfRegistrationClick(event);
 });
-elements.kindertrainingLoad?.addEventListener("click", () => void loadKindertraining());
-elements.kindertrainingSave?.addEventListener("click", () => void saveKindertraining());
-elements.kindertrainingAllPresent?.addEventListener("click", () => setAllKindertrainingStatuses("present"));
-elements.kindertrainingAllOpen?.addEventListener("click", () => setAllKindertrainingStatuses("open"));
-elements.kindertrainingGroup?.addEventListener("change", resetKindertrainingSelection);
-elements.kindertrainingDate?.addEventListener("change", resetKindertrainingSelection);
-elements.kindertrainingParticipants?.addEventListener("click", handleKindertrainingStatusClick);
-elements.kindertrainingState?.addEventListener("change", markKindertrainingDirty);
-elements.kindertrainingNote?.addEventListener("input", markKindertrainingDirty);
+elements.kindertrainingWeekPrev?.addEventListener("click", () => void moveKindertrainingWeek(-1));
+elements.kindertrainingWeekNext?.addEventListener("click", () => void moveKindertrainingWeek(1));
+elements.kindertrainingWeekCurrent?.addEventListener("click", () => void moveKindertrainingWeek(0));
+elements.kindertrainingWeekReload?.addEventListener("click", () => void reloadKindertrainingWeek());
+elements.kindertrainingWeekSave?.addEventListener("click", () => void saveKindertrainingWeek());
+elements.kindertrainingGroup?.addEventListener("change", () => void handleKindertrainingWeekGroupChange());
+elements.kindertrainingWeekDays?.addEventListener("click", handleKindertrainingWeekClick);
+elements.kindertrainingWeekDays?.addEventListener("change", handleKindertrainingWeekChange);
+elements.kindertrainingWeekDays?.addEventListener("input", handleKindertrainingWeekInput);
 for (const control of document.querySelectorAll("[data-masterdata-tab]")) {
   control.addEventListener("click", () => showMasterdataTab(control.dataset.masterdataTab || "athletes"));
 }
@@ -2029,7 +2196,7 @@ function resetAttendanceSessionState() {
 
   selfRegistrationReady = false;
   selfRegistrationLoading = false;
-  selfRegistrationSavingKey = null;
+  selfRegistrationSavingKeys = new Set();
   selfRegistrationWeekStart = "";
   selfRegistrationOptions = [];
   showMessage(elements.registrationMessage, "");
@@ -2041,7 +2208,16 @@ function resetAttendanceSessionState() {
   kindertrainingLoading = false;
   kindertrainingGroups = [];
   kindertrainingSnapshot = null;
+  kindertrainingWeekStart = "";
+  kindertrainingWeekSnapshots = [];
+  kindertrainingWeekDirtyDates = new Set();
+  kindertrainingWeekExpandedDates = new Set();
+  kindertrainingWeekSaving = false;
+  kindertrainingWeekLoadId += 1;
+  kindertrainingLoadedGroupId = "";
   renderKindertrainingGroups();
+  renderKindertrainingWeekLabel();
+  renderKindertrainingWeek();
   if (elements.kindertrainingSession) {
     elements.kindertrainingSession.hidden = true;
   }
@@ -2206,7 +2382,7 @@ async function bootstrapSelfRegistration() {
   const generation = attendanceSessionGeneration;
   selfRegistrationReady = false;
   selfRegistrationLoading = false;
-  selfRegistrationSavingKey = null;
+  selfRegistrationSavingKeys = new Set();
   selfRegistrationWeekStart = localWeekStart(new Date());
   selfRegistrationOptions = [];
   renderSelfRegistrationWeekLabel();
@@ -2415,7 +2591,11 @@ function renderSelfRegistration() {
       const current = document.createElement("span");
       current.className = "registration-current";
       current.dataset.intention = option.intention;
-      current.textContent = selfRegistrationLabel(option.intention);
+      const optionKey = option.group.id + "|" + option.sessionDate;
+      const optionSaving = selfRegistrationSavingKeys.has(optionKey);
+      current.textContent =
+        selfRegistrationLabel(option.intention) +
+        (optionSaving ? " · speichert …" : "");
       head.append(identity, current);
       card.append(head);
 
@@ -2448,7 +2628,7 @@ function renderSelfRegistration() {
           option.intention === action.intention ? "true" : "false",
         );
         button.disabled =
-          selfRegistrationSavingKey !== null ||
+          optionSaving ||
           selfRegistrationLoading;
         actions.append(button);
       }
@@ -2465,8 +2645,7 @@ async function handleSelfRegistrationClick(event) {
   if (
     !control ||
     !selfRegistrationReady ||
-    selfRegistrationLoading ||
-    selfRegistrationSavingKey !== null
+    selfRegistrationLoading
   ) {
     return;
   }
@@ -2480,14 +2659,26 @@ async function handleSelfRegistrationClick(event) {
   ) {
     return;
   }
+  const optionKey = groupId + "|" + sessionDate;
+  if (selfRegistrationSavingKeys.has(optionKey)) return;
+
   const option = selfRegistrationOptions.find(
     (candidate) =>
       candidate.group.id === groupId &&
       candidate.sessionDate === sessionDate,
   );
-  if (!option || option.sessionState === "cancelled") return;
+  if (!option || option.sessionState === "cancelled" || option.intention === intention) {
+    return;
+  }
 
-  selfRegistrationSavingKey = groupId + "|" + sessionDate;
+  const previous = option;
+  selfRegistrationSavingKeys.add(optionKey);
+  selfRegistrationOptions = selfRegistrationOptions.map((candidate) =>
+    candidate.group.id === groupId &&
+    candidate.sessionDate === sessionDate
+      ? { ...candidate, intention }
+      : candidate,
+  );
   showMessage(elements.registrationMessage, "");
   showMessage(elements.registrationSuccess, "");
   renderSelfRegistration();
@@ -2499,7 +2690,7 @@ async function handleSelfRegistrationClick(event) {
       {
         method: "POST",
         body: JSON.stringify({
-          expectedRevision: option.revision,
+          expectedRevision: previous.revision,
           groupId,
           intention,
           sessionDate,
@@ -2529,6 +2720,12 @@ async function handleSelfRegistrationClick(event) {
     );
   } catch (error) {
     if (generation !== attendanceSessionGeneration) return;
+    selfRegistrationOptions = selfRegistrationOptions.map((candidate) =>
+      candidate.group.id === groupId &&
+      candidate.sessionDate === sessionDate
+        ? previous
+        : candidate,
+    );
     if (
       error?.status === 409 &&
       error?.code === "TRAINING_REGISTRATION_CONFLICT"
@@ -2537,7 +2734,7 @@ async function handleSelfRegistrationClick(event) {
         elements.registrationMessage,
         "Die Anmeldung wurde zwischenzeitlich geändert. Die aktuelle Woche wird neu geladen.",
       );
-      selfRegistrationSavingKey = null;
+      selfRegistrationSavingKeys.delete(optionKey);
       await loadSelfRegistration();
       return;
     }
@@ -2551,7 +2748,7 @@ async function handleSelfRegistrationClick(event) {
     );
   } finally {
     if (generation === attendanceSessionGeneration) {
-      selfRegistrationSavingKey = null;
+      selfRegistrationSavingKeys.delete(optionKey);
       renderSelfRegistration();
       refreshAppAvailability();
     }
@@ -2559,7 +2756,7 @@ async function handleSelfRegistrationClick(event) {
 }
 
 async function moveSelfRegistrationWeek(offset) {
-  if (selfRegistrationLoading || selfRegistrationSavingKey !== null) return;
+  if (selfRegistrationLoading || selfRegistrationSavingKeys.size > 0) return;
   selfRegistrationWeekStart =
     offset === 0
       ? localWeekStart(new Date())
@@ -2634,13 +2831,16 @@ async function bootstrapKindertraining() {
   kindertrainingReady = false;
   kindertrainingGroups = [];
   kindertrainingSnapshot = null;
+  kindertrainingWeekStart = localWeekStart(new Date());
+  kindertrainingWeekSnapshots = [];
+  kindertrainingWeekDirtyDates = new Set();
+  kindertrainingWeekExpandedDates = new Set();
+  kindertrainingLoadedGroupId = "";
   refreshAppAvailability();
   showMessage(elements.kindertrainingMessage, "");
   showMessage(elements.kindertrainingSuccess, "");
-  if (elements.kindertrainingSession) elements.kindertrainingSession.hidden = true;
-  if (elements.kindertrainingDate && !elements.kindertrainingDate.value) {
-    elements.kindertrainingDate.value = localIsoDate(new Date());
-  }
+  renderKindertrainingWeekLabel();
+  renderKindertrainingWeek();
 
   try {
     const payload = await requestJson("/api/modules/kindertraining");
@@ -2679,12 +2879,15 @@ async function bootstrapKindertraining() {
         elements.kindertrainingMessage,
         "Für die Anwesenheit ist noch keine aktive Trainingsgruppe angelegt.",
       );
+    } else if (elements.kindertrainingGroup?.value) {
+      await loadKindertrainingWeek();
     }
   } catch (error) {
     if (generation !== attendanceSessionGeneration) return;
     kindertrainingReady = false;
     kindertrainingGroups = [];
     renderKindertrainingGroups();
+    renderKindertrainingWeek();
     showMessage(
       elements.kindertrainingMessage,
       error?.status === 403
@@ -2696,6 +2899,601 @@ async function bootstrapKindertraining() {
     refreshAppAvailability();
   }
 }
+
+function renderKindertrainingWeekLabel() {
+  if (!elements.kindertrainingWeekLabel) return;
+  const start = kindertrainingWeekStart || localWeekStart(new Date());
+  const end = shiftIsoDate(start, 6);
+  elements.kindertrainingWeekLabel.textContent =
+    germanDate(start) + " – " + germanDate(end);
+}
+
+function withKindertrainingWeekDraft(snapshot) {
+  return {
+    ...snapshot,
+    draftState: snapshot.session?.state || "scheduled",
+    draftNote: snapshot.session?.note || "",
+  };
+}
+
+function kindertrainingRegistrationLabel(intention) {
+  return {
+    unknown: "Offen",
+    attending: "Kommt",
+    not_attending: "Abgesagt",
+    maybe: "Vielleicht",
+  }[intention] || "Offen";
+}
+
+function kindertrainingAttendanceLabel(status) {
+  return {
+    open: "Noch offen",
+    present: "Da",
+    excused: "Entschuldigt",
+    absent: "Fehlt",
+  }[status] || "Noch offen";
+}
+
+function kindertrainingWeekCounts(snapshot) {
+  const registration = { unknown: 0, attending: 0, not_attending: 0, maybe: 0 };
+  const attendance = { open: 0, present: 0, excused: 0, absent: 0 };
+  for (const participant of snapshot.participants) {
+    if (Object.prototype.hasOwnProperty.call(registration, participant.intention)) {
+      registration[participant.intention] += 1;
+    }
+    if (Object.prototype.hasOwnProperty.call(attendance, participant.status)) {
+      attendance[participant.status] += 1;
+    }
+  }
+  return { registration, attendance };
+}
+
+function renderKindertrainingWeek() {
+  const root = elements.kindertrainingWeek;
+  const container = elements.kindertrainingWeekDays;
+  if (!root || !container) return;
+  container.replaceChildren();
+
+  const groupId = elements.kindertrainingGroup?.value || "";
+  if (!kindertrainingReady || !groupId) {
+    root.hidden = true;
+    return;
+  }
+  root.hidden = false;
+
+  if (kindertrainingLoading) {
+    const loading = document.createElement("div");
+    loading.className = "card kindertraining-week-empty";
+    loading.textContent = "Anwesenheitswoche wird geladen …";
+    container.append(loading);
+    refreshKindertrainingWeekControls();
+    return;
+  }
+
+  if (kindertrainingWeekSnapshots.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "card kindertraining-week-empty";
+    empty.textContent = "Für diese Woche konnten keine Trainingstage geladen werden.";
+    container.append(empty);
+    refreshKindertrainingWeekControls();
+    return;
+  }
+
+  for (const snapshot of kindertrainingWeekSnapshots) {
+    const expanded = kindertrainingWeekExpandedDates.has(snapshot.sessionDate);
+    const counts = kindertrainingWeekCounts(snapshot);
+    const day = document.createElement("section");
+    day.className = "card kindertraining-week-day";
+    day.dataset.sessionDate = snapshot.sessionDate;
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "kindertraining-day-toggle";
+    toggle.dataset.kindertrainingDayToggle = snapshot.sessionDate;
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    toggle.disabled = kindertrainingWeekSaving;
+
+    const title = document.createElement("span");
+    title.className = "kindertraining-day-title";
+    const weekday = document.createElement("strong");
+    weekday.textContent = germanWeekday(snapshot.sessionDate);
+    const date = document.createElement("small");
+    date.textContent = germanDate(snapshot.sessionDate);
+    title.append(weekday, date);
+
+    const registrationSummary = document.createElement("span");
+    registrationSummary.className = "kindertraining-day-registration-summary";
+    registrationSummary.textContent =
+      "Voranmeldung: " +
+      counts.registration.attending +
+      " kommt · " +
+      counts.registration.maybe +
+      " vielleicht · " +
+      counts.registration.not_attending +
+      " abgesagt · " +
+      counts.registration.unknown +
+      " offen";
+
+    const marker = document.createElement("span");
+    marker.className = "kindertraining-day-marker";
+    marker.textContent = expanded ? "▴" : "▾";
+    toggle.append(title, registrationSummary, marker);
+    day.append(toggle);
+
+    if (!expanded) {
+      container.append(day);
+      continue;
+    }
+
+    const details = document.createElement("div");
+    details.className = "kindertraining-day-details";
+
+    const attendanceSummary = document.createElement("div");
+    attendanceSummary.className = "kindertraining-summary";
+    for (const item of [
+      ["present", "Da"],
+      ["excused", "Entschuldigt"],
+      ["absent", "Fehlt"],
+      ["open", "Noch offen"],
+    ]) {
+      const box = document.createElement("div");
+      box.className = "kindertraining-summary__item";
+      const count = document.createElement("strong");
+      count.textContent = String(counts.attendance[item[0]]);
+      const label = document.createElement("span");
+      label.textContent = item[1];
+      box.append(count, label);
+      attendanceSummary.append(box);
+    }
+    details.append(attendanceSummary);
+
+    const sessionControls = document.createElement("div");
+    sessionControls.className = "kindertraining-day-session-controls";
+    const stateLabel = document.createElement("label");
+    stateLabel.textContent = "Training";
+    const state = document.createElement("select");
+    state.dataset.kindertrainingStateDate = snapshot.sessionDate;
+    state.disabled = kindertrainingWeekSaving;
+    for (const item of [
+      ["scheduled", "Geplant"],
+      ["cancelled", "Abgesagt"],
+    ]) {
+      const option = document.createElement("option");
+      option.value = item[0];
+      option.textContent = item[1];
+      state.append(option);
+    }
+    state.value = snapshot.draftState || "scheduled";
+    stateLabel.append(state);
+
+    const noteLabel = document.createElement("label");
+    noteLabel.textContent = "Notiz";
+    const note = document.createElement("input");
+    note.type = "text";
+    note.maxLength = 3000;
+    note.placeholder = "Optional";
+    note.value = snapshot.draftNote || "";
+    note.dataset.kindertrainingNoteDate = snapshot.sessionDate;
+    note.disabled = kindertrainingWeekSaving;
+    noteLabel.append(note);
+    sessionControls.append(stateLabel, noteLabel);
+    details.append(sessionControls);
+
+    const bulk = document.createElement("div");
+    bulk.className = "kindertraining-bulk-actions";
+    for (const item of [
+      ["present", "Alle anwesend"],
+      ["open", "Alle offen"],
+    ]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "button button--secondary";
+      button.dataset.kindertrainingBulkDate = snapshot.sessionDate;
+      button.dataset.status = item[0];
+      button.textContent = item[1];
+      button.disabled = kindertrainingWeekSaving;
+      bulk.append(button);
+    }
+    details.append(bulk);
+
+    const participants = document.createElement("div");
+    participants.className = "kindertraining-participants";
+    if (snapshot.participants.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "kindertraining-empty";
+      empty.textContent = "Für diesen Tag sind keine Teilnehmer zugeordnet.";
+      participants.append(empty);
+    } else {
+      for (const participant of snapshot.participants) {
+        const row = document.createElement("article");
+        row.className = "kindertraining-participant";
+
+        const identity = document.createElement("div");
+        identity.className = "kindertraining-participant__identity";
+        const name = document.createElement("strong");
+        name.textContent = participant.lastName + ", " + participant.firstName;
+        const registration = document.createElement("span");
+        registration.className = "kindertraining-registration";
+        registration.dataset.intention = participant.intention;
+        registration.textContent =
+          "Voranmeldung: " + kindertrainingRegistrationLabel(participant.intention);
+        identity.append(name, registration);
+
+        const statuses = document.createElement("div");
+        statuses.className = "kindertraining-statuses";
+        statuses.setAttribute(
+          "aria-label",
+          "Anwesenheit für " + participant.firstName + " " + participant.lastName,
+        );
+        for (const status of ["open", "present", "excused", "absent"]) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "kindertraining-status";
+          button.dataset.kindertrainingDate = snapshot.sessionDate;
+          button.dataset.athleteId = participant.athleteId;
+          button.dataset.status = status;
+          button.setAttribute(
+            "aria-pressed",
+            participant.status === status ? "true" : "false",
+          );
+          button.textContent = kindertrainingAttendanceLabel(status);
+          button.disabled = kindertrainingWeekSaving;
+          statuses.append(button);
+        }
+        row.append(identity, statuses);
+        participants.append(row);
+      }
+    }
+    details.append(participants);
+    day.append(details);
+    container.append(day);
+  }
+  refreshKindertrainingWeekControls();
+}
+
+function refreshKindertrainingWeekControls() {
+  const hasGroup = Boolean(elements.kindertrainingGroup?.value);
+  const busyWeek = kindertrainingLoading || kindertrainingWeekSaving;
+  for (const control of [
+    elements.kindertrainingWeekPrev,
+    elements.kindertrainingWeekNext,
+    elements.kindertrainingWeekCurrent,
+    elements.kindertrainingWeekReload,
+  ]) {
+    if (control) control.disabled = !kindertrainingReady || !hasGroup || busyWeek;
+  }
+  if (elements.kindertrainingWeekSave) {
+    elements.kindertrainingWeekSave.disabled =
+      !kindertrainingReady ||
+      !hasGroup ||
+      busyWeek ||
+      kindertrainingWeekDirtyDates.size === 0;
+  }
+  if (elements.kindertrainingWeekState) {
+    elements.kindertrainingWeekState.textContent = kindertrainingWeekSaving
+      ? "Woche wird gespeichert …"
+      : kindertrainingWeekDirtyDates.size > 0
+        ? String(kindertrainingWeekDirtyDates.size) + " Tag(e) ungespeichert"
+        : "Gespeichert";
+  }
+}
+
+async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
+  if (!kindertrainingReady || kindertrainingLoading || kindertrainingWeekSaving) return;
+  const groupId = elements.kindertrainingGroup?.value || "";
+  if (!groupId) {
+    renderKindertrainingWeek();
+    return;
+  }
+  const generation = attendanceSessionGeneration;
+  const loadId = ++kindertrainingWeekLoadId;
+  const weekStart = kindertrainingWeekStart || localWeekStart(new Date());
+  const dates = registrationWeekDates(weekStart);
+  kindertrainingLoading = true;
+  showMessage(elements.kindertrainingMessage, "");
+  showMessage(elements.kindertrainingSuccess, "");
+  renderKindertrainingWeekLabel();
+  renderKindertrainingWeek();
+
+  try {
+    const payloads = await Promise.all(
+      dates.map((sessionDate) =>
+        requestJson(
+          "/api/modules/kindertraining/session?groupId=" +
+            encodeURIComponent(groupId) +
+            "&sessionDate=" +
+            encodeURIComponent(sessionDate),
+        ),
+      ),
+    );
+    if (
+      generation !== attendanceSessionGeneration ||
+      loadId !== kindertrainingWeekLoadId
+    ) return;
+
+    const snapshots = payloads.map((payload, index) => {
+      const snapshot = payload?.snapshot;
+      if (!isKindertrainingSnapshot(snapshot, groupId, dates[index])) {
+        throw new Error("INVALID_KINDERTRAINING_WEEK_SNAPSHOT");
+      }
+      return withKindertrainingWeekDraft(snapshot);
+    });
+
+    kindertrainingWeekStart = weekStart;
+    kindertrainingWeekSnapshots = snapshots;
+    kindertrainingWeekDirtyDates = new Set();
+    kindertrainingLoadedGroupId = groupId;
+
+    if (!preserveExpansion) {
+      kindertrainingWeekExpandedDates = new Set();
+      const today = localIsoDate(new Date());
+      const defaultDate = dates.includes(today) ? today : dates[0];
+      if (defaultDate) kindertrainingWeekExpandedDates.add(defaultDate);
+    } else {
+      kindertrainingWeekExpandedDates = new Set(
+        [...kindertrainingWeekExpandedDates].filter((date) => dates.includes(date)),
+      );
+      if (kindertrainingWeekExpandedDates.size === 0 && dates[0]) {
+        kindertrainingWeekExpandedDates.add(dates[0]);
+      }
+    }
+  } catch (error) {
+    if (
+      generation !== attendanceSessionGeneration ||
+      loadId !== kindertrainingWeekLoadId
+    ) return;
+    kindertrainingWeekSnapshots = [];
+    kindertrainingWeekDirtyDates = new Set();
+    kindertrainingLoadedGroupId = "";
+    showMessage(
+      elements.kindertrainingMessage,
+      error?.status === 403
+        ? "Für die Anwesenheit dieser Trainingsgruppe fehlt die Berechtigung."
+        : error?.status === 404
+          ? "Die Trainingsgruppe wurde nicht gefunden."
+          : "Die Anwesenheitswoche konnte nicht geladen werden.",
+    );
+  } finally {
+    if (
+      generation === attendanceSessionGeneration &&
+      loadId === kindertrainingWeekLoadId
+    ) {
+      kindertrainingLoading = false;
+      renderKindertrainingWeekLabel();
+      renderKindertrainingWeek();
+      refreshAppAvailability();
+    }
+  }
+}
+
+function discardKindertrainingWeekChanges() {
+  if (kindertrainingWeekDirtyDates.size === 0) return true;
+  return window.confirm(
+    "Es gibt ungespeicherte Anwesenheitsänderungen. Wirklich verwerfen?",
+  );
+}
+
+async function moveKindertrainingWeek(offset) {
+  if (kindertrainingLoading || kindertrainingWeekSaving) return;
+  if (!discardKindertrainingWeekChanges()) return;
+  kindertrainingWeekDirtyDates = new Set();
+  kindertrainingWeekStart =
+    offset === 0
+      ? localWeekStart(new Date())
+      : shiftIsoDate(
+          kindertrainingWeekStart || localWeekStart(new Date()),
+          offset * 7,
+        );
+  renderKindertrainingWeekLabel();
+  await loadKindertrainingWeek();
+}
+
+async function reloadKindertrainingWeek() {
+  if (kindertrainingLoading || kindertrainingWeekSaving) return;
+  if (!discardKindertrainingWeekChanges()) return;
+  kindertrainingWeekDirtyDates = new Set();
+  await loadKindertrainingWeek({ preserveExpansion: true });
+}
+
+async function handleKindertrainingWeekGroupChange() {
+  const nextGroupId = elements.kindertrainingGroup?.value || "";
+  if (
+    kindertrainingWeekDirtyDates.size > 0 &&
+    kindertrainingLoadedGroupId &&
+    nextGroupId !== kindertrainingLoadedGroupId &&
+    !discardKindertrainingWeekChanges()
+  ) {
+    if (elements.kindertrainingGroup) {
+      elements.kindertrainingGroup.value = kindertrainingLoadedGroupId;
+    }
+    return;
+  }
+  kindertrainingWeekDirtyDates = new Set();
+  kindertrainingWeekSnapshots = [];
+  kindertrainingWeekExpandedDates = new Set();
+  kindertrainingLoadedGroupId = "";
+  renderKindertrainingWeek();
+  if (nextGroupId) await loadKindertrainingWeek();
+}
+
+function updateKindertrainingWeekSnapshot(sessionDate, update) {
+  kindertrainingWeekSnapshots = kindertrainingWeekSnapshots.map((snapshot) =>
+    snapshot.sessionDate === sessionDate ? update(snapshot) : snapshot,
+  );
+}
+
+function markKindertrainingWeekDirty(sessionDate) {
+  kindertrainingWeekDirtyDates.add(sessionDate);
+  showMessage(elements.kindertrainingSuccess, "");
+  refreshKindertrainingWeekControls();
+}
+
+function handleKindertrainingWeekClick(event) {
+  if (kindertrainingLoading || kindertrainingWeekSaving) return;
+
+  const toggle = event.target?.closest?.("[data-kindertraining-day-toggle]");
+  if (toggle && elements.kindertrainingWeekDays?.contains(toggle)) {
+    const sessionDate = toggle.dataset.kindertrainingDayToggle || "";
+    if (kindertrainingWeekExpandedDates.has(sessionDate)) {
+      kindertrainingWeekExpandedDates.delete(sessionDate);
+    } else {
+      kindertrainingWeekExpandedDates.add(sessionDate);
+    }
+    renderKindertrainingWeek();
+    return;
+  }
+
+  const bulk = event.target?.closest?.("[data-kindertraining-bulk-date][data-status]");
+  if (bulk && elements.kindertrainingWeekDays?.contains(bulk)) {
+    const sessionDate = bulk.dataset.kindertrainingBulkDate || "";
+    const status = bulk.dataset.status || "";
+    if (!["open", "present"].includes(status)) return;
+    updateKindertrainingWeekSnapshot(sessionDate, (snapshot) => ({
+      ...snapshot,
+      participants: snapshot.participants.map((participant) => ({
+        ...participant,
+        status,
+      })),
+    }));
+    markKindertrainingWeekDirty(sessionDate);
+    renderKindertrainingWeek();
+    return;
+  }
+
+  const statusButton = event.target?.closest?.(
+    "[data-kindertraining-date][data-athlete-id][data-status]",
+  );
+  if (!statusButton || !elements.kindertrainingWeekDays?.contains(statusButton)) return;
+  const sessionDate = statusButton.dataset.kindertrainingDate || "";
+  const athleteId = statusButton.dataset.athleteId || "";
+  const status = statusButton.dataset.status || "";
+  if (!["open", "present", "excused", "absent"].includes(status)) return;
+
+  updateKindertrainingWeekSnapshot(sessionDate, (snapshot) => ({
+    ...snapshot,
+    participants: snapshot.participants.map((participant) =>
+      participant.athleteId === athleteId
+        ? { ...participant, status }
+        : participant,
+    ),
+  }));
+  markKindertrainingWeekDirty(sessionDate);
+  renderKindertrainingWeek();
+}
+
+function handleKindertrainingWeekChange(event) {
+  if (kindertrainingLoading || kindertrainingWeekSaving) return;
+  const control = event.target;
+  const sessionDate = control?.dataset?.kindertrainingStateDate || "";
+  if (!sessionDate) return;
+  const state = control.value;
+  if (!["scheduled", "cancelled"].includes(state)) return;
+  updateKindertrainingWeekSnapshot(sessionDate, (snapshot) => ({
+    ...snapshot,
+    draftState: state,
+  }));
+  markKindertrainingWeekDirty(sessionDate);
+}
+
+function handleKindertrainingWeekInput(event) {
+  if (kindertrainingLoading || kindertrainingWeekSaving) return;
+  const control = event.target;
+  const sessionDate = control?.dataset?.kindertrainingNoteDate || "";
+  if (!sessionDate) return;
+  updateKindertrainingWeekSnapshot(sessionDate, (snapshot) => ({
+    ...snapshot,
+    draftNote: control.value,
+  }));
+  markKindertrainingWeekDirty(sessionDate);
+}
+
+async function saveKindertrainingWeek() {
+  if (
+    !kindertrainingReady ||
+    kindertrainingLoading ||
+    kindertrainingWeekSaving ||
+    kindertrainingWeekDirtyDates.size === 0
+  ) {
+    return;
+  }
+
+  const generation = attendanceSessionGeneration;
+  const groupId = elements.kindertrainingGroup?.value || "";
+  const dirtySnapshots = kindertrainingWeekSnapshots.filter((snapshot) =>
+    kindertrainingWeekDirtyDates.has(snapshot.sessionDate),
+  );
+  if (!groupId || dirtySnapshots.length === 0) return;
+
+  kindertrainingWeekSaving = true;
+  showMessage(elements.kindertrainingMessage, "");
+  showMessage(elements.kindertrainingSuccess, "");
+  renderKindertrainingWeek();
+
+  try {
+    const results = await Promise.allSettled(
+      dirtySnapshots.map(async (snapshot) => {
+        const payload = await requestJson("/api/modules/kindertraining/session", {
+          method: "POST",
+          body: JSON.stringify({
+            groupId,
+            sessionDate: snapshot.sessionDate,
+            state: snapshot.draftState || "scheduled",
+            note: (snapshot.draftNote || "").trim() || null,
+            expectedRevision: snapshot.session?.revision ?? null,
+            attendance: snapshot.participants.map((participant) => ({
+              athleteId: participant.athleteId,
+              status: participant.status,
+            })),
+          }),
+        });
+        const saved = payload?.snapshot;
+        if (!isKindertrainingSnapshot(saved, groupId, snapshot.sessionDate)) {
+          throw new Error("INVALID_KINDERTRAINING_WEEK_SAVE");
+        }
+        return withKindertrainingWeekDraft(saved);
+      }),
+    );
+    if (generation !== attendanceSessionGeneration) return;
+
+    const failedDates = [];
+    let savedCount = 0;
+    results.forEach((result, index) => {
+      const sessionDate = dirtySnapshots[index].sessionDate;
+      if (result.status === "fulfilled") {
+        savedCount += 1;
+        kindertrainingWeekDirtyDates.delete(sessionDate);
+        updateKindertrainingWeekSnapshot(sessionDate, () => result.value);
+      } else {
+        failedDates.push(germanDate(sessionDate));
+      }
+    });
+
+    if (failedDates.length > 0) {
+      showMessage(
+        elements.kindertrainingMessage,
+        "Nicht alle Tage konnten gespeichert werden: " +
+          failedDates.join(", ") +
+          ". Die übrigen Änderungen bleiben markiert.",
+      );
+    }
+    if (savedCount > 0) {
+      showMessage(
+        elements.kindertrainingSuccess,
+        savedCount === 1
+          ? "1 Trainingstag wurde gespeichert."
+          : String(savedCount) + " Trainingstage wurden gespeichert.",
+        "success",
+      );
+    }
+  } finally {
+    if (generation === attendanceSessionGeneration) {
+      kindertrainingWeekSaving = false;
+      renderKindertrainingWeek();
+      refreshAppAvailability();
+    }
+  }
+}
+
 
 async function bootstrapCountdown() {
   countdownReady = false;
@@ -2847,7 +3645,7 @@ function refreshAppAvailability() {
   ]) {
     if (control) {
       control.disabled =
-        selfRegistrationLoading || selfRegistrationSavingKey !== null;
+        selfRegistrationLoading || selfRegistrationSavingKeys.size > 0;
     }
   }
   refreshTrainingBlockControls();
@@ -3371,6 +4169,11 @@ function setKindertrainingLoading(value) {
     elements.kindertrainingAllPresent,
     elements.kindertrainingAllOpen,
     elements.kindertrainingSave,
+    elements.kindertrainingWeekPrev,
+    elements.kindertrainingWeekNext,
+    elements.kindertrainingWeekCurrent,
+    elements.kindertrainingWeekReload,
+    elements.kindertrainingWeekSave,
   ]) {
     if (control) control.disabled = value;
   }
@@ -3379,6 +4182,7 @@ function setKindertrainingLoading(value) {
       button.disabled = value;
     }
   }
+  refreshKindertrainingWeekControls();
 }
 
 function localIsoDate(date) {
