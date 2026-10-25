@@ -10,6 +10,10 @@ describe("ULC weekly self-registration and account switching", () => {
   it("keeps sign-out directly reachable in the app and password-change view", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="app-sign-out"');
     expect(ULC_LINZ_APP_HTML).toContain('id="password-sign-out"');
+    expect(ULC_LINZ_APP_HTML).toContain("Abmelden / Benutzer wechseln");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "overflow.length > 0 || elements.appSignOut !== null",
+    );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       'requestJson("/api/auth/sign-out", { method: "POST" })',
     );
