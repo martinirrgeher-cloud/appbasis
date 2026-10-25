@@ -1897,6 +1897,7 @@ let attendanceSessionGeneration = 0;
 let selfRegistrationReady = false;
 let selfRegistrationLoading = false;
 let selfRegistrationSavingKeys = new Set();
+let selfRegistrationConflictReloadPending = false;
 let selfRegistrationWeekStart = "";
 let selfRegistrationOptions = [];
 let kindertrainingReady = false;
@@ -2197,6 +2198,7 @@ function resetAttendanceSessionState() {
   selfRegistrationReady = false;
   selfRegistrationLoading = false;
   selfRegistrationSavingKeys = new Set();
+  selfRegistrationConflictReloadPending = false;
   selfRegistrationWeekStart = "";
   selfRegistrationOptions = [];
   showMessage(elements.registrationMessage, "");
@@ -2730,12 +2732,11 @@ async function handleSelfRegistrationClick(event) {
       error?.status === 409 &&
       error?.code === "TRAINING_REGISTRATION_CONFLICT"
     ) {
+      selfRegistrationConflictReloadPending = true;
       showMessage(
         elements.registrationMessage,
-        "Die Anmeldung wurde zwischenzeitlich geändert. Die aktuelle Woche wird neu geladen.",
+        "Die Anmeldung wurde zwischenzeitlich geändert. Die aktuelle Woche wird nach den laufenden Speicherungen neu geladen.",
       );
-      selfRegistrationSavingKeys.delete(optionKey);
-      await loadSelfRegistration();
       return;
     }
     showMessage(
@@ -2751,6 +2752,14 @@ async function handleSelfRegistrationClick(event) {
       selfRegistrationSavingKeys.delete(optionKey);
       renderSelfRegistration();
       refreshAppAvailability();
+
+      if (
+        selfRegistrationConflictReloadPending &&
+        selfRegistrationSavingKeys.size === 0
+      ) {
+        selfRegistrationConflictReloadPending = false;
+        await loadSelfRegistration();
+      }
     }
   }
 }
