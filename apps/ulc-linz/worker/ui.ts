@@ -2141,6 +2141,7 @@ async function handleSignOut() {
     return;
   }
 
+  setAuthenticatedAppInteractionLocked(true);
   setBusy(true);
   if (elements.appSignOut) elements.appSignOut.disabled = true;
   if (elements.passwordSignOut) elements.passwordSignOut.disabled = true;
@@ -2166,6 +2167,7 @@ async function handleSignOut() {
     showMessage(elements.appSessionMessage, message);
     showMessage(elements.passwordMessage, message);
   } finally {
+    setAuthenticatedAppInteractionLocked(false);
     if (elements.appSignOut) elements.appSignOut.disabled = false;
     if (elements.passwordSignOut) elements.passwordSignOut.disabled = false;
     setBusy(false);
@@ -5881,6 +5883,17 @@ function setBusy(next) {
     control.disabled = next;
   }
   refreshControls();
+}
+
+function setAuthenticatedAppInteractionLocked(locked) {
+  if (!elements.appView) return;
+  if (locked) {
+    elements.appView.setAttribute("inert", "");
+    elements.appView.setAttribute("aria-busy", "true");
+    return;
+  }
+  elements.appView.removeAttribute("inert");
+  elements.appView.removeAttribute("aria-busy");
 }
 
 function showMessage(element, message) {
