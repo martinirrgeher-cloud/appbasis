@@ -1482,6 +1482,7 @@ function renderExerciseCatalogList() {
 
 async function openExerciseCatalogItem(id) {
   if (!exerciseCatalogReady || exerciseCatalogBusy) return;
+  const generation = exerciseCatalogSessionGeneration;
   setExerciseCatalogBusy(true);
   showMessage(elements.exerciseCatalogMessage, "");
   showMessage(elements.exerciseCatalogSuccess, "");
@@ -1489,12 +1490,14 @@ async function openExerciseCatalogItem(id) {
     const payload = await requestJson(
       "/api/modules/exercise-catalog/" + encodeURIComponent(id),
     );
+    if (generation !== exerciseCatalogSessionGeneration) return;
     if (!isExerciseCatalogItem(payload?.item)) {
       throw new Error("INVALID_EXERCISE_CATALOG_ITEM");
     }
     exerciseCatalogSelectedId = payload.item.id;
     populateExerciseCatalogEditor(payload.item);
   } catch (error) {
+    if (generation !== exerciseCatalogSessionGeneration) return;
     showMessage(
       elements.exerciseCatalogMessage,
       error?.status === 404
@@ -1502,7 +1505,9 @@ async function openExerciseCatalogItem(id) {
         : "Die Übung konnte nicht geladen werden.",
     );
   } finally {
-    setExerciseCatalogBusy(false);
+    if (generation === exerciseCatalogSessionGeneration) {
+      setExerciseCatalogBusy(false);
+    }
   }
 }
 
