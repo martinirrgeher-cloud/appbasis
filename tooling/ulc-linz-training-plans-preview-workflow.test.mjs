@@ -152,6 +152,18 @@ test("E7B9 remote acceptance is separately gated and pins the complete training-
     workflow,
     /ulc-linz-attendance-preview-acceptance\.mjs/,
   );
+  assert.match(
+    workflow,
+    /Remove obsolete Preview training groups/,
+  );
+  assert.match(
+    workflow,
+    /ULC_LINZ_PREVIEW_GROUP_CLEANUP_APPLY: "1"/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-preview-group-cleanup\.mjs/,
+  );
   for (const marker of [
     'id="registration-quick-action"',
     'id="registration-list"',

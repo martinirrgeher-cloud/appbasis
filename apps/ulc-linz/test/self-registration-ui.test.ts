@@ -146,10 +146,98 @@ describe("ULC weekly self-registration and account switching", () => {
       "candidate.group.id === groupId &&\n      candidate.sessionDate === sessionDate",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      "selfRegistrationSavingKey = groupId + \"|\" + sessionDate;",
+      'const optionKey = groupId + "|" + sessionDate;',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "selfRegistrationSavingKeys.add(optionKey);",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "? { ...candidate, intention }",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "sessionDate,\n        }),",
     );
+  });
+
+  it("keeps registration responsive while individual days save in the background", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "let selfRegistrationSavingKeys = new Set();",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "const optionSaving = selfRegistrationSavingKeys.has(optionKey);",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '(optionSaving ? " · speichert …" : "")',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "selfRegistrationSavingKeys.delete(optionKey);",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain(
+      "selfRegistrationSavingKey !== null",
+    );
+  });
+
+  it("defers conflict reloads until all concurrent registration saves settle", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "let selfRegistrationConflictReloadPending = false;",
+    );
+
+    const handlerStart = ULC_LINZ_APP_SCRIPT.indexOf(
+      "async function handleSelfRegistrationClick(event)",
+    );
+    const handlerEnd = ULC_LINZ_APP_SCRIPT.indexOf(
+      "\nasync function moveSelfRegistrationWeek",
+      handlerStart,
+    );
+    const handler = ULC_LINZ_APP_SCRIPT.slice(handlerStart, handlerEnd);
+    const conflictIndex = handler.indexOf(
+      "selfRegistrationConflictReloadPending = true;",
+    );
+    const deleteIndex = handler.lastIndexOf(
+      "selfRegistrationSavingKeys.delete(optionKey);",
+    );
+    const settledIndex = handler.indexOf(
+      "selfRegistrationSavingKeys.size === 0",
+      deleteIndex,
+    );
+    const reloadIndex = handler.indexOf(
+      "await loadSelfRegistration();",
+      settledIndex,
+    );
+
+    expect(conflictIndex).toBeGreaterThanOrEqual(0);
+    expect(deleteIndex).toBeGreaterThan(conflictIndex);
+    expect(settledIndex).toBeGreaterThan(deleteIndex);
+    expect(reloadIndex).toBeGreaterThan(settledIndex);
+    expect(handler).not.toContain(
+      "selfRegistrationSavingKeys.delete(optionKey);\n      await loadSelfRegistration();",
+    );
+  });
+
+  it("renders trainer attendance as a whole week with registration and actual attendance separated", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-prev"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-next"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-current"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-label"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-save"');
+    expect(ULC_LINZ_APP_HTML).not.toContain('id="kindertraining-date"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "kindertrainingWeekSnapshots = snapshots;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"Voranmeldung: " +',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"Voranmeldung: " + kindertrainingRegistrationLabel(participant.intention)',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "let kindertrainingWeekDirtyDates = new Set();",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Promise.allSettled(");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "kindertrainingWeekDirtyDates.add(sessionDate);",
+    );
+    expect(ULC_LINZ_APP_CSS).toContain(".kindertraining-week-savebar {");
+    expect(ULC_LINZ_APP_CSS).toContain("position: sticky;");
   });
 });
