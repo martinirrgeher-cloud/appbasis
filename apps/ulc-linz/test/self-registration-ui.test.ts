@@ -70,6 +70,9 @@ describe("ULC weekly self-registration and account switching", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("masterdataSnapshot = null;");
     expect(ULC_LINZ_APP_SCRIPT).toContain("trainerIdentityBindings = [];");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "elements.trainerUserForm?.reset();",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
       "if (generation !== masterdataSessionGeneration) return false;",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
