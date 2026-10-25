@@ -26,6 +26,12 @@ describe("ULC weekly self-registration and account switching", () => {
     const closeEditorIndex = signOutScript.indexOf(
       "await closeTrainingPlanEditor(false)",
     );
+    const closeBlockIndex = signOutScript.indexOf(
+      "await prepareTrainingBlockForSessionEnd()",
+    );
+    const closeExerciseIndex = signOutScript.indexOf(
+      "prepareExerciseCatalogForSessionEnd()",
+    );
     const countdownDecisionIndex = signOutScript.indexOf(
       "Der Countdown läuft noch. Wirklich abmelden und den Countdown beenden?",
     );
@@ -36,15 +42,41 @@ describe("ULC weekly self-registration and account switching", () => {
     expect(signOutStart).toBeGreaterThanOrEqual(0);
     expect(signOutEnd).toBeGreaterThan(signOutStart);
     expect(closeEditorIndex).toBeGreaterThanOrEqual(0);
-    expect(countdownDecisionIndex).toBeGreaterThan(closeEditorIndex);
+    expect(closeBlockIndex).toBeGreaterThan(closeEditorIndex);
+    expect(closeExerciseIndex).toBeGreaterThan(closeBlockIndex);
+    expect(countdownDecisionIndex).toBeGreaterThan(closeExerciseIndex);
     expect(revokeIndex).toBeGreaterThan(countdownDecisionIndex);
     expect(signOutScript).toContain("resetCountdown();");
     expect(signOutScript).toContain('setTrainingPlanSessionIdentity("");');
+    expect(signOutScript).toContain("resetMasterdataSessionState();");
     expect(signOutScript).toContain('showView("login");');
     expect(signOutScript).toContain('elements.currentPassword.value = "";');
     expect(signOutScript).toContain('elements.newPassword.value = "";');
     expect(signOutScript).toContain('elements.confirmPassword.value = "";');
     expect(signOutScript).not.toContain("window.location.reload();");
+  });
+
+  it("clears identity-scoped masterdata and invalidates stale loads on account switch", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "let masterdataSessionGeneration = 0;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "masterdataSessionGeneration += 1;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("masterdataSnapshot = null;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("trainerIdentityBindings = [];");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "if (generation !== masterdataSessionGeneration) return false;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "if (generation !== masterdataSessionGeneration) return;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "elements.athleteList?.replaceChildren();",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "elements.trainerIdentityList?.replaceChildren();",
+    );
   });
 
   it("shows a Monday-to-Sunday registration week with direct week navigation", () => {
