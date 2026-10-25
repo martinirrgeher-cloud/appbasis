@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { IdentityError } from "../src/errors";
 import { createIdentityHttpHandlers, type IdentityHttpService } from "../src/http";
 
 const currentIdentity = {
@@ -120,6 +121,40 @@ describe("identity HTTP adapter", () => {
     expect(response.headers.get("set-cookie")).toBe(
       "better-auth.session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure",
     );
+  });
+
+  it("treats an already missing session as successfully signed out", async () => {
+    const identity = identityService();
+    const handlers = createIdentityHttpHandlers({ identity });
+
+    const response = await handlers.signOut(
+      new Request("https://app.example/api/auth/sign-out", {
+        method: "POST",
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(identity.endSession).not.toHaveBeenCalled();
+  });
+
+  it("expires the browser cookie when the server session is already invalid", async () => {
+    const identity = identityService();
+    vi.mocked(identity.endSession).mockRejectedValueOnce(
+      new IdentityError("SESSION_INVALID", "already expired"),
+    );
+    const handlers = createIdentityHttpHandlers({ identity, secureCookies: true });
+
+    const response = await handlers.signOut(
+      new Request("https://app.example/api/auth/sign-out", {
+        method: "POST",
+        headers: {
+          cookie: "better-auth.session_token=expired-value",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
   });
 
   it("rejects an invalid password-change idempotency key before identity mutation", async () => {
