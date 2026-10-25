@@ -45,7 +45,6 @@ const identity: IdentityHttpService = {
       ? currentIdentity
       : null;
   },
-  async endSession() {},
   async changeRequiredPassword() {
     return currentIdentity;
   },
