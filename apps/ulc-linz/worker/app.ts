@@ -52,13 +52,6 @@ export function createGeneratedApp(dependencies: GeneratedAppDependencies) {
       dependencies.securityEvents,
     ),
   );
-  app.post("/api/auth/sign-out", async (context) =>
-    identityResponseWithSecurityLogging(
-      "sign-out",
-      identityHttp.signOut(context.req.raw),
-      dependencies.securityEvents,
-    ),
-  );
   app.post("/api/auth/change-required-password", async (context) =>
     identityResponseWithSecurityLogging(
       "change-required-password",
