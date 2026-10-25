@@ -33,6 +33,27 @@ describe("ULC training block planning-aligned UI", () => {
     );
   });
 
+  it("invalidates organization-scoped block requests across account switches", () => {
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
+      "let trainingBlockSessionGeneration = 0;",
+    );
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
+      "trainingBlockSessionGeneration += 1;",
+    );
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
+      "trainingBlockAudienceRequestId += 1;",
+    );
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
+      "generation !== trainingBlockSessionGeneration",
+    );
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
+      "trainingBlocks = [];",
+    );
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
+      "trainingBlockAudiences = [];",
+    );
+  });
+
   it("keeps standard prescription overrides when building a block payload", () => {
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
       '...item.parameters.map((parameter) => parameter.key),\n              "sets",\n              "repetitions"',
