@@ -101,7 +101,6 @@ const identity: IdentityHttpService = {
     if (sessionToken === deniedIdentity.sessionToken) return deniedIdentity;
     return null;
   },
-  async endSession() {},
   async changeRequiredPassword() {
     return currentIdentity;
   },
