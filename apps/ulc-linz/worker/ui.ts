@@ -2052,6 +2052,9 @@ async function handleSignOut() {
     setAppNavMoreOpen(false);
     showView("login");
     if (elements.loginPassword) elements.loginPassword.value = "";
+    if (elements.currentPassword) elements.currentPassword.value = "";
+    if (elements.newPassword) elements.newPassword.value = "";
+    if (elements.confirmPassword) elements.confirmPassword.value = "";
   } catch {
     const message = "Abmelden ist fehlgeschlagen. Bitte erneut versuchen.";
     showMessage(elements.appSessionMessage, message);
