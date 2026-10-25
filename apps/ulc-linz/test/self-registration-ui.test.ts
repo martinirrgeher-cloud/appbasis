@@ -177,6 +177,43 @@ describe("ULC weekly self-registration and account switching", () => {
     );
   });
 
+  it("defers conflict reloads until all concurrent registration saves settle", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "let selfRegistrationConflictReloadPending = false;",
+    );
+
+    const handlerStart = ULC_LINZ_APP_SCRIPT.indexOf(
+      "async function handleSelfRegistrationClick(event)",
+    );
+    const handlerEnd = ULC_LINZ_APP_SCRIPT.indexOf(
+      "\nasync function moveSelfRegistrationWeek",
+      handlerStart,
+    );
+    const handler = ULC_LINZ_APP_SCRIPT.slice(handlerStart, handlerEnd);
+    const conflictIndex = handler.indexOf(
+      "selfRegistrationConflictReloadPending = true;",
+    );
+    const deleteIndex = handler.lastIndexOf(
+      "selfRegistrationSavingKeys.delete(optionKey);",
+    );
+    const settledIndex = handler.indexOf(
+      "selfRegistrationSavingKeys.size === 0",
+      deleteIndex,
+    );
+    const reloadIndex = handler.indexOf(
+      "await loadSelfRegistration();",
+      settledIndex,
+    );
+
+    expect(conflictIndex).toBeGreaterThanOrEqual(0);
+    expect(deleteIndex).toBeGreaterThan(conflictIndex);
+    expect(settledIndex).toBeGreaterThan(deleteIndex);
+    expect(reloadIndex).toBeGreaterThan(settledIndex);
+    expect(handler).not.toContain(
+      "selfRegistrationSavingKeys.delete(optionKey);\n      await loadSelfRegistration();",
+    );
+  });
+
   it("renders trainer attendance as a whole week with registration and actual attendance separated", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-prev"');
     expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-next"');
