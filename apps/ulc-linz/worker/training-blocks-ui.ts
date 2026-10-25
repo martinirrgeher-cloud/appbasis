@@ -2073,6 +2073,9 @@ function resetTrainingBlockSessionState() {
   trainingBlockInfoItem = null;
   trainingBlockInfoPrivateMedia = [];
   trainingBlockInfoPrivateMediaAvailable = false;
+  closeTrainingBlockExerciseInfo();
+  trainingBlockElements.infoBody?.replaceChildren();
+  if (trainingBlockElements.infoTitle) trainingBlockElements.infoTitle.textContent = "";
   closeTrainingBlockEditor(true);
   invalidateTrainingBlockComparison();
   renderTrainingBlockAudienceFilter();
