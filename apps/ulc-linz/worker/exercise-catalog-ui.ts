@@ -1723,6 +1723,13 @@ function populateExerciseCatalogEditor(item, options = {}) {
 }
 
 function closeExerciseCatalogEditor(force = false) {
+  if (!force && exerciseCatalogBusy) {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      "Im Übungskatalog läuft noch ein Vorgang. Bitte zuerst abschließen lassen.",
+    );
+    return false;
+  }
   if (
     !force &&
     !exerciseCatalogEditorReviewMode &&
@@ -1745,6 +1752,10 @@ function closeExerciseCatalogEditor(force = false) {
   document.body.classList.remove("exercise-catalog-editor-open");
   showMessage(elements.exerciseCatalogSuccess, "");
   return true;
+}
+
+function prepareExerciseCatalogForSessionEnd() {
+  return closeExerciseCatalogEditor(false);
 }
 
 function renderExerciseCatalogExternalLinks(urls) {
