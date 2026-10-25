@@ -4,11 +4,9 @@ import type { IdentityService } from "./service";
 
 export type IdentityHttpService = Pick<
   IdentityService,
-  | "signInWithUsername"
-  | "getCurrentIdentity"
-  | "changeRequiredPassword"
-  | "endSession"
->;
+  "signInWithUsername" | "getCurrentIdentity" | "changeRequiredPassword"
+> &
+  Partial<Pick<IdentityService, "endSession">>;
 
 export interface IdentityHttpHandlers {
   signIn(request: Request): Promise<Response>;
@@ -72,6 +70,14 @@ export function createIdentityHttpHandlers(
     const cookieName = sessionCookieName(sessionToken);
     if (cookieName !== null) {
       headers.set("Set-Cookie", expiredSessionCookie(cookieName, secureCookies));
+    }
+
+    if (options.identity.endSession === undefined) {
+      return errorResponse(
+        500,
+        "AUTHENTICATION_FAILED",
+        "The identity request failed.",
+      );
     }
 
     try {
