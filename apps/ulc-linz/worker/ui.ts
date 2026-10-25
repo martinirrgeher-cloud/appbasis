@@ -76,9 +76,10 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="6" hidden disabled>Stammdaten</button>
             <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="7" hidden disabled>Nützliches</button>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" hidden>Mehr</button>
-            <button class="app-nav__link app-nav__signout" id="app-sign-out" type="button">Abmelden</button>
           </div>
-          <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden></div>
+          <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden>
+            <button class="app-nav__link app-nav__signout" id="app-sign-out" type="button">Abmelden / Benutzer wechseln</button>
+          </div>
         </nav>
 
         <main class="content">
@@ -2603,7 +2604,7 @@ function refreshAppNavigation() {
     elements.appNavOverflow?.append(control);
   }
 
-  const hasOverflow = overflow.length > 0;
+  const hasOverflow = overflow.length > 0 || elements.appSignOut !== null;
   if (!hasOverflow) appNavMoreOpen = false;
   if (elements.appNavMore) {
     elements.appNavMore.hidden = !hasOverflow;
@@ -2624,7 +2625,8 @@ function refreshAppNavigation() {
 
 function setAppNavMoreOpen(open) {
   const hasOverflow =
-    (elements.appNavOverflow?.querySelectorAll("[data-nav-view]").length ?? 0) > 0;
+    (elements.appNavOverflow?.querySelectorAll("[data-nav-view]").length ?? 0) > 0 ||
+    elements.appSignOut !== null;
   appNavMoreOpen = hasOverflow && open;
   if (elements.appNavMore) {
     elements.appNavMore.setAttribute(
