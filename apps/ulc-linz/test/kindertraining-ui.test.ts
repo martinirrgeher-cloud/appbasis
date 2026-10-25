@@ -6,8 +6,8 @@ import {
   ULC_LINZ_APP_SCRIPT,
 } from "../worker/ui";
 
-describe("ULC E4C Kindertraining UI", () => {
-  it("ships a mobile Kindertraining navigation and attendance workspace", () => {
+describe("ULC Kindertraining weekly attendance UI", () => {
+  it("ships a mobile weekly attendance workspace", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-nav-view="kindertraining" data-nav-priority="2" hidden disabled',
     );
@@ -15,27 +15,38 @@ describe("ULC E4C Kindertraining UI", () => {
       'data-app-section="kindertraining"',
     );
     expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-group"');
-    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-date"');
-    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-participants"');
-    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-save"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-prev"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-next"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-current"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-days"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-save"');
+    expect(ULC_LINZ_APP_HTML).not.toContain('id="kindertraining-date"');
     expect(ULC_LINZ_APP_CSS).toContain(".kindertraining-statuses");
+    expect(ULC_LINZ_APP_CSS).toContain(".kindertraining-week-savebar");
     expect(ULC_LINZ_APP_CSS).toContain(
       '.kindertraining-status[data-status="present"][aria-pressed="true"]',
     );
   });
 
-  it("presents trainer-facing attendance with current terminology", () => {
+  it("separates preregistration from actual trainer attendance", () => {
     expect(ULC_LINZ_APP_HTML).toContain("<h2>Anwesenheit</h2>");
     expect(ULC_LINZ_APP_HTML).toContain("Anwesenheit öffnen");
     expect(ULC_LINZ_APP_HTML).toContain("<h1>Anwesenheit</h1>");
     expect(ULC_LINZ_APP_HTML).toContain(
-      "Voranmeldungen prüfen und die tatsächliche Anwesenheit erfassen.",
+      "Die ganze Trainingswoche im Blick: Voranmeldungen prüfen und die tatsächliche Anwesenheit gesammelt erfassen.",
     );
+    expect(ULC_LINZ_APP_HTML).toContain(
+      "Voranmeldung und Anwesenheit werden getrennt dargestellt.",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"Voranmeldung: " + kindertrainingRegistrationLabel(participant.intention)',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"Noch offen"');
     expect(ULC_LINZ_APP_HTML).not.toContain("<h2>Kindertraining</h2>");
     expect(ULC_LINZ_APP_HTML).not.toContain("<h1>Kindertraining</h1>");
   });
 
-  it("uses only the server-owned Kindertraining API contracts", () => {
+  it("loads the Monday-to-Sunday week from server-owned Kindertraining contracts", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       'requestJson("/api/modules/kindertraining")',
     );
@@ -43,36 +54,42 @@ describe("ULC E4C Kindertraining UI", () => {
       '"/api/modules/kindertraining/session?groupId="',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      'requestJson("/api/modules/kindertraining/session", {',
+      "const dates = registrationWeekDates(weekStart);",
     );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Promise.all(");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      "expectedRevision: kindertrainingSnapshot.session?.revision ?? null",
-    );
-    expect(ULC_LINZ_APP_SCRIPT).toContain(
-      "attendance: kindertrainingSnapshot.participants.map",
+      "kindertrainingWeekSnapshots = snapshots;",
     );
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("organizationId:");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("moduleId:");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
   });
 
-  it("keeps status controls touch-oriented and exposes a full-snapshot save", () => {
+  it("keeps touch status controls and saves only changed days as full snapshots", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       'for (const status of ["open", "present", "excused", "absent"])',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      'setAllKindertrainingStatuses("present")',
+      '["present", "Alle anwesend"]',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      'setAllKindertrainingStatuses("open")',
+      '["open", "Alle offen"]',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      'elements.kindertrainingSaveState.textContent = "Ungespeicherte Änderungen"',
+      "kindertrainingWeekDirtyDates.add(sessionDate);",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      'showMessage(elements.kindertrainingSuccess, "Training wurde gespeichert.")',
+      "const dirtySnapshots = kindertrainingWeekSnapshots.filter",
     );
-    expect(ULC_LINZ_APP_SCRIPT).toContain("error?.status === 409");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("Konflikt – neu laden");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Promise.allSettled(");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "expectedRevision: snapshot.session?.revision ?? null",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "attendance: snapshot.participants.map",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"Es gibt ungespeicherte Anwesenheitsänderungen. Wirklich verwerfen?"',
+    );
   });
 });
