@@ -5,11 +5,13 @@ import type { IdentityService } from "./service";
 export type IdentityHttpService = Pick<
   IdentityService,
   "signInWithUsername" | "getCurrentIdentity" | "changeRequiredPassword"
->;
+> &
+  Partial<Pick<IdentityService, "endSession">>;
 
 export interface IdentityHttpHandlers {
   signIn(request: Request): Promise<Response>;
   session(request: Request): Promise<Response>;
+  signOut(request: Request): Promise<Response>;
   changeRequiredPassword(request: Request): Promise<Response>;
   resolveCurrentIdentity(request: Request): Promise<CurrentIdentity | Response>;
   identityErrorResponse(error: unknown): Response;
@@ -56,6 +58,42 @@ export function createIdentityHttpHandlers(
     const current = await resolveCurrentIdentity(request);
     if (current instanceof Response) return current;
     return jsonResponse(currentIdentityPayload(current));
+  }
+
+  async function signOut(request: Request): Promise<Response> {
+    const sessionToken = requestCookie(request);
+    if (sessionToken === null) {
+      return new Response(null, { status: 204 });
+    }
+
+    const headers = new Headers();
+    const cookieName = sessionCookieName(sessionToken);
+    if (cookieName !== null) {
+      headers.set("Set-Cookie", expiredSessionCookie(cookieName, secureCookies));
+    }
+
+    if (options.identity.endSession === undefined) {
+      return errorResponse(
+        500,
+        "AUTHENTICATION_FAILED",
+        "The identity request failed.",
+      );
+    }
+
+    try {
+      await options.identity.endSession(sessionToken);
+    } catch (error) {
+      if (
+        error instanceof IdentityError &&
+        (error.code === "SESSION_INVALID" ||
+          error.code === "IDENTITY_STATE_MISSING")
+      ) {
+        return new Response(null, { status: 204, headers });
+      }
+      return identityErrorResponse(error);
+    }
+
+    return new Response(null, { status: 204, headers });
   }
 
   async function changeRequiredPassword(request: Request): Promise<Response> {
@@ -105,6 +143,7 @@ export function createIdentityHttpHandlers(
   return Object.freeze({
     signIn,
     session,
+    signOut,
     changeRequiredPassword,
     resolveCurrentIdentity,
     identityErrorResponse,
@@ -142,6 +181,34 @@ function requestCookie(request: Request): string | null {
 
 function sessionCookie(cookiePair: string, secure: boolean): string {
   const attributes = [cookiePair, "Path=/", "HttpOnly", "SameSite=Lax"];
+  if (secure) attributes.push("Secure");
+  return attributes.join("; ");
+}
+
+function sessionCookieName(cookieHeader: string): string | null {
+  for (const pair of cookieHeader.split(";")) {
+    const trimmed = pair.trim();
+    const equals = trimmed.indexOf("=");
+    if (equals <= 0) continue;
+    const name = trimmed.slice(0, equals);
+    if (
+      name === "better-auth.session_token" ||
+      name === "__Secure-better-auth.session_token"
+    ) {
+      return name;
+    }
+  }
+  return null;
+}
+
+function expiredSessionCookie(name: string, secure: boolean): string {
+  const attributes = [
+    name + "=",
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Max-Age=0",
+  ];
   if (secure) attributes.push("Secure");
   return attributes.join("; ");
 }

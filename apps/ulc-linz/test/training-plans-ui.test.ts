@@ -613,4 +613,28 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
+  it("invalidates organization-scoped planning reads across account switches", () => {
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "let trainingPlanSessionGeneration = 0;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanSessionGeneration += 1;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "generation !== trainingPlanSessionGeneration",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanWeekRequestId += 1;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanDayRequestId += 1;",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanSubjects = [];",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanOverviewGroups = [];",
+    );
+  });
+
 });

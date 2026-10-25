@@ -226,6 +226,8 @@ export function createGeneratedWorker(
           response = await u12ModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/u12/session") {
           response = await u12SessionResponse(request, runtime, url);
+        } else if (url.pathname === "/api/auth/sign-out") {
+          response = await identitySignOutResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/athlete-users") {
           response = await athleteUserAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-users") {
@@ -1923,6 +1925,33 @@ function u12GroupNotFound(): Response {
   );
 }
 
+
+async function identitySignOutResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return methodNotAllowedFor("POST", "sign-out");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return Response.json(
+      {
+        error: {
+          code: "INVALID_REQUEST",
+          message: "The sign-out request is invalid.",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  return identityHttp.signOut(request);
+}
 
 async function athleteUserAdminResponse(
   request: Request,

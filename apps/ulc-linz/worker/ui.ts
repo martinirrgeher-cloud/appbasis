@@ -58,11 +58,13 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <label>Neues Passwort wiederholen<input id="confirm-password" type="password" autocomplete="new-password" required /></label>
             <p class="message message--error" id="password-message" role="alert" hidden></p>
             <button class="button button--primary" type="submit">Passwort ändern</button>
+            <button class="button button--secondary" id="password-sign-out" type="button">Abmelden / Benutzer wechseln</button>
           </form>
         </section>
       </main>
 
       <div id="app-view" hidden>
+        <p class="message message--error app-session-message" id="app-session-message" role="alert" hidden></p>
         <nav class="app-nav" aria-label="Hauptnavigation">
           <div class="app-nav__primary" id="app-nav-primary">
             <button class="app-nav__link is-active" type="button" data-nav-view="home" data-nav-priority="0">Start</button>
@@ -75,7 +77,9 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="7" hidden disabled>Nützliches</button>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" hidden>Mehr</button>
           </div>
-          <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden></div>
+          <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden>
+            <button class="app-nav__link app-nav__signout" id="app-sign-out" type="button">Abmelden / Benutzer wechseln</button>
+          </div>
         </nav>
 
         <main class="content">
@@ -485,11 +489,19 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <p class="message message--error" id="registration-message" role="alert" hidden></p>
             <p class="message message--success" id="registration-success" role="status" hidden></p>
 
-            <section class="card registration-selector">
-              <label>Datum
-                <input id="registration-date" type="date" required />
-              </label>
-              <button class="button button--secondary" id="registration-reload" type="button">Neu laden</button>
+            <section class="card registration-week-toolbar">
+              <div class="registration-week-nav">
+                <button class="button button--secondary registration-week-arrow" id="registration-week-prev" type="button" aria-label="Vorherige Woche">‹</button>
+                <div class="registration-week-title">
+                  <strong id="registration-week-label">Diese Woche</strong>
+                  <small>Montag bis Sonntag</small>
+                </div>
+                <button class="button button--secondary registration-week-arrow" id="registration-week-next" type="button" aria-label="Nächste Woche">›</button>
+              </div>
+              <div class="registration-week-actions">
+                <button class="button button--secondary" id="registration-week-current" type="button">Diese Woche</button>
+                <button class="button button--secondary" id="registration-reload" type="button">↻ Neu laden</button>
+              </div>
             </section>
 
             <div class="registration-list" id="registration-list" aria-live="polite"></div>
@@ -765,6 +777,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .message { margin: 8px 0 0; padding: 9px 10px; border-radius: var(--control-radius); font-size: .84rem; }
 .message--error { background: var(--danger-surface); color: var(--danger); }
 .message--success { background: #dcfce7; color: #166534; }
+.app-session-message {
+  position: fixed;
+  right: 12px;
+  bottom: 66px;
+  left: 12px;
+  z-index: 30;
+  width: min(calc(100% - 24px), 52rem);
+  margin: 0 auto;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 16%);
+}
 .app-nav {
   position: fixed;
   right: 0;
@@ -1119,16 +1141,36 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
 }
-.registration-selector {
+.registration-week-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
   gap: 8px;
   margin-bottom: 10px;
-  padding: 12px;
+  padding: 10px;
 }
-.registration-selector .button { min-height: var(--touch); }
-.registration-list { display: grid; gap: 10px; }
+.registration-week-nav {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+}
+.registration-week-arrow { min-width: 44px; padding-inline: 0; font-size: 1.25rem; }
+.registration-week-title { min-width: 0; text-align: center; }
+.registration-week-title strong,
+.registration-week-title small { display: block; }
+.registration-week-title small { margin-top: 2px; color: var(--secondary); font-size: .7rem; }
+.registration-week-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.registration-week-actions .button { min-height: 40px; }
+.registration-list { display: grid; gap: 12px; }
+.registration-day { display: grid; gap: 7px; }
+.registration-day__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px;
+}
+.registration-day__head strong { font-size: .88rem; }
+.registration-day__head span { color: var(--secondary); font-size: .72rem; }
 .registration-card {
   display: grid;
   gap: 10px;
@@ -1482,6 +1524,9 @@ const elements = {
   newPassword: document.querySelector("#new-password"),
   confirmPassword: document.querySelector("#confirm-password"),
   passwordMessage: document.querySelector("#password-message"),
+  passwordSignOut: document.querySelector("#password-sign-out"),
+  appSignOut: document.querySelector("#app-sign-out"),
+  appSessionMessage: document.querySelector("#app-session-message"),
   welcomeEyebrow: document.querySelector("#welcome-eyebrow"),
   appMessage: document.querySelector("#app-message"),
   countdownQuickAction: document.querySelector("#countdown-quick-action"),
@@ -1493,7 +1538,10 @@ const elements = {
   registrationAccessLabel: document.querySelector("#registration-access-label"),
   registrationMessage: document.querySelector("#registration-message"),
   registrationSuccess: document.querySelector("#registration-success"),
-  registrationDate: document.querySelector("#registration-date"),
+  registrationWeekPrev: document.querySelector("#registration-week-prev"),
+  registrationWeekNext: document.querySelector("#registration-week-next"),
+  registrationWeekCurrent: document.querySelector("#registration-week-current"),
+  registrationWeekLabel: document.querySelector("#registration-week-label"),
   registrationReload: document.querySelector("#registration-reload"),
   registrationList: document.querySelector("#registration-list"),
   kindertrainingQuickAction: document.querySelector("#kindertraining-quick-action"),
@@ -1685,15 +1733,18 @@ let busy = false;
 let countdownReady = false;
 let masterdataReady = false;
 let masterdataCanEdit = false;
+let attendanceSessionGeneration = 0;
 let selfRegistrationReady = false;
 let selfRegistrationLoading = false;
-let selfRegistrationSavingGroupId = null;
+let selfRegistrationSavingKey = null;
+let selfRegistrationWeekStart = "";
 let selfRegistrationOptions = [];
 let kindertrainingReady = false;
 let kindertrainingLoading = false;
 let kindertrainingGroups = [];
 let kindertrainingSnapshot = null;
 let masterdataLoading = false;
+let masterdataSessionGeneration = 0;
 let masterdataExchangeBusy = false;
 let masterdataImportPreviewData = null;
 let masterdataImportPreviewToken = null;
@@ -1726,6 +1777,8 @@ renderIdle();
 
 elements.loginForm?.addEventListener("submit", handleLogin);
 elements.passwordForm?.addEventListener("submit", handlePasswordChange);
+elements.passwordSignOut?.addEventListener("click", () => void handleSignOut());
+elements.appSignOut?.addEventListener("click", () => void handleSignOut());
 elements.startButton?.addEventListener("click", () => void startCountdown());
 elements.pauseButton?.addEventListener("click", () => void togglePause());
 elements.resetButton?.addEventListener("click", () => void resetCountdown());
@@ -1818,7 +1871,9 @@ elements.trainerUserForm?.addEventListener("submit", (event) => void createTrain
 elements.trainerIdentityForm?.addEventListener("submit", (event) => void bindTrainerIdentity(event));
 elements.trainerIdentityIdentity?.addEventListener("change", syncTrainerIdentitySelection);
 elements.registrationReload?.addEventListener("click", () => void loadSelfRegistration());
-elements.registrationDate?.addEventListener("change", () => void loadSelfRegistration());
+elements.registrationWeekPrev?.addEventListener("click", () => void moveSelfRegistrationWeek(-1));
+elements.registrationWeekNext?.addEventListener("click", () => void moveSelfRegistrationWeek(1));
+elements.registrationWeekCurrent?.addEventListener("click", () => void moveSelfRegistrationWeek(0));
 elements.registrationList?.addEventListener("click", (event) => {
   void handleSelfRegistrationClick(event);
 });
@@ -1969,6 +2024,156 @@ async function handlePasswordChange(event) {
   }
 }
 
+function resetAttendanceSessionState() {
+  attendanceSessionGeneration += 1;
+
+  selfRegistrationReady = false;
+  selfRegistrationLoading = false;
+  selfRegistrationSavingKey = null;
+  selfRegistrationWeekStart = "";
+  selfRegistrationOptions = [];
+  showMessage(elements.registrationMessage, "");
+  showMessage(elements.registrationSuccess, "");
+  renderSelfRegistrationWeekLabel();
+  renderSelfRegistration();
+
+  kindertrainingReady = false;
+  kindertrainingLoading = false;
+  kindertrainingGroups = [];
+  kindertrainingSnapshot = null;
+  renderKindertrainingGroups();
+  if (elements.kindertrainingSession) {
+    elements.kindertrainingSession.hidden = true;
+  }
+  if (elements.kindertrainingParticipants) {
+    elements.kindertrainingParticipants.replaceChildren();
+  }
+  if (elements.kindertrainingSummary) {
+    elements.kindertrainingSummary.replaceChildren();
+  }
+  if (elements.kindertrainingCount) {
+    elements.kindertrainingCount.textContent = "0 Teilnehmer";
+  }
+  showMessage(elements.kindertrainingMessage, "");
+  showMessage(elements.kindertrainingSuccess, "");
+
+  refreshAppAvailability();
+}
+
+function resetMasterdataSessionState() {
+  masterdataSessionGeneration += 1;
+  masterdataReady = false;
+  masterdataCanEdit = false;
+  masterdataLoading = false;
+  masterdataExchangeBusy = false;
+  masterdataSnapshot = null;
+  masterdataEdit = null;
+  masterdataContactEdit = null;
+  masterdataSwipeStart = null;
+
+  closeMasterdataImportPreview();
+  closeMasterdataAthleteOverlay();
+  closeMasterdataTrainerOverlay();
+  closeMasterdataGroupOverlay();
+
+  trainerIdentityAdminReady = false;
+  trainerIdentityLoading = false;
+  trainerIdentityBindings = [];
+  elements.trainerUserForm?.reset();
+  if (elements.trainerIdentityWorkspace) {
+    elements.trainerIdentityWorkspace.hidden = true;
+  }
+  elements.trainerIdentityList?.replaceChildren();
+  setTrainerIdentityControlsDisabled(false);
+
+  elements.athleteList?.replaceChildren();
+  elements.trainerList?.replaceChildren();
+  elements.groupList?.replaceChildren();
+  if (elements.athleteCount) elements.athleteCount.textContent = "(0)";
+  if (elements.trainerCount) elements.trainerCount.textContent = "(0)";
+  if (elements.groupCount) elements.groupCount.textContent = "(0)";
+  if (elements.masterdataImportFile) elements.masterdataImportFile.value = "";
+  elements.masterdataImportSummary?.replaceChildren();
+  elements.masterdataImportIssues?.replaceChildren();
+  elements.masterdataImportRows?.replaceChildren();
+
+  showMessage(elements.masterdataMessage, "");
+  showMessage(elements.masterdataSuccess, "");
+  showMessage(elements.trainerIdentityMessage, "");
+  showMessage(elements.trainerIdentitySuccess, "");
+  refreshAppAvailability();
+}
+
+async function handleSignOut() {
+  if (busy) return;
+
+  if (masterdataExchangeBusy || trainerIdentityLoading) {
+    showMessage(
+      elements.appSessionMessage,
+      "In den Stammdaten läuft noch ein Vorgang. Bitte zuerst abschließen lassen.",
+    );
+    return;
+  }
+  if (
+    typeof closeTrainingPlanEditor === "function" &&
+    !(await closeTrainingPlanEditor(false))
+  ) {
+    return;
+  }
+  if (
+    typeof prepareTrainingBlockForSessionEnd === "function" &&
+    !(await prepareTrainingBlockForSessionEnd())
+  ) {
+    return;
+  }
+  if (
+    typeof prepareExerciseCatalogForSessionEnd === "function" &&
+    !prepareExerciseCatalogForSessionEnd()
+  ) {
+    return;
+  }
+  if (
+    (runMode === "running" || runMode === "paused") &&
+    !window.confirm(
+      "Der Countdown läuft noch. Wirklich abmelden und den Countdown beenden?",
+    )
+  ) {
+    return;
+  }
+
+  setAuthenticatedAppInteractionLocked(true);
+  setBusy(true);
+  if (elements.appSignOut) elements.appSignOut.disabled = true;
+  if (elements.passwordSignOut) elements.passwordSignOut.disabled = true;
+  showMessage(elements.appSessionMessage, "");
+  showMessage(elements.passwordMessage, "");
+  try {
+    await requestJson("/api/auth/sign-out", { method: "POST" });
+    resetCountdown();
+    setTrainingPlanSessionIdentity("");
+    resetAttendanceSessionState();
+    resetMasterdataSessionState();
+    resetTrainingBlockSessionState();
+    resetExerciseCatalogSessionState();
+    resetTrainingPlanSessionState();
+    setAppNavMoreOpen(false);
+    showView("login");
+    if (elements.loginPassword) elements.loginPassword.value = "";
+    if (elements.currentPassword) elements.currentPassword.value = "";
+    if (elements.newPassword) elements.newPassword.value = "";
+    if (elements.confirmPassword) elements.confirmPassword.value = "";
+  } catch {
+    const message = "Abmelden ist fehlgeschlagen. Bitte erneut versuchen.";
+    showMessage(elements.appSessionMessage, message);
+    showMessage(elements.passwordMessage, message);
+  } finally {
+    setAuthenticatedAppInteractionLocked(false);
+    if (elements.appSignOut) elements.appSignOut.disabled = false;
+    if (elements.passwordSignOut) elements.passwordSignOut.disabled = false;
+    setBusy(false);
+  }
+}
+
 async function acceptSession(next) {
   if (
     next?.identity?.mustChangePassword === true ||
@@ -1998,45 +2203,98 @@ async function acceptSession(next) {
 }
 
 async function bootstrapSelfRegistration() {
+  const generation = attendanceSessionGeneration;
   selfRegistrationReady = false;
   selfRegistrationLoading = false;
-  selfRegistrationSavingGroupId = null;
+  selfRegistrationSavingKey = null;
+  selfRegistrationWeekStart = localWeekStart(new Date());
   selfRegistrationOptions = [];
-  if (elements.registrationDate && !elements.registrationDate.value) {
-    elements.registrationDate.value = localIsoDate(new Date());
-  }
+  renderSelfRegistrationWeekLabel();
   renderSelfRegistration();
   refreshAppAvailability();
-  await loadSelfRegistration(true);
-}
 
-async function loadSelfRegistration(bootstrap = false) {
-  if (selfRegistrationLoading || (!selfRegistrationReady && !bootstrap)) return;
-  const sessionDate =
-    elements.registrationDate?.value || localIsoDate(new Date());
-  const wasReady = selfRegistrationReady;
-  selfRegistrationLoading = true;
-  showMessage(elements.registrationMessage, "");
-  showMessage(elements.registrationSuccess, "");
-  renderSelfRegistration();
-
+  const probeDate = localIsoDate(new Date());
   try {
-    const payload = await requestJson(
+    const probe = await requestJson(
       "/api/modules/kindertraining/registration?sessionDate=" +
-        encodeURIComponent(sessionDate),
+        encodeURIComponent(probeDate),
     );
+    if (generation !== attendanceSessionGeneration) return;
     if (
-      payload?.sessionDate !== sessionDate ||
-      !Array.isArray(payload?.options) ||
-      !payload.options.every((option) =>
-        isSelfRegistrationOption(option, sessionDate),
+      probe?.sessionDate !== probeDate ||
+      !Array.isArray(probe?.options) ||
+      !probe.options.every((option) =>
+        isSelfRegistrationOption(option, probeDate),
       )
     ) {
       throw new Error("INVALID_SELF_REGISTRATION_CONTRACT");
     }
-    selfRegistrationOptions = payload.options.slice();
+    selfRegistrationReady = true;
+    await loadSelfRegistration(true, new Map([[probeDate, probe]]));
+  } catch (error) {
+    if (generation !== attendanceSessionGeneration) return;
+    selfRegistrationReady = false;
+    selfRegistrationOptions = [];
+    if (error?.status !== 403) {
+      showMessage(
+        elements.registrationMessage,
+        "Die Trainingsanmeldung konnte nicht geladen werden.",
+      );
+    }
+    renderSelfRegistration();
+    refreshAppAvailability();
+  }
+}
+
+async function loadSelfRegistration(
+  bootstrap = false,
+  prefetched = new Map(),
+) {
+  if (selfRegistrationLoading || (!selfRegistrationReady && !bootstrap)) return;
+  const generation = attendanceSessionGeneration;
+  const weekStart =
+    selfRegistrationWeekStart || localWeekStart(new Date());
+  const dates = registrationWeekDates(weekStart);
+  const wasReady = selfRegistrationReady;
+  selfRegistrationLoading = true;
+  showMessage(elements.registrationMessage, "");
+  showMessage(elements.registrationSuccess, "");
+  renderSelfRegistrationWeekLabel();
+  renderSelfRegistration();
+  refreshAppAvailability();
+
+  try {
+    const payloads = await Promise.all(
+      dates.map((sessionDate) =>
+        prefetched.has(sessionDate)
+          ? Promise.resolve(prefetched.get(sessionDate))
+          : requestJson(
+              "/api/modules/kindertraining/registration?sessionDate=" +
+                encodeURIComponent(sessionDate),
+            ),
+      ),
+    );
+    if (generation !== attendanceSessionGeneration) return;
+    const options = [];
+    for (let index = 0; index < dates.length; index += 1) {
+      const sessionDate = dates[index];
+      const payload = payloads[index];
+      if (
+        payload?.sessionDate !== sessionDate ||
+        !Array.isArray(payload?.options) ||
+        !payload.options.every((option) =>
+          isSelfRegistrationOption(option, sessionDate),
+        )
+      ) {
+        throw new Error("INVALID_SELF_REGISTRATION_CONTRACT");
+      }
+      options.push(...payload.options);
+    }
+    selfRegistrationWeekStart = weekStart;
+    selfRegistrationOptions = options;
     selfRegistrationReady = true;
   } catch (error) {
+    if (generation !== attendanceSessionGeneration) return;
     selfRegistrationOptions = [];
     if (!wasReady || error?.status === 403) {
       selfRegistrationReady = false;
@@ -2044,13 +2302,16 @@ async function loadSelfRegistration(bootstrap = false) {
     if (error?.status !== 403) {
       showMessage(
         elements.registrationMessage,
-        "Die Trainingsanmeldung konnte nicht geladen werden.",
+        "Die Trainingsanmeldung für diese Woche konnte nicht geladen werden.",
       );
     }
   } finally {
-    selfRegistrationLoading = false;
-    renderSelfRegistration();
-    refreshAppAvailability();
+    if (generation === attendanceSessionGeneration) {
+      selfRegistrationLoading = false;
+      renderSelfRegistrationWeekLabel();
+      renderSelfRegistration();
+      refreshAppAvailability();
+    }
   }
 }
 
@@ -2101,101 +2362,136 @@ function renderSelfRegistration() {
   }
 
   if (!selfRegistrationReady) return;
+  const dates = registrationWeekDates(
+    selfRegistrationWeekStart || localWeekStart(new Date()),
+  );
   if (selfRegistrationOptions.length === 0) {
     const empty = document.createElement("div");
     empty.className = "registration-empty";
     empty.textContent =
-      "Für dieses Datum ist keine Gruppe mit Selbstanmeldung verfügbar.";
+      "Für diese Woche ist keine Gruppe mit Selbstanmeldung verfügbar.";
     container.append(empty);
     return;
   }
 
-  for (const option of selfRegistrationOptions) {
-    const card = document.createElement("article");
-    card.className = "card registration-card";
+  for (const sessionDate of dates) {
+    const day = document.createElement("section");
+    day.className = "registration-day";
 
-    const head = document.createElement("div");
-    head.className = "registration-card__head";
-    const identity = document.createElement("div");
-    const title = document.createElement("strong");
-    title.textContent = option.group.name;
-    const meta = document.createElement("small");
-    meta.textContent = option.group.shortName
-      ? option.group.shortName + " · " + germanDate(option.sessionDate)
-      : germanDate(option.sessionDate);
-    identity.append(title, meta);
+    const dayHead = document.createElement("div");
+    dayHead.className = "registration-day__head";
+    const dayName = document.createElement("strong");
+    dayName.textContent = germanWeekday(sessionDate);
+    const dayDate = document.createElement("span");
+    dayDate.textContent = germanDate(sessionDate);
+    dayHead.append(dayName, dayDate);
+    day.append(dayHead);
 
-    const current = document.createElement("span");
-    current.className = "registration-current";
-    current.dataset.intention = option.intention;
-    current.textContent = selfRegistrationLabel(option.intention);
-    head.append(identity, current);
-    card.append(head);
-
-    if (option.sessionState === "cancelled") {
-      const cancelled = document.createElement("p");
-      cancelled.className = "registration-cancelled";
-      cancelled.textContent = "Dieses Training wurde abgesagt.";
-      card.append(cancelled);
-      container.append(card);
+    const dayOptions = selfRegistrationOptions.filter(
+      (option) => option.sessionDate === sessionDate,
+    );
+    if (dayOptions.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "registration-empty";
+      empty.textContent = "Keine Anmeldung verfügbar.";
+      day.append(empty);
+      container.append(day);
       continue;
     }
 
-    const actions = document.createElement("div");
-    actions.className = "registration-actions";
-    for (const action of [
-      { intention: "attending", label: "Komme" },
-      { intention: "maybe", label: "Vielleicht" },
-      { intention: "not_attending", label: "Absage" },
-      { intention: "unknown", label: "Offen" },
-    ]) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "button button--secondary registration-action";
-      button.dataset.registrationGroup = option.group.id;
-      button.dataset.intention = action.intention;
-      button.textContent = action.label;
-      button.setAttribute(
-        "aria-pressed",
-        option.intention === action.intention ? "true" : "false",
-      );
-      button.disabled =
-        selfRegistrationSavingGroupId !== null ||
-        selfRegistrationLoading;
-      actions.append(button);
+    for (const option of dayOptions) {
+      const card = document.createElement("article");
+      card.className = "card registration-card";
+
+      const head = document.createElement("div");
+      head.className = "registration-card__head";
+      const identity = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = option.group.name;
+      const meta = document.createElement("small");
+      meta.textContent = option.group.shortName || germanWeekday(option.sessionDate);
+      identity.append(title, meta);
+
+      const current = document.createElement("span");
+      current.className = "registration-current";
+      current.dataset.intention = option.intention;
+      current.textContent = selfRegistrationLabel(option.intention);
+      head.append(identity, current);
+      card.append(head);
+
+      if (option.sessionState === "cancelled") {
+        const cancelled = document.createElement("p");
+        cancelled.className = "registration-cancelled";
+        cancelled.textContent = "Dieses Training wurde abgesagt.";
+        card.append(cancelled);
+        day.append(card);
+        continue;
+      }
+
+      const actions = document.createElement("div");
+      actions.className = "registration-actions";
+      for (const action of [
+        { intention: "attending", label: "Komme" },
+        { intention: "maybe", label: "Vielleicht" },
+        { intention: "not_attending", label: "Absage" },
+        { intention: "unknown", label: "Offen" },
+      ]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "button button--secondary registration-action";
+        button.dataset.registrationGroup = option.group.id;
+        button.dataset.registrationDate = option.sessionDate;
+        button.dataset.intention = action.intention;
+        button.textContent = action.label;
+        button.setAttribute(
+          "aria-pressed",
+          option.intention === action.intention ? "true" : "false",
+        );
+        button.disabled =
+          selfRegistrationSavingKey !== null ||
+          selfRegistrationLoading;
+        actions.append(button);
+      }
+      card.append(actions);
+      day.append(card);
     }
-    card.append(actions);
-    container.append(card);
+    container.append(day);
   }
 }
 
 async function handleSelfRegistrationClick(event) {
+  const generation = attendanceSessionGeneration;
   const control = event.target?.closest?.("[data-registration-group]");
   if (
     !control ||
     !selfRegistrationReady ||
     selfRegistrationLoading ||
-    selfRegistrationSavingGroupId !== null
+    selfRegistrationSavingKey !== null
   ) {
     return;
   }
   const groupId = control.dataset.registrationGroup || "";
+  const sessionDate = control.dataset.registrationDate || "";
   const intention = control.dataset.intention || "";
   if (
     !groupId ||
+    !sessionDate ||
     !["unknown", "attending", "not_attending", "maybe"].includes(intention)
   ) {
     return;
   }
   const option = selfRegistrationOptions.find(
-    (candidate) => candidate.group.id === groupId,
+    (candidate) =>
+      candidate.group.id === groupId &&
+      candidate.sessionDate === sessionDate,
   );
   if (!option || option.sessionState === "cancelled") return;
 
-  selfRegistrationSavingGroupId = groupId;
+  selfRegistrationSavingKey = groupId + "|" + sessionDate;
   showMessage(elements.registrationMessage, "");
   showMessage(elements.registrationSuccess, "");
   renderSelfRegistration();
+  refreshAppAvailability();
 
   try {
     const payload = await requestJson(
@@ -2206,20 +2502,25 @@ async function handleSelfRegistrationClick(event) {
           expectedRevision: option.revision,
           groupId,
           intention,
-          sessionDate: option.sessionDate,
+          sessionDate,
         }),
       },
     );
+    if (generation !== attendanceSessionGeneration) return;
     const saved = payload?.option;
-    if (!isSelfRegistrationOption(saved, option.sessionDate)) {
+    if (!isSelfRegistrationOption(saved, sessionDate)) {
       throw new Error("INVALID_SELF_REGISTRATION_SAVE");
     }
     selfRegistrationOptions = selfRegistrationOptions.map((candidate) =>
-      candidate.group.id === groupId ? saved : candidate,
+      candidate.group.id === groupId &&
+      candidate.sessionDate === sessionDate
+        ? saved
+        : candidate,
     );
     showMessage(
       elements.registrationSuccess,
-      "Trainingsanmeldung gespeichert: " +
+      germanWeekday(saved.sessionDate) +
+        ": " +
         saved.group.name +
         " – " +
         selfRegistrationLabel(saved.intention) +
@@ -2227,39 +2528,109 @@ async function handleSelfRegistrationClick(event) {
       "success",
     );
   } catch (error) {
+    if (generation !== attendanceSessionGeneration) return;
     if (
       error?.status === 409 &&
       error?.code === "TRAINING_REGISTRATION_CONFLICT"
     ) {
       showMessage(
         elements.registrationMessage,
-        "Die Anmeldung wurde zwischenzeitlich geändert. Der aktuelle Stand wird neu geladen.",
+        "Die Anmeldung wurde zwischenzeitlich geändert. Die aktuelle Woche wird neu geladen.",
       );
-      selfRegistrationSavingGroupId = null;
+      selfRegistrationSavingKey = null;
       await loadSelfRegistration();
       return;
     }
     showMessage(
       elements.registrationMessage,
       error?.status === 404
-        ? "Die Trainingsgruppe ist für dieses Datum nicht mehr verfügbar."
+        ? "Die Trainingsgruppe ist für diesen Tag nicht mehr verfügbar."
         : error?.status === 409
           ? "Für dieses Training ist die Selbstanmeldung nicht mehr möglich."
           : "Die Trainingsanmeldung konnte nicht gespeichert werden.",
     );
   } finally {
-    selfRegistrationSavingGroupId = null;
-    renderSelfRegistration();
+    if (generation === attendanceSessionGeneration) {
+      selfRegistrationSavingKey = null;
+      renderSelfRegistration();
+      refreshAppAvailability();
+    }
   }
+}
+
+async function moveSelfRegistrationWeek(offset) {
+  if (selfRegistrationLoading || selfRegistrationSavingKey !== null) return;
+  selfRegistrationWeekStart =
+    offset === 0
+      ? localWeekStart(new Date())
+      : shiftIsoDate(
+          selfRegistrationWeekStart || localWeekStart(new Date()),
+          offset * 7,
+        );
+  renderSelfRegistrationWeekLabel();
+  await loadSelfRegistration();
+}
+
+function renderSelfRegistrationWeekLabel() {
+  if (!elements.registrationWeekLabel) return;
+  const start = selfRegistrationWeekStart || localWeekStart(new Date());
+  const end = shiftIsoDate(start, 6);
+  elements.registrationWeekLabel.textContent =
+    germanDate(start) + " – " + germanDate(end);
 }
 
 function prepareSelfRegistrationView() {
-  if (elements.registrationDate && !elements.registrationDate.value) {
-    elements.registrationDate.value = localIsoDate(new Date());
+  if (!selfRegistrationWeekStart) {
+    selfRegistrationWeekStart = localWeekStart(new Date());
   }
+  renderSelfRegistrationWeekLabel();
+}
+
+function localWeekStart(date) {
+  const copy = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    12,
+    0,
+    0,
+    0,
+  );
+  const day = copy.getDay();
+  copy.setDate(copy.getDate() - (day === 0 ? 6 : day - 1));
+  return localIsoDate(copy);
+}
+
+function registrationWeekDates(weekStart) {
+  return Array.from({ length: 7 }, (_, index) =>
+    shiftIsoDate(weekStart, index),
+  );
+}
+
+function shiftIsoDate(value, days) {
+  const parts = String(value).split("-").map(Number);
+  if (
+    parts.length !== 3 ||
+    !Number.isSafeInteger(parts[0]) ||
+    !Number.isSafeInteger(parts[1]) ||
+    !Number.isSafeInteger(parts[2])
+  ) {
+    return value;
+  }
+  const date = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return localIsoDate(date);
+}
+
+function germanWeekday(value) {
+  const parts = String(value).split("-").map(Number);
+  if (parts.length !== 3) return "";
+  const date = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0);
+  return new Intl.DateTimeFormat("de-AT", { weekday: "long" }).format(date);
 }
 
 async function bootstrapKindertraining() {
+  const generation = attendanceSessionGeneration;
   kindertrainingReady = false;
   kindertrainingGroups = [];
   kindertrainingSnapshot = null;
@@ -2273,6 +2644,7 @@ async function bootstrapKindertraining() {
 
   try {
     const payload = await requestJson("/api/modules/kindertraining");
+    if (generation !== attendanceSessionGeneration) return;
     const groups = payload?.trainingGroups;
     kindertrainingReady =
       payload?.module?.moduleId === "kindertraining" &&
@@ -2309,6 +2681,7 @@ async function bootstrapKindertraining() {
       );
     }
   } catch (error) {
+    if (generation !== attendanceSessionGeneration) return;
     kindertrainingReady = false;
     kindertrainingGroups = [];
     renderKindertrainingGroups();
@@ -2319,7 +2692,9 @@ async function bootstrapKindertraining() {
         : "Anwesenheit ist derzeit nicht verfügbar.",
     );
   }
-  refreshAppAvailability();
+  if (generation === attendanceSessionGeneration) {
+    refreshAppAvailability();
+  }
 }
 
 async function bootstrapCountdown() {
@@ -2413,7 +2788,7 @@ function refreshAppNavigation() {
     elements.appNavOverflow?.append(control);
   }
 
-  const hasOverflow = overflow.length > 0;
+  const hasOverflow = overflow.length > 0 || elements.appSignOut !== null;
   if (!hasOverflow) appNavMoreOpen = false;
   if (elements.appNavMore) {
     elements.appNavMore.hidden = !hasOverflow;
@@ -2434,7 +2809,8 @@ function refreshAppNavigation() {
 
 function setAppNavMoreOpen(open) {
   const hasOverflow =
-    (elements.appNavOverflow?.querySelectorAll("[data-nav-view]").length ?? 0) > 0;
+    (elements.appNavOverflow?.querySelectorAll("[data-nav-view]").length ?? 0) > 0 ||
+    elements.appSignOut !== null;
   appNavMoreOpen = hasOverflow && open;
   if (elements.appNavMore) {
     elements.appNavMore.setAttribute(
@@ -2463,13 +2839,16 @@ function syncAppNavigationActive(section) {
 
 function refreshAppAvailability() {
   refreshAppNavigation();
-  if (elements.registrationDate) {
-    elements.registrationDate.disabled =
-      selfRegistrationLoading || selfRegistrationSavingGroupId !== null;
-  }
-  if (elements.registrationReload) {
-    elements.registrationReload.disabled =
-      selfRegistrationLoading || selfRegistrationSavingGroupId !== null;
+  for (const control of [
+    elements.registrationWeekPrev,
+    elements.registrationWeekNext,
+    elements.registrationWeekCurrent,
+    elements.registrationReload,
+  ]) {
+    if (control) {
+      control.disabled =
+        selfRegistrationLoading || selfRegistrationSavingKey !== null;
+    }
   }
   refreshTrainingBlockControls();
   refreshTrainingPlanControls();
@@ -2629,6 +3008,7 @@ function resetKindertrainingSelection() {
 
 async function loadKindertraining() {
   if (!kindertrainingReady || kindertrainingLoading) return;
+  const generation = attendanceSessionGeneration;
   const groupId = elements.kindertrainingGroup?.value || "";
   const sessionDate = elements.kindertrainingDate?.value || "";
   if (!groupId || !sessionDate) {
@@ -2649,6 +3029,7 @@ async function loadKindertraining() {
         "&sessionDate=" +
         encodeURIComponent(sessionDate),
     );
+    if (generation !== attendanceSessionGeneration) return;
     const snapshot = payload?.snapshot;
     if (!isKindertrainingSnapshot(snapshot, groupId, sessionDate)) {
       throw new Error("INVALID_KINDERTRAINING_SNAPSHOT");
@@ -2656,6 +3037,7 @@ async function loadKindertraining() {
     kindertrainingSnapshot = snapshot;
     renderKindertrainingSnapshot();
   } catch (error) {
+    if (generation !== attendanceSessionGeneration) return;
     kindertrainingSnapshot = null;
     if (elements.kindertrainingSession) elements.kindertrainingSession.hidden = true;
     showMessage(
@@ -2667,7 +3049,9 @@ async function loadKindertraining() {
           : "Die Anwesenheit konnte nicht geladen werden.",
     );
   } finally {
-    setKindertrainingLoading(false);
+    if (generation === attendanceSessionGeneration) {
+      setKindertrainingLoading(false);
+    }
   }
 }
 
@@ -2913,6 +3297,7 @@ async function saveKindertraining() {
   if (!kindertrainingReady || kindertrainingLoading || !kindertrainingSnapshot) {
     return;
   }
+  const generation = attendanceSessionGeneration;
   const groupId = elements.kindertrainingGroup?.value || "";
   const sessionDate = elements.kindertrainingDate?.value || "";
   if (
@@ -2944,6 +3329,7 @@ async function saveKindertraining() {
         })),
       }),
     });
+    if (generation !== attendanceSessionGeneration) return;
     const snapshot = payload?.snapshot;
     if (!isKindertrainingSnapshot(snapshot, groupId, sessionDate)) {
       throw new Error("INVALID_KINDERTRAINING_SAVE");
@@ -2952,6 +3338,7 @@ async function saveKindertraining() {
     renderKindertrainingSnapshot();
     showMessage(elements.kindertrainingSuccess, "Training wurde gespeichert.");
   } catch (error) {
+    if (generation !== attendanceSessionGeneration) return;
     const conflict = error?.status === 409;
     showMessage(
       elements.kindertrainingMessage,
@@ -2967,7 +3354,9 @@ async function saveKindertraining() {
       elements.kindertrainingSaveState.textContent = "Konflikt – neu laden";
     }
   } finally {
-    setKindertrainingLoading(false);
+    if (generation === attendanceSessionGeneration) {
+      setKindertrainingLoading(false);
+    }
   }
 }
 
@@ -3511,10 +3900,12 @@ async function loadMasterdata(force = false) {
     renderMasterdata(masterdataSnapshot);
     return true;
   }
+  const generation = masterdataSessionGeneration;
   masterdataLoading = true;
   showMessage(elements.masterdataMessage, "");
   try {
     const payload = await requestJson("/api/modules/athletes/masterdata");
+    if (generation !== masterdataSessionGeneration) return false;
     const snapshot = payload?.masterdata;
     if (
       !Array.isArray(snapshot?.athletes) ||
@@ -3530,6 +3921,7 @@ async function loadMasterdata(force = false) {
     renderMasterdata(snapshot);
     return true;
   } catch (error) {
+    if (generation !== masterdataSessionGeneration) return false;
     masterdataSnapshot = null;
     showMessage(
       elements.masterdataMessage,
@@ -3539,7 +3931,9 @@ async function loadMasterdata(force = false) {
     );
     return false;
   } finally {
-    masterdataLoading = false;
+    if (generation === masterdataSessionGeneration) {
+      masterdataLoading = false;
+    }
   }
 }
 
@@ -3921,19 +4315,23 @@ async function fetchTrainerIdentityBindings() {
 
 async function loadTrainerIdentityAdmin() {
   if (trainerIdentityLoading) return;
+  const generation = masterdataSessionGeneration;
   trainerIdentityLoading = true;
   trainerIdentityAdminReady = false;
   setTrainerIdentityControlsDisabled(true);
   showMessage(elements.trainerIdentityMessage, "");
   showMessage(elements.trainerIdentitySuccess, "");
   try {
-    trainerIdentityBindings = await fetchTrainerIdentityBindings();
+    const bindings = await fetchTrainerIdentityBindings();
+    if (generation !== masterdataSessionGeneration) return;
+    trainerIdentityBindings = bindings;
     trainerIdentityAdminReady = true;
     if (elements.trainerIdentityWorkspace) {
       elements.trainerIdentityWorkspace.hidden = false;
     }
     renderTrainerIdentityAdmin();
   } catch (error) {
+    if (generation !== masterdataSessionGeneration) return;
     trainerIdentityBindings = [];
     if (elements.trainerIdentityWorkspace) {
       elements.trainerIdentityWorkspace.hidden = true;
@@ -3945,8 +4343,10 @@ async function loadTrainerIdentityAdmin() {
         : "Die Trainer-Benutzerzuordnung konnte nicht geladen werden.",
     );
   } finally {
-    trainerIdentityLoading = false;
-    setTrainerIdentityControlsDisabled(false);
+    if (generation === masterdataSessionGeneration) {
+      trainerIdentityLoading = false;
+      setTrainerIdentityControlsDisabled(false);
+    }
   }
 }
 
@@ -5483,6 +5883,17 @@ function setBusy(next) {
     control.disabled = next;
   }
   refreshControls();
+}
+
+function setAuthenticatedAppInteractionLocked(locked) {
+  if (!elements.appView) return;
+  if (locked) {
+    elements.appView.setAttribute("inert", "");
+    elements.appView.setAttribute("aria-busy", "true");
+    return;
+  }
+  elements.appView.removeAttribute("inert");
+  elements.appView.removeAttribute("aria-busy");
 }
 
 function showMessage(element, message) {

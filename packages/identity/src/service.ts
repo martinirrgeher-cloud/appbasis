@@ -348,6 +348,10 @@ export class IdentityService {
     );
   }
 
+  async endSession(sessionToken: string): Promise<void> {
+    await this.authProvider.endSession(requiredText(sessionToken, "sessionToken"));
+  }
+
   async getCurrentIdentity(
     sessionToken: string,
   ): Promise<CurrentIdentity | null> {

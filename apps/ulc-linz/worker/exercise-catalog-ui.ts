@@ -1008,6 +1008,7 @@ Object.assign(elements, {
   exerciseCatalogReadonly: document.querySelector("#exercise-catalog-readonly"),
 });
 
+let exerciseCatalogSessionGeneration = 0;
 let exerciseCatalogReady = false;
 let exerciseCatalogCanEdit = false;
 let exerciseCatalogItems = [];
@@ -1106,6 +1107,7 @@ function isExerciseCatalogGroup(group) {
 }
 
 async function bootstrapExerciseCatalog() {
+  const generation = exerciseCatalogSessionGeneration;
   exerciseCatalogReady = false;
   exerciseCatalogCanEdit = false;
   exerciseCatalogItems = [];
@@ -1120,6 +1122,7 @@ async function bootstrapExerciseCatalog() {
 
   try {
     const payload = await requestJson("/api/modules/exercise-catalog");
+    if (generation !== exerciseCatalogSessionGeneration) return;
     const items = payload?.catalog?.items;
     const groups = payload?.catalog?.trainingGroups;
     const features = payload?.module?.features;
@@ -1154,6 +1157,7 @@ async function bootstrapExerciseCatalog() {
     initializeExerciseCatalogFilters();
     renderExerciseCatalogList();
   } catch (error) {
+    if (generation !== exerciseCatalogSessionGeneration) return;
     showMessage(
       elements.exerciseCatalogMessage,
       error?.status === 403
@@ -1161,7 +1165,9 @@ async function bootstrapExerciseCatalog() {
         : "Der Übungskatalog ist derzeit nicht verfügbar.",
     );
   }
-  refreshAppAvailability();
+  if (generation === exerciseCatalogSessionGeneration) {
+    refreshAppAvailability();
+  }
 }
 
 function initializeExerciseCatalogFilters() {
@@ -1476,6 +1482,7 @@ function renderExerciseCatalogList() {
 
 async function openExerciseCatalogItem(id) {
   if (!exerciseCatalogReady || exerciseCatalogBusy) return;
+  const generation = exerciseCatalogSessionGeneration;
   setExerciseCatalogBusy(true);
   showMessage(elements.exerciseCatalogMessage, "");
   showMessage(elements.exerciseCatalogSuccess, "");
@@ -1483,12 +1490,14 @@ async function openExerciseCatalogItem(id) {
     const payload = await requestJson(
       "/api/modules/exercise-catalog/" + encodeURIComponent(id),
     );
+    if (generation !== exerciseCatalogSessionGeneration) return;
     if (!isExerciseCatalogItem(payload?.item)) {
       throw new Error("INVALID_EXERCISE_CATALOG_ITEM");
     }
     exerciseCatalogSelectedId = payload.item.id;
     populateExerciseCatalogEditor(payload.item);
   } catch (error) {
+    if (generation !== exerciseCatalogSessionGeneration) return;
     showMessage(
       elements.exerciseCatalogMessage,
       error?.status === 404
@@ -1496,7 +1505,9 @@ async function openExerciseCatalogItem(id) {
         : "Die Übung konnte nicht geladen werden.",
     );
   } finally {
-    setExerciseCatalogBusy(false);
+    if (generation === exerciseCatalogSessionGeneration) {
+      setExerciseCatalogBusy(false);
+    }
   }
 }
 
@@ -1723,6 +1734,13 @@ function populateExerciseCatalogEditor(item, options = {}) {
 }
 
 function closeExerciseCatalogEditor(force = false) {
+  if (!force && exerciseCatalogBusy) {
+    showMessage(
+      elements.exerciseCatalogMessage,
+      "Im Übungskatalog läuft noch ein Vorgang. Bitte zuerst abschließen lassen.",
+    );
+    return false;
+  }
   if (
     !force &&
     !exerciseCatalogEditorReviewMode &&
@@ -1745,6 +1763,37 @@ function closeExerciseCatalogEditor(force = false) {
   document.body.classList.remove("exercise-catalog-editor-open");
   showMessage(elements.exerciseCatalogSuccess, "");
   return true;
+}
+
+function resetExerciseCatalogSessionState() {
+  exerciseCatalogSessionGeneration += 1;
+  exerciseCatalogReady = false;
+  exerciseCatalogCanEdit = false;
+  exerciseCatalogItems = [];
+  exerciseCatalogGroups = [];
+  exerciseCatalogFeatures = {
+    difficulty: false,
+    similarExercises: false,
+    duplicateWarnings: false,
+    usageHistory: false,
+    multipleExternalVideos: false,
+    privateVideoUpload: false,
+  };
+  exerciseCatalogBusy = false;
+  closeExerciseCatalogEditor(true);
+  closeExerciseCatalogImportPreview();
+  setExerciseCatalogFilterOpen(false);
+  resetExerciseCatalogUsagePanel();
+  resetExerciseCatalogMediaPanel();
+  renderExerciseCatalogList();
+  setExerciseCatalogBusy(false);
+  showMessage(elements.exerciseCatalogMessage, "");
+  showMessage(elements.exerciseCatalogSuccess, "");
+  refreshAppAvailability();
+}
+
+function prepareExerciseCatalogForSessionEnd() {
+  return closeExerciseCatalogEditor(false);
 }
 
 function renderExerciseCatalogExternalLinks(urls) {
@@ -1814,6 +1863,7 @@ function resetExerciseCatalogUsagePanel() {
 }
 
 async function loadExerciseCatalogUsage(exerciseId) {
+  const generation = exerciseCatalogSessionGeneration;
   resetExerciseCatalogUsagePanel();
   if (!exerciseCatalogFeatures.usageHistory || !exerciseId) return;
   try {
@@ -1822,7 +1872,10 @@ async function loadExerciseCatalogUsage(exerciseId) {
         encodeURIComponent(exerciseId) +
         "/usage",
     );
-    if (exerciseCatalogSelectedId !== exerciseId) return;
+    if (
+      generation !== exerciseCatalogSessionGeneration ||
+      exerciseCatalogSelectedId !== exerciseId
+    ) return;
     const summary = payload?.summary;
     const events = Array.isArray(payload?.events) ? payload.events : [];
     if (elements.exerciseCatalogUsageSummary) {
@@ -1855,6 +1908,7 @@ async function loadExerciseCatalogUsage(exerciseId) {
       }
     }
   } catch {
+    if (generation !== exerciseCatalogSessionGeneration) return;
     if (elements.exerciseCatalogUsageSummary) {
       elements.exerciseCatalogUsageSummary.textContent =
         "Verwendung konnte nicht geladen werden.";
@@ -1901,6 +1955,7 @@ function resetExerciseCatalogMediaPanel() {
 }
 
 async function loadExerciseCatalogPrivateMedia(exerciseId) {
+  const generation = exerciseCatalogSessionGeneration;
   resetExerciseCatalogMediaPanel();
   if (!exerciseId) return;
   try {
@@ -1909,7 +1964,10 @@ async function loadExerciseCatalogPrivateMedia(exerciseId) {
         encodeURIComponent(exerciseId) +
         "/private-media",
     );
-    if (exerciseCatalogSelectedId !== exerciseId) return;
+    if (
+      generation !== exerciseCatalogSessionGeneration ||
+      exerciseCatalogSelectedId !== exerciseId
+    ) return;
     const media = Array.isArray(payload?.media) ? payload.media : [];
     if (elements.exerciseCatalogMediaHint) {
       elements.exerciseCatalogMediaHint.textContent =
@@ -1923,6 +1981,7 @@ async function loadExerciseCatalogPrivateMedia(exerciseId) {
     }
     renderExerciseCatalogPrivateMedia(exerciseId, media);
   } catch (error) {
+    if (generation !== exerciseCatalogSessionGeneration) return;
     if (elements.exerciseCatalogMediaHint) {
       elements.exerciseCatalogMediaHint.textContent =
         error?.status === 503

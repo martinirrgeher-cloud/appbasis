@@ -1083,6 +1083,38 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(runtimeCalls).toBe(0);
   });
 
+  it("ends the active identity session through the worker sign-out route", async () => {
+    let endedSession = "";
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        identity: {
+          ...base.identity,
+          async endSession(sessionToken) {
+            endedSession = sessionToken;
+          },
+        },
+      };
+    });
+
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/auth/sign-out", {
+        method: "POST",
+        headers: {
+          cookie: "better-auth.session_token=worker-test-token",
+        },
+      }),
+      validEnv,
+    );
+
+    expect(response.status).toBe(204);
+    expect(endedSession).toBe(
+      "better-auth.session_token=worker-test-token",
+    );
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+
   it("fails closed before runtime creation when required bindings are missing", async () => {
     let runtimeCalls = 0;
     const worker = createGeneratedWorker(() => {
