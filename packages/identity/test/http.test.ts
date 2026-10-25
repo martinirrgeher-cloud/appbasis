@@ -24,6 +24,7 @@ function identityService(): IdentityHttpService {
   return {
     signInWithUsername: vi.fn(async () => currentIdentity),
     getCurrentIdentity: vi.fn(async () => currentIdentity),
+    endSession: vi.fn(async () => {}),
     changeRequiredPassword: vi.fn(async () => currentIdentity),
   };
 }
@@ -97,6 +98,28 @@ describe("identity HTTP adapter", () => {
       },
     });
     expect(identity.getCurrentIdentity).not.toHaveBeenCalled();
+  });
+
+  it("ends the server session and expires the browser session cookie on sign-out", async () => {
+    const identity = identityService();
+    const handlers = createIdentityHttpHandlers({ identity, secureCookies: true });
+
+    const response = await handlers.signOut(
+      new Request("https://app.example/api/auth/sign-out", {
+        method: "POST",
+        headers: {
+          cookie: "other=value; better-auth.session_token=session-value",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(identity.endSession).toHaveBeenCalledWith(
+      "other=value; better-auth.session_token=session-value",
+    );
+    expect(response.headers.get("set-cookie")).toBe(
+      "better-auth.session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Secure",
+    );
   });
 
   it("rejects an invalid password-change idempotency key before identity mutation", async () => {
