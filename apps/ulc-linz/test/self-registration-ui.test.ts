@@ -146,10 +146,61 @@ describe("ULC weekly self-registration and account switching", () => {
       "candidate.group.id === groupId &&\n      candidate.sessionDate === sessionDate",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      "selfRegistrationSavingKey = groupId + \"|\" + sessionDate;",
+      'const optionKey = groupId + "|" + sessionDate;',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "selfRegistrationSavingKeys.add(optionKey);",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "? { ...candidate, intention }",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "sessionDate,\n        }),",
     );
+  });
+
+  it("keeps registration responsive while individual days save in the background", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "let selfRegistrationSavingKeys = new Set();",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "const optionSaving = selfRegistrationSavingKeys.has(optionKey);",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '(optionSaving ? " · speichert …" : "")',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "selfRegistrationSavingKeys.delete(optionKey);",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain(
+      "selfRegistrationSavingKey !== null",
+    );
+  });
+
+  it("renders trainer attendance as a whole week with registration and actual attendance separated", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-prev"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-next"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-current"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-label"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-save"');
+    expect(ULC_LINZ_APP_HTML).not.toContain('id="kindertraining-date"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "kindertrainingWeekSnapshots = snapshots;",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"Voranmeldung: " +',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"Voranmeldung: " + kindertrainingRegistrationLabel(participant.intention)',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "let kindertrainingWeekDirtyDates = new Set();",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Promise.allSettled(");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "kindertrainingWeekDirtyDates.add(sessionDate);",
+    );
+    expect(ULC_LINZ_APP_CSS).toContain(".kindertraining-week-savebar {");
+    expect(ULC_LINZ_APP_CSS).toContain("position: sticky;");
   });
 });
