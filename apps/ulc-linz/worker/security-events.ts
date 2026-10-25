@@ -1,7 +1,6 @@
 export type UlcLinzIdentitySecurityOperation =
   | "sign-in"
   | "session"
-  | "sign-out"
   | "change-required-password";
 
 export type UlcLinzAuthorizationDenyReason =
