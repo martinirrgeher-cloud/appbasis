@@ -7,17 +7,41 @@ import {
 } from "../worker/ui";
 
 describe("ULC weekly self-registration and account switching", () => {
-  it("keeps sign-out directly reachable in the app and password-change view", () => {
+  it("keeps sign-out directly reachable and resolves local work before revoking the session", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="app-sign-out"');
     expect(ULC_LINZ_APP_HTML).toContain('id="password-sign-out"');
     expect(ULC_LINZ_APP_HTML).toContain("Abmelden / Benutzer wechseln");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "overflow.length > 0 || elements.appSignOut !== null",
     );
-    expect(ULC_LINZ_APP_SCRIPT).toContain(
+
+    const signOutStart = ULC_LINZ_APP_SCRIPT.indexOf(
+      "async function handleSignOut()",
+    );
+    const signOutEnd = ULC_LINZ_APP_SCRIPT.indexOf(
+      "\nasync function acceptSession",
+      signOutStart,
+    );
+    const signOutScript = ULC_LINZ_APP_SCRIPT.slice(signOutStart, signOutEnd);
+    const closeEditorIndex = signOutScript.indexOf(
+      "await closeTrainingPlanEditor(false)",
+    );
+    const countdownDecisionIndex = signOutScript.indexOf(
+      "Der Countdown läuft noch. Wirklich abmelden und den Countdown beenden?",
+    );
+    const revokeIndex = signOutScript.indexOf(
       'requestJson("/api/auth/sign-out", { method: "POST" })',
     );
-    expect(ULC_LINZ_APP_SCRIPT).toContain("window.location.reload();");
+
+    expect(signOutStart).toBeGreaterThanOrEqual(0);
+    expect(signOutEnd).toBeGreaterThan(signOutStart);
+    expect(closeEditorIndex).toBeGreaterThanOrEqual(0);
+    expect(countdownDecisionIndex).toBeGreaterThan(closeEditorIndex);
+    expect(revokeIndex).toBeGreaterThan(countdownDecisionIndex);
+    expect(signOutScript).toContain("resetCountdown();");
+    expect(signOutScript).toContain('setTrainingPlanSessionIdentity("");');
+    expect(signOutScript).toContain('showView("login");');
+    expect(signOutScript).not.toContain("window.location.reload();");
   });
 
   it("shows a Monday-to-Sunday registration week with direct week navigation", () => {
