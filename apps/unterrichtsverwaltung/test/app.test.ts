@@ -35,6 +35,7 @@ const identity: IdentityHttpService = {
   async getCurrentIdentity(sessionToken) {
     return sessionToken === currentIdentity.sessionToken ? currentIdentity : null;
   },
+  async endSession() {},
   async changeRequiredPassword() {
     return currentIdentity;
   },
