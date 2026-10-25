@@ -909,6 +909,7 @@ const trainingPlanElements = Object.freeze({
   meta: document.querySelector("#training-plan-editor-meta"),
 });
 
+let trainingPlanSessionGeneration = 0;
 let trainingPlansReady = false;
 let trainingPlansCanEdit = false;
 let trainingPlanSubjects = [];
@@ -1173,6 +1174,7 @@ function isTrainingPlanAttendance(value) {
 }
 
 async function bootstrapTrainingPlans() {
+  const generation = trainingPlanSessionGeneration;
   trainingPlansReady = false;
   trainingPlansCanEdit = false;
   trainingPlanSubjects = [];
@@ -1195,6 +1197,7 @@ async function bootstrapTrainingPlans() {
 
   try {
     const payload = await requestJson("/api/modules/training-plans");
+    if (generation !== trainingPlanSessionGeneration) return;
     const features = payload?.module?.features;
     if (
       payload?.module?.moduleId !== "training_planning" ||
@@ -1249,6 +1252,7 @@ async function bootstrapTrainingPlans() {
     renderTrainingPlanMode();
     await loadTrainingPlanOverview();
   } catch (error) {
+    if (generation !== trainingPlanSessionGeneration) return;
     trainingPlansReady = false;
     trainingPlansCanEdit = false;
     trainingPlanOverviewGroups = [];
@@ -1272,7 +1276,9 @@ async function bootstrapTrainingPlans() {
         : "Die Trainingsplanung ist derzeit nicht verfügbar.",
     );
   }
-  refreshAppAvailability();
+  if (generation === trainingPlanSessionGeneration) {
+    refreshAppAvailability();
+  }
 }
 
 function prepareTrainingPlansView() {
@@ -1349,8 +1355,10 @@ function trainingPlanUpdateWeekLabel() {
 }
 
 async function refreshTrainingPlanDependencies() {
+  const generation = trainingPlanSessionGeneration;
   try {
     const payload = await requestJson("/api/modules/training-plans");
+    if (generation !== trainingPlanSessionGeneration) return;
     if (
       payload?.module?.moduleId !== "training_planning" ||
       payload?.access?.view !== true ||
@@ -1393,6 +1401,7 @@ async function refreshTrainingPlanDependencies() {
     renderTrainingPlanBlockTemplates();
     if (trainingPlanPickerMode === "block") renderTrainingPlanPicker();
   } catch {
+    if (generation !== trainingPlanSessionGeneration) return;
     // Keep the last valid dependency snapshot visible.
   }
 }
@@ -1491,6 +1500,7 @@ async function loadTrainingPlanOverview() {
     return false;
   }
 
+  const generation = trainingPlanSessionGeneration;
   const groupId = trainingPlanSelectedOverviewGroupId;
   const weekStart = trainingPlanWeekStart;
   trainingPlanOverviewLoading = true;
@@ -1506,6 +1516,7 @@ async function loadTrainingPlanOverview() {
         "&weekStart=" +
         encodeURIComponent(weekStart),
     );
+    if (generation !== trainingPlanSessionGeneration) return false;
     if (
       !isTrainingPlanOverview(payload?.overview) ||
       payload.overview.group.id !== groupId ||
@@ -1522,6 +1533,7 @@ async function loadTrainingPlanOverview() {
     trainingPlanOverview = payload.overview;
     return true;
   } catch (error) {
+    if (generation !== trainingPlanSessionGeneration) return false;
     if (
       trainingPlanSelectedOverviewGroupId !== groupId ||
       trainingPlanWeekStart !== weekStart
@@ -1536,6 +1548,7 @@ async function loadTrainingPlanOverview() {
     );
     return false;
   } finally {
+    if (generation !== trainingPlanSessionGeneration) return;
     const requestOutdated =
       trainingPlanSelectedOverviewGroupId !== groupId ||
       trainingPlanWeekStart !== weekStart;
@@ -1739,6 +1752,7 @@ async function openTrainingPlanFromOverview(subjectId, date) {
   if (!(await closeTrainingPlanEditor(false))) return;
   if (!trainingPlanSubjects.some((subject) => subject.id === subjectId)) return;
 
+  const generation = trainingPlanSessionGeneration;
   const requestId = ++trainingPlanDayRequestId;
   if (trainingPlanSelectedSubjectId !== subjectId) {
     trainingPlanWeekRequestId += 1;
@@ -1774,6 +1788,7 @@ async function openTrainingPlanFromOverview(subjectId, date) {
       throw new Error("INVALID_TRAINING_PLAN_DAY");
     }
     if (
+      generation !== trainingPlanSessionGeneration ||
       requestId !== trainingPlanDayRequestId ||
       trainingPlanSelectedSubjectId !== subjectId
     ) {
@@ -1782,6 +1797,7 @@ async function openTrainingPlanFromOverview(subjectId, date) {
     openTrainingPlanEditor(date, payload.plan);
   } catch (error) {
     if (
+      generation !== trainingPlanSessionGeneration ||
       requestId !== trainingPlanDayRequestId ||
       trainingPlanSelectedSubjectId !== subjectId
     ) {
@@ -1886,6 +1902,7 @@ async function loadTrainingPlanWeek() {
     !trainingPlanSelectedSubjectId
   ) return false;
 
+  const generation = trainingPlanSessionGeneration;
   const requestId = ++trainingPlanWeekRequestId;
   trainingPlanWeekLoading = true;
   trainingPlanWeekLoaded = false;
@@ -1924,6 +1941,7 @@ async function loadTrainingPlanWeek() {
       throw new Error("INVALID_TRAINING_PLAN_WEEK");
     }
     if (
+      generation !== trainingPlanSessionGeneration ||
       requestId !== trainingPlanWeekRequestId ||
       trainingPlanSelectedSubjectId !== subjectId ||
       trainingPlanWeekStart !== weekStart
@@ -1936,6 +1954,7 @@ async function loadTrainingPlanWeek() {
     return true;
   } catch (error) {
     if (
+      generation !== trainingPlanSessionGeneration ||
       requestId !== trainingPlanWeekRequestId ||
       trainingPlanSelectedSubjectId !== subjectId ||
       trainingPlanWeekStart !== weekStart
@@ -1952,6 +1971,7 @@ async function loadTrainingPlanWeek() {
     );
     return false;
   } finally {
+    if (generation !== trainingPlanSessionGeneration) return;
     const requestOutdated =
       requestId !== trainingPlanWeekRequestId ||
       trainingPlanSelectedSubjectId !== subjectId ||
@@ -3017,6 +3037,7 @@ async function addTrainingPlanBlockTemplate() {
 }
 
 async function openTrainingPlanPicker(mode) {
+  const generation = trainingPlanSessionGeneration;
   if (
     !trainingPlanDraft ||
     !trainingPlansCanEdit ||
@@ -3050,6 +3071,7 @@ async function openTrainingPlanPicker(mode) {
     renderTrainingPlanPicker();
     try {
       const payload = await requestJson("/api/modules/exercise-catalog");
+      if (generation !== trainingPlanSessionGeneration) return;
       const items = payload?.catalog?.items;
       if (
         payload?.module?.moduleId !== "exercise_catalog" ||
@@ -3062,13 +3084,16 @@ async function openTrainingPlanPicker(mode) {
       exerciseCatalogItems = items.slice();
       renderTrainingPlanPickerCategories();
     } catch {
+      if (generation !== trainingPlanSessionGeneration) return;
       showMessage(
         trainingPlanElements.editorMessage,
         "Der Übungskatalog konnte nicht aktualisiert werden. Der zuletzt geladene Stand bleibt verfügbar.",
       );
     } finally {
-      trainingPlanPickerLoading = false;
-      renderTrainingPlanPicker();
+      if (generation === trainingPlanSessionGeneration) {
+        trainingPlanPickerLoading = false;
+        renderTrainingPlanPicker();
+      }
     }
   } else {
     await refreshTrainingPlanDependencies();
@@ -3655,9 +3680,11 @@ function replaceTrainingPlanWeekSnapshot(saved) {
 
 async function reloadTrainingPlanEditor() {
   if (!trainingPlanEditorDate || trainingPlanWeekLoading) return;
+  const generation = trainingPlanSessionGeneration;
   const date = trainingPlanEditorDate;
   if (trainingPlanElements.reload) trainingPlanElements.reload.hidden = true;
   const reloaded = await loadTrainingPlanWeek();
+  if (generation !== trainingPlanSessionGeneration) return;
   if (!reloaded) {
     trainingPlanConflict = true;
     trainingPlanDirty = true;
@@ -3940,6 +3967,45 @@ function refreshTrainingPlanEditorState() {
   } else if (!trainingPlanDirty && !trainingPlanSaveBusy && !trainingPlanConflict) {
     trainingPlanSetSaveState("saved", trainingPlanSelected ? "Gespeichert" : "Noch nicht gespeichert");
   }
+}
+
+function resetTrainingPlanSessionState() {
+  trainingPlanSessionGeneration += 1;
+  trainingPlanWeekRequestId += 1;
+  trainingPlanDayRequestId += 1;
+  trainingPlanSaveBackOperation += 1;
+
+  trainingPlansReady = false;
+  trainingPlansCanEdit = false;
+  trainingPlanSubjects = [];
+  trainingPlanViewMode = "group";
+  trainingPlanOverviewGroups = [];
+  trainingPlanSelectedOverviewGroupId = "";
+  trainingPlanOverview = null;
+  trainingPlanOverviewLoading = false;
+  trainingPlanBlockTemplates = [];
+  trainingPlanSelectedSubjectId = "";
+  trainingPlanWeekStart = trainingPlanMonday(new Date());
+  trainingPlanWeekPlans = [];
+  trainingPlanWeekAttendance = [];
+  trainingPlanWeekLoading = false;
+  trainingPlanWeekLoaded = false;
+  trainingPlanPickerLoading = false;
+  trainingPlanSaveBackBusy = false;
+  trainingPlanSaveBackItemId = null;
+  trainingPlanSaveBackAudiences = [];
+  void closeTrainingPlanEditor(true);
+  closeTrainingPlanPicker();
+  closeTrainingPlanDistribution();
+  renderTrainingPlanSubjects();
+  renderTrainingPlanOverviewGroups();
+  renderTrainingPlanBlockTemplates();
+  renderTrainingPlanMode();
+  renderTrainingPlanWeek();
+  renderTrainingPlanOverview();
+  refreshTrainingPlanControls();
+  showMessage(trainingPlanElements.message, "");
+  refreshAppAvailability();
 }
 
 function setTrainingPlanSessionIdentity(identityId) {
