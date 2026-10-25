@@ -52,6 +52,12 @@ describe("ULC training block planning-aligned UI", () => {
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
       "trainingBlockAudiences = [];",
     );
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
+      "closeTrainingBlockExerciseInfo();",
+    );
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
+      "trainingBlockElements.infoBody?.replaceChildren();",
+    );
   });
 
   it("keeps standard prescription overrides when building a block payload", () => {
