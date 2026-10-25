@@ -2024,21 +2024,42 @@ async function handlePasswordChange(event) {
 
 async function handleSignOut() {
   if (busy) return;
-  busy = true;
+
+  if (
+    typeof closeTrainingPlanEditor === "function" &&
+    !(await closeTrainingPlanEditor(false))
+  ) {
+    return;
+  }
+  if (
+    (runMode === "running" || runMode === "paused") &&
+    !window.confirm(
+      "Der Countdown läuft noch. Wirklich abmelden und den Countdown beenden?",
+    )
+  ) {
+    return;
+  }
+
+  setBusy(true);
   if (elements.appSignOut) elements.appSignOut.disabled = true;
   if (elements.passwordSignOut) elements.passwordSignOut.disabled = true;
   showMessage(elements.appSessionMessage, "");
   showMessage(elements.passwordMessage, "");
   try {
     await requestJson("/api/auth/sign-out", { method: "POST" });
-    window.location.reload();
+    resetCountdown();
+    setTrainingPlanSessionIdentity("");
+    setAppNavMoreOpen(false);
+    showView("login");
+    if (elements.loginPassword) elements.loginPassword.value = "";
   } catch {
     const message = "Abmelden ist fehlgeschlagen. Bitte erneut versuchen.";
     showMessage(elements.appSessionMessage, message);
     showMessage(elements.passwordMessage, message);
-    busy = false;
+  } finally {
     if (elements.appSignOut) elements.appSignOut.disabled = false;
     if (elements.passwordSignOut) elements.passwordSignOut.disabled = false;
+    setBusy(false);
   }
 }
 
