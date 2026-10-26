@@ -56,7 +56,7 @@ const PLAN: TrainingPlanSnapshot = Object.freeze({
   }),
 });
 
-function planService(plan: TrainingPlanSnapshot | undefined = PLAN) {
+function planService(plan: TrainingPlanSnapshot | null = PLAN) {
   return {
     async listSubjects() {
       return Object.freeze([
@@ -69,7 +69,7 @@ function planService(plan: TrainingPlanSnapshot | undefined = PLAN) {
       ]);
     },
     async findCurrentBySubjectDate() {
-      return plan;
+      return plan ?? undefined;
     },
     async listAttendanceForSubjectDateRange() {
       return Object.freeze([
@@ -164,7 +164,7 @@ describe("ULC training documentation adapter", () => {
   it("requires a persisted training plan before documentation starts", async () => {
     const service = createUlcTrainingDocumentationService({
       documentation: documentationService(),
-      plans: planService(undefined),
+      plans: planService(null),
     });
 
     await expect(
