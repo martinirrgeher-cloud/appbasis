@@ -34,6 +34,7 @@ export const ULC_TRAINING_DOCUMENTATION_HTML = `
                 <div class="training-documentation-status-row">
                   <span class="training-documentation-status" id="training-documentation-status">Noch nicht begonnen</span>
                   <span class="training-documentation-attendance" id="training-documentation-attendance">Anwesenheit: offen</span>
+                  <span class="training-documentation-progress" id="training-documentation-progress">Durchgeführt: –</span>
                 </div>
                 <div class="training-documentation-actions">
                   <button class="button button--primary" id="training-documentation-start" type="button">Dokumentation starten</button>
@@ -43,10 +44,25 @@ export const ULC_TRAINING_DOCUMENTATION_HTML = `
               </section>
 
               <section class="card training-documentation-note-card" id="training-documentation-editor" hidden>
+                <div class="training-documentation-section-heading">
+                  <div>
+                    <p class="eyebrow">Trainingstag</p>
+                    <h2>Notiz</h2>
+                  </div>
+                  <small>Abweichungen und Beobachtungen zum gesamten Training.</small>
+                </div>
                 <label>Notiz zur tatsächlichen Durchführung
                   <textarea id="training-documentation-note" maxlength="3000" rows="3" placeholder="Abweichungen, Beobachtungen, Hinweise …"></textarea>
                 </label>
               </section>
+
+              <div class="training-documentation-section-heading training-documentation-items-heading">
+                <div>
+                  <p class="eyebrow">Durchführung</p>
+                  <h2>Übungen &amp; Blöcke</h2>
+                </div>
+                <small>Planwerte bleiben unverändert; darunter dokumentierst du das tatsächliche Training.</small>
+              </div>
 
               <section class="training-documentation-items" id="training-documentation-items"></section>
 
@@ -143,7 +159,8 @@ export const ULC_TRAINING_DOCUMENTATION_CSS = `
 }
 
 .training-documentation-status,
-.training-documentation-attendance {
+.training-documentation-attendance,
+.training-documentation-progress {
   display: inline-flex;
   align-items: center;
   min-height: 30px;
@@ -152,11 +169,46 @@ export const ULC_TRAINING_DOCUMENTATION_CSS = `
   padding: 4px 10px;
   font-size: .72rem;
   font-weight: 800;
+  background: var(--surface-muted, #f6f7f8);
+}
+
+.training-documentation-status[data-state="completed"],
+.training-documentation-progress[data-state="complete"] {
+  border-width: 2px;
+}
+
+.training-documentation-status[data-state="dirty"] {
+  border-style: dashed;
+}
+
+.training-documentation-section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.training-documentation-section-heading h2,
+.training-documentation-section-heading p {
+  margin: 0;
+}
+
+.training-documentation-section-heading small {
+  max-width: 420px;
+  color: var(--secondary);
+  font-size: .72rem;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.training-documentation-items-heading {
+  margin: 4px 2px 0;
 }
 
 .training-documentation-item {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .training-documentation-item__head {
@@ -190,10 +242,25 @@ export const ULC_TRAINING_DOCUMENTATION_CSS = `
 .training-documentation-planned {
   padding: 9px 10px;
   border-radius: 10px;
+  border-left: 3px solid var(--border);
   background: var(--surface-muted, #f6f7f8);
   color: var(--secondary);
   font-size: .75rem;
   line-height: 1.45;
+}
+
+.training-documentation-actual {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.training-documentation-group-label {
+  color: var(--secondary);
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
 
 .training-documentation-block-exercises {
@@ -205,10 +272,11 @@ export const ULC_TRAINING_DOCUMENTATION_CSS = `
 
 .training-documentation-exercise {
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: 10px;
+  padding: 11px;
   border: 1px solid var(--border);
   border-radius: 10px;
+  background: var(--surface, #fff);
 }
 
 .training-documentation-performed {
@@ -271,18 +339,48 @@ export const ULC_TRAINING_DOCUMENTATION_CSS = `
     display: grid;
   }
 
-  .training-documentation-toolbar,
-  .training-documentation-grid,
-  .training-documentation-actual-grid {
+  .training-documentation-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .training-documentation-toolbar label:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .training-documentation-grid {
     grid-template-columns: 1fr;
   }
 
+  .training-documentation-actual-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .training-documentation-section-heading {
+    display: grid;
+    gap: 4px;
+    align-items: start;
+  }
+
+  .training-documentation-section-heading small {
+    max-width: none;
+    text-align: left;
+  }
+
+  .training-documentation-item__head {
+    gap: 8px;
+  }
+
   .training-documentation-savebar {
+    display: grid;
     align-items: stretch;
   }
 
   .training-documentation-save-actions {
-    justify-content: flex-end;
+    justify-content: stretch;
+  }
+
+  .training-documentation-save-actions .button {
+    flex: 1 1 0;
   }
 }
 `;
@@ -301,6 +399,7 @@ const trainingDocumentationElements = Object.freeze({
   meta: document.querySelector("#training-documentation-meta"),
   status: document.querySelector("#training-documentation-status"),
   attendance: document.querySelector("#training-documentation-attendance"),
+  progress: document.querySelector("#training-documentation-progress"),
   start: document.querySelector("#training-documentation-start"),
   refreshAttendance: document.querySelector("#training-documentation-refresh-attendance"),
   reopen: document.querySelector("#training-documentation-reopen"),
@@ -629,16 +728,25 @@ function renderTrainingDocumentationDay() {
       : "Für diesen Tag ist kein Trainingsplan vorhanden.";
   }
   if (trainingDocumentationElements.attendance) {
+    const attendanceState =
+      day.documentation?.revision?.attendance?.[0]?.status ||
+      day.attendanceStatus;
     trainingDocumentationElements.attendance.textContent =
-      "Anwesenheit: " + trainingDocumentationAttendanceLabel(
-        day.documentation?.revision?.attendance?.[0]?.status ||
-          day.attendanceStatus,
-      );
+      "Anwesenheit: " + trainingDocumentationAttendanceLabel(attendanceState);
+    trainingDocumentationElements.attendance.dataset.state = attendanceState;
   }
 
   const documentation = day.documentation;
   const completed = documentation?.status === "completed";
   if (trainingDocumentationElements.status) {
+    const statusState = documentation
+      ? completed
+        ? "completed"
+        : trainingDocumentationDirty
+          ? "dirty"
+          : "draft"
+      : "idle";
+    trainingDocumentationElements.status.dataset.state = statusState;
     trainingDocumentationElements.status.textContent = documentation
       ? completed
         ? "Abgeschlossen"
@@ -647,6 +755,7 @@ function renderTrainingDocumentationDay() {
           : "Entwurf"
       : "Noch nicht begonnen";
   }
+  renderTrainingDocumentationProgress();
   if (trainingDocumentationElements.start) {
     trainingDocumentationElements.start.hidden = documentation !== null;
     trainingDocumentationElements.start.disabled =
@@ -674,6 +783,30 @@ function renderTrainingDocumentationDay() {
   }
   renderTrainingDocumentationItems();
   refreshTrainingDocumentationControls();
+}
+
+function renderTrainingDocumentationProgress() {
+  const element = trainingDocumentationElements.progress;
+  if (!element) return;
+  const items = trainingDocumentationDraft?.items || [];
+  let total = 0;
+  let performed = 0;
+  const count = (entry) => {
+    total += 1;
+    if (entry?.performed !== false) performed += 1;
+  };
+  for (const item of items) {
+    count(item);
+    if (item?.kind === "block" && Array.isArray(item.exercises)) {
+      for (const exercise of item.exercises) count(exercise);
+    }
+  }
+  element.textContent =
+    total > 0
+      ? "Durchgeführt: " + String(performed) + " / " + String(total)
+      : "Durchgeführt: –";
+  element.dataset.state =
+    total > 0 && performed === total ? "complete" : "open";
 }
 
 function renderTrainingDocumentationItems() {
@@ -733,11 +866,16 @@ function trainingDocumentationBlockElement(item, itemIndex, completed) {
     (item.plannedNote ? " · " + item.plannedNote : "");
   card.append(planned);
 
+  const actual = document.createElement("div");
+  actual.className = "training-documentation-actual";
+  const actualLabel = document.createElement("span");
+  actualLabel.className = "training-documentation-group-label";
+  actualLabel.textContent = "Tatsächlich";
   const grid = document.createElement("div");
   grid.className = "training-documentation-grid";
   grid.append(
     trainingDocumentationInputField(
-      "Tatsächliche Dauer (min)",
+      "Dauer (min)",
       item.actualDurationMinutes,
       "number",
       completed,
@@ -758,7 +896,8 @@ function trainingDocumentationBlockElement(item, itemIndex, completed) {
       },
     ),
   );
-  card.append(grid);
+  actual.append(actualLabel, grid);
+  card.append(actual);
 
   if (Array.isArray(item.exercises) && item.exercises.length > 0) {
     const exercises = document.createElement("div");
@@ -810,6 +949,11 @@ function trainingDocumentationExerciseElement(
   planned.textContent = trainingDocumentationPlannedExerciseLabel(item);
   card.append(planned);
 
+  const actual = document.createElement("div");
+  actual.className = "training-documentation-actual";
+  const actualLabel = document.createElement("span");
+  actualLabel.className = "training-documentation-group-label";
+  actualLabel.textContent = "Tatsächlich";
   const grid = document.createElement("div");
   grid.className = "training-documentation-actual-grid";
   const fields = [
@@ -832,8 +976,9 @@ function trainingDocumentationExerciseElement(
       ),
     );
   }
-  card.append(grid);
-  card.append(
+  actual.append(
+    actualLabel,
+    grid,
     trainingDocumentationInputField(
       "Kommentar",
       item.actualComment,
@@ -845,6 +990,7 @@ function trainingDocumentationExerciseElement(
       },
     ),
   );
+  card.append(actual);
   return card;
 }
 
@@ -929,6 +1075,7 @@ function markTrainingDocumentationDirty() {
     return;
   }
   trainingDocumentationDirty = true;
+  renderTrainingDocumentationProgress();
   if (trainingDocumentationElements.saveState) {
     trainingDocumentationElements.saveState.textContent =
       "Ungespeicherte Änderungen";
