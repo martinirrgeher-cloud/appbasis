@@ -19,7 +19,7 @@ describe("ULC E7B6 training plan block template UI", () => {
       'id="training-plan-quick-action"',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      '"training-plans",\n  "exercise-catalog"',
+      '"training-plans",\n  "training-documentation",\n  "exercise-catalog"',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain("bootstrapTrainingPlans()");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
@@ -350,6 +350,9 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("item.comment || null");
     expect(ULC_TRAINING_PLANS_HTML).toContain("training-plan-save-icon");
     expect(ULC_TRAINING_PLANS_HTML).toContain("↗");
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      'id="training-plan-document-open"',
+    );
   });
 
   it("refreshes compact item summaries without remounting the editor", () => {
