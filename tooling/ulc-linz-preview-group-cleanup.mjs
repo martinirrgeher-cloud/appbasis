@@ -88,7 +88,10 @@ export async function cleanupUlcLinzPreviewGroups(
              updated_at = now()
          WHERE organization_id = $1
            AND is_active = true
-           AND lower(btrim(name)) LIKE 'preview%'
+           AND (
+             lower(btrim(name)) LIKE 'preview%'
+             OR lower(btrim(name)) LIKE 'e7b9 preview group %'
+           )
            AND name <> $2
          RETURNING id, name`,
         [EXPECTED_ORGANIZATION, ULC_LINZ_PREVIEW_CANONICAL_ATTENDANCE_GROUP],
