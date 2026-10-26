@@ -52,6 +52,7 @@ test("pins the checked module inventory and database-owning contracts", async ()
       "exercise-catalog",
       "tasks",
       "training-blocks",
+      "training-documentation",
       "training-plans",
     ],
   );
@@ -155,6 +156,29 @@ test("pins the checked module inventory and database-owning contracts", async ()
         "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql",
         "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql",
         "modules/training-blocks/migrations/0002_appbasis_training_block_multi_audience.sql",
+      ],
+    },
+  });
+
+  const trainingDocumentation = definitions.find(
+    (definition) => definition.moduleId === "training-documentation",
+  );
+  assert.deepEqual(trainingDocumentation, {
+    schemaVersion: 1,
+    moduleId: "training-documentation",
+    displayName: "Trainingsdokumentation",
+    packageName: "@appbasis/training-documentation",
+    compatibility: {
+      appDefinitionSchemaVersions: [2],
+    },
+    capabilities: [
+      "training-documentation:edit",
+      "training-documentation:view",
+    ],
+    database: {
+      schemaVersion: 1,
+      migrations: [
+        "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
       ],
     },
   });
