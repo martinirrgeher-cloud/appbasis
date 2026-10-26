@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "training-documentation",
+  "displayName": "Trainingsdokumentation",
+  "packageName": "@appbasis/training-documentation",
+  "compatibility": {
+    "appDefinitionSchemaVersions": [
+      2
+    ]
+  },
+  "capabilities": [
+    "training-documentation:edit",
+    "training-documentation:view"
+  ],
+  "database": {
+    "schemaVersion": 1,
+    "migrations": [
+      "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql"
+    ]
+  }
+}
