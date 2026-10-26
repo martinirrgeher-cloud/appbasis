@@ -21,6 +21,10 @@ import {
   PostgresTrainingPlanRepository,
   TrainingPlanService,
 } from "@appbasis/training-plans";
+import {
+  PostgresTrainingDocumentationRepository,
+  TrainingDocumentationService,
+} from "@appbasis/training-documentation";
 
 import {
   createUlcLinzAthletesAccessService,
@@ -133,6 +137,7 @@ export interface GeneratedPostgresApplicationRuntime {
   exerciseCatalog: ReturnType<typeof createUlcExerciseCatalogService>;
   trainingBlocks: UlcTrainingBlockService;
   trainingPlans: UlcTrainingPlanService;
+  trainingDocumentation: TrainingDocumentationService;
   exerciseCatalogRuntimeMode: UlcExerciseCatalogRuntimeMode;
   exerciseCatalogMediaStore: UlcExerciseCatalogObjectStore | null;
   securityEvents: BufferedUlcLinzSecurityEventLogger;
@@ -472,6 +477,9 @@ export async function createGeneratedPostgresApplicationRuntime(
       blocks: trainingBlocks,
       overview: createTrainingPlanOverviewReader(applicationSql),
     });
+    const trainingDocumentation = new TrainingDocumentationService({
+      repository: new PostgresTrainingDocumentationRepository(applicationSql),
+    });
     return Object.freeze({
       identity: identityRuntime.identity,
       permissions,
@@ -494,6 +502,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       exerciseCatalog,
       trainingBlocks,
       trainingPlans,
+      trainingDocumentation,
       exerciseCatalogRuntimeMode:
         options.exerciseCatalogRuntimeMode ?? "legacy",
       exerciseCatalogMediaStore: options.exerciseCatalogMediaStore ?? null,
