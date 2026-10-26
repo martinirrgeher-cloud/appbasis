@@ -2595,9 +2595,14 @@ function renderSelfRegistration() {
       current.dataset.intention = option.intention;
       const optionKey = option.group.id + "|" + option.sessionDate;
       const optionSaving = selfRegistrationSavingKeys.has(optionKey);
-      current.textContent =
-        selfRegistrationLabel(option.intention) +
-        (optionSaving ? " · speichert …" : "");
+      current.dataset.saving = optionSaving ? "true" : "false";
+      current.textContent = selfRegistrationLabel(option.intention);
+      current.setAttribute(
+        "aria-label",
+        optionSaving
+          ? selfRegistrationLabel(option.intention) + " – wird gespeichert"
+          : selfRegistrationLabel(option.intention),
+      );
       head.append(identity, current);
       card.append(head);
 
@@ -2710,16 +2715,7 @@ async function handleSelfRegistrationClick(event) {
         ? saved
         : candidate,
     );
-    showMessage(
-      elements.registrationSuccess,
-      germanWeekday(saved.sessionDate) +
-        ": " +
-        saved.group.name +
-        " – " +
-        selfRegistrationLabel(saved.intention) +
-        ".",
-      "success",
-    );
+
   } catch (error) {
     if (generation !== attendanceSessionGeneration) return;
     selfRegistrationOptions = selfRegistrationOptions.map((candidate) =>
