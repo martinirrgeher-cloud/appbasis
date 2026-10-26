@@ -102,6 +102,20 @@ test("E7B9 workflow keeps inspect read-only and gates every preview mutation exp
     workflow,
     /ulc-linz-training-documentation-preview\.mjs verify/,
   );
+
+  const documentationInspectIndex = workflow.indexOf(
+    "ulc-linz-training-documentation-preview.mjs inspect",
+  );
+  const documentationApplyIndex = workflow.indexOf(
+    "ulc-linz-training-documentation-preview.mjs apply",
+  );
+  const trainingPlansInspectIndex = workflow.indexOf(
+    "ulc-linz-training-plans-preview.mjs inspect",
+  );
+  assert.ok(documentationInspectIndex >= 0);
+  assert.ok(documentationApplyIndex > documentationInspectIndex);
+  assert.ok(trainingPlansInspectIndex > documentationApplyIndex);
+
   assert.match(
     workflow,
     /ulc-linz-d4-preview-database-access\.mjs reconcile/,
@@ -110,6 +124,19 @@ test("E7B9 workflow keeps inspect read-only and gates every preview mutation exp
     workflow,
     /ulc-linz-d4-preview-database-access\.mjs preflight-existing/,
   );
+
+  const documentationInspect = workflow.indexOf(
+    "ulc-linz-training-documentation-preview.mjs inspect",
+  );
+  const documentationApply = workflow.indexOf(
+    "ulc-linz-training-documentation-preview.mjs apply",
+  );
+  const trainingPlansInspect = workflow.indexOf(
+    "ulc-linz-training-plans-preview.mjs inspect",
+  );
+  assert.ok(documentationInspect >= 0);
+  assert.ok(documentationApply > documentationInspect);
+  assert.ok(trainingPlansInspect > documentationApply);
 });
 
 test("E7B9 deploy reuses the isolated standard-module runtime without auto-provisioning", async () => {
