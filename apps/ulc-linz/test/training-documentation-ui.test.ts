@@ -123,6 +123,27 @@ describe("ULC training documentation UI", () => {
     );
   });
 
+  it("presents documentation with a compact progress and planned-vs-actual hierarchy", () => {
+    expect(ULC_TRAINING_DOCUMENTATION_HTML).toContain(
+      'id="training-documentation-progress"',
+    );
+    expect(ULC_TRAINING_DOCUMENTATION_HTML).toContain(
+      "Übungen &amp; Blöcke",
+    );
+    expect(ULC_TRAINING_DOCUMENTATION_SCRIPT).toContain(
+      "renderTrainingDocumentationProgress",
+    );
+    expect(ULC_TRAINING_DOCUMENTATION_SCRIPT).toContain(
+      'actualLabel.textContent = "Tatsächlich"',
+    );
+    expect(ULC_TRAINING_DOCUMENTATION_CSS).toContain(
+      ".training-documentation-section-heading",
+    );
+    expect(ULC_TRAINING_DOCUMENTATION_CSS).toContain(
+      "grid-template-columns: repeat(2, minmax(0, 1fr));",
+    );
+  });
+
   it("never sends client-owned organization or actor scope", () => {
     expect(ULC_TRAINING_DOCUMENTATION_SCRIPT).not.toContain(
       "organizationId",
