@@ -61,7 +61,7 @@ describe("training documentation service", () => {
       note: "Tatsächlich kürzer",
       items: [
         {
-          ...draft.items[0],
+          ...draft.items[0]!,
           performed: true,
           actualRepetitions: "3",
         },
