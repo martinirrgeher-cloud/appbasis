@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "training-documentation",
+  "status": "blocked",
+  "requirements": {
+    "authorization": "blocked",
+    "database": "blocked",
+    "lifecycle": "blocked"
+  },
+  "evidence": {
+    "authorization": [],
+    "database": [],
+    "lifecycle": []
+  },
+  "blockers": [
+    "Training documentation v1 is preview-only until authorization, PostgreSQL persistence and subject-lifecycle evidence are production-verified."
+  ]
+}
