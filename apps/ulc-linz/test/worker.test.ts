@@ -16,6 +16,10 @@ import { UlcTrainingSessionConflictError } from "../worker/training-session-post
 import { TrainingBlockConflictError } from "@appbasis/training-blocks";
 import { TrainingPlanConflictError } from "@appbasis/training-plans";
 import {
+  InMemoryTrainingDocumentationRepository,
+  TrainingDocumentationService,
+} from "@appbasis/training-documentation";
+import {
   ULC_LINZ_APP_CSS,
   ULC_LINZ_APP_HTML,
   ULC_LINZ_APP_SCRIPT,
@@ -468,6 +472,24 @@ function runtime(
         };
       },
     },
+    trainingDocumentationAccess: {
+      async assertViewAccess() {
+        return {
+          organizationId: "verein-1",
+          actorPrincipalId: currentIdentity.identity.identityId,
+          subjectId: null,
+          canEdit: true,
+        };
+      },
+      async assertEditAccess() {
+        return {
+          organizationId: "verein-1",
+          actorPrincipalId: currentIdentity.identity.identityId,
+          subjectId: null,
+          canEdit: true,
+        };
+      },
+    },
     kindertrainingAccess,
     selfRegistrationAccess,
     u12Access,
@@ -621,6 +643,9 @@ function runtime(
         return undefined;
       },
     },
+    trainingDocumentation: new TrainingDocumentationService({
+      repository: new InMemoryTrainingDocumentationRepository(),
+    }),
     exerciseCatalogRuntimeMode: "standard-module",
     exerciseCatalogMediaStore: null,
     exerciseCatalog: {
