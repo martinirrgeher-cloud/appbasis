@@ -337,6 +337,7 @@ function assertItems(value: unknown): void {
         assertExactKeys(
           exercise,
           new Set([
+            "kind",
             "sourceItemId",
             "sourceExerciseId",
             "name",
@@ -355,6 +356,12 @@ function assertItems(value: unknown): void {
           ]),
           ["name"],
         );
+        if (
+          Object.prototype.hasOwnProperty.call(exercise, "kind") &&
+          exercise.kind !== "exercise"
+        ) {
+          throw new InvalidTrainingDocumentationRequestError();
+        }
       }
       continue;
     }
