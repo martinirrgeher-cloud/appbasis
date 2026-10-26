@@ -31,7 +31,7 @@ jobs:
   preview:
     name: E7B9 isolated preview ${{ inputs.operation }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     environment:
       name: generated-preview-ulc-linz
     env:
@@ -191,14 +191,22 @@ jobs:
       # its own baseline contract requires the already-deployed training-plans-v2
       # schema and therefore remains fail-closed without creating a dependency loop.
       - name: Inspect current training-documentation preview state
+        id: training_documentation_state
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
-        run: node ./tooling/ulc-linz-training-documentation-preview.mjs inspect
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="$(node ./tooling/ulc-linz-training-documentation-preview.mjs inspect)"
+          echo "$RESULT"
+          STATE="$(jq -r '.state' <<<"$RESULT")"
+          test "$STATE" = "current" || test "$STATE" = "migration-required"
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
 
       - name: Apply training-documentation schema v1
-        if: inputs.operation == 'migrate'
+        if: inputs.operation == 'migrate' && steps.training_documentation_state.outputs.state == 'migration-required'
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
@@ -208,14 +216,22 @@ jobs:
         run: node ./tooling/ulc-linz-training-documentation-preview.mjs apply
 
       - name: Inspect current training-plans preview state
+        id: training_plans_state
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
-        run: node ./tooling/ulc-linz-training-plans-preview.mjs inspect
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="$(node ./tooling/ulc-linz-training-plans-preview.mjs inspect)"
+          echo "$RESULT"
+          STATE="$(jq -r '.state' <<<"$RESULT")"
+          test "$STATE" = "current" || test "$STATE" = "migration-required"
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
 
       - name: Apply training-plans schema v2
-        if: inputs.operation == 'migrate'
+        if: inputs.operation == 'migrate' && steps.training_plans_state.outputs.state == 'migration-required'
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
