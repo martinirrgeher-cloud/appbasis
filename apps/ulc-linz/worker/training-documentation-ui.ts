@@ -1060,7 +1060,11 @@ async function refreshTrainingDocumentationAttendance() {
     !trainingDocumentationCanEdit ||
     trainingDocumentationBusy
   ) return;
-  if (trainingDocumentationDirty && !(await saveTrainingDocumentation())) {
+  if (trainingDocumentationDirty) {
+    showMessage(
+      trainingDocumentationElements.message,
+      "Bitte zuerst die offenen Änderungen speichern, bevor du die Anwesenheit übernimmst.",
+    );
     return;
   }
   setTrainingDocumentationBusy(true);
