@@ -455,7 +455,7 @@ jobs:
           READY=0
           for attempt in $(seq 1 20); do
             if HTML="$(curl --fail-with-body --silent --show-error "$APPBASIS_GENERATED_PREVIEW_URL/" 2>/dev/null)"; then
-              if grep -F 'id="registration-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="registration-list"' <<<"$HTML" >/dev/null                 && grep -F 'id="athlete-user-form"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-attendance-filter"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-block-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-save-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview-group"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview"' <<<"$HTML" >/dev/null; then
+              if grep -F 'id="registration-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="registration-list"' <<<"$HTML" >/dev/null                 && grep -F 'id="athlete-user-form"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-attendance-filter"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-block-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-save-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-documentation-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview-group"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview"' <<<"$HTML" >/dev/null; then
                 READY=1
                 break
               fi
@@ -472,6 +472,15 @@ jobs:
             401|403) ;;
             *)
               echo "Unauthenticated training-plans API returned unexpected HTTP $STATUS." >&2
+              exit 1
+              ;;
+          esac
+
+          DOCUMENTATION_STATUS="$(curl --silent --show-error --output "$RUNNER_TEMP/e7b9-training-documentation-api.json"             --write-out '%{http_code}'             "$APPBASIS_GENERATED_PREVIEW_URL/api/modules/training-documentation")"
+          case "$DOCUMENTATION_STATUS" in
+            401|403) ;;
+            *)
+              echo "Unauthenticated training-documentation API returned unexpected HTTP $DOCUMENTATION_STATUS." >&2
               exit 1
               ;;
           esac
