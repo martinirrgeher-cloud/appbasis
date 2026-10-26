@@ -520,6 +520,7 @@ async function evaluateApprovedScopePreflight() {
         owner.id !== "athletes" &&
         owner.id !== "exercise-catalog" &&
         owner.id !== "training-blocks" &&
+        owner.id !== "training-documentation" &&
         owner.id !== "training-plans",
     );
     await writeFixture(root, fixture);
