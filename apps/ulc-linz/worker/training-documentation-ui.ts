@@ -34,6 +34,7 @@ export const ULC_TRAINING_DOCUMENTATION_HTML = `
                 <div class="training-documentation-status-row">
                   <span class="training-documentation-status" id="training-documentation-status">Noch nicht begonnen</span>
                   <span class="training-documentation-attendance" id="training-documentation-attendance">Anwesenheit: offen</span>
+                  <span class="training-documentation-progress" id="training-documentation-progress">Durchgeführt: –</span>
                 </div>
                 <div class="training-documentation-actions">
                   <button class="button button--primary" id="training-documentation-start" type="button">Dokumentation starten</button>
@@ -43,10 +44,25 @@ export const ULC_TRAINING_DOCUMENTATION_HTML = `
               </section>
 
               <section class="card training-documentation-note-card" id="training-documentation-editor" hidden>
+                <div class="training-documentation-section-heading">
+                  <div>
+                    <p class="eyebrow">Trainingstag</p>
+                    <h2>Notiz</h2>
+                  </div>
+                  <small>Abweichungen und Beobachtungen zum gesamten Training.</small>
+                </div>
                 <label>Notiz zur tatsächlichen Durchführung
                   <textarea id="training-documentation-note" maxlength="3000" rows="3" placeholder="Abweichungen, Beobachtungen, Hinweise …"></textarea>
                 </label>
               </section>
+
+              <div class="training-documentation-section-heading training-documentation-items-heading">
+                <div>
+                  <p class="eyebrow">Durchführung</p>
+                  <h2>Übungen &amp; Blöcke</h2>
+                </div>
+                <small>Planwerte bleiben unverändert; darunter dokumentierst du das tatsächliche Training.</small>
+              </div>
 
               <section class="training-documentation-items" id="training-documentation-items"></section>
 
@@ -301,6 +317,7 @@ const trainingDocumentationElements = Object.freeze({
   meta: document.querySelector("#training-documentation-meta"),
   status: document.querySelector("#training-documentation-status"),
   attendance: document.querySelector("#training-documentation-attendance"),
+  progress: document.querySelector("#training-documentation-progress"),
   start: document.querySelector("#training-documentation-start"),
   refreshAttendance: document.querySelector("#training-documentation-refresh-attendance"),
   reopen: document.querySelector("#training-documentation-reopen"),
@@ -629,16 +646,25 @@ function renderTrainingDocumentationDay() {
       : "Für diesen Tag ist kein Trainingsplan vorhanden.";
   }
   if (trainingDocumentationElements.attendance) {
+    const attendanceState =
+      day.documentation?.revision?.attendance?.[0]?.status ||
+      day.attendanceStatus;
     trainingDocumentationElements.attendance.textContent =
-      "Anwesenheit: " + trainingDocumentationAttendanceLabel(
-        day.documentation?.revision?.attendance?.[0]?.status ||
-          day.attendanceStatus,
-      );
+      "Anwesenheit: " + trainingDocumentationAttendanceLabel(attendanceState);
+    trainingDocumentationElements.attendance.dataset.state = attendanceState;
   }
 
   const documentation = day.documentation;
   const completed = documentation?.status === "completed";
   if (trainingDocumentationElements.status) {
+    const statusState = documentation
+      ? completed
+        ? "completed"
+        : trainingDocumentationDirty
+          ? "dirty"
+          : "draft"
+      : "idle";
+    trainingDocumentationElements.status.dataset.state = statusState;
     trainingDocumentationElements.status.textContent = documentation
       ? completed
         ? "Abgeschlossen"
@@ -647,6 +673,7 @@ function renderTrainingDocumentationDay() {
           : "Entwurf"
       : "Noch nicht begonnen";
   }
+  renderTrainingDocumentationProgress();
   if (trainingDocumentationElements.start) {
     trainingDocumentationElements.start.hidden = documentation !== null;
     trainingDocumentationElements.start.disabled =
@@ -674,6 +701,30 @@ function renderTrainingDocumentationDay() {
   }
   renderTrainingDocumentationItems();
   refreshTrainingDocumentationControls();
+}
+
+function renderTrainingDocumentationProgress() {
+  const element = trainingDocumentationElements.progress;
+  if (!element) return;
+  const items = trainingDocumentationDraft?.items || [];
+  let total = 0;
+  let performed = 0;
+  const count = (entry) => {
+    total += 1;
+    if (entry?.performed !== false) performed += 1;
+  };
+  for (const item of items) {
+    count(item);
+    if (item?.kind === "block" && Array.isArray(item.exercises)) {
+      for (const exercise of item.exercises) count(exercise);
+    }
+  }
+  element.textContent =
+    total > 0
+      ? "Durchgeführt: " + String(performed) + " / " + String(total)
+      : "Durchgeführt: –";
+  element.dataset.state =
+    total > 0 && performed === total ? "complete" : "open";
 }
 
 function renderTrainingDocumentationItems() {
@@ -733,11 +784,16 @@ function trainingDocumentationBlockElement(item, itemIndex, completed) {
     (item.plannedNote ? " · " + item.plannedNote : "");
   card.append(planned);
 
+  const actual = document.createElement("div");
+  actual.className = "training-documentation-actual";
+  const actualLabel = document.createElement("span");
+  actualLabel.className = "training-documentation-group-label";
+  actualLabel.textContent = "Tatsächlich";
   const grid = document.createElement("div");
   grid.className = "training-documentation-grid";
   grid.append(
     trainingDocumentationInputField(
-      "Tatsächliche Dauer (min)",
+      "Dauer (min)",
       item.actualDurationMinutes,
       "number",
       completed,
@@ -758,7 +814,8 @@ function trainingDocumentationBlockElement(item, itemIndex, completed) {
       },
     ),
   );
-  card.append(grid);
+  actual.append(actualLabel, grid);
+  card.append(actual);
 
   if (Array.isArray(item.exercises) && item.exercises.length > 0) {
     const exercises = document.createElement("div");
@@ -810,6 +867,11 @@ function trainingDocumentationExerciseElement(
   planned.textContent = trainingDocumentationPlannedExerciseLabel(item);
   card.append(planned);
 
+  const actual = document.createElement("div");
+  actual.className = "training-documentation-actual";
+  const actualLabel = document.createElement("span");
+  actualLabel.className = "training-documentation-group-label";
+  actualLabel.textContent = "Tatsächlich";
   const grid = document.createElement("div");
   grid.className = "training-documentation-actual-grid";
   const fields = [
@@ -832,8 +894,9 @@ function trainingDocumentationExerciseElement(
       ),
     );
   }
-  card.append(grid);
-  card.append(
+  actual.append(
+    actualLabel,
+    grid,
     trainingDocumentationInputField(
       "Kommentar",
       item.actualComment,
@@ -845,6 +908,7 @@ function trainingDocumentationExerciseElement(
       },
     ),
   );
+  card.append(actual);
   return card;
 }
 
@@ -929,6 +993,7 @@ function markTrainingDocumentationDirty() {
     return;
   }
   trainingDocumentationDirty = true;
+  renderTrainingDocumentationProgress();
   if (trainingDocumentationElements.saveState) {
     trainingDocumentationElements.saveState.textContent =
       "Ungespeicherte Änderungen";
