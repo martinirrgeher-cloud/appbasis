@@ -167,6 +167,12 @@ describe("ULC weekly self-registration and account switching", () => {
       "const optionSaving = selfRegistrationSavingKeys.has(optionKey);",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'current.dataset.saving = optionSaving ? "true" : "false";',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '" – wird gespeichert"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain(
       '(optionSaving ? " · speichert …" : "")',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
@@ -174,6 +180,21 @@ describe("ULC weekly self-registration and account switching", () => {
     );
     expect(ULC_LINZ_APP_SCRIPT).not.toContain(
       "selfRegistrationSavingKey !== null",
+    );
+  });
+
+  it("does not inject a success banner after normal registration saves", () => {
+    const handlerStart = ULC_LINZ_APP_SCRIPT.indexOf(
+      "async function handleSelfRegistrationClick(event)",
+    );
+    const handlerEnd = ULC_LINZ_APP_SCRIPT.indexOf(
+      "\nasync function moveSelfRegistrationWeek",
+      handlerStart,
+    );
+    const handler = ULC_LINZ_APP_SCRIPT.slice(handlerStart, handlerEnd);
+
+    expect(handler).not.toContain(
+      "showMessage(\n      elements.registrationSuccess,\n      germanWeekday(saved.sessionDate)",
     );
   });
 
