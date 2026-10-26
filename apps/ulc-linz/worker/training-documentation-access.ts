@@ -166,10 +166,10 @@ export function createUlcLinzTrainingDocumentationAccessService({
   }
 
   return Object.freeze({
-    assertViewAccess(current) {
+    assertViewAccess(current: UlcLinzCurrentIdentity) {
       return assertAccess(current, "view");
     },
-    assertEditAccess(current) {
+    assertEditAccess(current: UlcLinzCurrentIdentity) {
       return assertAccess(current, "edit");
     },
   });
@@ -186,14 +186,14 @@ function assertCapabilityContract(): void {
       "training-documentation:view" ||
     TRAINING_DOCUMENTATION_CAPABILITIES.edit !==
       "training-documentation:edit" ||
-    !trainer.view.includes(MODULE_KEY) ||
-    !trainer.edit.includes(MODULE_KEY) ||
-    !athlete.view.includes(MODULE_KEY) ||
-    !athlete.edit.includes(MODULE_KEY) ||
-    parent.view.includes(MODULE_KEY) ||
-    parent.edit.includes(MODULE_KEY) ||
-    childTrainer.view.includes(MODULE_KEY) ||
-    childTrainer.edit.includes(MODULE_KEY) ||
+    !includesModule(trainer.view) ||
+    !includesModule(trainer.edit) ||
+    !includesModule(athlete.view) ||
+    !includesModule(athlete.edit) ||
+    includesModule(parent.view) ||
+    includesModule(parent.edit) ||
+    includesModule(childTrainer.view) ||
+    includesModule(childTrainer.edit) ||
     mapping.capabilityNamespace !== "ulc-linz:module" ||
     mapping.viewAction !== "view" ||
     mapping.editAction !== "edit"
@@ -202,6 +202,10 @@ function assertCapabilityContract(): void {
       "ULC Linz training documentation permission mapping drifted.",
     );
   }
+}
+
+function includesModule(modules: readonly string[]): boolean {
+  return modules.includes(MODULE_KEY);
 }
 
 function requiredIdentifier(
