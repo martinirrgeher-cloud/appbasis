@@ -1227,6 +1227,13 @@ function refreshTrainingDocumentationControls() {
     trainingDocumentationElements.load.disabled =
       !trainingDocumentationReady || trainingDocumentationBusy;
   }
+  if (trainingDocumentationElements.note) {
+    trainingDocumentationElements.note.disabled =
+      !trainingDocumentationCanEdit ||
+      trainingDocumentationBusy ||
+      !documentation ||
+      completed;
+  }
   if (trainingDocumentationElements.start) {
     trainingDocumentationElements.start.disabled =
       !trainingDocumentationCanEdit ||
