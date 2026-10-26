@@ -510,6 +510,7 @@ async function createUlcBaselineFixture(t) {
     "exercise-catalog",
     "training-blocks",
     "training-plans",
+    "training-documentation",
   ]);
   await writeFile(
     join(root, "apps", "ulc-linz", "appbasis.app.json"),
@@ -521,7 +522,8 @@ async function createUlcBaselineFixture(t) {
             moduleId !== "athletes" &&
             moduleId !== "exercise-catalog" &&
             moduleId !== "training-blocks" &&
-            moduleId !== "training-plans",
+            moduleId !== "training-plans" &&
+            moduleId !== "training-documentation",
         ),
       },
       null,
