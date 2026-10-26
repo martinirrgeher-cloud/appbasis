@@ -77,6 +77,7 @@ export const ULC_TRAINING_PLANS_HTML = `
                     <button class="button button--secondary training-plan-mini" id="training-plan-prev-athlete" type="button" aria-label="Vorheriger Athlet" title="Vorheriger Athlet">←</button>
                     <button class="button button--secondary training-plan-mini" id="training-plan-next-athlete" type="button" aria-label="Nächster Athlet" title="Nächster Athlet">→</button>
                     <button class="button button--secondary training-plan-distribute-button" id="training-plan-distribute-open" type="button"><span aria-hidden="true">↗</span><span>Verteilen</span></button>
+                    <button class="button button--secondary training-plan-document-button" id="training-plan-document-open" type="button"><span aria-hidden="true">✓</span><span>Dokumentieren</span></button>
                     <button class="button button--primary training-plan-save-icon" id="training-plan-save" type="button" aria-label="Trainingsplan speichern" title="Speichern"><span aria-hidden="true">💾</span></button>
                     <button class="button button--secondary training-plan-icon-close" id="training-plan-close" type="button" aria-label="Tagesplan schließen" title="Schließen"><span aria-hidden="true">✕</span><span class="training-plan-close-label">Schließen</span></button>
                   </div>
@@ -876,6 +877,7 @@ const trainingPlanElements = Object.freeze({
   prevAthlete: document.querySelector("#training-plan-prev-athlete"),
   nextAthlete: document.querySelector("#training-plan-next-athlete"),
   distributeOpen: document.querySelector("#training-plan-distribute-open"),
+  documentOpen: document.querySelector("#training-plan-document-open"),
   distribute: document.querySelector("#training-plan-distribute"),
   distributeClose: document.querySelector("#training-plan-distribute-close"),
   distributeList: document.querySelector("#training-plan-distribute-list"),
@@ -3802,6 +3804,36 @@ function renderTrainingPlanDistribution() {
   }
 }
 
+async function openTrainingDocumentationFromPlan() {
+  if (!trainingPlanEditorDate) return;
+  if (trainingPlanDirty) {
+    if (!(await saveTrainingPlanUntilClean())) return;
+  }
+  if (!trainingPlanSelected) {
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Der Plan muss zuerst gespeichert werden, bevor er dokumentiert werden kann.",
+    );
+    trainingPlanElements.save?.focus();
+    return;
+  }
+  if (
+    typeof openTrainingDocumentationForDay !== "function" ||
+    !trainingDocumentationReady
+  ) {
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Die Trainingsdokumentation ist für deinen Benutzer derzeit nicht verfügbar.",
+    );
+    return;
+  }
+
+  const subjectId = trainingPlanSelectedSubjectId;
+  const sessionDate = trainingPlanEditorDate;
+  if (!(await closeTrainingPlanEditor(true))) return;
+  await openTrainingDocumentationForDay(subjectId, sessionDate);
+}
+
 async function openTrainingPlanDistribution() {
   if (!trainingPlanOverview || !trainingPlanEditorDate || !trainingPlansCanEdit) {
     return;
@@ -3961,6 +3993,18 @@ function refreshTrainingPlanEditorState() {
       trainingPlanTemplateBusy ||
       trainingPlanSaveBackBusy ||
       !trainingPlanDirty;
+  }
+  if (trainingPlanElements.documentOpen) {
+    trainingPlanElements.documentOpen.disabled =
+      trainingPlanConflict ||
+      trainingPlanSaveBusy ||
+      trainingPlanTemplateBusy ||
+      trainingPlanSaveBackBusy ||
+      trainingPlanDistributeBusy ||
+      trainingPlanEditorDate === null ||
+      (!trainingPlanSelected && !trainingPlanDirty) ||
+      typeof trainingDocumentationReady !== "boolean" ||
+      !trainingDocumentationReady;
   }
   if (readonly) {
     trainingPlanSetSaveState("saved", "Nur Lesen");
@@ -4332,6 +4376,9 @@ trainingPlanElements.nextAthlete?.addEventListener("click", () => {
 });
 trainingPlanElements.distributeOpen?.addEventListener("click", () => {
   void openTrainingPlanDistribution();
+});
+trainingPlanElements.documentOpen?.addEventListener("click", () => {
+  void openTrainingDocumentationFromPlan();
 });
 trainingPlanElements.distributeClose?.addEventListener(
   "click",
