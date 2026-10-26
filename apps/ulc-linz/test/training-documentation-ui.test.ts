@@ -74,7 +74,13 @@ describe("ULC training documentation UI", () => {
       '"/refresh-attendance"',
     );
     expect(ULC_TRAINING_DOCUMENTATION_SCRIPT).toContain(
-      "if (trainingDocumentationDirty && !(await saveTrainingDocumentation()))",
+      "if (trainingDocumentationDirty)",
+    );
+    expect(ULC_TRAINING_DOCUMENTATION_SCRIPT).toContain(
+      "Bitte zuerst die offenen Änderungen speichern",
+    );
+    expect(ULC_TRAINING_DOCUMENTATION_SCRIPT).not.toContain(
+      "trainingDocumentationDirty && !(await saveTrainingDocumentation())",
     );
   });
 
