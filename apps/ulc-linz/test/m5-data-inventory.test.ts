@@ -145,6 +145,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
       "exercise-catalog",
       "training-blocks",
       "training-plans",
+      "training-documentation",
     ]);
     expect(inventory.runtimeModules).toEqual([
       "countdown",
@@ -152,6 +153,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
       "exercise-catalog",
       "training-blocks",
       "training-plans",
+      "training-documentation",
     ]);
     expect(inventory.runtimeModules).toEqual(appManifest.modules);
     expect(inventory.m5.unknownRuntimeModule).toBe("fail-closed");
@@ -165,6 +167,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
       "athletes",
       "exercise-catalog",
       "training-blocks",
+      "training-documentation",
       "training-plans",
       "ulc-linz-lifecycle",
     ]);
@@ -176,6 +179,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
             owner.id !== "athletes" &&
             owner.id !== "exercise-catalog" &&
             owner.id !== "training-blocks" &&
+            owner.id !== "training-documentation" &&
             owner.id !== "training-plans" &&
             owner.id !== "ulc-linz-lifecycle",
         )
@@ -220,6 +224,20 @@ describe("ULC Linz M5 C/D data inventory", () => {
         "training-block-notes-may-contain-user-entered-content",
         "ulc-preview-schema-v2-live-v3-upgrade-pending",
         "production-lifecycle-activation-not-authorized",
+      ]),
+    });
+
+    expect(
+      inventory.persistentOwners.find(
+        (owner) => owner.id === "training-documentation",
+      ),
+    ).toMatchObject({
+      schemaVersion: 1,
+      lifecycleStatus: "training-documentation-data-lifecycle-pending",
+      notes: expect.arrayContaining([
+        "training-documentation-revision-and-attendance-lifecycle-pending",
+        "training-documentation-notes-may-contain-user-entered-content",
+        "preview-and-production-lifecycle-activation-not-authorized",
       ]),
     });
 
@@ -282,7 +300,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(55);
+    expect(inventory.persistentTables).toHaveLength(57);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
@@ -534,6 +552,21 @@ describe("ULC Linz M5 C/D data inventory", () => {
       deletionEvidence: "fail-closed-pending-lifecycle",
       retentionEvidence: "fail-closed-pending-lifecycle",
     });
+
+    for (const id of [
+      "appbasis_training_documentation",
+      "appbasis_training_documentation_revision",
+    ]) {
+      expect(
+        inventory.persistentTables.find((table) => table.id === id),
+      ).toMatchObject({
+        owner: "training-documentation",
+        privacyClass: "training-documentation-data",
+        retentionPolicy: "pending-training-data-lifecycle-contract",
+        deletionEvidence: "fail-closed-pending-lifecycle",
+        retentionEvidence: "fail-closed-pending-lifecycle",
+      });
+    }
 
     for (const id of [
       "appbasis_training_plan",

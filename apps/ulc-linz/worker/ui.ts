@@ -13,6 +13,11 @@ import {
   ULC_TRAINING_PLANS_HTML,
   ULC_TRAINING_PLANS_SCRIPT,
 } from "./training-plans-ui";
+import {
+  ULC_TRAINING_DOCUMENTATION_CSS,
+  ULC_TRAINING_DOCUMENTATION_HTML,
+  ULC_TRAINING_DOCUMENTATION_SCRIPT,
+} from "./training-documentation-ui";
 
 export const ULC_LINZ_APP_HTML = `<!doctype html>
 <html lang="de">
@@ -71,10 +76,11 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <button class="app-nav__link" type="button" data-nav-view="registration" data-nav-priority="1" hidden disabled>Anmeldung</button>
             <button class="app-nav__link" type="button" data-nav-view="kindertraining" data-nav-priority="2" hidden disabled>Training</button>
             <button class="app-nav__link" type="button" data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung</button>
-            <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="4" hidden disabled>Übungen</button>
-            <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="5" hidden disabled>Blöcke</button>
-            <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="6" hidden disabled>Stammdaten</button>
-            <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="7" hidden disabled>Nützliches</button>
+            <button class="app-nav__link" type="button" data-nav-view="training-documentation" data-nav-priority="4" hidden disabled>Dokumentation</button>
+            <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="5" hidden disabled>Übungen</button>
+            <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="6" hidden disabled>Blöcke</button>
+            <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="7" hidden disabled>Stammdaten</button>
+            <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="8" hidden disabled>Nützliches</button>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" hidden>Mehr</button>
           </div>
           <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden>
@@ -129,6 +135,16 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary dashboard-action" id="training-plan-quick-action" type="button" data-open-view="training-plans" disabled>Trainingsplanung öffnen</button>
                 <small id="training-plan-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card dashboard-card--primary">
+                <div>
+                  <p class="eyebrow">Training</p>
+                  <h2>Trainingsdokumentation</h2>
+                  <p>Geplante Einheiten übernehmen, tatsächliche Durchführung festhalten und abschließen.</p>
+                </div>
+                <button class="button button--primary dashboard-action" id="training-documentation-quick-action" type="button" data-open-view="training-documentation" disabled>Dokumentation öffnen</button>
+                <small id="training-documentation-access-label">Berechtigung wird geprüft …</small>
               </article>
 
               <article class="card dashboard-card dashboard-card--primary">
@@ -552,6 +568,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
           ${ULC_EXERCISE_CATALOG_HTML}
 ${ULC_TRAINING_BLOCKS_HTML}
 ${ULC_TRAINING_PLANS_HTML}
+${ULC_TRAINING_DOCUMENTATION_HTML}
 
           <section class="app-section" data-app-section="useful" id="useful" hidden>
             <section class="hero">
@@ -1476,6 +1493,7 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 ${ULC_EXERCISE_CATALOG_CSS}
 ${ULC_TRAINING_BLOCKS_CSS}
 ${ULC_TRAINING_PLANS_CSS}
+${ULC_TRAINING_DOCUMENTATION_CSS}
 
 .kindertraining-week-toolbar {
   display: grid;
@@ -1882,6 +1900,7 @@ const APP_NAV_PRIORITY = Object.freeze([
   "registration",
   "kindertraining",
   "training-plans",
+  "training-documentation",
   "exercise-catalog",
   "training-blocks",
   "masterdata",
@@ -2090,6 +2109,14 @@ async function navigateAppSection(section) {
     const closed = await closeTrainingPlanEditor(false);
     if (!closed) return;
   }
+  if (
+    current === "training-documentation" &&
+    section !== "training-documentation" &&
+    typeof prepareTrainingDocumentationForLeave === "function"
+  ) {
+    const closed = await prepareTrainingDocumentationForLeave();
+    if (!closed) return;
+  }
   showAppSection(section);
 }
 
@@ -2112,6 +2139,8 @@ ${ULC_EXERCISE_CATALOG_SCRIPT}
 ${ULC_TRAINING_BLOCKS_SCRIPT}
 
 ${ULC_TRAINING_PLANS_SCRIPT}
+
+${ULC_TRAINING_DOCUMENTATION_SCRIPT}
 
 void restoreSession();
 
@@ -2299,6 +2328,12 @@ async function handleSignOut() {
     return;
   }
   if (
+    typeof prepareTrainingDocumentationForLeave === "function" &&
+    !(await prepareTrainingDocumentationForLeave())
+  ) {
+    return;
+  }
+  if (
     typeof prepareTrainingBlockForSessionEnd === "function" &&
     !(await prepareTrainingBlockForSessionEnd())
   ) {
@@ -2334,6 +2369,7 @@ async function handleSignOut() {
     resetTrainingBlockSessionState();
     resetExerciseCatalogSessionState();
     resetTrainingPlanSessionState();
+    resetTrainingDocumentationSessionState();
     setAppNavMoreOpen(false);
     showView("login");
     if (elements.loginPassword) elements.loginPassword.value = "";
@@ -2376,6 +2412,7 @@ async function acceptSession(next) {
     bootstrapExerciseCatalog(),
     bootstrapTrainingBlocks(),
     bootstrapTrainingPlans(),
+    bootstrapTrainingDocumentation(),
   ]);
   refreshTrainingBlockCatalogDependency();
 }
@@ -3563,6 +3600,7 @@ function isAppNavigationAvailable(section) {
   if (section === "exercise-catalog") return exerciseCatalogReady;
   if (section === "training-blocks") return trainingBlocksReady;
   if (section === "training-plans") return trainingPlansReady;
+  if (section === "training-documentation") return trainingDocumentationReady;
   if (section === "useful" || section === "countdown") return countdownReady;
   return false;
 }
@@ -3659,6 +3697,7 @@ function refreshAppAvailability() {
   }
   refreshTrainingBlockControls();
   refreshTrainingPlanControls();
+  refreshTrainingDocumentationControls();
   if (elements.exerciseCatalogQuickAction) {
     elements.exerciseCatalogQuickAction.disabled = !exerciseCatalogReady;
   }
@@ -3743,7 +3782,8 @@ function showAppSection(section) {
     (section === "kindertraining" && kindertrainingReady) ||
     (section === "exercise-catalog" && exerciseCatalogReady) ||
     (section === "training-blocks" && trainingBlocksReady) ||
-    (section === "training-plans" && trainingPlansReady);
+    (section === "training-plans" && trainingPlansReady) ||
+    (section === "training-documentation" && trainingDocumentationReady);
   const target = allowed ? section : "home";
   for (const candidate of document.querySelectorAll("[data-app-section]")) {
     candidate.hidden = candidate.dataset.appSection !== target;
@@ -3761,6 +3801,7 @@ function showAppSection(section) {
   if (target === "exercise-catalog") prepareExerciseCatalogView();
   if (target === "training-blocks") prepareTrainingBlocksView();
   if (target === "training-plans") prepareTrainingPlansView();
+  if (target === "training-documentation") prepareTrainingDocumentationView();
 }
 
 function prepareKindertrainingView() {

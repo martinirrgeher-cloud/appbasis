@@ -6,7 +6,8 @@
     "athletes",
     "exercise-catalog",
     "training-blocks",
-    "training-plans"
+    "training-plans",
+    "training-documentation"
   ],
   "platformServices": [
     "identity",
@@ -34,6 +35,7 @@
   },
   "blockers": [
     "App-owned training, attendance and trainer-audit lifecycle is not yet production-verified.",
-    "The current privacy inventory intentionally remains fail-closed while selected-module lifecycle work is pending."
+    "The current privacy inventory intentionally remains fail-closed while selected-module lifecycle work is pending.",
+    "Training documentation v1 remains preview-only until its standard-module production evidence is complete."
   ]
 }

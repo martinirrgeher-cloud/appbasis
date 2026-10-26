@@ -1,0 +1,20 @@
+{
+  "name": "@appbasis/training-documentation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:postgres": "vitest run --config vitest.postgres.config.ts"
+  },
+  "devDependencies": {
+    "@appbasis/database": "workspace:*",
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

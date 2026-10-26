@@ -25,6 +25,7 @@ test("ULC Linz satisfies the canonical generated preview contract for D4", async
     "exercise-catalog",
     "training-blocks",
     "training-plans",
+    "training-documentation",
   ]);
   assert.equal(contract.target.environment, "generated-preview-ulc-linz");
   assert.equal(contract.target.workerName, "appbasis-ulc-linz");
@@ -54,7 +55,7 @@ test("ULC Linz D4 migration plan includes all app-owned lifecycle and security m
     appId: "ulc-linz",
   });
 
-  assert.equal(plan.length, 29);
+  assert.equal(plan.length, 30);
   assert.deepEqual(
     plan
       .filter(({ ownerId }) => ownerId === "identity")

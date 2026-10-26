@@ -88,6 +88,22 @@ test("E7B9 workflow keeps inspect read-only and gates every preview mutation exp
   );
   assert.match(
     workflow,
+    /ulc-linz-training-documentation-preview\.mjs inspect/,
+  );
+  assert.match(
+    workflow,
+    /APPBASIS_APPLY_TRAINING_DOCUMENTATION_PREVIEW: "1"/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-training-documentation-preview\.mjs apply/,
+  );
+  assert.match(
+    workflow,
+    /ulc-linz-training-documentation-preview\.mjs verify/,
+  );
+  assert.match(
+    workflow,
     /ulc-linz-d4-preview-database-access\.mjs reconcile/,
   );
   assert.match(
@@ -172,6 +188,7 @@ test("E7B9 remote acceptance is separately gated and pins the complete training-
     'id="training-plan-attendance-filter"',
     'id="training-plan-block-template"',
     'id="training-plan-save-template"',
+    'id="training-documentation-quick-action"',
   ]) {
     assert.ok(workflow.includes(marker));
   }

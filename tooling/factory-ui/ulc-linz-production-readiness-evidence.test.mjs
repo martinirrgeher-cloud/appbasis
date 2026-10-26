@@ -503,6 +503,7 @@ test("Factory snapshot keeps ULC production readiness reopened after repository 
     "exercise-catalog",
     "training-blocks",
     "training-plans",
+    "training-documentation",
   ]);
   assert.equal(ulc.productionReadiness.productionReady, false);
   // Provider-/repository evidence may remain independently current, but every

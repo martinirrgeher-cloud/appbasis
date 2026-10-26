@@ -12,12 +12,13 @@
   "dependencies": {
     "@appbasis/athletes": "workspace:*",
     "@appbasis/countdown": "workspace:*",
-    "@appbasis/exercise-catalog": "workspace:*",
-    "@appbasis/training-blocks": "workspace:*",
-    "@appbasis/training-plans": "workspace:*",
     "@appbasis/database": "workspace:*",
+    "@appbasis/exercise-catalog": "workspace:*",
     "@appbasis/identity": "workspace:*",
     "@appbasis/permissions": "workspace:*",
+    "@appbasis/training-blocks": "workspace:*",
+    "@appbasis/training-documentation": "workspace:*",
+    "@appbasis/training-plans": "workspace:*",
     "@appbasis/xlsx": "workspace:*",
     "hono": "4.13.1"
   },

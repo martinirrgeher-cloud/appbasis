@@ -203,6 +203,23 @@ jobs:
           APPBASIS_APPLY_TRAINING_PLANS_PREVIEW: "1"
         run: node ./tooling/ulc-linz-training-plans-preview.mjs apply
 
+      - name: Inspect current training-documentation preview state
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-training-documentation-preview.mjs inspect
+
+      - name: Apply training-documentation schema v1
+        if: inputs.operation == 'migrate'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_MIGRATIONS: "1"
+          APPBASIS_APPLY_TRAINING_DOCUMENTATION_PREVIEW: "1"
+        run: node ./tooling/ulc-linz-training-documentation-preview.mjs apply
+
       - name: Reconcile preview runtime database access after migration
         if: inputs.operation == 'migrate'
         env:
@@ -220,6 +237,14 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-training-plans-preview.mjs verify
 
+      - name: Verify training-documentation schema after migration
+        if: inputs.operation == 'migrate'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-training-documentation-preview.mjs verify
+
       - name: Verify exact preview runtime database access
         if: inputs.operation != 'inspect'
         env:
@@ -235,6 +260,14 @@ jobs:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-training-plans-preview.mjs verify
+
+      - name: Require current training-documentation schema before runtime operation
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-training-documentation-preview.mjs verify
 
       - name: Validate and mask preview runtime inputs
         if: inputs.operation == 'deploy' || inputs.operation == 'accept'
@@ -422,7 +455,7 @@ jobs:
           READY=0
           for attempt in $(seq 1 20); do
             if HTML="$(curl --fail-with-body --silent --show-error "$APPBASIS_GENERATED_PREVIEW_URL/" 2>/dev/null)"; then
-              if grep -F 'id="registration-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="registration-list"' <<<"$HTML" >/dev/null                 && grep -F 'id="athlete-user-form"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-attendance-filter"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-block-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-save-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview-group"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview"' <<<"$HTML" >/dev/null; then
+              if grep -F 'id="registration-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="registration-list"' <<<"$HTML" >/dev/null                 && grep -F 'id="athlete-user-form"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-attendance-filter"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-block-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-save-template"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-documentation-quick-action"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview-group"' <<<"$HTML" >/dev/null                 && grep -F 'id="training-plan-overview"' <<<"$HTML" >/dev/null; then
                 READY=1
                 break
               fi
@@ -439,6 +472,15 @@ jobs:
             401|403) ;;
             *)
               echo "Unauthenticated training-plans API returned unexpected HTTP $STATUS." >&2
+              exit 1
+              ;;
+          esac
+
+          DOCUMENTATION_STATUS="$(curl --silent --show-error --output "$RUNNER_TEMP/e7b9-training-documentation-api.json"             --write-out '%{http_code}'             "$APPBASIS_GENERATED_PREVIEW_URL/api/modules/training-documentation")"
+          case "$DOCUMENTATION_STATUS" in
+            401|403) ;;
+            *)
+              echo "Unauthenticated training-documentation API returned unexpected HTTP $DOCUMENTATION_STATUS." >&2
               exit 1
               ;;
           esac

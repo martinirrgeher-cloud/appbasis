@@ -11,7 +11,8 @@
     "athletes",
     "exercise-catalog",
     "training-blocks",
-    "training-plans"
+    "training-plans",
+    "training-documentation"
   ],
   "datasets": [
     {
@@ -300,6 +301,16 @@
       "privacyClass": "training-block-training-usage-metadata"
     },
     {
+      "owner": "training-documentation",
+      "table": "appbasis_training_documentation",
+      "privacyClass": "training-documentation-data"
+    },
+    {
+      "owner": "training-documentation",
+      "table": "appbasis_training_documentation_revision",
+      "privacyClass": "training-documentation-data"
+    },
+    {
       "owner": "training-plans",
       "table": "appbasis_training_plan",
       "privacyClass": "training-plan-data"
@@ -350,6 +361,7 @@
     "training-block-data",
     "training-block-user-preference",
     "training-block-training-usage-metadata",
+    "training-documentation-data",
     "training-plan-data"
   ],
   "credentialFieldNames": [

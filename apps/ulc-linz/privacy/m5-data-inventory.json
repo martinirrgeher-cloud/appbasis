@@ -97,6 +97,19 @@
       ]
     },
     {
+      "id": "training-documentation",
+      "schemaVersion": 1,
+      "migrations": [
+        "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql"
+      ],
+      "lifecycleStatus": "training-documentation-data-lifecycle-pending",
+      "notes": [
+        "training-documentation-revision-and-attendance-lifecycle-pending",
+        "training-documentation-notes-may-contain-user-entered-content",
+        "preview-and-production-lifecycle-activation-not-authorized"
+      ]
+    },
+    {
       "id": "training-plans",
       "schemaVersion": 2,
       "migrations": [
@@ -559,6 +572,22 @@
       "retentionEvidence": "fail-closed-pending-lifecycle"
     },
     {
+      "id": "appbasis_training_documentation",
+      "owner": "training-documentation",
+      "privacyClass": "training-documentation-data",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
+      "id": "appbasis_training_documentation_revision",
+      "owner": "training-documentation",
+      "privacyClass": "training-documentation-data",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
       "id": "appbasis_training_plan",
       "owner": "training-plans",
       "privacyClass": "training-plan-data",
@@ -596,7 +625,8 @@
     "athletes",
     "exercise-catalog",
     "training-blocks",
-    "training-plans"
+    "training-plans",
+    "training-documentation"
   ],
   "backingStores": {
     "memberships": {

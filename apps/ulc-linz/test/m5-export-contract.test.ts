@@ -38,7 +38,7 @@ describe("ULC Linz M5-E export contract", () => {
     );
     const classifiedTables = [...exportedTables, ...exportContract.excludedTables];
 
-    expect(inventoriedTables).toHaveLength(55);
+    expect(inventoriedTables).toHaveLength(57);
     expect(sortedUnique(classifiedTables.map(tableKey))).toEqual(
       sortedUnique(inventoriedTables.map(tableKey)),
     );

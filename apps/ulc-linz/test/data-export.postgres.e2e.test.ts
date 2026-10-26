@@ -306,12 +306,13 @@ async function applyManifestMigrations(
     "athletes",
     "exercise-catalog",
     "training-blocks",
+    "training-documentation",
     "training-plans",
     "ulc-linz-lifecycle",
   ]);
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
-  if (migrations.length !== 29 || new Set(migrations).size !== migrations.length) {
-    throw new Error("ULC M5-E PostgreSQL E2E requires the exact 27-migration owner set.");
+  if (migrations.length !== 30 || new Set(migrations).size !== migrations.length) {
+    throw new Error("ULC M5-E PostgreSQL E2E requires the exact 30-migration owner set.");
   }
   for (const migration of migrations) {
     const sql = await readFile(new URL(`../../../${migration}`, import.meta.url), "utf8");

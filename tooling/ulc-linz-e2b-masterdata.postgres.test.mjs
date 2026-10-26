@@ -510,6 +510,7 @@ async function createUlcBaselineFixture(t) {
     "exercise-catalog",
     "training-blocks",
     "training-plans",
+    "training-documentation",
   ]);
   await writeFile(
     join(root, "apps", "ulc-linz", "appbasis.app.json"),
@@ -521,7 +522,8 @@ async function createUlcBaselineFixture(t) {
             moduleId !== "athletes" &&
             moduleId !== "exercise-catalog" &&
             moduleId !== "training-blocks" &&
-            moduleId !== "training-plans",
+            moduleId !== "training-plans" &&
+            moduleId !== "training-documentation",
         ),
       },
       null,
@@ -548,6 +550,10 @@ async function createUlcBaselineFixture(t) {
     "workspace:*",
   );
   assert.equal(
+    publishedPackage.dependencies?.["@appbasis/training-documentation"],
+    "workspace:*",
+  );
+  assert.equal(
     publishedPackage.dependencies?.["@appbasis/training-plans"],
     "workspace:*",
   );
@@ -555,6 +561,7 @@ async function createUlcBaselineFixture(t) {
   delete baselineDependencies["@appbasis/athletes"];
   delete baselineDependencies["@appbasis/exercise-catalog"];
   delete baselineDependencies["@appbasis/training-blocks"];
+  delete baselineDependencies["@appbasis/training-documentation"];
   delete baselineDependencies["@appbasis/training-plans"];
   await writeFile(
     join(root, "apps", "ulc-linz", "package.json"),
@@ -582,6 +589,7 @@ async function createUlcBaselineFixture(t) {
       "athletes",
       "exercise-catalog",
       "training-blocks",
+      "training-documentation",
       "training-plans",
       "ulc-linz-lifecycle",
     ],
@@ -596,6 +604,7 @@ async function createUlcBaselineFixture(t) {
             owner.id !== "athletes" &&
             owner.id !== "exercise-catalog" &&
             owner.id !== "training-blocks" &&
+            owner.id !== "training-documentation" &&
             owner.id !== "training-plans",
         ),
       },
