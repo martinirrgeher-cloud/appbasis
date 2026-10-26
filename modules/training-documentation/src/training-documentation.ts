@@ -200,9 +200,11 @@ export function normalizeTrainingDocumentationContent(input: {
     sessionDate: "2000-01-01",
     sourcePlanId: "plan",
     sourcePlanRevision: 1,
-    note: input.note,
-    items: input.items,
-    attendance: input.attendance,
+    ...(input.note === undefined ? {} : { note: input.note }),
+    ...(input.items === undefined ? {} : { items: input.items }),
+    ...(input.attendance === undefined
+      ? {}
+      : { attendance: input.attendance }),
   });
 }
 
