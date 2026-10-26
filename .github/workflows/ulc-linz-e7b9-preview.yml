@@ -186,23 +186,10 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-training-blocks-v3-preview.mjs verify
 
-      - name: Inspect current training-plans preview state
-        env:
-          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
-          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
-          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
-        run: node ./tooling/ulc-linz-training-plans-preview.mjs inspect
-
-      - name: Apply training-plans schema v2
-        if: inputs.operation == 'migrate'
-        env:
-          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
-          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
-          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
-          APPBASIS_APPLY_MIGRATIONS: "1"
-          APPBASIS_APPLY_TRAINING_PLANS_PREVIEW: "1"
-        run: node ./tooling/ulc-linz-training-plans-preview.mjs apply
-
+      # The published training-plans baseline now includes the downstream
+      # training-documentation owner. Inspect/apply documentation first:
+      # its own baseline contract requires the already-deployed training-plans-v2
+      # schema and therefore remains fail-closed without creating a dependency loop.
       - name: Inspect current training-documentation preview state
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
@@ -219,6 +206,23 @@ jobs:
           APPBASIS_APPLY_MIGRATIONS: "1"
           APPBASIS_APPLY_TRAINING_DOCUMENTATION_PREVIEW: "1"
         run: node ./tooling/ulc-linz-training-documentation-preview.mjs apply
+
+      - name: Inspect current training-plans preview state
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-training-plans-preview.mjs inspect
+
+      - name: Apply training-plans schema v2
+        if: inputs.operation == 'migrate'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_MIGRATIONS: "1"
+          APPBASIS_APPLY_TRAINING_PLANS_PREVIEW: "1"
+        run: node ./tooling/ulc-linz-training-plans-preview.mjs apply
 
       - name: Reconcile preview runtime database access after migration
         if: inputs.operation == 'migrate'
