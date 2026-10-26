@@ -58,6 +58,15 @@ export async function trainingDocumentationHttpResponse(
 
   try {
     const documentationId = decodeIdentifier(match[1]!);
+    if (access.subjectId !== null) {
+      const scoped = await runtime.trainingDocumentation.findCurrent(
+        access.organizationId,
+        documentationId,
+      );
+      if (scoped === undefined || scoped.subjectId !== access.subjectId) {
+        return notFound();
+      }
+    }
     const service = createUlcTrainingDocumentationService({
       documentation: runtime.trainingDocumentation,
       plans: runtime.trainingPlans,
@@ -124,7 +133,9 @@ async function moduleResponse(
     documentation: runtime.trainingDocumentation,
     plans: runtime.trainingPlans,
   });
-  const subjects = await service.listSubjects(access.organizationId);
+  const subjects = (await service.listSubjects(access.organizationId)).filter(
+    (subject) => access.subjectId === null || subject.id === access.subjectId,
+  );
   return privateJson({
     module: {
       moduleId: "training_documentation",
@@ -154,6 +165,9 @@ async function dayResponse(
   if (access instanceof Response) return access;
 
   try {
+    if (access.subjectId !== null && access.subjectId !== query.subjectId) {
+      return scopeDenied();
+    }
     const service = createUlcTrainingDocumentationService({
       documentation: runtime.trainingDocumentation,
       plans: runtime.trainingPlans,
@@ -198,6 +212,9 @@ async function startResponse(
       "Training documentation subject",
     );
     const sessionDate = normalizeTrainingDocumentationDate(body.sessionDate);
+    if (access.subjectId !== null && access.subjectId !== subjectId) {
+      return scopeDenied();
+    }
     const service = createUlcTrainingDocumentationService({
       documentation: runtime.trainingDocumentation,
       plans: runtime.trainingPlans,
@@ -393,6 +410,7 @@ async function authorize(
   | Readonly<{
       organizationId: string;
       actorPrincipalId: string;
+      subjectId: string | null;
       canEdit: boolean;
     }>
 > {
@@ -405,8 +423,8 @@ async function authorize(
 
   try {
     return action === "view"
-      ? await runtime.trainingPlansAccess.assertViewAccess(current)
-      : await runtime.trainingPlansAccess.assertEditAccess(current);
+      ? await runtime.trainingDocumentationAccess.assertViewAccess(current)
+      : await runtime.trainingDocumentationAccess.assertEditAccess(current);
   } catch (error) {
     if (error instanceof UlcLinzAuthorizationDeniedError) {
       recordUlcLinzSecurityEvent(runtime.securityEvents, {
@@ -566,6 +584,18 @@ function invalidInput(): Response {
       },
     },
     { status: 400 },
+  );
+}
+
+function scopeDenied(): Response {
+  return Response.json(
+    {
+      error: {
+        code: "ULC_LINZ_ACCESS_DENIED",
+        message: "Training documentation access denied.",
+      },
+    },
+    { status: 403 },
   );
 }
 
