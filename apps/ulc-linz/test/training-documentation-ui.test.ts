@@ -64,6 +64,9 @@ describe("ULC training documentation UI", () => {
     expect(ULC_TRAINING_DOCUMENTATION_SCRIPT).not.toContain(
       "scheduleTrainingDocumentationSave",
     );
+    expect(ULC_TRAINING_DOCUMENTATION_SCRIPT).toContain(
+      "Bitte zuerst die offenen Änderungen speichern, bevor du die Dokumentation abschließt.",
+    );
   });
 
   it("keeps attendance import explicit and never silently overwrites it", () => {
