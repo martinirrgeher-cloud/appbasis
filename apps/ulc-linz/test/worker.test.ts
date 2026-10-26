@@ -794,10 +794,10 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
   it("opens the authenticated app on the dashboard and gates each module navigation independently", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="6" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="7" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="registration" data-nav-priority="1" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" data-nav-priority="2" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="useful" data-nav-priority="7" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="useful" data-nav-priority="8" hidden disabled');
     expect(ULC_LINZ_APP_HTML).not.toContain('data-nav-view="settings"');
     expect(ULC_LINZ_APP_HTML).toContain('data-app-section="countdown"');
     expect(ULC_LINZ_APP_HTML).toContain('class="card countdown-settings"');
@@ -835,7 +835,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
 
 
   it("ships training-block mobile UI with explicit version commits, group filter, history and parity metadata", () => {
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="5" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks" data-nav-priority="6" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain("<h1>Trainingsblöcke</h1>");
     expect(ULC_LINZ_APP_HTML).toContain('id="training-block-editor"');
     expect(ULC_LINZ_APP_HTML).toContain('minlength="1" maxlength="120"');
