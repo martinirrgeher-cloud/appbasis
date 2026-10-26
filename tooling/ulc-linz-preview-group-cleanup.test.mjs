@@ -37,10 +37,18 @@ test("deactivates only obsolete active Preview groups and preserves the canonica
                     ULC_LINZ_PREVIEW_CANONICAL_ATTENDANCE_GROUP,
                   ]);
                   assert.match(sql, /lower\(btrim\(name\)\) LIKE 'preview%'/);
+                  assert.match(
+                    sql,
+                    /lower\(btrim\(name\)\) LIKE 'e7b9 preview group %'/,
+                  );
                   assert.match(sql, /name <> \$2/);
                   return [
                     { id: "group-old-1", name: "Preview U12" },
                     { id: "group-old-2", name: "Preview Training" },
+                    {
+                      id: "group-old-e7b9",
+                      name: "E7B9 Preview Group 0b8647ea4acf",
+                    },
                   ];
                 }
                 return [];
@@ -56,7 +64,7 @@ test("deactivates only obsolete active Preview groups and preserves the canonica
   );
 
   assert.equal(result.state, "clean");
-  assert.equal(result.deactivatedCount, 2);
+  assert.equal(result.deactivatedCount, 3);
   assert.equal(result.preservedGroup, "Preview Selbstanmeldung");
   assert.equal(ended, true);
   assert.ok(
