@@ -15,8 +15,7 @@ const EXPECTED_DATABASE = "appbasis_ulc_linz_preview";
 const EXPECTED_MIGRATION_PRINCIPAL =
   "appbasis_ulc_linz_preview_migration";
 const EXPECTED_MIGRATIONS = Object.freeze([
-  "modules/training-documentation/migrations/0000_appbasis_training_plans_foundation.sql",
-  "modules/training-documentation/migrations/0001_appbasis_training_plan_subject_deletion.sql",
+  "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
 ]);
 const EXPECTED_TABLES = Object.freeze([
   "appbasis_training_documentation",
