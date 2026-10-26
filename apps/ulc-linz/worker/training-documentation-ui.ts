@@ -1112,7 +1112,11 @@ async function completeTrainingDocumentation() {
     !trainingDocumentationCanEdit ||
     trainingDocumentationBusy
   ) return;
-  if (trainingDocumentationDirty && !(await saveTrainingDocumentation())) {
+  if (trainingDocumentationDirty) {
+    showMessage(
+      trainingDocumentationElements.message,
+      "Bitte zuerst die offenen Änderungen speichern, bevor du die Dokumentation abschließt.",
+    );
     return;
   }
   if (!window.confirm("Trainingsdokumentation wirklich abschließen?")) return;
