@@ -25,6 +25,7 @@ test("ULC Linz satisfies the canonical generated preview contract for D4", async
     "exercise-catalog",
     "training-blocks",
     "training-plans",
+    "training-documentation",
   ]);
   assert.equal(contract.target.environment, "generated-preview-ulc-linz");
   assert.equal(contract.target.workerName, "appbasis-ulc-linz");
