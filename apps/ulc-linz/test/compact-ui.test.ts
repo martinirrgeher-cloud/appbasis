@@ -62,6 +62,13 @@ describe("ULC E4D.5 compact mobile layout", () => {
     );
   });
 
+  it("keeps masterdata editors fully accessible within phone safe areas", () => {
+    expect(ULC_LINZ_APP_CSS).toContain(".masterdata-athlete-dialog,\n  .masterdata-import-dialog {");
+    expect(ULC_LINZ_APP_CSS).toContain("height: 100dvh;");
+    expect(ULC_LINZ_APP_CSS).toContain(".masterdata-overlay-close {\n    flex: 0 0 44px;");
+    expect(ULC_LINZ_APP_CSS).toContain("padding-bottom: max(12px, env(safe-area-inset-bottom));");
+  });
+
   it("keeps a consistent mobile page hierarchy without changing touch targets", () => {
     expect(ULC_LINZ_APP_CSS).toContain("--ui-panel-padding: 14px;");
     expect(ULC_LINZ_APP_CSS).toContain(".app-section > .hero h1 {");

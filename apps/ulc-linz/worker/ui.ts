@@ -1700,6 +1700,43 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
     min-width: 108px;
   }
 }
+
+/* Mobile editor surfaces: shared geometry without changing form actions or handlers. */
+@media (max-width: 480px) {
+  .masterdata-athlete-backdrop,
+  .masterdata-import-overlay { align-items: stretch; }
+  .masterdata-athlete-dialog,
+  .masterdata-import-dialog {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .masterdata-import-body,
+  .masterdata-athlete-body,
+  .masterdata-overlay-form,
+  .masterdata-form .settings-grid > * { min-width: 0; }
+  .masterdata-import-body { min-height: 0; }
+  .masterdata-athlete-header,
+  .masterdata-import-header {
+    padding: max(10px, env(safe-area-inset-top)) 12px 10px;
+  }
+  .masterdata-athlete-header > div:first-child,
+  .masterdata-import-header > div:first-child { min-width: 0; }
+  .masterdata-athlete-header h2 { overflow-wrap: anywhere; line-height: 1.2; }
+  .masterdata-overlay-close {
+    flex: 0 0 44px;
+    min-width: 44px;
+    width: 44px;
+    min-height: 44px;
+  }
+  .masterdata-import-footer {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .kindertraining-week-savebar {
+    top: max(6px, env(safe-area-inset-top));
+  }
+}
 `;
 
 export const ULC_LINZ_APP_SCRIPT = `const SETTINGS_KEY = "ulc-linz.countdown.settings.v1";

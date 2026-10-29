@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { ULC_EXERCISE_CATALOG_CSS, ULC_EXERCISE_CATALOG_HTML } from "../worker/exercise-catalog-ui";
 
 import { describe, expect, it } from "vitest";
 
@@ -19,6 +20,14 @@ describe("ULC E6C exercise catalog UI", () => {
     expect(ULC_LINZ_APP_CSS).toContain(
       "min-height: var(--touch);",
     );
+  });
+
+  it("keeps all editor tabs swipeable and footer actions reachable on phones", () => {
+    expect(ULC_EXERCISE_CATALOG_CSS).toContain(".exercise-catalog-editor-tabs {\n    display: flex;\n    overflow-x: auto;");
+    expect(ULC_EXERCISE_CATALOG_CSS).toContain("scroll-snap-align: start;");
+    expect(ULC_EXERCISE_CATALOG_CSS).toContain(".exercise-catalog-form-actions > .button { min-width: 0; flex: 1 1 112px; }");
+    expect(ULC_EXERCISE_CATALOG_HTML).toContain('id="exercise-catalog-save" type="submit"');
+    expect(ULC_EXERCISE_CATALOG_HTML).toContain('id="exercise-catalog-close"');
   });
 
   it("ships a compact catalog page with overlay filters and a separated tabbed editor", () => {

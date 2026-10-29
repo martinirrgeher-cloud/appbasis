@@ -40,7 +40,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                     <h2 id="training-block-editor-title">Block bearbeiten</h2>
                     <span class="training-block-save-state" id="training-block-save-state" data-state="saved">Gespeichert</span>
                   </div>
-                  <button class="button button--secondary" id="training-block-close" type="button">Schließen</button>
+                  <button class="button button--secondary" id="training-block-close" type="button" aria-label="Trainingsblock schließen" title="Schließen">✕</button>
                 </header>
 
                 <div class="training-block-body">
@@ -123,7 +123,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
               <section class="training-block-info-dialog" role="dialog" aria-modal="true" aria-labelledby="training-block-info-title">
                 <header class="training-block-header">
                   <div><p class="eyebrow">Übung</p><h2 id="training-block-info-title">Details</h2></div>
-                  <button class="button button--secondary" id="training-block-info-close" type="button">Schließen</button>
+                  <button class="button button--secondary" id="training-block-info-close" type="button" aria-label="Übungsdetails schließen" title="Schließen">✕</button>
                 </header>
                 <nav class="training-block-info-tabs" aria-label="Übungsdetails">
                   <button type="button" data-training-block-info-tab="basis" aria-selected="true">Basis</button>
@@ -574,6 +574,25 @@ body.training-block-editor-open { overflow: hidden; }
   .training-block-save-button { min-width: 92px; min-height: 40px; padding-inline: 10px; }
   .training-block-compare-controls { grid-template-columns: 1fr 1fr; }
   .training-block-compare-controls .button { grid-column: 1 / -1; }
+}
+/* Compact block editor and info-dialog actions remain visible on small screens. */
+@media (max-width: 480px) {
+  .training-block-header { padding-top: max(10px, env(safe-area-inset-top)); }
+  #training-block-close,
+  #training-block-info-close {
+    flex: 0 0 44px;
+    min-width: 44px;
+    width: 44px;
+    min-height: 44px;
+    padding: 0;
+    font-size: 1.05rem;
+  }
+  .training-block-form-grid > *,
+  .training-block-body > *,
+  .training-block-footer__actions,
+  .training-block-footer__meta { min-width: 0; }
+  .training-block-footer__actions { flex-shrink: 0; }
+  .training-block-footer { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 }
 `;
 
