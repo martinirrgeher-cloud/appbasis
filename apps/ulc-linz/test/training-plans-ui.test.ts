@@ -39,6 +39,15 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
+  it("preserves accessible icon actions in a wrapping mobile header", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain('aria-label="Plan verteilen"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('aria-label="Training dokumentieren"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-save"');
+    expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-close"');
+    expect(ULC_TRAINING_PLANS_CSS).toContain(".training-plan-header-actions {\n    justify-content: flex-start;\n    flex-wrap: wrap;");
+    expect(ULC_TRAINING_PLANS_CSS).toContain(".training-plan-document-button span:last-child { display: none; }");
+  });
+
   it("renders one mobile-friendly seven-day week with a focused editor overlay", () => {
     expect(ULC_TRAINING_PLANS_HTML).toContain(
       'data-app-section="training-plans"',
