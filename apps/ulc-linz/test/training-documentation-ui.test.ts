@@ -15,6 +15,13 @@ import {
 } from "../worker/ui";
 
 describe("ULC training documentation UI", () => {
+  it("keeps manual save controls above mobile safe areas", () => {
+    expect(ULC_TRAINING_DOCUMENTATION_CSS).toContain("bottom: max(8px, env(safe-area-inset-bottom));");
+    expect(ULC_TRAINING_DOCUMENTATION_CSS).toContain(".training-documentation-save-actions { flex-wrap: nowrap; gap: 6px; }");
+    expect(ULC_TRAINING_DOCUMENTATION_HTML).toContain('id="training-documentation-complete"');
+    expect(ULC_TRAINING_DOCUMENTATION_HTML).toContain('id="training-documentation-save"');
+  });
+
   it("is a dedicated factory-composed app section and dashboard entry", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-nav-view="training-documentation"',
