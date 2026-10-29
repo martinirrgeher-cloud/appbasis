@@ -9,6 +9,18 @@ import {
 } from "../worker/ui";
 
 describe("ULC E6C exercise catalog UI", () => {
+  it("keeps catalog actions compact and accessible on phones", () => {
+    expect(ULC_LINZ_APP_CSS).toContain(
+      ".exercise-catalog-hero-actions .button {",
+    );
+    expect(ULC_LINZ_APP_CSS).toContain(
+      "grid-template-columns: minmax(0, 1fr);",
+    );
+    expect(ULC_LINZ_APP_CSS).toContain(
+      "min-height: var(--touch);",
+    );
+  });
+
   it("ships a compact catalog page with overlay filters and a separated tabbed editor", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-nav-view="exercise-catalog" data-nav-priority="5" hidden disabled',

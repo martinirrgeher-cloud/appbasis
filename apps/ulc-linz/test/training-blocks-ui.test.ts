@@ -33,6 +33,15 @@ describe("ULC training block planning-aligned UI", () => {
     );
   });
 
+  it("keeps editor headings readable and mobile filters within the viewport", () => {
+    expect(ULC_TRAINING_BLOCKS_CSS).toContain(
+      ".training-block-header > div:first-child { min-width: 0; }",
+    );
+    expect(ULC_TRAINING_BLOCKS_CSS).toContain(
+      "grid-template-columns: repeat(2, minmax(0, 1fr));",
+    );
+  });
+
   it("invalidates organization-scoped block requests across account switches", () => {
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
       "let trainingBlockSessionGeneration = 0;",

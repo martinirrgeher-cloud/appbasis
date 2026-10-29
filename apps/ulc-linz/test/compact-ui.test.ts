@@ -62,6 +62,15 @@ describe("ULC E4D.5 compact mobile layout", () => {
     );
   });
 
+  it("keeps a consistent mobile page hierarchy without changing touch targets", () => {
+    expect(ULC_LINZ_APP_CSS).toContain("--ui-panel-padding: 14px;");
+    expect(ULC_LINZ_APP_CSS).toContain(".app-section > .hero h1 {");
+    expect(ULC_LINZ_APP_CSS).toContain(".section-heading h3 { line-height: 1.2;");
+    expect(ULC_LINZ_APP_CSS).toContain("summary:focus-visible");
+    expect(ULC_LINZ_APP_CSS).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(ULC_LINZ_APP_CSS).toContain("--touch: 44px;");
+  });
+
   it("uses compact two-column mobile layouts where fields remain usable", () => {
     expect(ULC_LINZ_APP_CSS).toContain(
       ".masterdata-form .settings-grid {\n  grid-template-columns: repeat(2, minmax(0, 1fr));",

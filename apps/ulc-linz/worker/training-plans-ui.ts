@@ -4,7 +4,7 @@ export const ULC_TRAINING_PLANS_HTML = `
               <div>
                 <p class="eyebrow">Training</p>
                 <h1>Trainingsplanung</h1>
-                <p class="summary">Wochenpläne pro Athlet mit konfliktfestem Autosave.</p>
+                <p class="summary">Wochenpläne für Gruppen und Athleten – Änderungen gezielt speichern.</p>
               </div>
             </section>
 
@@ -415,9 +415,15 @@ export const ULC_TRAINING_PLANS_CSS = `
   border-bottom: 1px solid var(--border);
   background: rgb(255 255 255 / 96%);
 }
-.training-plan-header h2 { margin: 2px 0 4px; }
+.training-plan-header > div:first-child { min-width: 0; }
+.training-plan-header h2 {
+  margin: 2px 0 4px;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
 .training-plan-header-actions {
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
