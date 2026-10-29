@@ -76,8 +76,8 @@ export const ULC_TRAINING_PLANS_HTML = `
                   <div class="training-plan-header-actions">
                     <button class="button button--secondary training-plan-mini" id="training-plan-prev-athlete" type="button" aria-label="Vorheriger Athlet" title="Vorheriger Athlet">←</button>
                     <button class="button button--secondary training-plan-mini" id="training-plan-next-athlete" type="button" aria-label="Nächster Athlet" title="Nächster Athlet">→</button>
-                    <button class="button button--secondary training-plan-distribute-button" id="training-plan-distribute-open" type="button"><span aria-hidden="true">↗</span><span>Verteilen</span></button>
-                    <button class="button button--secondary training-plan-document-button" id="training-plan-document-open" type="button"><span aria-hidden="true">✓</span><span>Dokumentieren</span></button>
+                    <button class="button button--secondary training-plan-distribute-button" id="training-plan-distribute-open" type="button" aria-label="Plan verteilen" title="Plan verteilen"><span aria-hidden="true">↗</span><span>Verteilen</span></button>
+                    <button class="button button--secondary training-plan-document-button" id="training-plan-document-open" type="button" aria-label="Training dokumentieren" title="Training dokumentieren"><span aria-hidden="true">✓</span><span>Dokumentieren</span></button>
                     <button class="button button--primary training-plan-save-icon" id="training-plan-save" type="button" aria-label="Trainingsplan speichern" title="Speichern"><span aria-hidden="true">💾</span></button>
                     <button class="button button--secondary training-plan-icon-close" id="training-plan-close" type="button" aria-label="Tagesplan schließen" title="Schließen"><span aria-hidden="true">✕</span><span class="training-plan-close-label">Schließen</span></button>
                   </div>
