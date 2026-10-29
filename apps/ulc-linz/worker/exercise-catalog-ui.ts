@@ -267,8 +267,10 @@ export const ULC_EXERCISE_CATALOG_CSS = `
   gap: 12px;
 }
 .exercise-catalog-hero .button { flex: 0 0 auto; }
+.exercise-catalog-hero > div:first-child { min-width: 0; }
 .exercise-catalog-hero-actions {
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
@@ -712,8 +714,22 @@ body.exercise-catalog-filter-open,
 body.exercise-catalog-editor-open { overflow: hidden; }
 
 @media (max-width: 639px) {
+  .exercise-catalog-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+  }
   .exercise-catalog-hero .summary { display: none; }
-  .exercise-catalog-hero { align-items: center; }
+  .exercise-catalog-hero-actions {
+    justify-content: flex-start;
+    gap: 6px;
+  }
+  .exercise-catalog-hero-actions .button {
+    min-height: var(--touch);
+    padding-inline: 10px;
+    font-size: .78rem;
+  }
   .exercise-catalog-commandbar { grid-template-columns: minmax(0, 1fr) 88px; }
   .exercise-catalog-commandbar .exercise-catalog-search input { font-size: 16px; }
   .exercise-catalog-filter-sheet {
