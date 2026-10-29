@@ -907,6 +907,36 @@ body.exercise-catalog-filter-open,
 body.exercise-catalog-editor-open,
 body.exercise-catalog-import-open { overflow: hidden; }
 
+/* Catalog editor: a single swipeable tab row and viewport-safe mobile forms. */
+@media (max-width: 639px) {
+  .exercise-catalog-overlay-header { gap: 8px; }
+  .exercise-catalog-overlay-header > div:first-child { min-width: 0; }
+  .exercise-catalog-editor-header h2 {
+    max-width: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+  }
+  .exercise-catalog-editor-dialog { height: 100dvh; }
+  .exercise-catalog-editor-tabs {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+  .exercise-catalog-editor-tabs button {
+    flex: 0 0 auto;
+    min-width: 76px;
+    scroll-snap-align: start;
+  }
+  .exercise-catalog-editor-form,
+  .exercise-catalog-editor-body,
+  .exercise-catalog-editor-panel,
+  .exercise-catalog-form-grid > * { min-width: 0; }
+  .exercise-catalog-form-actions { flex-wrap: wrap; gap: 6px; }
+  .exercise-catalog-form-actions > .button { min-width: 0; flex: 1 1 112px; }
+}
+
 `;
 
 export const ULC_EXERCISE_CATALOG_SCRIPT = String.raw`
