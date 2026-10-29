@@ -27,6 +27,18 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
+  it("uses manual-save language and a resilient compact editor heading", () => {
+    expect(ULC_TRAINING_PLANS_HTML).toContain(
+      "Änderungen gezielt speichern.",
+    );
+    expect(ULC_TRAINING_PLANS_HTML).not.toContain(
+      "konfliktfestem Autosave",
+    );
+    expect(ULC_TRAINING_PLANS_CSS).toContain(
+      ".training-plan-header > div:first-child { min-width: 0; }",
+    );
+  });
+
   it("renders one mobile-friendly seven-day week with a focused editor overlay", () => {
     expect(ULC_TRAINING_PLANS_HTML).toContain(
       'data-app-section="training-plans"',
