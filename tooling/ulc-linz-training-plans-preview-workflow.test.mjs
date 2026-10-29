@@ -136,6 +136,73 @@ test("E7B9 workflow keeps inspect read-only and gates every preview mutation exp
 
 });
 
+test("E7B9 skips redundant schema inspections during deploy and accept but retains fail-closed verification", async () => {
+  const workflow = await readFile(
+    resolve(repositoryRoot, ".github/workflows/ulc-linz-e7b9-preview.yml"),
+    "utf8",
+  );
+
+  function step(name) {
+    const marker = "      - name: " + name + "\n";
+    const start = workflow.indexOf(marker);
+    assert.ok(start >= 0, "Missing workflow step: " + name);
+    const next = workflow.indexOf("\n      - name: ", start + marker.length);
+    return workflow.slice(start, next < 0 ? undefined : next);
+  }
+
+  const inspectOnlyWhenNeeded = [
+    "Inspect current training-blocks-v2 preview state",
+    "Inspect current attendance preview state",
+    "Inspect current training-blocks-v3 preview state",
+    "Inspect current training-documentation preview state",
+    "Inspect current training-plans preview state",
+  ];
+  for (const name of inspectOnlyWhenNeeded) {
+    assert.match(
+      step(name),
+      /if: inputs\.operation == 'migrate' \|\| inputs\.operation == 'inspect'/,
+      name + " must be skipped during deploy and accept",
+    );
+  }
+
+  for (const name of [
+    "Require current training-blocks-v2 baseline before mutation",
+    "Require current attendance schema before runtime operation",
+    "Require current training-blocks-v3 schema before runtime operation",
+  ]) {
+    assert.match(step(name), /if: inputs\.operation != 'inspect'/);
+    assert.match(step(name), /\.mjs verify/);
+  }
+  for (const name of [
+    "Require current training-plans schema before runtime operation",
+    "Require current training-documentation schema before runtime operation",
+  ]) {
+    assert.match(
+      step(name),
+      /if: inputs\.operation == 'deploy' \|\| inputs\.operation == 'accept'/,
+    );
+    assert.match(step(name), /\.mjs verify/);
+  }
+
+  assert.match(
+    step("Apply training-documentation schema v1"),
+    /inputs\.operation == 'migrate' && steps\.training_documentation_state\.outputs\.state == 'migration-required'/,
+  );
+  assert.match(
+    step("Apply training-plans schema v2"),
+    /inputs\.operation == 'migrate' && steps\.training_plans_state\.outputs\.state == 'migration-required'/,
+  );
+  assert.match(
+    step("Verify exact preview runtime database access"),
+    /if: inputs\.operation != 'inspect'/,
+  );
+  assert.ok(
+    workflow.indexOf("Require current training-documentation schema before runtime operation") <
+      workflow.indexOf("Deploy E7B9 standard-module preview runtime"),
+    "Fail-closed schema guards must precede the provider deploy",
+  );
+});
+
 test("E7B9 deploy reuses the isolated standard-module runtime without auto-provisioning", async () => {
   const workflow = await readFile(
     resolve(
