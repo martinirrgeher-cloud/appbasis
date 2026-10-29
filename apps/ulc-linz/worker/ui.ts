@@ -680,6 +680,8 @@ export const ULC_LINZ_APP_CSS = `:root {
   --radius: 14px;
   --control-radius: 10px;
   --touch: 44px;
+  --ui-space: 12px;
+  --ui-panel-padding: 14px;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--text);
   background: var(--page);
@@ -749,7 +751,7 @@ textarea {
   padding-block: 9px;
   resize: vertical;
 }
-input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible {
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--accent) 35%, white);
   outline-offset: 2px;
 }
@@ -834,6 +836,32 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .content { width: min(100%, 52rem); margin: 0 auto; padding: 12px 12px 86px; }
 .app-section[hidden] { display: none !important; }
 .hero { padding: 2px 0 12px; }
+/* Shared ULC page hierarchy; editor dialogs keep their existing layout. */
+.app-section,
+.app-section > .hero,
+.app-section > .hero > div,
+.section-heading > div,
+.card { min-width: 0; }
+.app-section > .hero h1 {
+  margin-bottom: 6px;
+  font-size: clamp(1.55rem, 4vw, 2rem);
+  line-height: 1.12;
+  letter-spacing: -.03em;
+  overflow-wrap: anywhere;
+}
+.app-section > .hero .summary {
+  max-width: 62ch;
+  line-height: 1.45;
+}
+.app-section > .hero .eyebrow { margin-bottom: 4px; }
+.section-heading h2,
+.section-heading h3 { line-height: 1.2; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  .app-section > .hero h1 { font-size: 1.55rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
 .dashboard-grid { display: grid; gap: 8px; }
 .dashboard-card { display: grid; gap: 9px; padding: 13px; }
 .dashboard-card h2 { margin-bottom: 4px; }
