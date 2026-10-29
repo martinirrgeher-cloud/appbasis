@@ -119,7 +119,11 @@ jobs:
           }
           NODE
 
+      # Runtime operations run the equivalent fail-closed 'verify' steps below.
+      # Avoid a second remote DB inspection during deploy/accept; the separate
+      # migration path still inspects first to decide which schemas to apply.
       - name: Inspect current training-blocks-v2 preview state
+        if: inputs.operation == 'migrate' || inputs.operation == 'inspect'
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
@@ -135,6 +139,7 @@ jobs:
         run: node ./tooling/ulc-linz-training-blocks-parity-preview.mjs verify
 
       - name: Inspect current attendance preview state
+        if: inputs.operation == 'migrate' || inputs.operation == 'inspect'
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
@@ -162,6 +167,7 @@ jobs:
         run: node ./tooling/ulc-linz-attendance-preview.mjs verify
 
       - name: Inspect current training-blocks-v3 preview state
+        if: inputs.operation == 'migrate' || inputs.operation == 'inspect'
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
@@ -191,6 +197,7 @@ jobs:
       # its own baseline contract requires the already-deployed training-plans-v2
       # schema and therefore remains fail-closed without creating a dependency loop.
       - name: Inspect current training-documentation preview state
+        if: inputs.operation == 'migrate' || inputs.operation == 'inspect'
         id: training_documentation_state
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
@@ -216,6 +223,7 @@ jobs:
         run: node ./tooling/ulc-linz-training-documentation-preview.mjs apply
 
       - name: Inspect current training-plans preview state
+        if: inputs.operation == 'migrate' || inputs.operation == 'inspect'
         id: training_plans_state
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
