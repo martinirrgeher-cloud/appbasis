@@ -383,6 +383,25 @@ export const ULC_TRAINING_DOCUMENTATION_CSS = `
     flex: 1 1 0;
   }
 }
+/* Documentation save controls stay visible above phone safe areas. */
+.training-documentation-savebar {
+  bottom: max(8px, env(safe-area-inset-bottom));
+}
+.training-documentation-savebar > *,
+.training-documentation-toolbar > *,
+.training-documentation-actual-grid > * { min-width: 0; }
+@media (max-width: 640px) {
+  .training-documentation-savebar {
+    padding: 10px;
+    gap: 8px;
+  }
+  .training-documentation-save-actions { flex-wrap: nowrap; gap: 6px; }
+  .training-documentation-save-actions .button {
+    min-width: 0;
+    min-height: var(--touch);
+  }
+}
+
 `;
 
 export const ULC_TRAINING_DOCUMENTATION_SCRIPT = `
