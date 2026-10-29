@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ULC_TRAINING_BLOCKS_CSS,
+  ULC_TRAINING_BLOCKS_HTML,
   ULC_TRAINING_BLOCKS_SCRIPT,
 } from "../worker/training-blocks-ui";
 
@@ -40,6 +41,13 @@ describe("ULC training block planning-aligned UI", () => {
     expect(ULC_TRAINING_BLOCKS_CSS).toContain(
       "grid-template-columns: repeat(2, minmax(0, 1fr));",
     );
+  });
+
+  it("provides reachable compact block and info overlay close controls", () => {
+    expect(ULC_TRAINING_BLOCKS_HTML).toContain('aria-label="Trainingsblock schließen"');
+    expect(ULC_TRAINING_BLOCKS_HTML).toContain('aria-label="Übungsdetails schließen"');
+    expect(ULC_TRAINING_BLOCKS_CSS).toContain("#training-block-close,\n  #training-block-info-close {");
+    expect(ULC_TRAINING_BLOCKS_CSS).toContain("padding-bottom: max(10px, env(safe-area-inset-bottom));");
   });
 
   it("invalidates organization-scoped block requests across account switches", () => {
