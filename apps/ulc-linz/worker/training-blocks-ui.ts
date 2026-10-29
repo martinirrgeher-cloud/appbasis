@@ -141,6 +141,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
 export const ULC_TRAINING_BLOCKS_CSS = `
 .training-blocks-hero {
   display: flex;
+  min-width: 0;
   align-items: end;
   justify-content: space-between;
   gap: 12px;
@@ -275,7 +276,12 @@ export const ULC_TRAINING_BLOCKS_CSS = `
   border-bottom: 1px solid var(--border);
   background: rgb(255 255 255 / 96%);
 }
-.training-block-header h2 { margin: 2px 0 4px; }
+.training-block-header > div:first-child { min-width: 0; }
+.training-block-header h2 {
+  margin: 2px 0 4px;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
 .training-block-save-state {
   display: inline-flex;
   border-radius: 999px;
@@ -546,7 +552,11 @@ body.training-block-editor-open { overflow: hidden; }
   .training-block-exercises-card,
   .training-block-history-card { padding: 10px; }
   .training-block-info-tabs { top: 62px; }
-  .training-block-commandbar { grid-template-columns: 1fr 1fr; }
+  .training-block-commandbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
+  }
   .training-block-commandbar label:first-child { grid-column: 1 / -1; }
   .training-block-form-grid { grid-template-columns: 1fr; }
   .training-block-parameters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
