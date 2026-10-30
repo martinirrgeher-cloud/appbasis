@@ -50,6 +50,34 @@ test("E7B9 acceptance requires only the isolated preview origin and protected pr
 });
 
 
+test("E7B9 acceptance reports the failing API path and failure category without exposing credentials", async () => {
+  const secret = "super-secret-preview-test-password";
+  await assert.rejects(
+    runUlcTrainingPlansPreviewAcceptance(
+      {
+        baseURL: "https://appbasis-ulc-linz.example.workers.dev",
+        username: "preview.admin",
+        password: secret,
+      },
+      {
+        fetchImpl: async () => {
+          const error = new Error("request failed with " + secret);
+          error.name = "TimeoutError";
+          throw error;
+        },
+      },
+    ),
+    (error) => {
+      assert.ok(error instanceof UlcTrainingPlansPreviewAcceptanceError);
+      assert.match(error.message, /POST \/api\/auth\/sign-in/);
+      assert.match(error.message, /TimeoutError/);
+      assert.doesNotMatch(error.message, /super-secret-preview-test-password/);
+      assert.doesNotMatch(error.message, /\.workers\.dev/);
+      return true;
+    },
+  );
+});
+
 test("E7B9 acceptance fixture uses a configured ULC exercise category", async () => {
   const domainSource = await readFile(
     resolve(
