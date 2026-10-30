@@ -21,6 +21,10 @@ describe("ULC mobile review fixes", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "snapshot.athletes.filter((athlete) => athlete.isActive !== false)",
     );
+    expect(ULC_LINZ_APP_HTML).toContain('id="trainer-show-inactive"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="group-show-inactive"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("snapshot.trainingGroups.filter((group) => group.isActive !== false)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("snapshot.trainers.filter((trainer) => trainer.isActive !== false)");
   });
 
   it("starts newly selected attendance weeks with all days collapsed", () => {
