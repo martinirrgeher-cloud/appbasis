@@ -538,7 +538,7 @@ async function readCurrentBlocks(
             block.current_revision, block.created_at::text AS block_created_at,
             block.updated_at::text AS block_updated_at,
             revision.name, revision.audience_id, revision.audience_ids,
-            revision.duration_minutes,
+            revision.category, revision.duration_minutes,
             revision.note, revision.created_at::text AS revision_created_at
      FROM appbasis_training_block AS block
      INNER JOIN appbasis_training_block_revision AS revision
@@ -585,7 +585,7 @@ async function readRevisions(
   if (revision !== undefined) parameters.push(revision);
   const rows = await client.unsafe(
     `SELECT organization_id, block_id, revision, name, audience_id, audience_ids,
-            duration_minutes, note, created_at::text AS revision_created_at
+            category, duration_minutes, note, created_at::text AS revision_created_at
      FROM appbasis_training_block_revision
      WHERE organization_id = $1
        AND block_id = $2${filter}
@@ -715,9 +715,9 @@ async function insertRevision(
   const rows = await transaction.unsafe(
     `INSERT INTO appbasis_training_block_revision (
        organization_id, block_id, revision, name, audience_id, audience_ids,
-       duration_minutes, note, created_at
+       category, duration_minutes, note, created_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6::text[], $7, $8, $9::timestamptz)
+     VALUES ($1, $2, $3, $4, $5, $6::text[], $7, $8, $9, $10::timestamptz)
      RETURNING revision`,
     [
       revision.organizationId,
@@ -726,6 +726,7 @@ async function insertRevision(
       revision.name,
       revision.audienceId,
       [...revision.audienceIds],
+      revision.category ?? null,
       revision.durationMinutes,
       revision.note,
       revision.createdAt,
@@ -817,6 +818,7 @@ function revisionFromRow(
       row.audience_ids,
       optionalString(row.audience_id, "audience id"),
     ),
+    category: optionalString(row.category, "category"),
     durationMinutes: optionalInteger(row.duration_minutes, "duration"),
     note: optionalString(row.note, "revision note"),
     exercises: Object.freeze(exercises.map(cloneExercise)),
