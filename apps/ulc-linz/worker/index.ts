@@ -321,6 +321,7 @@ const TRAINING_BLOCK_DRAFT_FIELDS = Object.freeze([
   "name",
   "audienceId",
   "audienceIds",
+  "category",
   "durationMinutes",
   "note",
   "exercises",
@@ -749,6 +750,7 @@ async function trainingBlockDraftBody(
   name: string;
   audienceId?: string | null;
   audienceIds?: readonly string[];
+  category?: string | null;
   durationMinutes?: number | null;
   note?: string | null;
   exercises?: readonly {
@@ -765,6 +767,7 @@ async function trainingBlockDraftBody(
   input: {
     name: string;
     audienceId?: string | null;
+    category?: string | null;
     durationMinutes?: number | null;
     note?: string | null;
     exercises?: readonly {
@@ -814,6 +817,9 @@ async function trainingBlockDraftBody(
     ...(audienceIds === undefined
       ? {}
       : { audienceIds: audienceIds as readonly string[] }),
+    ...(body.category === undefined
+      ? {}
+      : { category: body.category as string | null }),
     ...(body.durationMinutes === undefined
       ? {}
       : { durationMinutes: body.durationMinutes as number | null }),
@@ -1003,6 +1009,7 @@ function trainingBlockClientRevision(revision: {
   name: string;
   audienceId: string | null;
   audienceIds: readonly string[];
+  category?: string | null;
   durationMinutes: number | null;
   note: string | null;
   exercises: readonly unknown[];
@@ -1013,6 +1020,7 @@ function trainingBlockClientRevision(revision: {
     name: revision.name,
     audienceId: revision.audienceId,
     audienceIds: revision.audienceIds,
+    category: revision.category ?? null,
     durationMinutes: revision.durationMinutes,
     note: revision.note,
     exercises: revision.exercises,
