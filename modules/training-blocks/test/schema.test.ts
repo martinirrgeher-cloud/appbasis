@@ -25,7 +25,18 @@ const multiAudienceMigration = readFileSync(
   "utf8",
 );
 
+const categoryMigration = readFileSync(
+  new URL("../migrations/0003_appbasis_training_block_category.sql", import.meta.url),
+  "utf8",
+);
+
 describe("training-blocks schema", () => {
+  it("adds an optional, safely bounded category separate from audience assignments", () => {
+    expect(categoryMigration).toContain("ADD COLUMN category text");
+    expect(categoryMigration).toContain("appbasis_training_block_revision_category_length_check");
+    expect(categoryMigration).not.toContain("UPDATE appbasis_training_block_revision");
+  });
+
   it("keeps the current block revision referentially valid at transaction commit", () => {
     expect(migration).toContain(
       "CONSTRAINT appbasis_training_block_current_revision_fk",
