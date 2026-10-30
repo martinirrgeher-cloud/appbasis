@@ -679,6 +679,59 @@ export class PostgresAthleteMasterdataRepository {
     return rows.length === 1;
   }
 
+  async reactivateAthlete(
+    organizationId: string,
+    athleteId: string,
+  ): Promise<boolean> {
+    const normalizedOrganizationId = requiredIdentifier(
+      organizationId,
+      'Organization id',
+    );
+    const normalizedAthleteId = requiredIdentifier(athleteId, 'Athlete id');
+    const rows = await this.#client.unsafe(
+      `UPDATE appbasis_athlete
+       SET is_active = true, updated_at = now()
+       WHERE id = $1
+         AND organization_id = $2
+         AND is_active = false
+       RETURNING id`,
+      [normalizedAthleteId, normalizedOrganizationId],
+    );
+    // Closed athlete memberships are intentionally not reopened.
+    return rows.length === 1;
+  }
+
+  async reactivateTrainer(
+    organizationId: string,
+    trainerId: string,
+  ): Promise<boolean> {
+    const normalizedOrganizationId = requiredIdentifier(
+      organizationId,
+      'Organization id',
+    );
+    const normalizedTrainerId = requiredIdentifier(trainerId, 'Trainer id');
+    const rows = await this.#client.unsafe(
+      `WITH activated AS (
+         UPDATE appbasis_trainer
+         SET is_active = true, updated_at = now()
+         WHERE id = $1
+           AND organization_id = $2
+           AND is_active = false
+         RETURNING id
+       ),
+       removed_legacy_assignments AS (
+         DELETE FROM appbasis_trainer_group_membership
+         WHERE organization_id = $2
+           AND trainer_id IN (SELECT id FROM activated)
+         RETURNING trainer_id
+       )
+       SELECT id FROM activated`,
+      [normalizedTrainerId, normalizedOrganizationId],
+    );
+    // Trainer memberships have no ended_on field: require explicit reassignment.
+    return rows.length === 1;
+  }
+
   async purgeDeactivatedPersonalData(
     now: Date = new Date(),
   ): Promise<AthleteMasterdataRetentionResult> {
