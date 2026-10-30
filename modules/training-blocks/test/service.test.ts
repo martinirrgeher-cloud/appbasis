@@ -20,6 +20,33 @@ function deterministicClock(...timestamps: string[]): () => Date {
 }
 
 describe("training-blocks service", () => {
+  it("persists a category independently of training groups and versions every category change", async () => {
+    const service = new TrainingBlockService({
+      repository: new InMemoryTrainingBlockRepository(),
+      createId: deterministicIds("categorized-block-1", "categorized-block-2"),
+    });
+    const created = await service.create("org-a", {
+      name: "Schnelligkeit",
+      category: "Aufwärmen",
+      audienceIds: ["group-a"],
+      exercises: [],
+    });
+    expect(created.revision.category).toBe("Aufwärmen");
+    const updated = await service.update("org-a", created.id, 1, {
+      name: "Schnelligkeit",
+      category: "Drills",
+      audienceIds: ["group-a"],
+      exercises: [],
+    });
+    expect(updated?.revision.category).toBe("Drills");
+    expect(updated?.revision.audienceIds).toEqual(["group-a"]);
+    const comparison = await service.compareRevisions("org-a", created.id, 1, 2);
+    expect(comparison?.changedFields).toContain("category");
+    const duplicated = await service.duplicate("org-a", created.id);
+    expect(duplicated?.revision.category).toBe("Drills");
+  });
+
+
   it("reactivates archived blocks only at the matching revision and without creating a new revision", async () => {
     const repository = new InMemoryTrainingBlockRepository();
     const service = new TrainingBlockService({
