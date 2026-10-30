@@ -120,7 +120,8 @@ export async function cleanupUlcLinzPreviewGroups(
              OR lower(btrim(last_name)) LIKE 'preview%'
              OR (lower(first_name) = 'e7b9' AND lower(last_name) LIKE 'preview-%')
            )
-           AND NOT (lower(first_name) = 'preview' AND lower(last_name) = 'athlet')
+           AND NOT ((lower(first_name) = 'preview' AND lower(last_name) = 'athlet')
+                    OR (lower(first_name) = 'athlet' AND lower(last_name) = 'preview'))
          RETURNING id, first_name, last_name`,
         [EXPECTED_ORGANIZATION],
       );
