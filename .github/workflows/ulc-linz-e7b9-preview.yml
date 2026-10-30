@@ -526,6 +526,7 @@ jobs:
       # On deploy-accept, these checks only run after provider deployment,
       # exact-SHA verification, runtime/database smoke and anonymous API guards.
       - name: Run authenticated E7B9 training-planning acceptance
+        id: training_plans_acceptance
         if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         env:
           APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
@@ -541,8 +542,11 @@ jobs:
           APPBASIS_PREVIEW_USER_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_PASSWORD }}
         run: node ./tooling/ulc-linz-attendance-preview-acceptance.mjs
 
+      # Cleanup is safe and tenant-scoped. Acceptance can create fixtures before
+      # a transient HTTP failure; archive them even if an acceptance check fails.
+      # Never run cleanup after a failed deploy or skipped authentication phase.
       - name: Remove obsolete Preview training groups
-        if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
+        if: ${{ !cancelled() && (inputs.operation == 'accept' || inputs.operation == 'deploy-accept') && (steps.training_plans_acceptance.outcome == 'success' || steps.training_plans_acceptance.outcome == 'failure') }}
         env:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           ULC_LINZ_PREVIEW_GROUP_CLEANUP_APPLY: "1"
