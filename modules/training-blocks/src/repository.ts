@@ -17,6 +17,7 @@ export interface TrainingBlockRevision {
   readonly name: string;
   readonly audienceId: string | null;
   readonly audienceIds: readonly string[];
+  readonly category?: string | null;
   readonly durationMinutes: number | null;
   readonly note: string | null;
   readonly exercises: readonly TrainingBlockExerciseRevision[];
