@@ -574,6 +574,9 @@ function runtime(
       async deactivate() {
         return undefined;
       },
+      async reactivate() {
+        return undefined;
+      },
       async deleteUnused() {
         return false;
       },
@@ -708,6 +711,9 @@ function runtime(
         };
       },
       async deactivate() {},
+      async reactivate() {
+        return;
+      },
       async findDuplicateCandidates() {
         return [];
       },
