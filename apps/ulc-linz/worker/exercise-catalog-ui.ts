@@ -937,6 +937,29 @@ body.exercise-catalog-import-open { overflow: hidden; }
   .exercise-catalog-form-actions > .button { min-width: 0; flex: 1 1 112px; }
 }
 
+/* Long exercise names and metadata stay readable inside compact list rows. */
+@media (max-width: 639px) {
+  .exercise-catalog-row { min-width: 0; }
+  .exercise-catalog-row__main { min-height: var(--touch); }
+  .exercise-catalog-row__title { flex-wrap: wrap; gap: 4px 7px; }
+  .exercise-catalog-row__title strong {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+  }
+  .exercise-catalog-row__meta,
+  .exercise-catalog-row__info {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .exercise-catalog-favorite { min-height: var(--touch); }
+}
+
 `;
 
 export const ULC_EXERCISE_CATALOG_SCRIPT = String.raw`
