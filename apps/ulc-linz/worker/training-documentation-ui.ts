@@ -402,6 +402,24 @@ export const ULC_TRAINING_DOCUMENTATION_CSS = `
   }
 }
 
+/* Compact documentation status pills retain their full labels on phones. */
+@media (max-width: 640px) {
+  .training-documentation-status-row { gap: 6px; min-width: 0; }
+  .training-documentation-status,
+  .training-documentation-attendance,
+  .training-documentation-progress {
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    line-height: 1.3;
+  }
+  .training-documentation-item__head { flex-wrap: wrap; }
+  .training-documentation-item__head > * { min-width: 0; }
+  .training-documentation-item__head h3,
+  .training-documentation-item__head h4 { overflow-wrap: anywhere; }
+}
+
 `;
 
 export const ULC_TRAINING_DOCUMENTATION_SCRIPT = `

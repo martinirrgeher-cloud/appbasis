@@ -937,6 +937,22 @@ body.exercise-catalog-import-open { overflow: hidden; }
   .exercise-catalog-form-actions > .button { min-width: 0; flex: 1 1 112px; }
 }
 
+/* Show exercise names and metadata instead of truncating them on phones. */
+@media (max-width: 639px) {
+  .exercise-catalog-row { min-width: 0; grid-template-columns: minmax(0, 1fr) 44px; }
+  .exercise-catalog-row__main { min-width: 0; gap: 5px; }
+  .exercise-catalog-row__title { flex-wrap: wrap; }
+  .exercise-catalog-row__title strong,
+  .exercise-catalog-row__meta,
+  .exercise-catalog-row__info {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+  }
+  .exercise-catalog-favorite { min-height: var(--touch); }
+}
+
 `;
 
 export const ULC_EXERCISE_CATALOG_SCRIPT = String.raw`

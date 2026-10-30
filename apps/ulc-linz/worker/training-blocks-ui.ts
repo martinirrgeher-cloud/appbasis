@@ -594,6 +594,26 @@ body.training-block-editor-open { overflow: hidden; }
   .training-block-footer__actions { flex-shrink: 0; }
   .training-block-footer { padding-bottom: max(10px, env(safe-area-inset-bottom)); }
 }
+/* Training-block list summaries stay legible without shrinking action targets. */
+@media (max-width: 480px) {
+  .training-block-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    min-height: var(--touch);
+    padding: 10px;
+  }
+  .training-block-row__main,
+  .training-block-row__main strong,
+  .training-block-row__audience,
+  .training-block-row__meta { min-width: 0; overflow-wrap: anywhere; }
+  .training-block-row__badge {
+    max-width: 36vw;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+  .training-block-group summary { min-width: 0; gap: 8px; padding: 10px; }
+}
+
 `;
 
 export const ULC_TRAINING_BLOCKS_SCRIPT = `
