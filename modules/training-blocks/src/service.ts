@@ -589,6 +589,24 @@ export class TrainingBlockService {
     return this.#assertBlock(result.block, organization, id);
   }
 
+  async reactivate(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+  ): Promise<TrainingBlockSnapshot | undefined> {
+    const organization = normalizeTrainingBlockIdentifier(organizationId, "Organization id");
+    const id = normalizeTrainingBlockIdentifier(blockId, "Training block id");
+    const expected = requiredRevision(expectedRevision, "Expected training block revision");
+    const result = await this.#repository.reactivate(
+      organization, id, expected, normalizedTimestamp(this.#now()),
+    );
+    if (result.status === "not-found") return undefined;
+    if (result.status === "conflict") {
+      throw new TrainingBlockConflictError(expected, result.currentRevision);
+    }
+    return this.#assertBlock(result.block, organization, id);
+  }
+
   async deleteUnused(
     organizationId: string,
     blockId: string,
