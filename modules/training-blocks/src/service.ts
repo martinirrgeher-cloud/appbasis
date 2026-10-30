@@ -72,6 +72,7 @@ export interface TrainingBlockRevisionComparison {
     | "name"
     | "audienceId"
     | "audienceIds"
+    | "category"
     | "durationMinutes"
     | "note"
   )[];
@@ -411,6 +412,7 @@ export class TrainingBlockService {
       name: draft.name,
       audienceId: draft.audienceId,
       audienceIds: draft.audienceIds,
+      category: draft.category,
       durationMinutes: draft.durationMinutes,
       note: draft.note,
       exercises: Object.freeze(
@@ -455,6 +457,7 @@ export class TrainingBlockService {
     return this.create(organization, {
       name: input.name ?? source.revision.name,
       audienceIds: source.revision.audienceIds,
+      category: source.revision.category ?? null,
       durationMinutes: source.revision.durationMinutes,
       note: source.revision.note,
       exercises: source.revision.exercises.map((exercise) => ({
@@ -755,6 +758,7 @@ export class TrainingBlockService {
       name: revision.name,
       audienceId: revision.audienceId,
       audienceIds: revision.audienceIds,
+      category: revision.category ?? null,
       durationMinutes: revision.durationMinutes,
       note: revision.note,
       exercises: revision.exercises.map((exercise) => ({
@@ -796,6 +800,7 @@ export class TrainingBlockService {
       name: normalized.name,
       audienceId: normalized.audienceId,
       audienceIds: normalized.audienceIds,
+      category: normalized.category,
       durationMinutes: normalized.durationMinutes,
       note: normalized.note,
       exercises: Object.freeze(exercises),
