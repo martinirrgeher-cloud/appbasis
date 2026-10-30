@@ -123,21 +123,9 @@ jobs:
       # Runtime operations run the equivalent fail-closed 'verify' steps below.
       # Avoid a second remote DB inspection during deploy/accept; the separate
       # migration path still inspects first to decide which schemas to apply.
-      - name: Inspect current training-blocks-v2 preview state
-        if: inputs.operation == 'migrate' || inputs.operation == 'inspect'
-        env:
-          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
-          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
-          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
-        run: node ./tooling/ulc-linz-training-blocks-parity-preview.mjs inspect
-
-      - name: Require current training-blocks-v2 baseline before mutation
-        if: inputs.operation != 'inspect'
-        env:
-          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
-          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
-          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
-        run: node ./tooling/ulc-linz-training-blocks-parity-preview.mjs verify
+      # Training-blocks schema v4 verifies its schema-v3 baseline directly.
+      # The historical parity preview tool is intentionally not used after
+      # publishing the v4 module owner contract.
 
       - name: Inspect current attendance preview state
         if: inputs.operation == 'migrate' || inputs.operation == 'inspect'
