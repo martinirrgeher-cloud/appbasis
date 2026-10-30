@@ -61,7 +61,7 @@ test("deactivates only obsolete active Preview groups and preserves the canonica
                   assert.deepEqual(parameters, ["ulc-linz-preview", ["old-athlete"]]);
                   return [];
                 }
-                if (sql.includes("UPDATE ulc_linz_exercise_catalog_item")) {
+                if (sql.includes("UPDATE appbasis_exercise_catalog_item")) {
                   assert.deepEqual(parameters, ["ulc-linz-preview"]);
                   assert.match(sql, /e7b9 preview exercise %/);
                   return [{ id: "old-exercise", name: "E7B9 Preview Exercise 123" }];
