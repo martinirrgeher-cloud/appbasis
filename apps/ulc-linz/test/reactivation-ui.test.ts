@@ -25,6 +25,12 @@ describe("ULC reactivation UI", () => {
     expect(ULC_EXERCISE_CATALOG_SCRIPT).toContain('!exerciseCatalogCanEdit || item.id.length === 0 || item.isActive');
     expect(ULC_EXERCISE_CATALOG_SCRIPT).toContain('/reactivate"');
     expect(ULC_EXERCISE_CATALOG_SCRIPT).toContain('method: "POST"');
+    expect(ULC_EXERCISE_CATALOG_SCRIPT).toContain(
+      "elements.exerciseCatalogReactivate.disabled =",
+    );
+    expect(ULC_EXERCISE_CATALOG_SCRIPT).toContain(
+      "selectedExercise.isActive",
+    );
   });
 
   it("keeps training-block reactivation revision guarded", () => {
