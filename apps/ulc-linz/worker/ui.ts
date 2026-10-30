@@ -1792,6 +1792,17 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
   .masterdata-heading-actions { gap: 6px; }
 }
 
+/* Uniform compact create action: semantic name remains available to assistive tech. */
+.masterdata-icon-action {
+  min-width: 42px;
+  width: 42px;
+  min-height: var(--touch);
+  padding: 0;
+  justify-content: center;
+  font-size: 1.18rem;
+}
+.masterdata-icon-action__label { display: none; }
+
 `;
 
 export const ULC_LINZ_APP_SCRIPT = `const SETTINGS_KEY = "ulc-linz.countdown.settings.v1";
