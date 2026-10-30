@@ -662,9 +662,19 @@ async function requestJson(
       redirect: "error",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-  } catch {
+  } catch (error) {
+    // Log only method and pathname, never the request body, query parameters,
+    // session cookie, credentials, or remote exception text.
+    const method = options.method ?? "GET";
+    const pathname = new URL(path, baseURL).pathname;
+    const errorType =
+      error instanceof Error &&
+      ["AbortError", "TimeoutError", "TypeError"].includes(error.name)
+        ? error.name
+        : "TransportError";
     throw new UlcTrainingPlansPreviewAcceptanceError(
-      "E7B9 acceptance request failed before receiving a response.",
+      "E7B9 acceptance " + method + " " + pathname +
+        " failed before receiving a response (" + errorType + ").",
     );
   }
   if (!(response instanceof Response)) {
