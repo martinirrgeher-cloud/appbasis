@@ -167,7 +167,7 @@ export const ULC_TRAINING_BLOCKS_CSS = `
 }
 .training-block-commandbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(150px, .4fr) minmax(110px, .3fr);
+  grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
   padding: 12px;
