@@ -435,7 +435,8 @@ async function trainingBlocksItemResponse(
     (update !== null ||
       duplicate !== null ||
       deleteUnused !== null ||
-      deactivate !== null)
+      deactivate !== null ||
+      reactivate !== null)
   ) {
     action = "edit";
   } else if (
@@ -571,6 +572,31 @@ async function trainingBlocksItemResponse(
       return Response.json(
         {
           deactivated: true,
+          block: trainingBlockClientOverview({
+            block,
+            isFavorite: overview.isFavorite,
+            usageCount: overview.usageCount,
+            lastUsedAt: overview.lastUsedAt,
+          }),
+        },
+        { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    if (reactivate !== null) {
+      const id = decodeTrainingBlockPathIdentifier(reactivate[1]);
+      const expectedRevision = await trainingBlockExpectedRevisionBody(request);
+      const block = await runtime.trainingBlocks.reactivate(
+        access.organizationId, id, expectedRevision,
+      );
+      if (block === undefined) return trainingBlockNotFound();
+      const overview = await runtime.trainingBlocks.findOverview(
+        access.organizationId, access.actorPrincipalId, block.id,
+      );
+      if (overview === undefined) return trainingBlockNotFound();
+      return Response.json(
+        {
+          reactivated: true,
           block: trainingBlockClientOverview({
             block,
             isFavorite: overview.isFavorite,
@@ -2937,6 +2963,7 @@ async function exerciseCatalogItemResponse(
   const detail = /^([^/]+)$/.exec(route);
   const update = /^([^/]+)\/update$/.exec(route);
   const deactivate = /^([^/]+)\/deactivate$/.exec(route);
+  const reactivate = /^([^/]+)\/reactivate$/.exec(route);
   const favorite = /^([^/]+)\/favorite$/.exec(route);
   const usage = /^([^/]+)\/usage$/.exec(route);
   const privateMedia = /^([^/]+)\/private-media$/.exec(route);
