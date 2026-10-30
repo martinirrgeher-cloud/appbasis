@@ -415,6 +415,7 @@ async function trainingBlocksItemResponse(
   const duplicate = /^([^/]+)\/duplicate$/.exec(route);
   const deleteUnused = /^([^/]+)\/delete-unused$/.exec(route);
   const deactivate = /^([^/]+)\/deactivate$/.exec(route);
+  const reactivate = /^([^/]+)\/reactivate$/.exec(route);
   const favorite = /^([^/]+)\/favorite$/.exec(route);
   const revisions = /^([^/]+)\/revisions$/.exec(route);
   const revision = /^([^/]+)\/revisions\/([1-9][0-9]*)$/.exec(route);
@@ -2954,7 +2955,7 @@ async function exerciseCatalogItemResponse(
   ) {
     action = "view";
   } else if (
-    ((update !== null || deactivate !== null || usage !== null) &&
+    ((update !== null || deactivate !== null || reactivate !== null || usage !== null) &&
       request.method === "POST") ||
     (privateMedia !== null && request.method === "POST") ||
     (privateMediaDelete !== null && request.method === "DELETE")
@@ -3012,6 +3013,12 @@ async function exerciseCatalogItemResponse(
       const id = decodeExerciseCatalogPathIdentifier(deactivate[1]);
       await runtime.exerciseCatalog.deactivate(access.organizationId, id);
       return Response.json({ deactivated: true });
+    }
+
+    if (reactivate !== null) {
+      const id = decodeExerciseCatalogPathIdentifier(reactivate[1]);
+      await runtime.exerciseCatalog.reactivate(access.organizationId, id);
+      return Response.json({ reactivated: true });
     }
 
     if (favorite !== null) {
