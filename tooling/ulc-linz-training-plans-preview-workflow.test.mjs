@@ -277,6 +277,15 @@ test("E7B9 deploy-accept runs deploy, exact-SHA guards, and authenticated accept
     assert.ok(index > last, name + " must run after the preceding guard");
     last = index;
   }
+  assert.match(
+    step("Run authenticated E7B9 training-planning acceptance"),
+    /id: training_plans_acceptance/,
+  );
+  const cleanupStep = step("Remove obsolete Preview training groups");
+  assert.match(cleanupStep, /!cancelled\(\)/);
+  assert.match(cleanupStep, /steps\.training_plans_acceptance\.outcome == 'failure'/);
+  assert.match(cleanupStep, /steps\.training_plans_acceptance\.outcome == 'success'/);
+  assert.match(cleanupStep, /ULC_LINZ_PREVIEW_GROUP_CLEANUP_APPLY: "1"/);
   assert.match(workflow, /concurrency:\n  group: generated-preview-ulc-linz/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /\.gitSha == \$sha/);
