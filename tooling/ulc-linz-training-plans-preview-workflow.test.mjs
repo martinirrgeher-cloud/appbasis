@@ -203,6 +203,85 @@ test("E7B9 skips redundant schema inspections during deploy and accept but retai
   );
 });
 
+test("E7B9 deploy-accept runs deploy, exact-SHA guards, and authenticated acceptance in one explicitly authorized job", async () => {
+  const workflow = await readFile(
+    resolve(repositoryRoot, ".github/workflows/ulc-linz-e7b9-preview.yml"),
+    "utf8",
+  );
+  const steps = workflow.split(/(?=^      - name: )/m);
+  function step(name) {
+    const match = steps.find((part) => part.startsWith("      - name: " + name + "\n"));
+    assert.ok(match, "Missing step: " + name);
+    return match;
+  }
+  const combined = "inputs.operation == 'deploy-accept'";
+  assert.match(workflow, /^          - deploy-accept$/m);
+  assert.match(step("Require explicit authorization for mutation"), /inputs\.operation != 'inspect'/);
+  assert.match(step("Require explicit authorization for mutation"), /APPBASIS_APPLY/);
+  for (const name of [
+    "Require current training-plans schema before runtime operation",
+    "Require current training-documentation schema before runtime operation",
+    "Resolve isolated preview worker and URL",
+    "Verify existing preview standard-module runtime",
+    "Resolve isolated ULC preview Hyperdrives",
+    "Render current E7B9 preview config",
+    "Validate E7B9 preview bundle without provisioning",
+    "Synchronize preview identity secret",
+    "Deploy E7B9 standard-module preview runtime",
+    "Require exact deployed E7B9 build",
+    "Verify deployed preview runtime and database",
+    "Verify E7B9 UI and anonymous API boundary",
+    "Run authenticated E7B9 training-planning acceptance",
+    "Remove obsolete Preview training groups",
+    "Run authenticated attendance dual-mode acceptance",
+  ]) {
+    assert.ok(step(name).includes(combined), name + " must run in combined mode");
+  }
+  for (const name of [
+    "Inspect current training-blocks-v2 preview state",
+    "Inspect current attendance preview state",
+    "Inspect current training-blocks-v3 preview state",
+    "Inspect current training-documentation preview state",
+    "Inspect current training-plans preview state",
+    "Apply training-plans schema v2",
+    "Apply training-documentation schema v1",
+  ]) {
+    assert.ok(!step(name).includes(combined), name + " must not run on deploy-accept");
+  }
+  assert.match(
+    step("Validate and mask preview runtime inputs"),
+    /\[ "\$\{\{ inputs\.operation \}\}" = "deploy-accept" \]/,
+  );
+  assert.match(
+    step("Validate and mask preview runtime inputs"),
+    /APPBASIS_BETTER_AUTH_SECRET/,
+  );
+  assert.match(
+    step("Validate and mask preview runtime inputs"),
+    /APPBASIS_PREVIEW_USER_PASSWORD/,
+  );
+  const ordered = [
+    "Require explicit authorization for mutation",
+    "Verify exact preview runtime database access",
+    "Deploy E7B9 standard-module preview runtime",
+    "Require exact deployed E7B9 build",
+    "Verify deployed preview runtime and database",
+    "Verify E7B9 UI and anonymous API boundary",
+    "Run authenticated E7B9 training-planning acceptance",
+    "Remove obsolete Preview training groups",
+    "Run authenticated attendance dual-mode acceptance",
+  ];
+  let last = -1;
+  for (const name of ordered) {
+    const index = workflow.indexOf("      - name: " + name + "\n");
+    assert.ok(index > last, name + " must run after the preceding guard");
+    last = index;
+  }
+  assert.match(workflow, /concurrency:\n  group: generated-preview-ulc-linz/);
+  assert.match(workflow, /cancel-in-progress: false/);
+  assert.match(workflow, /\.gitSha == \$sha/);
+});
+
 test("E7B9 deploy reuses the isolated standard-module runtime without auto-provisioning", async () => {
   const workflow = await readFile(
     resolve(
