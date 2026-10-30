@@ -3308,6 +3308,7 @@ function renderTrainingBlockComparison(fromRevision, toRevision) {
 
   const simpleFields = [
     ["Name", fromRevision.name, toRevision.name],
+    ["Kategorie", fromRevision.category, toRevision.category],
     [
       "Trainingsgruppen",
       trainingBlockAudienceSetLabel(fromRevision.audienceIds),
@@ -3504,6 +3505,7 @@ trainingBlockElements.info?.addEventListener("click", (event) => {
 });
 for (const control of [
   trainingBlockElements.name,
+  trainingBlockElements.category,
   trainingBlockElements.duration,
   trainingBlockElements.note,
 ]) {
