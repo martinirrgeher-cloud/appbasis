@@ -4156,6 +4156,23 @@ async function athletesMasterdataMutationResponse(
       return Response.json({ trainingGroup });
     }
 
+    const reactivate = /^(athletes|trainers)\/([^/]+)\/reactivate$/.exec(route);
+    if (reactivate !== null) {
+      const id = decodePathIdentifier(reactivate[2]);
+      const changed =
+        reactivate[1] === "athletes"
+          ? await runtime.athleteMasterdata.reactivateAthlete(
+              access.organizationId,
+              id,
+            )
+          : await runtime.athleteMasterdata.reactivateTrainer(
+              access.organizationId,
+              id,
+            );
+      if (!changed) return athletesNotFound();
+      return Response.json({ reactivated: true });
+    }
+
     const deactivate = /^(athletes|trainers)\/([^/]+)\/deactivate$/.exec(route);
     if (deactivate !== null) {
       const id = decodePathIdentifier(deactivate[2]);
