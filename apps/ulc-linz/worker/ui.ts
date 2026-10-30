@@ -1737,6 +1737,34 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
     top: max(6px, env(safe-area-inset-top));
   }
 }
+/* Compact, readable list rows and weekly summaries on narrow phones. */
+@media (max-width: 480px) {
+  .masterdata-row,
+  .registration-card,
+  .kindertraining-week-day { min-width: 0; }
+  .masterdata-row__secondary {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .masterdata-row__right { max-width: min(42vw, 160px); }
+  .masterdata-row__actions { min-width: 0; }
+  .registration-card__head { flex-wrap: wrap; }
+  .registration-card__head > * { min-width: 0; }
+  .registration-current { max-width: 100%; white-space: normal; text-align: center; }
+  .kindertraining-day-toggle {
+    grid-template-columns: minmax(84px, .8fr) minmax(0, 1.6fr) auto;
+    gap: 6px;
+    padding: 10px;
+  }
+  .kindertraining-day-registration-summary {
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+  }
+}
+
 `;
 
 export const ULC_LINZ_APP_SCRIPT = `const SETTINGS_KEY = "ulc-linz.countdown.settings.v1";
