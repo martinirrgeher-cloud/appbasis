@@ -323,6 +323,7 @@ export function createUlcTrainingBlockService({
       await assertReferences(organizationId, {
         name: input.name ?? source.revision.name,
         audienceIds: source.revision.audienceIds,
+        category: source.revision.category ?? null,
         durationMinutes: source.revision.durationMinutes,
         note: source.revision.note,
         exercises: source.revision.exercises.map((exercise) => ({
