@@ -14,6 +14,7 @@ on:
           - migrate
           - deploy
           - accept
+          - deploy-accept
       apply:
         description: Explicitly authorize the selected mutating preview operation
         required: true
@@ -282,7 +283,7 @@ jobs:
         run: node ./tooling/ulc-linz-d4-preview-database-access.mjs preflight-existing
 
       - name: Require current training-plans schema before runtime operation
-        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
@@ -290,7 +291,7 @@ jobs:
         run: node ./tooling/ulc-linz-training-plans-preview.mjs verify
 
       - name: Require current training-documentation schema before runtime operation
-        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         env:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
@@ -298,7 +299,7 @@ jobs:
         run: node ./tooling/ulc-linz-training-documentation-preview.mjs verify
 
       - name: Validate and mask preview runtime inputs
-        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -312,14 +313,14 @@ jobs:
             test -n "$value" || { echo "Missing protected E7B9 runtime input: $name" >&2; exit 1; }
             echo "::add-mask::$value"
           done
-          if [ "${{ inputs.operation }}" = "deploy" ]; then
+          if [ "${{ inputs.operation }}" = "deploy" ] || [ "${{ inputs.operation }}" = "deploy-accept" ]; then
             test -n "${APPBASIS_BETTER_AUTH_SECRET:-}" || {
               echo 'Missing protected E7B9 deploy input: APPBASIS_BETTER_AUTH_SECRET' >&2
               exit 1
             }
             echo "::add-mask::$APPBASIS_BETTER_AUTH_SECRET"
           fi
-          if [ "${{ inputs.operation }}" = "accept" ]; then
+          if [ "${{ inputs.operation }}" = "accept" ] || [ "${{ inputs.operation }}" = "deploy-accept" ]; then
             test -n "${APPBASIS_PREVIEW_USER_PASSWORD:-}" || {
               echo 'Missing protected E7B9 acceptance input: APPBASIS_PREVIEW_USER_PASSWORD' >&2
               exit 1
@@ -328,7 +329,7 @@ jobs:
           fi
 
       - name: Resolve isolated preview worker and URL
-        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         id: preview
         shell: bash
         env:
@@ -345,7 +346,7 @@ jobs:
           printf 'worker_name=%s\nbase_url=https://%s.%s.workers.dev\n'             "$WORKER_NAME" "$WORKER_NAME" "$SUBDOMAIN" >> "$GITHUB_OUTPUT"
 
       - name: Require existing isolated preview worker
-        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         working-directory: apps/reference
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -354,14 +355,14 @@ jobs:
         run: pnpm exec wrangler deployments list --name "$APPBASIS_GENERATED_WORKER_NAME" --json >/dev/null
 
       - name: Verify existing preview standard-module runtime
-        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         env:
           APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
           APPBASIS_EXPECTED_MODE: standard-module
         run: node ./tooling/ulc-linz-exercise-catalog-preview-runtime-smoke.mjs
 
       - name: Resolve isolated ULC preview Hyperdrives
-        if: inputs.operation == 'deploy'
+        if: inputs.operation == 'deploy' || inputs.operation == 'deploy-accept'
         id: hyperdrives
         shell: bash
         env:
@@ -382,7 +383,7 @@ jobs:
           printf 'application_id=%s\nsecurity_log_id=%s\n' "$APPLICATION_ID" "$SECURITY_LOG_ID" >> "$GITHUB_OUTPUT"
 
       - name: Render current E7B9 preview config
-        if: inputs.operation == 'deploy'
+        if: inputs.operation == 'deploy' || inputs.operation == 'deploy-accept'
         env:
           APPBASIS_HYPERDRIVE_ID: ${{ steps.hyperdrives.outputs.application_id }}
           APPBASIS_SECURITY_LOG_HYPERDRIVE_ID: ${{ steps.hyperdrives.outputs.security_log_id }}
@@ -404,7 +405,7 @@ jobs:
           NODE
 
       - name: Validate E7B9 preview bundle without provisioning
-        if: inputs.operation == 'deploy'
+        if: inputs.operation == 'deploy' || inputs.operation == 'deploy-accept'
         working-directory: apps/reference
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -418,7 +419,7 @@ jobs:
           --experimental-auto-create=false
 
       - name: Synchronize preview identity secret
-        if: inputs.operation == 'deploy'
+        if: inputs.operation == 'deploy' || inputs.operation == 'deploy-accept'
         working-directory: apps/reference
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -429,7 +430,7 @@ jobs:
           printf '%s' "$APPBASIS_BETTER_AUTH_SECRET"             | pnpm exec wrangler secret put BETTER_AUTH_SECRET                 --name "$APPBASIS_GENERATED_WORKER_NAME" >/dev/null
 
       - name: Deploy E7B9 standard-module preview runtime
-        if: inputs.operation == 'deploy'
+        if: inputs.operation == 'deploy' || inputs.operation == 'deploy-accept'
         working-directory: apps/reference
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -442,7 +443,7 @@ jobs:
           --experimental-auto-create=false
 
       - name: Require exact deployed E7B9 build
-        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         shell: bash
         env:
           APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
@@ -464,7 +465,7 @@ jobs:
           }
 
       - name: Verify deployed preview runtime and database
-        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         env:
           APPBASIS_BASE_URL: ${{ steps.preview.outputs.base_url }}
           APPBASIS_EXPECTED_MODE: standard-module
@@ -474,7 +475,7 @@ jobs:
           node ./tooling/generated-preview-database-smoke.mjs
 
       - name: Verify E7B9 UI and anonymous API boundary
-        if: inputs.operation == 'deploy' || inputs.operation == 'accept'
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         shell: bash
         env:
           APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
@@ -522,8 +523,10 @@ jobs:
               ;;
           esac
 
+      # On deploy-accept, these checks only run after provider deployment,
+      # exact-SHA verification, runtime/database smoke and anonymous API guards.
       - name: Run authenticated E7B9 training-planning acceptance
-        if: inputs.operation == 'accept'
+        if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         env:
           APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
           APPBASIS_PREVIEW_USER_USERNAME: preview.admin
@@ -531,14 +534,14 @@ jobs:
         run: node ./tooling/ulc-linz-training-plans-preview-acceptance.mjs
 
       - name: Remove obsolete Preview training groups
-        if: inputs.operation == 'accept'
+        if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         env:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           ULC_LINZ_PREVIEW_GROUP_CLEANUP_APPLY: "1"
         run: node ./tooling/ulc-linz-preview-group-cleanup.mjs
 
       - name: Run authenticated attendance dual-mode acceptance
-        if: inputs.operation == 'accept'
+        if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         env:
           APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
           APPBASIS_PREVIEW_USER_USERNAME: preview.admin
