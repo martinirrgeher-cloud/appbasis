@@ -1777,6 +1777,13 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
   }
 }
 
+.kindertraining-week-day--unavailable {
+  display: grid;
+  gap: 3px;
+  padding: 12px;
+  border-style: dashed;
+}
+.kindertraining-week-day--unavailable small { color: var(--secondary); }
 /* Keep functional page controls visible without repetitive hero descriptions. */
 .app-section[data-app-section]:not([data-app-section="home"]) > .hero .summary { display: none; }
 .masterdata-inactive-toggle {
@@ -2065,6 +2072,7 @@ let kindertrainingWeekStart = "";
 let kindertrainingWeekSnapshots = [];
 let kindertrainingWeekDirtyDates = new Set();
 let kindertrainingWeekExpandedDates = new Set();
+let kindertrainingWeekFailedDates = new Set();
 let kindertrainingWeekSaving = false;
 let kindertrainingWeekLoadId = 0;
 let kindertrainingLoadedGroupId = "";
@@ -2404,6 +2412,7 @@ function resetAttendanceSessionState() {
   kindertrainingWeekSnapshots = [];
   kindertrainingWeekDirtyDates = new Set();
   kindertrainingWeekExpandedDates = new Set();
+  kindertrainingWeekFailedDates = new Set();
   kindertrainingWeekSaving = false;
   kindertrainingWeekLoadId += 1;
   kindertrainingLoadedGroupId = "";
@@ -3183,7 +3192,7 @@ function renderKindertrainingWeek() {
     return;
   }
 
-  if (kindertrainingWeekSnapshots.length === 0) {
+  if (kindertrainingWeekSnapshots.length === 0 && kindertrainingWeekFailedDates.size === 0) {
     const empty = document.createElement("div");
     empty.className = "card kindertraining-week-empty";
     empty.textContent = "Für diese Woche konnten keine Trainingstage geladen werden.";
@@ -3192,7 +3201,25 @@ function renderKindertrainingWeek() {
     return;
   }
 
-  for (const snapshot of kindertrainingWeekSnapshots) {
+  // Render all seven dates, even if only some API requests succeed. An
+  // unavailable date is not a valid attendance snapshot and must not be editable.
+  for (const sessionDate of registrationWeekDates(kindertrainingWeekStart)) {
+    const snapshot = kindertrainingWeekSnapshots.find(
+      (entry) => entry.sessionDate === sessionDate,
+    );
+    if (!snapshot) {
+      const unavailable = document.createElement("div");
+      unavailable.className = "card kindertraining-week-day kindertraining-week-day--unavailable";
+      const label = document.createElement("strong");
+      label.textContent = germanWeekday(sessionDate) + " · " + germanDate(sessionDate);
+      const message = document.createElement("small");
+      message.textContent = kindertrainingWeekFailedDates.has(sessionDate)
+        ? "Nicht geladen – über „Neu laden“ erneut versuchen."
+        : "Noch keine Anwesenheitsdaten geladen.";
+      unavailable.append(label, message);
+      container.append(unavailable);
+      continue;
+    }
     const expanded = kindertrainingWeekExpandedDates.has(snapshot.sessionDate);
     const counts = kindertrainingWeekCounts(snapshot);
     const day = document.createElement("section");
@@ -3412,7 +3439,7 @@ async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
   renderKindertrainingWeek();
 
   try {
-    const payloads = await Promise.all(
+    const responses = await Promise.allSettled(
       dates.map((sessionDate) =>
         requestJson(
           "/api/modules/kindertraining/session?groupId=" +
@@ -3427,16 +3454,26 @@ async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
       loadId !== kindertrainingWeekLoadId
     ) return;
 
-    const snapshots = payloads.map((payload, index) => {
-      const snapshot = payload?.snapshot;
-      if (!isKindertrainingSnapshot(snapshot, groupId, dates[index])) {
-        throw new Error("INVALID_KINDERTRAINING_WEEK_SNAPSHOT");
+    const snapshots = [];
+    const failedDates = new Set();
+    for (const [index, response] of responses.entries()) {
+      const snapshot = response.status === "fulfilled" ? response.value?.snapshot : null;
+      if (isKindertrainingSnapshot(snapshot, groupId, dates[index])) {
+        snapshots.push(withKindertrainingWeekDraft(snapshot));
+      } else {
+        failedDates.add(dates[index]);
       }
-      return withKindertrainingWeekDraft(snapshot);
-    });
-
+    }
     kindertrainingWeekStart = weekStart;
     kindertrainingWeekSnapshots = snapshots;
+    kindertrainingWeekFailedDates = failedDates;
+    if (failedDates.size > 0) {
+      showMessage(
+        elements.kindertrainingMessage,
+        String(failedDates.size) + " Trainingstag(e) konnten nicht geladen werden. " +
+          "Die übrigen Tage bleiben sichtbar. Bitte „Neu laden“ versuchen.",
+      );
+    }
     kindertrainingWeekDirtyDates = new Set();
     kindertrainingLoadedGroupId = groupId;
 
@@ -3455,8 +3492,9 @@ async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
       loadId !== kindertrainingWeekLoadId
     ) return;
     kindertrainingWeekSnapshots = [];
+    kindertrainingWeekFailedDates = new Set(dates);
     kindertrainingWeekDirtyDates = new Set();
-    kindertrainingLoadedGroupId = "";
+    kindertrainingLoadedGroupId = groupId;
     showMessage(
       elements.kindertrainingMessage,
       error?.status === 403
@@ -3524,6 +3562,7 @@ async function handleKindertrainingWeekGroupChange() {
   kindertrainingWeekDirtyDates = new Set();
   kindertrainingWeekSnapshots = [];
   kindertrainingWeekExpandedDates = new Set();
+  kindertrainingWeekFailedDates = new Set();
   kindertrainingLoadedGroupId = "";
   renderKindertrainingWeek();
   if (nextGroupId) await loadKindertrainingWeek();
