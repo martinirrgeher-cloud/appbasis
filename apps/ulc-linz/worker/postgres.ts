@@ -135,6 +135,8 @@ export interface GeneratedPostgresApplicationRuntime {
     | "createTrainerGroupMembership"
     | "deactivateAthlete"
     | "deactivateTrainer"
+    | "reactivateAthlete"
+    | "reactivateTrainer"
   >;
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
   selfRegistration: ReturnType<typeof createUlcSelfRegistrationService>;
@@ -447,6 +449,12 @@ export async function createGeneratedPostgresApplicationRuntime(
           organizationId,
           trainerId,
         );
+      },
+      reactivateAthlete(organizationId: string, athleteId: string) {
+        return athleteMasterdataRepository.reactivateAthlete(organizationId, athleteId);
+      },
+      reactivateTrainer(organizationId: string, trainerId: string) {
+        return athleteMasterdataRepository.reactivateTrainer(organizationId, trainerId);
       },
     });
     const trainingSessions =
