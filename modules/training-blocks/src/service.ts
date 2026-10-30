@@ -815,6 +815,7 @@ function compareRevisionSnapshots(
 ): TrainingBlockRevisionComparison {
   const changedFields: TrainingBlockRevisionComparison["changedFields"][number][] = [];
   if (from.name !== to.name) changedFields.push("name");
+  if ((from.category ?? null) !== (to.category ?? null)) changedFields.push("category");
   if (from.audienceId !== to.audienceId) changedFields.push("audienceId");
   if (JSON.stringify(from.audienceIds) !== JSON.stringify(to.audienceIds)) {
     changedFields.push("audienceIds");
