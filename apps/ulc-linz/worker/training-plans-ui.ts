@@ -883,6 +883,27 @@ body.training-plan-picker-open { overflow: hidden; }
   .training-plan-group-controls > *,
   .training-plan-athlete-controls > * { min-width: 0; }
 }
+/* Group overview: show meaningful labels even when a phone is narrow. */
+@media (max-width: 480px) {
+  .training-plan-group-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+    min-height: var(--touch);
+    padding: 9px 10px;
+  }
+  .training-plan-group-row__main { min-width: 0; overflow-wrap: anywhere; }
+  .training-plan-group-row__status { min-width: 0; max-width: 38vw; }
+  .training-plan-group-row__status strong,
+  .training-plan-group-row__status span {
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+  .training-plan-attendance-badge {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+}
+
 `;
 
 export const ULC_TRAINING_PLANS_SCRIPT = `
