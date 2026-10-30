@@ -624,6 +624,13 @@ body.training-block-editor-open { overflow: hidden; }
   .training-block-add #training-block-exercise-category { grid-column: 1 / -1; }
 }
 
+.training-block-exercise__header > div:first-child { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; }
+.training-block-exercise__actions { flex: 0 0 auto; }
+.training-block-field-missing {
+  border: 2px solid #eab308 !important;
+  background: #fef9c3 !important;
+}
+
 `;
 
 export const ULC_TRAINING_BLOCKS_SCRIPT = `
@@ -1504,7 +1511,16 @@ function trainingBlockExerciseCompactSummary(draft, item) {
         : repetitions
           ? repetitions + " Wdh."
           : "";
-  return [prescription, draft.note || ""]
+  const otherAmounts = (item?.parameters || [])
+    .filter((parameter) => parameter.key !== "sets" && parameter.key !== "repetitions")
+    .map((parameter) => {
+      const value = trainingBlockParameterValueByKey(draft, item, parameter.key);
+      if (!value) return "";
+      return String(value) + (parameter.unit ? " " + parameter.unit : "");
+    })
+    .filter(Boolean);
+  const amounts = [prescription, ...otherAmounts].filter(Boolean).join(" × ");
+  return [amounts, draft.note || ""]
     .filter(Boolean)
     .join(" · ") || "Planwerte bearbeiten";
 }
@@ -1937,12 +1953,22 @@ async function saveTrainingBlock() {
     return;
   }
   if (!trainingBlockDraftReady(payload)) {
-    setTrainingBlockSaveState(
-      "draft",
-      "Entwurf – Pflichtfelder und Parameter prüfen",
+    const missingName = !payload?.name?.trim();
+    if (trainingBlockElements.name) {
+      trainingBlockElements.name.classList.toggle("training-block-field-missing", missingName);
+      trainingBlockElements.name.setAttribute("aria-invalid", missingName ? "true" : "false");
+    }
+    setTrainingBlockSaveState("draft", "Pflichtfelder prüfen");
+    showMessage(
+      trainingBlockElements.editorMessage,
+      missingName
+        ? "Pflichtfeld „Name“ fehlt. Bitte das gelb markierte Feld ausfüllen."
+        : "Ungültige Angaben: Bitte Dauer und Trainingsgruppen prüfen.",
     );
     return;
   }
+  trainingBlockElements.name?.classList.remove("training-block-field-missing");
+  trainingBlockElements.name?.removeAttribute("aria-invalid");
 
   const saveVersion = trainingBlockChangeVersion;
   const creating = trainingBlockSelected === null;
@@ -3364,6 +3390,10 @@ for (const control of [
   trainingBlockElements.note,
 ]) {
   control?.addEventListener("input", () => {
+    if (control === trainingBlockElements.name && control.value.trim()) {
+      control.classList.remove("training-block-field-missing");
+      control.removeAttribute("aria-invalid");
+    }
     syncTrainingBlockDraftFromFields();
     markTrainingBlockDirty();
   });
