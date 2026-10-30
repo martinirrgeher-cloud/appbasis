@@ -135,6 +135,11 @@ export interface UlcTrainingBlockService {
     blockId: string,
     expectedRevision: number,
   ): Promise<TrainingBlockSnapshot | undefined>;
+  reactivate(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+  ): Promise<TrainingBlockSnapshot | undefined>;
   deleteUnused(
     organizationId: string,
     blockId: string,
