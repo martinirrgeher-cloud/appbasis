@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { ULC_EXERCISE_CATALOG_CSS } from "../worker/exercise-catalog-ui";
+import { ULC_TRAINING_PLANS_CSS } from "../worker/training-plans-ui";
+import { ULC_TRAINING_DOCUMENTATION_CSS } from "../worker/training-documentation-ui";
+
 import {
   ULC_LINZ_APP_CSS,
   ULC_LINZ_APP_HTML,
@@ -7,6 +11,18 @@ import {
 } from "../worker/ui";
 
 describe("ULC E4D.5 compact mobile layout", () => {
+  it("preserves complete list and status labels in compact mobile views", () => {
+    expect(ULC_LINZ_APP_CSS).toContain(".masterdata-row__secondary {\n    display: -webkit-box;");
+    expect(ULC_LINZ_APP_CSS).toContain(".registration-card__head { flex-wrap: wrap; }");
+    expect(ULC_LINZ_APP_CSS).toContain(".kindertraining-day-registration-summary {\n    overflow-wrap: anywhere;");
+    expect(ULC_EXERCISE_CATALOG_CSS).toContain(".exercise-catalog-row__title { flex-wrap: wrap;");
+    expect(ULC_EXERCISE_CATALOG_CSS).toContain(".exercise-catalog-row__meta,\n  .exercise-catalog-row__info {\n    display: -webkit-box;");
+    expect(ULC_TRAINING_PLANS_CSS).toContain(".training-plan-attendance-badge {\n    max-width: 100%;");
+    expect(ULC_TRAINING_PLANS_CSS).toContain(".training-plan-group-row__status span { overflow-wrap: anywhere; }");
+    expect(ULC_TRAINING_DOCUMENTATION_CSS).toContain(".training-documentation-status-row { align-items: stretch; gap: 6px; }");
+    expect(ULC_TRAINING_DOCUMENTATION_CSS).toContain(".training-documentation-item__head h4 { overflow-wrap: anywhere; }");
+  });
+
   it("keeps only three permission-aware primary navigation items and moves the rest under Mehr", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="app-nav-primary"');
     expect(ULC_LINZ_APP_HTML).toContain(
