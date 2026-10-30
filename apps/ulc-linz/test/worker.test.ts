@@ -275,6 +275,12 @@ function runtime(
     async deactivateTrainer() {
       return true;
     },
+    async reactivateAthlete() {
+      return true;
+    },
+    async reactivateTrainer() {
+      return true;
+    },
   },
   kindertrainingAccess: GeneratedPostgresApplicationRuntime["kindertrainingAccess"] = {
     async assertViewAccess() {
