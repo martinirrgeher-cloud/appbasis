@@ -85,6 +85,12 @@ export interface TrainingBlockRepository {
     expectedRevision: number,
     updatedAt: string,
   ): Promise<TrainingBlockDeactivateResult>;
+  reactivate(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+    updatedAt: string,
+  ): Promise<TrainingBlockDeactivateResult>;
   deleteUnused(
     organizationId: string,
     blockId: string,
