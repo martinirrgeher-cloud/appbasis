@@ -30,6 +30,7 @@ export interface UlcExerciseCatalogRepository {
   create(item: UlcExerciseCatalogItem): Promise<void>;
   update(item: UlcExerciseCatalogItem): Promise<void>;
   deactivate(organizationId: string, exerciseId: string): Promise<void>;
+  reactivate(organizationId: string, exerciseId: string): Promise<void>;
   setFavorite(
     organizationId: string,
     identityId: string,
@@ -221,6 +222,13 @@ export function createUlcExerciseCatalogService({
       exerciseId: string,
     ): Promise<void> {
       return repository.deactivate(organizationId, exerciseId);
+    },
+
+    reactivate(
+      organizationId: string,
+      exerciseId: string,
+    ): Promise<void> {
+      return repository.reactivate(organizationId, exerciseId);
     },
 
     findDuplicateCandidates(
