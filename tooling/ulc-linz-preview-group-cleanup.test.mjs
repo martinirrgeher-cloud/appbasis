@@ -51,6 +51,26 @@ test("deactivates only obsolete active Preview groups and preserves the canonica
                     },
                   ];
                 }
+                if (sql.includes("UPDATE appbasis_athlete\n")) {
+                  assert.deepEqual(parameters, ["ulc-linz-preview"]);
+                  assert.match(sql, /lower\(first_name\) = 'preview' AND lower\(last_name\) = 'athlet'/);
+                  assert.match(sql, /lower\(last_name\) = 'preview'/);
+                  return [{ id: "old-athlete", first_name: "E7B9", last_name: "Preview-123" }];
+                }
+                if (sql.includes("UPDATE appbasis_athlete_group_membership")) {
+                  assert.deepEqual(parameters, ["ulc-linz-preview", ["old-athlete"]]);
+                  return [];
+                }
+                if (sql.includes("UPDATE appbasis_exercise_catalog_item")) {
+                  assert.deepEqual(parameters, ["ulc-linz-preview"]);
+                  assert.match(sql, /e7b9 preview exercise %/);
+                  return [{ id: "old-exercise", name: "E7B9 Preview Exercise 123" }];
+                }
+                if (sql.includes("UPDATE appbasis_training_block AS block")) {
+                  assert.deepEqual(parameters, ["ulc-linz-preview"]);
+                  assert.match(sql, /revision\.revision = block\.current_revision/);
+                  return [{ id: "old-block" }];
+                }
                 return [];
               },
             });
@@ -65,6 +85,10 @@ test("deactivates only obsolete active Preview groups and preserves the canonica
 
   assert.equal(result.state, "clean");
   assert.equal(result.deactivatedCount, 3);
+  assert.equal(result.archivedAthleteCount, 1);
+  assert.equal(result.archivedExerciseCount, 1);
+  assert.equal(result.archivedBlockCount, 1);
+  assert.equal(result.preservedAthlete, "preview.athlete");
   assert.equal(result.preservedGroup, "Preview Selbstanmeldung");
   assert.equal(ended, true);
   assert.ok(

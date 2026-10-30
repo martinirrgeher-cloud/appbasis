@@ -533,13 +533,6 @@ jobs:
           APPBASIS_PREVIEW_USER_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_PASSWORD }}
         run: node ./tooling/ulc-linz-training-plans-preview-acceptance.mjs
 
-      - name: Remove obsolete Preview training groups
-        if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
-        env:
-          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
-          ULC_LINZ_PREVIEW_GROUP_CLEANUP_APPLY: "1"
-        run: node ./tooling/ulc-linz-preview-group-cleanup.mjs
-
       - name: Run authenticated attendance dual-mode acceptance
         if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         env:
@@ -547,6 +540,14 @@ jobs:
           APPBASIS_PREVIEW_USER_USERNAME: preview.admin
           APPBASIS_PREVIEW_USER_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_PASSWORD }}
         run: node ./tooling/ulc-linz-attendance-preview-acceptance.mjs
+
+      - name: Remove obsolete Preview training groups
+        if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          ULC_LINZ_PREVIEW_GROUP_CLEANUP_APPLY: "1"
+        run: node ./tooling/ulc-linz-preview-group-cleanup.mjs
+
 
       - name: Record E7B9 preview operation
         run: |

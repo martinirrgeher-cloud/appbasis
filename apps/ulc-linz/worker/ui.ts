@@ -212,8 +212,9 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
 
             <section class="masterdata-panel" data-masterdata-panel="athletes">
               <div class="section-heading masterdata-list-heading">
-                <div><p class="eyebrow">Athleten</p><h2>Aktuelle Athleten <span class="masterdata-inline-count" id="athlete-count">(0)</span></h2></div>
+                <div><p class="eyebrow">Athleten</p><h2>Athleten <span class="masterdata-inline-count" id="athlete-count">(0)</span></h2></div>
                 <div class="masterdata-heading-actions">
+                  <label class="masterdata-inactive-toggle"><input id="athlete-show-inactive" type="checkbox" /> Inaktive</label>
                   <button class="button button--primary masterdata-icon-action" id="athlete-new" type="button" aria-label="Athlet anlegen" title="Athlet anlegen">
                     <span aria-hidden="true">＋</span><span class="masterdata-icon-action__label">Athlet</span>
                   </button>
@@ -326,6 +327,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <section class="masterdata-panel" data-masterdata-panel="trainers" hidden>
               <div class="section-heading masterdata-list-heading">
                 <div><p class="eyebrow">Trainer</p><h2>Aktuelle Trainer <span class="masterdata-inline-count" id="trainer-count">(0)</span></h2></div>
+                <label class="masterdata-inactive-toggle"><input id="trainer-show-inactive" type="checkbox" /> Inaktive</label>
                 <button class="button button--primary masterdata-icon-action" id="trainer-new" type="button" aria-label="Trainer anlegen" title="Trainer anlegen">
                   <span aria-hidden="true">＋</span><span class="masterdata-icon-action__label">Trainer</span>
                 </button>
@@ -424,6 +426,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <section class="masterdata-panel" data-masterdata-panel="groups" hidden>
               <div class="section-heading masterdata-list-heading">
                 <div><p class="eyebrow">Trainingsgruppen</p><h2>Aktuelle Gruppen <span class="masterdata-inline-count" id="group-count">(0)</span></h2></div>
+                <label class="masterdata-inactive-toggle"><input id="group-show-inactive" type="checkbox" /> Inaktive</label>
                 <button class="button button--primary masterdata-icon-action" id="group-new" type="button" aria-label="Trainingsgruppe anlegen" title="Trainingsgruppe anlegen">
                   <span aria-hidden="true">＋</span><span class="masterdata-icon-action__label">Gruppe</span>
                 </button>
@@ -515,7 +518,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <button class="button button--secondary registration-week-arrow" id="registration-week-next" type="button" aria-label="Nächste Woche">›</button>
               </div>
               <div class="registration-week-actions">
-                <button class="button button--secondary" id="registration-week-current" type="button">Diese Woche</button>
+                <button class="button button--secondary" id="registration-week-current" type="button">Aktuelle Woche</button>
                 <button class="button button--secondary" id="registration-reload" type="button">↻ Neu laden</button>
               </div>
             </section>
@@ -548,7 +551,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <button class="button button--secondary kindertraining-week-arrow" id="kindertraining-week-next" type="button" aria-label="Nächste Woche">›</button>
               </div>
               <div class="kindertraining-week-actions">
-                <button class="button button--secondary" id="kindertraining-week-current" type="button">Diese Woche</button>
+                <button class="button button--secondary" id="kindertraining-week-current" type="button">Aktuelle Woche</button>
                 <button class="button button--secondary" id="kindertraining-week-reload" type="button">↻ Neu laden</button>
               </div>
             </section>
@@ -557,9 +560,9 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <div class="card kindertraining-week-savebar">
                 <div>
                   <strong id="kindertraining-week-state">Gespeichert</strong>
-                  <small>Voranmeldung und Anwesenheit werden getrennt dargestellt.</small>
+                  <small>Speichert nur geänderte Tage dieser Woche.</small>
                 </div>
-                <button class="button button--primary" id="kindertraining-week-save" type="button" disabled>Woche speichern</button>
+                <button class="button button--primary" id="kindertraining-week-save" type="button" disabled>💾 Speichern</button>
               </div>
               <div class="kindertraining-week-days" id="kindertraining-week-days" aria-live="polite"></div>
             </section>
@@ -1772,6 +1775,34 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
   }
 }
 
+/* Keep functional page controls visible without repetitive hero descriptions. */
+.app-section[data-app-section]:not([data-app-section="home"]) > .hero .summary { display: none; }
+.masterdata-inactive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .76rem;
+  color: var(--secondary);
+  white-space: nowrap;
+}
+.masterdata-inactive-toggle input { width: 18px; height: 18px; margin: 0; }
+.masterdata-heading-actions { flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 480px) {
+  .masterdata-list-heading > div:first-child { min-width: 0; }
+  .masterdata-heading-actions { gap: 6px; }
+}
+
+/* Uniform compact create action: semantic name remains available to assistive tech. */
+.masterdata-icon-action {
+  min-width: 42px;
+  width: 42px;
+  min-height: var(--touch);
+  padding: 0;
+  justify-content: center;
+  font-size: 1.18rem;
+}
+.masterdata-icon-action__label { display: none; }
+
 `;
 
 export const ULC_LINZ_APP_SCRIPT = `const SETTINGS_KEY = "ulc-linz.countdown.settings.v1";
@@ -1856,6 +1887,9 @@ const elements = {
   masterdataTemplate: document.querySelector("#masterdata-template"),
   masterdataExport: document.querySelector("#masterdata-export"),
   athleteList: document.querySelector("#athlete-list"),
+  athleteShowInactive: document.querySelector("#athlete-show-inactive"),
+  trainerShowInactive: document.querySelector("#trainer-show-inactive"),
+  groupShowInactive: document.querySelector("#group-show-inactive"),
   athleteNew: document.querySelector("#athlete-new"),
   athleteOverlay: document.querySelector("#athlete-overlay"),
   athleteOverlayClose: document.querySelector("#athlete-overlay-close"),
@@ -2038,6 +2072,9 @@ let masterdataImportPreviewToken = null;
 let masterdataImportFileDraft = null;
 let masterdataImportResultData = null;
 let masterdataSnapshot = null;
+let masterdataShowInactiveAthletes = false;
+let masterdataShowInactiveTrainers = false;
+let masterdataShowInactiveGroups = false;
 let masterdataEdit = null;
 let masterdataContactEdit = null;
 let masterdataAthleteOverlayId = null;
@@ -2101,6 +2138,18 @@ elements.masterdataExport?.addEventListener("click", () => {
 elements.athleteForm?.addEventListener("submit", (event) => void createMasterdataAthlete(event));
 elements.athleteContactForm?.addEventListener("submit", (event) => void saveMasterdataAthleteContact(event));
 elements.athleteNew?.addEventListener("click", openNewMasterdataAthlete);
+elements.athleteShowInactive?.addEventListener("change", () => {
+  masterdataShowInactiveAthletes = elements.athleteShowInactive.checked;
+  if (masterdataSnapshot) renderMasterdata(masterdataSnapshot);
+});
+elements.trainerShowInactive?.addEventListener("change", () => {
+  masterdataShowInactiveTrainers = elements.trainerShowInactive.checked;
+  if (masterdataSnapshot) renderMasterdata(masterdataSnapshot);
+});
+elements.groupShowInactive?.addEventListener("change", () => {
+  masterdataShowInactiveGroups = elements.groupShowInactive.checked;
+  if (masterdataSnapshot) renderMasterdata(masterdataSnapshot);
+});
 elements.athleteOverlayClose?.addEventListener("click", closeMasterdataAthleteOverlay);
 elements.athleteDetailEdit?.addEventListener("click", () => {
   const athlete = selectedMasterdataAthlete();
@@ -2374,6 +2423,16 @@ function resetMasterdataSessionState() {
   masterdataLoading = false;
   masterdataExchangeBusy = false;
   masterdataSnapshot = null;
+  masterdataShowInactiveAthletes = false;
+  masterdataShowInactiveTrainers = false;
+  masterdataShowInactiveGroups = false;
+  for (const control of [
+    elements.athleteShowInactive,
+    elements.trainerShowInactive,
+    elements.groupShowInactive,
+  ]) {
+    if (control) control.checked = false;
+  }
   masterdataEdit = null;
   masterdataContactEdit = null;
   masterdataSwipeStart = null;
@@ -3371,16 +3430,12 @@ async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
 
     if (!preserveExpansion) {
       kindertrainingWeekExpandedDates = new Set();
-      const today = localIsoDate(new Date());
-      const defaultDate = dates.includes(today) ? today : dates[0];
-      if (defaultDate) kindertrainingWeekExpandedDates.add(defaultDate);
+      // A newly selected week starts fully collapsed; days open on demand.
     } else {
       kindertrainingWeekExpandedDates = new Set(
         [...kindertrainingWeekExpandedDates].filter((date) => dates.includes(date)),
       );
-      if (kindertrainingWeekExpandedDates.size === 0 && dates[0]) {
-        kindertrainingWeekExpandedDates.add(dates[0]);
-      }
+
     }
   } catch (error) {
     if (
@@ -4913,9 +4968,12 @@ function renderMasterdata(snapshot) {
     trainerGroups.set(membership.trainerId, names);
   }
 
+  const visibleAthletes = masterdataShowInactiveAthletes
+    ? snapshot.athletes
+    : snapshot.athletes.filter((athlete) => athlete.isActive !== false);
   renderMasterdataList(
     elements.athleteList,
-    snapshot.athletes,
+    visibleAthletes,
     "Noch keine Athleten angelegt.",
     (item) => ({
       title: String(item?.lastName || "") + ", " + String(item?.firstName || ""),
@@ -4929,9 +4987,12 @@ function renderMasterdata(snapshot) {
       open: { type: "athlete", id: String(item?.id || ""), item },
     }),
   );
+  const visibleTrainers = masterdataShowInactiveTrainers
+    ? snapshot.trainers
+    : snapshot.trainers.filter((trainer) => trainer.isActive !== false);
   renderMasterdataList(
     elements.trainerList,
-    snapshot.trainers,
+    visibleTrainers,
     "Noch keine Trainer angelegt.",
     (item) => ({
       title: String(item?.lastName || "") + ", " + String(item?.firstName || ""),
@@ -4945,9 +5006,12 @@ function renderMasterdata(snapshot) {
       open: { type: "trainer", id: String(item?.id || ""), item },
     }),
   );
+  const visibleGroups = masterdataShowInactiveGroups
+    ? snapshot.trainingGroups
+    : snapshot.trainingGroups.filter((group) => group.isActive !== false);
   renderMasterdataList(
     elements.groupList,
-    snapshot.trainingGroups,
+    visibleGroups,
     "Noch keine Trainingsgruppen angelegt.",
     (item) => ({
       title: String(item?.name || ""),
@@ -4964,9 +5028,9 @@ function renderMasterdata(snapshot) {
   renderMasterdataAthleteOverlay(snapshot);
   renderMasterdataTrainerOverlay(snapshot);
   renderMasterdataGroupOverlay(snapshot);
-  if (elements.athleteCount) elements.athleteCount.textContent = "(" + String(snapshot.athletes.length) + ")";
-  if (elements.trainerCount) elements.trainerCount.textContent = "(" + String(snapshot.trainers.length) + ")";
-  if (elements.groupCount) elements.groupCount.textContent = "(" + String(snapshot.trainingGroups.length) + ")";
+  if (elements.athleteCount) elements.athleteCount.textContent = "(" + String(visibleAthletes.length) + ")";
+  if (elements.trainerCount) elements.trainerCount.textContent = "(" + String(visibleTrainers.length) + ")";
+  if (elements.groupCount) elements.groupCount.textContent = "(" + String(visibleGroups.length) + ")";
   renderMasterdataAssignmentOptions(snapshot);
   renderTrainerIdentityAdmin();
 }

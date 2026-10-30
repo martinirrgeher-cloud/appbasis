@@ -6,7 +6,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                 <h1>Trainingsblöcke</h1>
                 <p class="summary">Wiederverwendbare Trainingsvorlagen mit Übungen, Parametern und Versionen.</p>
               </div>
-              <button class="button button--primary" id="training-block-new" type="button" hidden>Neuer Block</button>
+              <button class="button button--primary" id="training-block-new" type="button" hidden aria-label="Neuen Trainingsblock anlegen" title="Neuer Block">＋</button>
             </section>
 
             <p class="message message--error" id="training-block-message" role="alert" hidden></p>
@@ -73,6 +73,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                       <span id="training-block-exercise-count">0</span>
                     </div>
                     <div class="training-block-add">
+                      <select id="training-block-exercise-category" aria-label="Übungskategorie filtern"></select>
                       <select id="training-block-exercise-picker" aria-label="Übung auswählen"></select>
                       <button class="button button--secondary" id="training-block-exercise-add" type="button">Hinzufügen</button>
                     </div>
@@ -614,6 +615,22 @@ body.training-block-editor-open { overflow: hidden; }
   .training-block-group summary { min-width: 0; gap: 8px; padding: 10px; }
 }
 
+/* Category before exercise selection, still usable at phone width. */
+.training-block-add { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+.training-block-add > select { min-width: 0; }
+#training-block-new { min-width: 42px; width: 42px; min-height: var(--touch); font-size: 1.2rem; padding: 0; }
+@media (max-width: 560px) {
+  .training-block-add { grid-template-columns: minmax(0, 1fr) auto; }
+  .training-block-add #training-block-exercise-category { grid-column: 1 / -1; }
+}
+
+.training-block-exercise__header > div:first-child { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; }
+.training-block-exercise__actions { flex: 0 0 auto; }
+.training-block-field-missing {
+  border: 2px solid #eab308 !important;
+  background: #fef9c3 !important;
+}
+
 `;
 
 export const ULC_TRAINING_BLOCKS_SCRIPT = `
@@ -640,6 +657,7 @@ const trainingBlockElements = Object.freeze({
   duration: document.querySelector("#training-block-duration"),
   note: document.querySelector("#training-block-note"),
   exercisePicker: document.querySelector("#training-block-exercise-picker"),
+  exerciseCategory: document.querySelector("#training-block-exercise-category"),
   exerciseAdd: document.querySelector("#training-block-exercise-add"),
   exerciseCount: document.querySelector("#training-block-exercise-count"),
   exercises: document.querySelector("#training-block-exercises"),
@@ -1404,8 +1422,26 @@ function renderTrainingBlockExercisePicker() {
   const select = trainingBlockElements.exercisePicker;
   if (!select) return;
   select.replaceChildren();
+  const activeCategories = [...new Set(exerciseCatalogItems.filter((item) => item.isActive).map((item) => item.categoryKey))].sort();
+  const categorySelect = trainingBlockElements.exerciseCategory;
+  const previouslySelectedCategory = categorySelect?.value || "";
+  if (categorySelect) {
+    categorySelect.replaceChildren();
+    const all = document.createElement("option");
+    all.value = "";
+    all.textContent = "Alle Kategorien";
+    categorySelect.append(all);
+    for (const category of activeCategories) {
+      const option = document.createElement("option");
+      option.value = category;
+      option.textContent = categoryLabel(category);
+      categorySelect.append(option);
+    }
+    categorySelect.value = activeCategories.includes(previouslySelectedCategory) ? previouslySelectedCategory : "";
+  }
+  const selectedCategory = categorySelect?.value || "";
   const activeItems = exerciseCatalogItems
-    .filter((item) => item.isActive)
+    .filter((item) => item.isActive && (!selectedCategory || item.categoryKey === selectedCategory))
     .sort((a, b) =>
       a.name.localeCompare(b.name, "de", { sensitivity: "base" }),
     );
@@ -1475,7 +1511,16 @@ function trainingBlockExerciseCompactSummary(draft, item) {
         : repetitions
           ? repetitions + " Wdh."
           : "";
-  return [prescription, draft.note || ""]
+  const otherAmounts = (item?.parameters || [])
+    .filter((parameter) => parameter.key !== "sets" && parameter.key !== "repetitions")
+    .map((parameter) => {
+      const value = trainingBlockParameterValueByKey(draft, item, parameter.key);
+      if (!value) return "";
+      return String(value) + (parameter.unit ? " " + parameter.unit : "");
+    })
+    .filter(Boolean);
+  const amounts = [prescription, ...otherAmounts].filter(Boolean).join(" × ");
+  return [amounts, draft.note || ""]
     .filter(Boolean)
     .join(" · ") || "Planwerte bearbeiten";
 }
@@ -1908,12 +1953,22 @@ async function saveTrainingBlock() {
     return;
   }
   if (!trainingBlockDraftReady(payload)) {
-    setTrainingBlockSaveState(
-      "draft",
-      "Entwurf – Pflichtfelder und Parameter prüfen",
+    const missingName = !payload?.name?.trim();
+    if (trainingBlockElements.name) {
+      trainingBlockElements.name.classList.toggle("training-block-field-missing", missingName);
+      trainingBlockElements.name.setAttribute("aria-invalid", missingName ? "true" : "false");
+    }
+    setTrainingBlockSaveState("draft", "Pflichtfelder prüfen");
+    showMessage(
+      trainingBlockElements.editorMessage,
+      missingName
+        ? "Pflichtfeld „Name“ fehlt. Bitte das gelb markierte Feld ausfüllen."
+        : "Ungültige Angaben: Bitte Dauer und Trainingsgruppen prüfen.",
     );
     return;
   }
+  trainingBlockElements.name?.classList.remove("training-block-field-missing");
+  trainingBlockElements.name?.removeAttribute("aria-invalid");
 
   const saveVersion = trainingBlockChangeVersion;
   const creating = trainingBlockSelected === null;
@@ -3312,6 +3367,7 @@ trainingBlockElements.close?.addEventListener("click", () => closeTrainingBlockE
 trainingBlockElements.reload?.addEventListener("click", () => void reloadTrainingBlock());
 trainingBlockElements.retry?.addEventListener("click", retryTrainingBlockSave);
 trainingBlockElements.exerciseAdd?.addEventListener("click", addTrainingBlockExercise);
+trainingBlockElements.exerciseCategory?.addEventListener("change", renderTrainingBlockExercisePicker);
 trainingBlockElements.exercises?.addEventListener("click", handleTrainingBlockExerciseClick);
 trainingBlockElements.exercises?.addEventListener("input", handleTrainingBlockExerciseInput);
 trainingBlockElements.duplicate?.addEventListener("click", () => void duplicateTrainingBlock());
@@ -3334,6 +3390,10 @@ for (const control of [
   trainingBlockElements.note,
 ]) {
   control?.addEventListener("input", () => {
+    if (control === trainingBlockElements.name && control.value.trim()) {
+      control.classList.remove("training-block-field-missing");
+      control.removeAttribute("aria-invalid");
+    }
     syncTrainingBlockDraftFromFields();
     markTrainingBlockDirty();
   });

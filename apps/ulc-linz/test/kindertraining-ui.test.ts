@@ -36,7 +36,7 @@ describe("ULC Kindertraining weekly attendance UI", () => {
       "Die ganze Trainingswoche im Blick: Voranmeldungen prüfen und die tatsächliche Anwesenheit gesammelt erfassen.",
     );
     expect(ULC_LINZ_APP_HTML).toContain(
-      "Voranmeldung und Anwesenheit werden getrennt dargestellt.",
+      "Speichert nur geänderte Tage dieser Woche.",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '"Voranmeldung: " + kindertrainingRegistrationLabel(participant.intention)',

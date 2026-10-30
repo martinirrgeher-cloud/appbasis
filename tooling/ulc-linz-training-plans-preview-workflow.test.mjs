@@ -232,8 +232,8 @@ test("E7B9 deploy-accept runs deploy, exact-SHA guards, and authenticated accept
     "Verify deployed preview runtime and database",
     "Verify E7B9 UI and anonymous API boundary",
     "Run authenticated E7B9 training-planning acceptance",
-    "Remove obsolete Preview training groups",
     "Run authenticated attendance dual-mode acceptance",
+    "Remove obsolete Preview training groups",
   ]) {
     assert.ok(step(name).includes(combined), name + " must run in combined mode");
   }
@@ -268,8 +268,8 @@ test("E7B9 deploy-accept runs deploy, exact-SHA guards, and authenticated accept
     "Verify deployed preview runtime and database",
     "Verify E7B9 UI and anonymous API boundary",
     "Run authenticated E7B9 training-planning acceptance",
-    "Remove obsolete Preview training groups",
     "Run authenticated attendance dual-mode acceptance",
+    "Remove obsolete Preview training groups",
   ];
   let last = -1;
   for (const name of ordered) {

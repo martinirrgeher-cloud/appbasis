@@ -11,7 +11,7 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                 <button class="button button--secondary" id="exercise-catalog-import-open" type="button" hidden disabled>Import prüfen</button>
                 <button class="button button--secondary" id="exercise-catalog-template" type="button" disabled>Importvorlage</button>
                 <button class="button button--secondary" id="exercise-catalog-export" type="button" disabled>Export</button>
-                <button class="button button--primary" id="exercise-catalog-new" type="button" hidden>Neue Übung</button>
+                <button class="button button--primary exercise-catalog-create-icon" id="exercise-catalog-new" type="button" aria-label="Neue Übung anlegen" title="Neue Übung" hidden>＋</button>
               </div>
             </section>
 
@@ -951,6 +951,14 @@ body.exercise-catalog-import-open { overflow: hidden; }
     text-overflow: clip;
   }
   .exercise-catalog-favorite { min-height: var(--touch); }
+}
+
+.exercise-catalog-create-icon {
+  flex: 0 0 42px;
+  width: 42px;
+  min-height: var(--touch);
+  padding: 0;
+  font-size: 1.2rem;
 }
 
 `;
