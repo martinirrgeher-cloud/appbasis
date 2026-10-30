@@ -363,6 +363,13 @@ export function createUlcTrainingBlockService({
     ) {
       return blocks.deactivate(organizationId, blockId, expectedRevision);
     },
+    reactivate(
+      organizationId: string,
+      blockId: string,
+      expectedRevision: number,
+    ) {
+      return blocks.reactivate(organizationId, blockId, expectedRevision);
+    },
     deleteUnused(
       organizationId: string,
       blockId: string,
