@@ -7,6 +7,14 @@ import {
 } from "../worker/training-blocks-ui";
 
 describe("ULC training block planning-aligned UI", () => {
+  it("filters by independent, persisted block category and preserves the group filter", () => {
+    expect(ULC_TRAINING_BLOCKS_HTML).toContain('id="training-block-category-filter"');
+    expect(ULC_TRAINING_BLOCKS_HTML).toContain('id="training-block-audience-filter"');
+    expect(ULC_TRAINING_BLOCKS_HTML).toContain('id="training-block-category"');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('category: trainingBlockDraft.category || null');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('block.revision.category !== category');
+  });
+
   it("offers compact prescription editing for every catalog exercise", () => {
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
       'trainingBlockParameterValueByKey(draft, item, "sets")',
