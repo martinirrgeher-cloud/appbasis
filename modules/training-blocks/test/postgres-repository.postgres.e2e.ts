@@ -44,6 +44,10 @@ beforeAll(async () => {
       new URL("../migrations/0002_appbasis_training_block_multi_audience.sql", import.meta.url),
       "utf8",
     ),
+    readFile(
+      new URL("../migrations/0003_appbasis_training_block_category.sql", import.meta.url),
+      "utf8",
+    ),
   ]);
   for (const migration of migrations) {
     await requiredConnection().client.unsafe(migration);
