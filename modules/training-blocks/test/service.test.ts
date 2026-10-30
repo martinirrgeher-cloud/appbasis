@@ -20,6 +20,36 @@ function deterministicClock(...timestamps: string[]): () => Date {
 }
 
 describe("training-blocks service", () => {
+  it("reactivates archived blocks only at the matching revision and without creating a new revision", async () => {
+    const repository = new InMemoryTrainingBlockRepository();
+    const service = new TrainingBlockService({
+      repository,
+      createId: deterministicIds("block-1"),
+      now: deterministicClock(
+        "2026-10-30T08:00:00.000Z",
+        "2026-10-30T08:01:00.000Z",
+        "2026-10-30T08:02:00.000Z",
+      ),
+    });
+    const created = await service.create("org-a", {
+      name: "Drills",
+      audienceId: null,
+      exercises: [],
+    });
+    const archived = await service.deactivate("org-a", created.id, created.currentRevision);
+    expect(archived?.isActive).toBe(false);
+    await expect(
+      service.reactivate("org-a", created.id, created.currentRevision + 1),
+    ).rejects.toBeInstanceOf(TrainingBlockConflictError);
+    const restored = await service.reactivate("org-a", created.id, created.currentRevision);
+    expect(restored?.isActive).toBe(true);
+    expect(restored?.currentRevision).toBe(created.currentRevision);
+    expect((await service.findCurrent("org-a", created.id))?.isActive).toBe(true);
+    await expect(service.reactivate("org-b", created.id, created.currentRevision))
+      .resolves.toBeUndefined();
+  });
+
+
   it("creates immutable revisions while preserving occurrence identity across reorder", async () => {
     const repository = new InMemoryTrainingBlockRepository();
     const service = new TrainingBlockService({

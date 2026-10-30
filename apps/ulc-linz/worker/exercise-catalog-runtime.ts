@@ -106,6 +106,13 @@ export class QuiescedUlcExerciseCatalogRepository
     return quiesced();
   }
 
+  reactivate(
+    _organizationId: string,
+    _exerciseId: string,
+  ): Promise<void> {
+    return quiesced();
+  }
+
   setFavorite(
     _organizationId: string,
     _identityId: string,
@@ -270,6 +277,23 @@ export class StandardModuleUlcExerciseCatalogRepository
           throw new UlcExerciseCatalogNotFoundError();
         }
         return Object.freeze({ ...current, isActive: false });
+      },
+    );
+    if (updated === undefined) throw new UlcExerciseCatalogNotFoundError();
+  }
+
+  async reactivate(
+    organizationId: string,
+    exerciseId: string,
+  ): Promise<void> {
+    const updated = await this.#standard.updateItemFromCurrent(
+      organizationId,
+      exerciseId,
+      (current) => {
+        if (current.isActive !== false) {
+          throw new UlcExerciseCatalogNotFoundError();
+        }
+        return Object.freeze({ ...current, isActive: true });
       },
     );
     if (updated === undefined) throw new UlcExerciseCatalogNotFoundError();

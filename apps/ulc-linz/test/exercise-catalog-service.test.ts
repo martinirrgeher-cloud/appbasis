@@ -68,6 +68,12 @@ function repository() {
         items.set(exerciseId, { ...item, isActive: false });
       }
     },
+    async reactivate(_organizationId, exerciseId) {
+      const item = items.get(exerciseId);
+      if (item !== undefined) {
+        items.set(exerciseId, { ...item, isActive: true });
+      }
+    },
     async setFavorite(_organizationId, _identityId, exerciseId, favorite) {
       const item = items.get(exerciseId);
       if (item !== undefined) items.set(exerciseId, { ...item, isFavorite: favorite });

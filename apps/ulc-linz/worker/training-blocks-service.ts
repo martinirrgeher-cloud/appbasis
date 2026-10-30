@@ -135,6 +135,11 @@ export interface UlcTrainingBlockService {
     blockId: string,
     expectedRevision: number,
   ): Promise<TrainingBlockSnapshot | undefined>;
+  reactivate(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+  ): Promise<TrainingBlockSnapshot | undefined>;
   deleteUnused(
     organizationId: string,
     blockId: string,
@@ -357,6 +362,13 @@ export function createUlcTrainingBlockService({
       expectedRevision: number,
     ) {
       return blocks.deactivate(organizationId, blockId, expectedRevision);
+    },
+    reactivate(
+      organizationId: string,
+      blockId: string,
+      expectedRevision: number,
+    ) {
+      return blocks.reactivate(organizationId, blockId, expectedRevision);
     },
     deleteUnused(
       organizationId: string,

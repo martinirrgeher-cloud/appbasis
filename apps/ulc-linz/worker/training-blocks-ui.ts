@@ -113,6 +113,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                         <button class="button button--secondary" id="training-block-favorite" type="button" hidden>☆ Favorit</button>
                         <button class="button button--danger" id="training-block-delete-unused" type="button" hidden>Unbenutzten Block löschen</button>
                         <button class="button button--danger" id="training-block-deactivate" type="button" hidden>Deaktivieren</button>
+                         <button class="button button--primary" id="training-block-reactivate" type="button" hidden>Wieder aktivieren</button>
                       </div>
                     </details>
                   </div>
@@ -676,6 +677,7 @@ const trainingBlockElements = Object.freeze({
   usageInfo: document.querySelector("#training-block-usage-info"),
   deleteUnused: document.querySelector("#training-block-delete-unused"),
   deactivate: document.querySelector("#training-block-deactivate"),
+  reactivate: document.querySelector("#training-block-reactivate"),
   info: document.querySelector("#training-block-exercise-info"),
   infoTitle: document.querySelector("#training-block-info-title"),
   infoBody: document.querySelector("#training-block-info-body"),
@@ -1210,6 +1212,11 @@ function populateTrainingBlockEditor() {
       !trainingBlockSelected.isActive ||
       trainingBlockDirty;
   }
+  if (trainingBlockElements.reactivate) {
+    trainingBlockElements.reactivate.hidden =
+      !trainingBlocksCanEdit || !trainingBlockSelected ||
+      trainingBlockSelected.isActive || trainingBlockDirty;
+  }
   refreshTrainingBlockParityMetadata();
   showMessage(trainingBlockElements.editorMessage, "");
   renderTrainingBlockExercisePicker();
@@ -1337,6 +1344,11 @@ function refreshTrainingBlockEditorLock() {
       !trainingBlocksCanEdit ||
       !trainingBlockSelected ||
       !trainingBlockSelected.isActive;
+  }
+  if (trainingBlockElements.reactivate) {
+    trainingBlockElements.reactivate.disabled =
+      locked || !trainingBlocksCanEdit || !trainingBlockSelected ||
+      trainingBlockSelected.isActive || trainingBlockDirty;
   }
   if (trainingBlockElements.reload) {
     trainingBlockElements.reload.disabled = locked;
@@ -2851,6 +2863,50 @@ async function deleteUnusedTrainingBlock() {
   }
 }
 
+async function reactivateTrainingBlock() {
+  if (
+    trainingBlockSaveBusy || trainingBlockDeactivateBusy || trainingBlockFavoriteBusy ||
+    !trainingBlockSelected || trainingBlockSelected.isActive || !trainingBlocksCanEdit ||
+    trainingBlockDirty || trainingBlockConflict || trainingBlockCreateUncertain
+  ) return;
+  if (!window.confirm("Diesen archivierten Trainingsblock wieder aktivieren?")) return;
+  trainingBlockDeactivateBusy = true;
+  setTrainingBlockSaveState("saving", "Wird aktiviert …");
+  refreshTrainingBlockEditorLock();
+  try {
+    const payload = await requestJson(
+      "/api/modules/training-blocks/" +
+        encodeURIComponent(trainingBlockSelected.id) + "/reactivate",
+      {
+        method: "POST",
+        body: JSON.stringify({ expectedRevision: trainingBlockSelected.currentRevision }),
+      },
+    );
+    if (!isTrainingBlockSnapshot(payload?.block) || payload.block.isActive !== true) {
+      throw new Error("INVALID_TRAINING_BLOCK_REACTIVATE");
+    }
+    invalidateTrainingBlockOverviewRefresh();
+    replaceTrainingBlockInList(payload.block);
+    trainingBlockDeactivateBusy = false;
+    closeTrainingBlockEditor(true);
+  } catch (error) {
+    if (error?.status === 409) {
+      trainingBlockConflict = true;
+      setTrainingBlockSaveState("conflict", "Konflikt – neuer Stand vorhanden");
+      if (trainingBlockElements.reload) trainingBlockElements.reload.hidden = false;
+    } else {
+      setTrainingBlockSaveState("error", "Aktivieren fehlgeschlagen");
+    }
+    showMessage(trainingBlockElements.editorMessage, "Der Trainingsblock konnte nicht aktiviert werden.");
+  } finally {
+    if (trainingBlockElements.editor && !trainingBlockElements.editor.hidden) {
+      trainingBlockDeactivateBusy = false;
+      refreshTrainingBlockParityMetadata();
+      refreshTrainingBlockEditorLock();
+    }
+  }
+}
+
 async function deactivateTrainingBlock() {
   if (
     trainingBlockSaveBusy ||
@@ -3374,6 +3430,7 @@ trainingBlockElements.duplicate?.addEventListener("click", () => void duplicateT
 trainingBlockElements.favorite?.addEventListener("click", () => void toggleTrainingBlockFavorite());
 trainingBlockElements.deleteUnused?.addEventListener("click", () => void deleteUnusedTrainingBlock());
 trainingBlockElements.deactivate?.addEventListener("click", () => void deactivateTrainingBlock());
+trainingBlockElements.reactivate?.addEventListener("click", () => void reactivateTrainingBlock());
 trainingBlockElements.historyLoad?.addEventListener("click", () => void loadTrainingBlockHistory());
 trainingBlockElements.compare?.addEventListener("click", () => void compareTrainingBlockRevisions());
 trainingBlockElements.compareFrom?.addEventListener("change", invalidateTrainingBlockComparison);

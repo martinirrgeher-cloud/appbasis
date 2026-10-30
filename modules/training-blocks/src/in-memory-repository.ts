@@ -105,6 +105,26 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
     return Object.freeze({ status: "updated", block: cloneBlock(stored) });
   }
 
+  async reactivate(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+    updatedAt: string,
+  ): Promise<TrainingBlockDeactivateResult> {
+    const key = blockKey(organizationId, blockId);
+    const current = this.#blocks.get(key);
+    if (current === undefined) return Object.freeze({ status: "not-found" });
+    if (current.currentRevision !== expectedRevision) {
+      return Object.freeze({ status: "conflict", currentRevision: current.currentRevision });
+    }
+    if (current.isActive) {
+      return Object.freeze({ status: "updated", block: cloneBlock(current) });
+    }
+    const stored = cloneBlock({ ...current, isActive: true, updatedAt });
+    this.#blocks.set(key, stored);
+    return Object.freeze({ status: "updated", block: cloneBlock(stored) });
+  }
+
   async deleteUnused(
     organizationId: string,
     blockId: string,

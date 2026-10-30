@@ -71,6 +71,9 @@ describe("ULC exercise catalog cutover runtime repositories", () => {
       async deactivate() {
         writes += 1;
       },
+      async reactivate() {
+        writes += 1;
+      },
       async setFavorite() {
         writes += 1;
       },

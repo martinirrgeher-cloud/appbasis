@@ -275,6 +275,12 @@ function runtime(
     async deactivateTrainer() {
       return true;
     },
+    async reactivateAthlete() {
+      return true;
+    },
+    async reactivateTrainer() {
+      return true;
+    },
   },
   kindertrainingAccess: GeneratedPostgresApplicationRuntime["kindertrainingAccess"] = {
     async assertViewAccess() {
@@ -574,6 +580,9 @@ function runtime(
       async deactivate() {
         return undefined;
       },
+      async reactivate() {
+        return undefined;
+      },
       async deleteUnused() {
         return false;
       },
@@ -708,6 +717,9 @@ function runtime(
         };
       },
       async deactivate() {},
+      async reactivate() {
+        return;
+      },
       async findDuplicateCandidates() {
         return [];
       },

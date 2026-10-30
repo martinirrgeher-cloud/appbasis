@@ -251,6 +251,7 @@ export const ULC_EXERCISE_CATALOG_HTML = `
                   <footer class="exercise-catalog-form-actions">
                     <button class="button button--secondary" id="exercise-catalog-clone" type="button" hidden aria-label="Diese Übung als Vorlage für eine neue Übung verwenden">Als Vorlage</button>
                     <button class="button button--danger" id="exercise-catalog-deactivate" type="button" hidden>Deaktivieren</button>
+                    <button class="button button--primary" id="exercise-catalog-reactivate" type="button" hidden>Wieder aktivieren</button>
                     <button class="button button--primary" id="exercise-catalog-save" type="submit">Speichern</button>
                   </footer>
                 </form>
@@ -1075,6 +1076,7 @@ Object.assign(elements, {
   exerciseCatalogSave: document.querySelector("#exercise-catalog-save"),
   exerciseCatalogClone: document.querySelector("#exercise-catalog-clone"),
   exerciseCatalogDeactivate: document.querySelector("#exercise-catalog-deactivate"),
+  exerciseCatalogReactivate: document.querySelector("#exercise-catalog-reactivate"),
   exerciseCatalogReadonly: document.querySelector("#exercise-catalog-readonly"),
 });
 
@@ -1756,6 +1758,11 @@ function populateExerciseCatalogEditor(item, options = {}) {
     elements.exerciseCatalogDeactivate.hidden =
       review || !exerciseCatalogCanEdit || item.id.length === 0 || !item.isActive;
     elements.exerciseCatalogDeactivate.disabled = review || exerciseCatalogBusy;
+  }
+  if (elements.exerciseCatalogReactivate) {
+    elements.exerciseCatalogReactivate.hidden =
+      review || !exerciseCatalogCanEdit || item.id.length === 0 || item.isActive;
+    elements.exerciseCatalogReactivate.disabled = review || exerciseCatalogBusy;
   }
   if (elements.exerciseCatalogReadonly) {
     elements.exerciseCatalogReadonly.hidden = editable;
@@ -2583,6 +2590,39 @@ async function deactivateExerciseCatalogItem() {
   closeExerciseCatalogEditor(true);
   showMessage(elements.exerciseCatalogSuccess, "Übung wurde ins Archiv verschoben.");
   setExerciseCatalogBusy(false);
+}
+
+async function reactivateExerciseCatalogItem() {
+  if (
+    exerciseCatalogEditorReviewMode ||
+    !exerciseCatalogCanEdit ||
+    !exerciseCatalogSelectedId ||
+    exerciseCatalogBusy
+  ) return;
+  const item = exerciseCatalogItems.find((candidate) => candidate.id === exerciseCatalogSelectedId);
+  if (!item || item.isActive) return;
+  if (!window.confirm("Übung „" + item.name + "“ wieder aktivieren?")) return;
+  setExerciseCatalogBusy(true);
+  showMessage(elements.exerciseCatalogMessage, "");
+  showMessage(elements.exerciseCatalogSuccess, "");
+  try {
+    await requestJson(
+      "/api/modules/exercise-catalog/" + encodeURIComponent(item.id) + "/reactivate",
+      { method: "POST" },
+    );
+    exerciseCatalogItems = sortedExerciseCatalogItems(
+      exerciseCatalogItems.map((candidate) =>
+        candidate.id === item.id ? { ...candidate, isActive: true } : candidate,
+      ),
+    );
+    renderExerciseCatalogList();
+    closeExerciseCatalogEditor(true);
+    showMessage(elements.exerciseCatalogSuccess, "Übung wurde wieder aktiviert.");
+  } catch {
+    showMessage(elements.exerciseCatalogMessage, "Die Übung konnte nicht aktiviert werden.");
+  } finally {
+    setExerciseCatalogBusy(false);
+  }
 }
 
 async function toggleExerciseCatalogFavorite(id) {
@@ -3446,6 +3486,7 @@ elements.exerciseCatalogForm?.addEventListener("change", () => {
 });
 elements.exerciseCatalogForm?.addEventListener("submit", (event) => void saveExerciseCatalogItem(event));
 elements.exerciseCatalogDeactivate?.addEventListener("click", () => void deactivateExerciseCatalogItem());
+elements.exerciseCatalogReactivate?.addEventListener("click", () => void reactivateExerciseCatalogItem());
 elements.exerciseCatalogUsageAdd?.addEventListener("click", () => {
   void recordExerciseCatalogUsage();
 });

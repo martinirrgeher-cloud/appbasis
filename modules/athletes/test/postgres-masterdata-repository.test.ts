@@ -3,6 +3,48 @@ import { describe, expect, it } from 'vitest';
 import { PostgresAthleteMasterdataRepository } from '../src/postgres-masterdata-repository';
 
 describe('PostgresAthleteMasterdataRepository', () => {
+  it('reactivates only inactive athletes in the authorized tenant without reopening memberships', async () => {
+    const queries: string[] = [];
+    const parameters: unknown[][] = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(sql, params) {
+        queries.push(sql);
+        parameters.push(params ?? []);
+        return [{ id: 'athlete-1' }];
+      },
+    });
+    await expect(repository.reactivateAthlete('verein-1', 'athlete-1')).resolves.toBe(true);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toContain('UPDATE appbasis_athlete');
+    expect(queries[0]).toContain('AND is_active = false');
+    expect(queries[0]).not.toContain('appbasis_athlete_group_membership');
+    expect(parameters[0]).toEqual(['athlete-1', 'verein-1']);
+  });
+
+  it('reactivates trainers without implicitly restoring old group memberships', async () => {
+    const queries: string[] = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(sql, params) {
+        queries.push(sql);
+        expect(params).toEqual(['trainer-1', 'verein-1']);
+        return [{ id: 'trainer-1' }];
+      },
+    });
+    await expect(repository.reactivateTrainer('verein-1', 'trainer-1')).resolves.toBe(true);
+    expect(queries[0]).toContain('is_active = false');
+    expect(queries[0]).toContain('DELETE FROM appbasis_trainer_group_membership');
+    expect(queries[0]).toContain('trainer_id IN (SELECT id FROM activated)');
+  });
+
+  it('does not reactivate a missing or already active tenant record', async () => {
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe() { return []; },
+    });
+    await expect(repository.reactivateAthlete('verein-1', 'athlete-1')).resolves.toBe(false);
+    await expect(repository.reactivateTrainer('verein-1', 'trainer-1')).resolves.toBe(false);
+  });
+
+
   it('reads every Stammdaten collection through the same organization boundary', async () => {
     const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
     const rows = [

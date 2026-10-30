@@ -201,6 +201,46 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
     });
   }
 
+  async reactivate(
+    organizationId: string,
+    blockId: string,
+    expectedRevision: number,
+    updatedAt: string,
+  ): Promise<TrainingBlockDeactivateResult> {
+    return this.#client.begin(async (transaction) => {
+      const rows = await transaction.unsafe(
+        `SELECT current_revision, is_active
+         FROM appbasis_training_block
+         WHERE organization_id = $1 AND id = $2
+         FOR UPDATE`,
+        [organizationId, blockId],
+      );
+      if (rows.length === 0) return Object.freeze({ status: "not-found" as const });
+      if (rows.length !== 1) throw new Error("Training block lock returned multiple rows.");
+      const currentRevision = requiredInteger(rows[0]!.current_revision, "current revision");
+      if (currentRevision !== expectedRevision) {
+        return Object.freeze({ status: "conflict" as const, currentRevision });
+      }
+      if (!requiredBoolean(rows[0]!.is_active, "active flag")) {
+        const changed = await transaction.unsafe(
+          `UPDATE appbasis_training_block
+           SET is_active = true, updated_at = $3::timestamptz
+           WHERE organization_id = $1 AND id = $2
+             AND current_revision = $4 AND is_active = false
+           RETURNING id`,
+          [organizationId, blockId, updatedAt, expectedRevision],
+        );
+        if (changed.length !== 1) {
+          throw new Error("Training block reactivation was not atomic.");
+        }
+      }
+      const blocks = await readCurrentBlocks(transaction, organizationId, blockId);
+      const block = blocks[0];
+      if (block === undefined) throw new Error("Training block disappeared after reactivation.");
+      return Object.freeze({ status: "updated" as const, block });
+    });
+  }
+
   async deleteUnused(
     organizationId: string,
     blockId: string,

@@ -415,6 +415,7 @@ async function trainingBlocksItemResponse(
   const duplicate = /^([^/]+)\/duplicate$/.exec(route);
   const deleteUnused = /^([^/]+)\/delete-unused$/.exec(route);
   const deactivate = /^([^/]+)\/deactivate$/.exec(route);
+  const reactivate = /^([^/]+)\/reactivate$/.exec(route);
   const favorite = /^([^/]+)\/favorite$/.exec(route);
   const revisions = /^([^/]+)\/revisions$/.exec(route);
   const revision = /^([^/]+)\/revisions\/([1-9][0-9]*)$/.exec(route);
@@ -434,7 +435,8 @@ async function trainingBlocksItemResponse(
     (update !== null ||
       duplicate !== null ||
       deleteUnused !== null ||
-      deactivate !== null)
+      deactivate !== null ||
+      reactivate !== null)
   ) {
     action = "edit";
   } else if (
@@ -570,6 +572,31 @@ async function trainingBlocksItemResponse(
       return Response.json(
         {
           deactivated: true,
+          block: trainingBlockClientOverview({
+            block,
+            isFavorite: overview.isFavorite,
+            usageCount: overview.usageCount,
+            lastUsedAt: overview.lastUsedAt,
+          }),
+        },
+        { headers: { "cache-control": "private, no-store" } },
+      );
+    }
+
+    if (reactivate !== null) {
+      const id = decodeTrainingBlockPathIdentifier(reactivate[1]);
+      const expectedRevision = await trainingBlockExpectedRevisionBody(request);
+      const block = await runtime.trainingBlocks.reactivate(
+        access.organizationId, id, expectedRevision,
+      );
+      if (block === undefined) return trainingBlockNotFound();
+      const overview = await runtime.trainingBlocks.findOverview(
+        access.organizationId, access.actorPrincipalId, block.id,
+      );
+      if (overview === undefined) return trainingBlockNotFound();
+      return Response.json(
+        {
+          reactivated: true,
           block: trainingBlockClientOverview({
             block,
             isFavorite: overview.isFavorite,
@@ -2936,6 +2963,7 @@ async function exerciseCatalogItemResponse(
   const detail = /^([^/]+)$/.exec(route);
   const update = /^([^/]+)\/update$/.exec(route);
   const deactivate = /^([^/]+)\/deactivate$/.exec(route);
+  const reactivate = /^([^/]+)\/reactivate$/.exec(route);
   const favorite = /^([^/]+)\/favorite$/.exec(route);
   const usage = /^([^/]+)\/usage$/.exec(route);
   const privateMedia = /^([^/]+)\/private-media$/.exec(route);
@@ -2954,7 +2982,7 @@ async function exerciseCatalogItemResponse(
   ) {
     action = "view";
   } else if (
-    ((update !== null || deactivate !== null || usage !== null) &&
+    ((update !== null || deactivate !== null || reactivate !== null || usage !== null) &&
       request.method === "POST") ||
     (privateMedia !== null && request.method === "POST") ||
     (privateMediaDelete !== null && request.method === "DELETE")
@@ -3012,6 +3040,12 @@ async function exerciseCatalogItemResponse(
       const id = decodeExerciseCatalogPathIdentifier(deactivate[1]);
       await runtime.exerciseCatalog.deactivate(access.organizationId, id);
       return Response.json({ deactivated: true });
+    }
+
+    if (reactivate !== null) {
+      const id = decodeExerciseCatalogPathIdentifier(reactivate[1]);
+      await runtime.exerciseCatalog.reactivate(access.organizationId, id);
+      return Response.json({ reactivated: true });
     }
 
     if (favorite !== null) {
@@ -4154,6 +4188,23 @@ async function athletesMasterdataMutationResponse(
         );
       if (trainingGroup === null) return athletesNotFound();
       return Response.json({ trainingGroup });
+    }
+
+    const reactivate = /^(athletes|trainers)\/([^/]+)\/reactivate$/.exec(route);
+    if (reactivate !== null) {
+      const id = decodePathIdentifier(reactivate[2]);
+      const changed =
+        reactivate[1] === "athletes"
+          ? await runtime.athleteMasterdata.reactivateAthlete(
+              access.organizationId,
+              id,
+            )
+          : await runtime.athleteMasterdata.reactivateTrainer(
+              access.organizationId,
+              id,
+            );
+      if (!changed) return athletesNotFound();
+      return Response.json({ reactivated: true });
     }
 
     const deactivate = /^(athletes|trainers)\/([^/]+)\/deactivate$/.exec(route);

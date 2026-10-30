@@ -335,6 +335,23 @@ export class PostgresUlcExerciseCatalogRepository {
     if (rows.length !== 1) blocked();
   }
 
+  async reactivate(
+    organizationId: string,
+    exerciseId: string,
+  ): Promise<void> {
+    const rows = await this.#sql.unsafe(
+      `UPDATE ulc_linz_exercise_catalog_item
+       SET is_active = true, updated_at = now()
+       WHERE organization_id = $1
+         AND id = $2
+         AND is_active = false
+       RETURNING id`,
+      [requiredIdentifier(organizationId), requiredIdentifier(exerciseId)],
+    );
+    if (rows.length === 0) throw new UlcExerciseCatalogNotFoundError();
+    if (rows.length !== 1) blocked();
+  }
+
   async setFavorite(
     organizationId: string,
     identityId: string,

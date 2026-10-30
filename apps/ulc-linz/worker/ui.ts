@@ -243,6 +243,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                         <button class="button button--secondary" id="athlete-detail-group-new" type="button"><span aria-hidden="true">＋</span> Gruppe</button>
                         <button class="button button--secondary" id="athlete-detail-user" type="button"><span aria-hidden="true">👤</span> Benutzer</button>
                         <button class="button button--danger" id="athlete-detail-deactivate" type="button"><span aria-hidden="true">⏸</span> Deaktivieren</button>
+                         <button class="button button--primary" id="athlete-detail-reactivate" type="button" hidden>Wieder aktivieren</button>
                       </div>
                       <section class="masterdata-athlete-contacts">
                         <div class="section-heading">
@@ -353,6 +354,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                         <button class="button button--secondary" id="trainer-detail-group" type="button"><span aria-hidden="true">＋</span> Gruppe</button>
                         <button class="button button--secondary" id="trainer-detail-user" type="button"><span aria-hidden="true">👤</span> Benutzer</button>
                         <button class="button button--danger" id="trainer-detail-deactivate" type="button"><span aria-hidden="true">⏸</span> Deaktivieren</button>
+                         <button class="button button--primary" id="trainer-detail-reactivate" type="button" hidden>Wieder aktivieren</button>
                       </div>
                     </section>
 
@@ -1902,6 +1904,7 @@ const elements = {
   athleteDetailGroupNew: document.querySelector("#athlete-detail-group-new"),
   athleteDetailUser: document.querySelector("#athlete-detail-user"),
   athleteDetailDeactivate: document.querySelector("#athlete-detail-deactivate"),
+  athleteDetailReactivate: document.querySelector("#athlete-detail-reactivate"),
   athleteUserForm: document.querySelector("#athlete-user-form"),
   athleteUserMessage: document.querySelector("#athlete-user-message"),
   athleteUserSuccess: document.querySelector("#athlete-user-success"),
@@ -1922,6 +1925,7 @@ const elements = {
   trainerDetailGroup: document.querySelector("#trainer-detail-group"),
   trainerDetailUser: document.querySelector("#trainer-detail-user"),
   trainerDetailDeactivate: document.querySelector("#trainer-detail-deactivate"),
+  trainerDetailReactivate: document.querySelector("#trainer-detail-reactivate"),
   groupList: document.querySelector("#group-list"),
   groupNew: document.querySelector("#group-new"),
   groupOverlay: document.querySelector("#group-overlay"),
@@ -2164,6 +2168,10 @@ elements.athleteDetailDeactivate?.addEventListener("click", () => {
   const athlete = selectedMasterdataAthlete();
   if (athlete) void deactivateMasterdataEntity({ type: "athlete", id: athlete.id });
 });
+elements.athleteDetailReactivate?.addEventListener("click", () => {
+  const athlete = selectedMasterdataAthlete();
+  if (athlete) void reactivateMasterdataEntity({ type: "athlete", id: athlete.id });
+});
 elements.athleteContactEditCancel?.addEventListener("click", cancelMasterdataAthleteContactEdit);
 elements.trainerForm?.addEventListener("submit", (event) => void createMasterdataTrainer(event));
 elements.trainerNew?.addEventListener("click", openNewMasterdataTrainer);
@@ -2177,6 +2185,10 @@ elements.trainerDetailUser?.addEventListener("click", openMasterdataTrainerIdent
 elements.trainerDetailDeactivate?.addEventListener("click", () => {
   const trainer = selectedMasterdataTrainer();
   if (trainer) void deactivateMasterdataEntity({ type: "trainer", id: trainer.id });
+});
+elements.trainerDetailReactivate?.addEventListener("click", () => {
+  const trainer = selectedMasterdataTrainer();
+  if (trainer) void reactivateMasterdataEntity({ type: "trainer", id: trainer.id });
 });
 elements.groupForm?.addEventListener("submit", (event) => void createMasterdataGroup(event));
 elements.groupNew?.addEventListener("click", openNewMasterdataGroup);
@@ -5719,6 +5731,10 @@ function renderMasterdataTrainerOverlay(snapshot) {
     elements.trainerDetailDeactivate.hidden = trainer.isActive === false;
     elements.trainerDetailDeactivate.disabled = !editable;
   }
+  if (elements.trainerDetailReactivate) {
+    elements.trainerDetailReactivate.hidden = trainer.isActive !== false || !masterdataCanEdit;
+    elements.trainerDetailReactivate.disabled = !masterdataCanEdit;
+  }
   if (elements.trainerGroupTrainer) elements.trainerGroupTrainer.value = trainer.id;
   if (elements.trainerUserTrainer) elements.trainerUserTrainer.value = trainer.id;
   if (elements.trainerIdentityTrainer) elements.trainerIdentityTrainer.value = trainer.id;
@@ -5958,6 +5974,10 @@ function renderMasterdataAthleteOverlay(snapshot) {
     elements.athleteDetailDeactivate.disabled = !editable;
   }
 
+  if (elements.athleteDetailReactivate) {
+    elements.athleteDetailReactivate.hidden = athlete.isActive !== false || !masterdataCanEdit;
+    elements.athleteDetailReactivate.disabled = !masterdataCanEdit;
+  }
   renderMasterdataAthleteContacts(snapshot, athlete.id);
   if (elements.athleteContactAthlete) {
     elements.athleteContactAthlete.value = athlete.id;
@@ -6342,6 +6362,33 @@ async function createTrainerGroupMembership(event) {
   if (saved && trainerId) {
     masterdataTrainerOverlayId = trainerId;
     showMasterdataTrainerOverlayMode("detail");
+  }
+}
+
+async function reactivateMasterdataEntity(action) {
+  if (!masterdataReady || masterdataLoading || !masterdataCanEdit) return;
+  const type = action?.type === "athlete" ? "athletes" : action?.type === "trainer" ? "trainers" : null;
+  const id = typeof action?.id === "string" ? action.id : "";
+  if (!type || !id) return;
+  if (!window.confirm("Datensatz wieder aktivieren? Frühere Gruppenzuordnungen werden nicht automatisch wiederhergestellt.")) return;
+  setMasterdataFormsDisabled(true);
+  showMessage(elements.masterdataMessage, "");
+  try {
+    await requestJson(
+      "/api/modules/athletes/masterdata/" + type + "/" + encodeURIComponent(id) + "/reactivate",
+      { method: "POST" },
+    );
+    masterdataSnapshot = null;
+    await loadMasterdata(true);
+  } catch (error) {
+    showMessage(elements.masterdataMessage,
+      error?.status === 403
+        ? "Du darfst Stammdaten ansehen, aber nicht bearbeiten."
+        : error?.status === 404
+          ? "Der Datensatz wurde nicht gefunden oder ist bereits aktiv."
+          : "Der Datensatz konnte nicht wieder aktiviert werden.");
+  } finally {
+    setMasterdataFormsDisabled(false);
   }
 }
 
