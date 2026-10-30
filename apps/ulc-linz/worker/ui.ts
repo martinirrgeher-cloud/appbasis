@@ -327,6 +327,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <section class="masterdata-panel" data-masterdata-panel="trainers" hidden>
               <div class="section-heading masterdata-list-heading">
                 <div><p class="eyebrow">Trainer</p><h2>Aktuelle Trainer <span class="masterdata-inline-count" id="trainer-count">(0)</span></h2></div>
+                <label class="masterdata-inactive-toggle"><input id="trainer-show-inactive" type="checkbox" /> Inaktive</label>
                 <button class="button button--primary masterdata-icon-action" id="trainer-new" type="button" aria-label="Trainer anlegen" title="Trainer anlegen">
                   <span aria-hidden="true">＋</span><span class="masterdata-icon-action__label">Trainer</span>
                 </button>
@@ -425,6 +426,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <section class="masterdata-panel" data-masterdata-panel="groups" hidden>
               <div class="section-heading masterdata-list-heading">
                 <div><p class="eyebrow">Trainingsgruppen</p><h2>Aktuelle Gruppen <span class="masterdata-inline-count" id="group-count">(0)</span></h2></div>
+                <label class="masterdata-inactive-toggle"><input id="group-show-inactive" type="checkbox" /> Inaktive</label>
                 <button class="button button--primary masterdata-icon-action" id="group-new" type="button" aria-label="Trainingsgruppe anlegen" title="Trainingsgruppe anlegen">
                   <span aria-hidden="true">＋</span><span class="masterdata-icon-action__label">Gruppe</span>
                 </button>
@@ -1875,6 +1877,8 @@ const elements = {
   masterdataExport: document.querySelector("#masterdata-export"),
   athleteList: document.querySelector("#athlete-list"),
   athleteShowInactive: document.querySelector("#athlete-show-inactive"),
+  trainerShowInactive: document.querySelector("#trainer-show-inactive"),
+  groupShowInactive: document.querySelector("#group-show-inactive"),
   athleteNew: document.querySelector("#athlete-new"),
   athleteOverlay: document.querySelector("#athlete-overlay"),
   athleteOverlayClose: document.querySelector("#athlete-overlay-close"),
@@ -2058,6 +2062,8 @@ let masterdataImportFileDraft = null;
 let masterdataImportResultData = null;
 let masterdataSnapshot = null;
 let masterdataShowInactiveAthletes = false;
+let masterdataShowInactiveTrainers = false;
+let masterdataShowInactiveGroups = false;
 let masterdataEdit = null;
 let masterdataContactEdit = null;
 let masterdataAthleteOverlayId = null;
@@ -2123,6 +2129,14 @@ elements.athleteContactForm?.addEventListener("submit", (event) => void saveMast
 elements.athleteNew?.addEventListener("click", openNewMasterdataAthlete);
 elements.athleteShowInactive?.addEventListener("change", () => {
   masterdataShowInactiveAthletes = elements.athleteShowInactive.checked;
+  if (masterdataSnapshot) renderMasterdata(masterdataSnapshot);
+});
+elements.trainerShowInactive?.addEventListener("change", () => {
+  masterdataShowInactiveTrainers = elements.trainerShowInactive.checked;
+  if (masterdataSnapshot) renderMasterdata(masterdataSnapshot);
+});
+elements.groupShowInactive?.addEventListener("change", () => {
+  masterdataShowInactiveGroups = elements.groupShowInactive.checked;
   if (masterdataSnapshot) renderMasterdata(masterdataSnapshot);
 });
 elements.athleteOverlayClose?.addEventListener("click", closeMasterdataAthleteOverlay);
@@ -4952,9 +4966,12 @@ function renderMasterdata(snapshot) {
       open: { type: "athlete", id: String(item?.id || ""), item },
     }),
   );
+  const visibleTrainers = masterdataShowInactiveTrainers
+    ? snapshot.trainers
+    : snapshot.trainers.filter((trainer) => trainer.isActive !== false);
   renderMasterdataList(
     elements.trainerList,
-    snapshot.trainers,
+    visibleTrainers,
     "Noch keine Trainer angelegt.",
     (item) => ({
       title: String(item?.lastName || "") + ", " + String(item?.firstName || ""),
@@ -4968,9 +4985,12 @@ function renderMasterdata(snapshot) {
       open: { type: "trainer", id: String(item?.id || ""), item },
     }),
   );
+  const visibleGroups = masterdataShowInactiveGroups
+    ? snapshot.trainingGroups
+    : snapshot.trainingGroups.filter((group) => group.isActive !== false);
   renderMasterdataList(
     elements.groupList,
-    snapshot.trainingGroups,
+    visibleGroups,
     "Noch keine Trainingsgruppen angelegt.",
     (item) => ({
       title: String(item?.name || ""),
@@ -4988,8 +5008,8 @@ function renderMasterdata(snapshot) {
   renderMasterdataTrainerOverlay(snapshot);
   renderMasterdataGroupOverlay(snapshot);
   if (elements.athleteCount) elements.athleteCount.textContent = "(" + String(visibleAthletes.length) + ")";
-  if (elements.trainerCount) elements.trainerCount.textContent = "(" + String(snapshot.trainers.length) + ")";
-  if (elements.groupCount) elements.groupCount.textContent = "(" + String(snapshot.trainingGroups.length) + ")";
+  if (elements.trainerCount) elements.trainerCount.textContent = "(" + String(visibleTrainers.length) + ")";
+  if (elements.groupCount) elements.groupCount.textContent = "(" + String(visibleGroups.length) + ")";
   renderMasterdataAssignmentOptions(snapshot);
   renderTrainerIdentityAdmin();
 }
