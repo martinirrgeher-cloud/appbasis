@@ -2412,6 +2412,16 @@ function resetMasterdataSessionState() {
   masterdataLoading = false;
   masterdataExchangeBusy = false;
   masterdataSnapshot = null;
+  masterdataShowInactiveAthletes = false;
+  masterdataShowInactiveTrainers = false;
+  masterdataShowInactiveGroups = false;
+  for (const control of [
+    elements.athleteShowInactive,
+    elements.trainerShowInactive,
+    elements.groupShowInactive,
+  ]) {
+    if (control) control.checked = false;
+  }
   masterdataEdit = null;
   masterdataContactEdit = null;
   masterdataSwipeStart = null;
