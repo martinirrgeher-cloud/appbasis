@@ -41,14 +41,6 @@ test("E7B9 workflow keeps inspect read-only and gates every preview mutation exp
 
   assert.match(
     workflow,
-    /ulc-linz-training-blocks-parity-preview\.mjs inspect/,
-  );
-  assert.match(
-    workflow,
-    /ulc-linz-training-blocks-parity-preview\.mjs verify/,
-  );
-  assert.match(
-    workflow,
     /ulc-linz-attendance-preview\.mjs inspect/,
   );
   assert.match(
@@ -151,7 +143,6 @@ test("E7B9 skips redundant schema inspections during deploy and accept but retai
   }
 
   const inspectOnlyWhenNeeded = [
-    "Inspect current training-blocks-v2 preview state",
     "Inspect current attendance preview state",
     "Inspect current training-blocks-v4 preview state",
     "Inspect current training-documentation preview state",
@@ -166,7 +157,6 @@ test("E7B9 skips redundant schema inspections during deploy and accept but retai
   }
 
   for (const name of [
-    "Require current training-blocks-v2 baseline before mutation",
     "Require current attendance schema before runtime operation",
     "Require current training-blocks-v4 schema before runtime operation",
   ]) {
@@ -238,7 +228,6 @@ test("E7B9 deploy-accept runs deploy, exact-SHA guards, and authenticated accept
     assert.ok(step(name).includes(combined), name + " must run in combined mode");
   }
   for (const name of [
-    "Inspect current training-blocks-v2 preview state",
     "Inspect current attendance preview state",
     "Inspect current training-blocks-v4 preview state",
     "Inspect current training-documentation preview state",
