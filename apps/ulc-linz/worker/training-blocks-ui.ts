@@ -21,6 +21,12 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                   <option value="clubwide">Generell gültig</option>
                 </select>
               </label>
+              <label>Kategorie
+                <select id="training-block-category-filter">
+                  <option value="all">Alle Kategorien</option>
+                  <option value="uncategorized">Ohne Kategorie</option>
+                </select>
+              </label>
               <label>Status
                 <select id="training-block-status-filter">
                   <option value="active">Aktiv</option>
@@ -52,6 +58,17 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                     <div class="training-block-form-grid">
                       <label class="training-block-wide">Name
                         <input id="training-block-name" minlength="1" maxlength="120" />
+                      </label>
+                      <label>Kategorie
+                        <input id="training-block-category" maxlength="80" list="training-block-category-suggestions" placeholder="z. B. Drills" autocomplete="off" />
+                        <datalist id="training-block-category-suggestions">
+                          <option value="Aufwärmen"></option>
+                          <option value="Drills"></option>
+                          <option value="Technik"></option>
+                          <option value="Koordination"></option>
+                          <option value="Kraft"></option>
+                          <option value="Ausdauer"></option>
+                        </datalist>
                       </label>
                       <fieldset class="training-block-audience-field">
                         <legend>Trainingsgruppen</legend>
@@ -642,6 +659,8 @@ const trainingBlockElements = Object.freeze({
   list: document.querySelector("#training-block-list"),
   search: document.querySelector("#training-block-search"),
   audienceFilter: document.querySelector("#training-block-audience-filter"),
+  categoryFilter: document.querySelector("#training-block-category-filter"),
+  category: document.querySelector("#training-block-category"),
   statusFilter: document.querySelector("#training-block-status-filter"),
   newButton: document.querySelector("#training-block-new"),
   editor: document.querySelector("#training-block-editor"),
@@ -968,17 +987,45 @@ function renderTrainingBlockAudienceFilter() {
     : "all";
 }
 
+function renderTrainingBlockCategoryFilter() {
+  const select = trainingBlockElements.categoryFilter;
+  if (!select) return;
+  const previous = select.value || "all";
+  select.replaceChildren();
+  for (const [value, label] of [["all", "Alle Kategorien"], ["uncategorized", "Ohne Kategorie"]]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    select.append(option);
+  }
+  const names = [...new Set(trainingBlocks.map((block) => block.revision.category?.trim()).filter(Boolean))];
+  names.sort((a, b) => a.localeCompare(b, "de", { sensitivity: "base" }));
+  for (const name of names) {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    select.append(option);
+  }
+  select.value = [...select.options].some((option) => option.value === previous)
+    ? previous : "all";
+}
+
 function renderTrainingBlocks() {
   const container = trainingBlockElements.list;
   if (!container) return;
   container.replaceChildren();
+  renderTrainingBlockCategoryFilter();
 
   const query = (trainingBlockElements.search?.value || "")
     .trim()
     .toLocaleLowerCase("de");
   const status = trainingBlockElements.statusFilter?.value || "active";
   const audience = trainingBlockElements.audienceFilter?.value || "all";
+  const category = trainingBlockElements.categoryFilter?.value || "all";
   const filtered = trainingBlocks.filter((block) => {
+    if (category === "uncategorized" && block.revision.category) return false;
+    if (category !== "all" && category !== "uncategorized" &&
+        block.revision.category !== category) return false;
     if (status === "active" && !block.isActive) return false;
     if (status === "archived" && block.isActive) return false;
     if (audience === "clubwide" && block.revision.audienceIds.length !== 0) {
@@ -994,6 +1041,7 @@ function renderTrainingBlocks() {
     if (!query) return true;
     return (
       block.revision.name.toLocaleLowerCase("de").includes(query) ||
+      (block.revision.category || "").toLocaleLowerCase("de").includes(query) ||
       trainingBlockAudienceSetLabel(block.revision.audienceIds)
         .toLocaleLowerCase("de")
         .includes(query)
@@ -1038,6 +1086,7 @@ function renderTrainingBlocks() {
         block.revision.durationMinutes === null
           ? null
           : String(block.revision.durationMinutes) + " Min.",
+        block.revision.category || "Ohne Kategorie",
         String(block.revision.exercises.length) + " Übung(en)",
         block.isFavorite ? "★ Favorit" : null,
         block.usageCount === 0
@@ -1061,6 +1110,7 @@ function trainingBlockDraftFromSnapshot(block) {
   return {
     name: block.revision.name,
     audienceIds: block.revision.audienceIds.slice(),
+    category: block.revision.category || "",
     durationMinutes: block.revision.durationMinutes,
     note: block.revision.note || "",
     exercises: block.revision.exercises.map((exercise) => ({
@@ -1096,6 +1146,7 @@ function newTrainingBlock() {
   trainingBlockDraft = {
     name: "",
     audienceIds: [],
+    category: "",
     durationMinutes: null,
     note: "",
     exercises: [],
@@ -1180,6 +1231,9 @@ function populateTrainingBlockEditor() {
   if (trainingBlockElements.editorTitle) {
     trainingBlockElements.editorTitle.textContent =
       trainingBlockDraft.name || "Neuer Trainingsblock";
+  }
+  if (trainingBlockElements.category) {
+    trainingBlockElements.category.value = trainingBlockDraft.category || "";
   }
   if (trainingBlockElements.name) {
     trainingBlockElements.name.value = trainingBlockDraft.name;
@@ -1307,6 +1361,7 @@ function refreshTrainingBlockEditorLock() {
 
   for (const control of [
     trainingBlockElements.name,
+    trainingBlockElements.category,
     trainingBlockElements.duration,
     trainingBlockElements.note,
   ]) {
@@ -1766,6 +1821,7 @@ function markTrainingBlockDirty() {
 function syncTrainingBlockDraftFromFields() {
   if (!trainingBlockDraft) return;
   trainingBlockDraft.name = (trainingBlockElements.name?.value || "").trim();
+  trainingBlockDraft.category = (trainingBlockElements.category?.value || "").trim();
   const duration = trainingBlockElements.duration?.value || "";
   trainingBlockDraft.durationMinutes =
     duration === "" ? null : Number(duration);
@@ -1781,6 +1837,7 @@ function trainingBlockDraftPayload() {
   return {
     name: trainingBlockDraft.name,
     audienceIds: trainingBlockDraft.audienceIds.slice(),
+    category: trainingBlockDraft.category || null,
     durationMinutes: trainingBlockDraft.durationMinutes,
     note: trainingBlockDraft.note.trim() || null,
     exercises: trainingBlockDraft.exercises.map((exercise) => {
@@ -1924,6 +1981,9 @@ function trainingBlockDraftReady(payload) {
   return payload &&
     typeof payload.name === "string" &&
     payload.name.length >= 1 &&
+    (payload.category === null || (
+      typeof payload.category === "string" && payload.category.length <= 80
+    )) &&
     Array.isArray(payload.audienceIds) &&
     payload.audienceIds.length <= 100 &&
     payload.audienceIds.every(
@@ -3416,6 +3476,7 @@ async function compareTrainingBlockRevisions() {
 
 trainingBlockElements.search?.addEventListener("input", renderTrainingBlocks);trainingBlockElements.search?.addEventListener("input", renderTrainingBlocks);
 trainingBlockElements.audienceFilter?.addEventListener("change", renderTrainingBlocks);
+trainingBlockElements.categoryFilter?.addEventListener("change", renderTrainingBlocks);
 trainingBlockElements.statusFilter?.addEventListener("change", renderTrainingBlocks);
 trainingBlockElements.newButton?.addEventListener("click", newTrainingBlock);
 trainingBlockElements.save?.addEventListener("click", () => void saveTrainingBlock());
