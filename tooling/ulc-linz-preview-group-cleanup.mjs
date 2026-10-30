@@ -137,7 +137,7 @@ export async function cleanupUlcLinzPreviewGroups(
         [EXPECTED_ORGANIZATION, athletesArchived.map((row) => row.id)],
       );
       const exerciseRows = await transaction.unsafe(
-        `UPDATE ulc_linz_exercise_catalog_item
+        `UPDATE appbasis_exercise_catalog_item
          SET is_active = false, updated_at = now()
          WHERE organization_id = $1 AND is_active = true
            AND (
