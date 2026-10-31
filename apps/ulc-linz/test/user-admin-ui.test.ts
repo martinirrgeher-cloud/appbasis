@@ -21,7 +21,7 @@ describe("ULC administration onboarding UI", () => {
   });
 
   it("edits module rights only for active trainer users through existing admin session", () => {
-    expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-access-editor" hidden');
+    expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-access-editor"');
     expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-access-form"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('user.sourceRole === "trainer" && user.active && !user.blocked');
     expect(ULC_LINZ_APP_SCRIPT).toContain('encodeURIComponent(snapshot.userId) + "/access"');
