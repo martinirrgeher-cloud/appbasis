@@ -2023,6 +2023,13 @@ function trainingBlockDraftReady(payload) {
         payload.durationMinutes <= 2_147_483_647));
 }
 
+function setTrainingBlockInvalidField(control, invalid) {
+  if (!control) return;
+  control.classList.toggle("training-block-field-missing", invalid);
+  if (invalid) control.setAttribute("aria-invalid", "true");
+  else control.removeAttribute("aria-invalid");
+}
+
 async function saveTrainingBlock() {
   if (
     !trainingBlockDirty ||
@@ -2054,21 +2061,38 @@ async function saveTrainingBlock() {
   }
   if (!trainingBlockDraftReady(payload)) {
     const missingName = !payload?.name?.trim();
-    if (trainingBlockElements.name) {
-      trainingBlockElements.name.classList.toggle("training-block-field-missing", missingName);
-      trainingBlockElements.name.setAttribute("aria-invalid", missingName ? "true" : "false");
-    }
+    const invalidCategory =
+      payload?.category !== null && (typeof payload?.category !== "string" ||
+        payload.category.length > 80);
+    const invalidDuration = payload?.durationMinutes !== null &&
+      (!Number.isSafeInteger(payload?.durationMinutes) ||
+        payload.durationMinutes < 1 || payload.durationMinutes > 2_147_483_647);
+    const invalidAudience = !Array.isArray(payload?.audienceIds) ||
+      payload.audienceIds.length > 100 ||
+      payload.audienceIds.some((id) => typeof id !== "string" || !id);
+    setTrainingBlockInvalidField(trainingBlockElements.name, missingName);
+    setTrainingBlockInvalidField(trainingBlockElements.category, invalidCategory);
+    setTrainingBlockInvalidField(trainingBlockElements.duration, invalidDuration);
+    setTrainingBlockInvalidField(trainingBlockElements.audience, invalidAudience);
+    const fields = [
+      missingName ? "Name" : null,
+      invalidCategory ? "Kategorie" : null,
+      invalidDuration ? "Dauer (Min.)" : null,
+      invalidAudience ? "Trainingsgruppen" : null,
+    ].filter(Boolean);
     setTrainingBlockSaveState("draft", "Pflichtfelder prüfen");
     showMessage(
       trainingBlockElements.editorMessage,
-      missingName
-        ? "Pflichtfeld „Name“ fehlt. Bitte das gelb markierte Feld ausfüllen."
-        : "Ungültige Angaben: Bitte Dauer und Trainingsgruppen prüfen.",
+      "Bitte prüfen: " + fields.join(", ") + ". Gelb markierte Angaben korrigieren.",
     );
     return;
   }
-  trainingBlockElements.name?.classList.remove("training-block-field-missing");
-  trainingBlockElements.name?.removeAttribute("aria-invalid");
+  for (const control of [
+    trainingBlockElements.name,
+    trainingBlockElements.category,
+    trainingBlockElements.duration,
+    trainingBlockElements.audience,
+  ]) setTrainingBlockInvalidField(control, false);
 
   const saveVersion = trainingBlockChangeVersion;
   const creating = trainingBlockSelected === null;
@@ -3538,10 +3562,12 @@ for (const control of [
   trainingBlockElements.note,
 ]) {
   control?.addEventListener(control === trainingBlockElements.category ? "change" : "input", () => {
-    if (control === trainingBlockElements.name && control.value.trim()) {
-      control.classList.remove("training-block-field-missing");
-      control.removeAttribute("aria-invalid");
-    }
+    if (
+      (control === trainingBlockElements.name && control.value.trim()) ||
+      (control === trainingBlockElements.category && control.value.length <= 80) ||
+      (control === trainingBlockElements.duration &&
+        (control.value === "" || control.validity.valid))
+    ) setTrainingBlockInvalidField(control, false);
     syncTrainingBlockDraftFromFields();
     markTrainingBlockDirty();
   });
