@@ -12,7 +12,7 @@ describe("ULC weekly self-registration and account switching", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="password-sign-out"');
     expect(ULC_LINZ_APP_HTML).toContain("Abmelden / Benutzer wechseln");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      "overflow.length > 0 || elements.appSignOut !== null",
+      "secondaryAvailable > 0 || elements.appSignOut !== null",
     );
 
     const signOutStart = ULC_LINZ_APP_SCRIPT.indexOf(
