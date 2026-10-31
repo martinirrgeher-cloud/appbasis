@@ -635,6 +635,7 @@ ${ULC_TRAINING_DOCUMENTATION_HTML}
               <div class="timer-actions" aria-label="Countdown-Steuerung">
                 <button class="button button--start" id="start-button" type="button">Start</button>
                 <button class="button button--pause" id="pause-button" type="button" hidden>Pause</button>
+                <button class="button button--stop" id="stop-button" type="button" hidden>Stop</button>
                 <button class="button button--reset" id="reset-button" type="button" disabled>Reset</button>
               </div>
             </section>
@@ -1449,10 +1450,19 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
   letter-spacing: -.07em;
 }
 .timer-hint { margin: 22px 0 0; color: currentColor; font-size: .92rem; opacity: .8; }
-.timer-actions { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 8px; }
+.timer-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 620px) {
+  .timer-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.timer-stage[data-mode="stopped"] {
+  background: var(--muted);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
 .timer-actions .button { min-height: 58px; font-size: 1rem; }
 .button--start { background: #0f172a; color: white; }
 .button--pause { border-color: #f59e0b; background: #fef3c7; color: #92400e; }
+.button--stop { border-color: #fca5a5; background: #fee2e2; color: #991b1b; }
 .button--reset { border-color: var(--border-strong); background: white; color: var(--secondary); }
 .utility-grid { display: grid; gap: 12px; }
 .utility-card { display: grid; gap: 12px; padding: 16px; }
@@ -2034,6 +2044,7 @@ const elements = {
   timerHint: document.querySelector("#timer-hint"),
   startButton: document.querySelector("#start-button"),
   pauseButton: document.querySelector("#pause-button"),
+  stopButton: document.querySelector("#stop-button"),
   resetButton: document.querySelector("#reset-button"),
   settingsPanel: document.querySelector("#settings"),
   settingsForm: document.querySelector("#settings-form"),
@@ -2137,6 +2148,7 @@ elements.passwordSignOut?.addEventListener("click", () => void handleSignOut());
 elements.appSignOut?.addEventListener("click", () => void handleSignOut());
 elements.startButton?.addEventListener("click", () => void startCountdown());
 elements.pauseButton?.addEventListener("click", () => void togglePause());
+elements.stopButton?.addEventListener("click", () => void stopCountdown());
 elements.resetButton?.addEventListener("click", () => void resetCountdown());
 elements.settingsForm?.addEventListener("input", handleSettingsInput);
 elements.masterdataImportOpen?.addEventListener("click", () => {
@@ -6564,6 +6576,17 @@ function handleSettingsInput() {
 
 async function startCountdown() {
   if (!countdownReady || busy || runMode === "running" || runMode === "paused") return;
+  // Stop preserves the original server timeline and cue position. Start must
+  // resume the same session, not re-fetch a plan or replay preparation cues.
+  if (runMode === "stopped" && plan !== null) {
+    runMode = "running";
+    resumedAt = performance.now();
+    renderAt(elapsedBeforeRunMs / 1000);
+    refreshControls();
+    startTicker();
+    void acquireWakeLock();
+    return;
+  }
   const settings = readSettings();
   if (settings === null) {
     showMessage(elements.appMessage, "Bitte gültige Countdown-Einstellungen eingeben.");
@@ -6638,6 +6661,17 @@ function togglePause() {
     void acquireWakeLock();
     refreshControls();
   }
+}
+
+function stopCountdown() {
+  if (runMode !== "running" && runMode !== "paused") return;
+  elapsedBeforeRunMs = currentElapsedMs();
+  runMode = "stopped";
+  stopTicker();
+  cancelSpeech();
+  void releaseWakeLock();
+  renderAt(elapsedBeforeRunMs / 1000);
+  refreshControls();
 }
 
 function resetCountdown() {
@@ -6746,8 +6780,14 @@ function renderAt(elapsedSeconds) {
     return;
   }
   const snapshot = localSnapshot(plan.configuration, elapsedSeconds);
-  if (elements.timerStage) elements.timerStage.dataset.phase = snapshot.phase;
-  if (elements.phaseLabel) elements.phaseLabel.textContent = phaseLabel(snapshot.phase);
+  if (elements.timerStage) {
+    elements.timerStage.dataset.phase = snapshot.phase;
+    elements.timerStage.dataset.mode = runMode;
+  }
+  if (elements.phaseLabel) {
+    elements.phaseLabel.textContent = runMode === "stopped"
+      ? "Gestoppt" : phaseLabel(snapshot.phase);
+  }
   if (elements.roundLabel) {
     elements.roundLabel.textContent =
       "Übung " + String(snapshot.round) + " / " + String(snapshot.rounds);
@@ -6758,7 +6798,11 @@ function renderAt(elapsedSeconds) {
         ? String(snapshot.remainingSeconds)
         : formatClock(snapshot.remainingSeconds);
   }
-  if (elements.timerHint) elements.timerHint.textContent = phaseHint(snapshot.phase);
+  if (elements.timerHint) {
+    elements.timerHint.textContent = runMode === "stopped"
+      ? "Mit Start an dieser Stelle fortsetzen."
+      : phaseHint(snapshot.phase);
+  }
 }
 
 function localSnapshot(configuration, elapsedSeconds) {
@@ -6814,7 +6858,10 @@ function localSnapshot(configuration, elapsedSeconds) {
 }
 
 function renderIdle(settings = readSettings() ?? defaultSettings) {
-  if (elements.timerStage) elements.timerStage.dataset.phase = "idle";
+  if (elements.timerStage) {
+    elements.timerStage.dataset.phase = "idle";
+    elements.timerStage.dataset.mode = "idle";
+  }
   if (elements.phaseLabel) elements.phaseLabel.textContent = "Bereit";
   if (elements.roundLabel) {
     elements.roundLabel.textContent = "Übung 1 / " + String(settings.rounds);
@@ -6844,12 +6891,18 @@ function refreshControls() {
   if (elements.startButton) {
     elements.startButton.disabled =
       !countdownReady || busy || runMode === "running" || runMode === "paused";
-    elements.startButton.textContent = runMode === "finished" ? "Neu starten" : "Start";
+    elements.startButton.textContent = runMode === "finished"
+      ? "Neu starten"
+      : runMode === "stopped" ? "Fortsetzen" : "Start";
   }
   if (elements.pauseButton) {
     elements.pauseButton.hidden = runMode !== "running" && runMode !== "paused";
     elements.pauseButton.textContent = runMode === "paused" ? "Weiter" : "Pause";
     elements.pauseButton.disabled = busy;
+  }
+  if (elements.stopButton) {
+    elements.stopButton.hidden = runMode !== "running" && runMode !== "paused";
+    elements.stopButton.disabled = busy;
   }
   if (elements.resetButton) {
     elements.resetButton.disabled = busy || runMode === "idle";
