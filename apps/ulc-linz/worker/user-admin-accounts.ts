@@ -1,4 +1,4 @@
-import { hashIdentityTemporaryPassword } from "@appbasis/identity";
+import { hashIdentityTemporaryPassword } from "@appbasis/identity/credential-admin";
 
 type SqlValue = string | number | boolean | null;
 type Rows = readonly Record<string, unknown>[];
