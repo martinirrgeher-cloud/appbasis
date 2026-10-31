@@ -172,6 +172,16 @@ export const ULC_USER_ADMIN_CSS = \`
 export const ULC_USER_ADMIN_SCRIPT = String.raw`
 const userAdminElements = Object.freeze({
   message: document.querySelector("#user-admin-message"),
+  createDialog: document.querySelector("#user-admin-create-dialog"),
+  newButton: document.querySelector("#user-admin-new"),
+  createClose: document.querySelector("#user-admin-create-close"),
+  createCancel: document.querySelector("#user-admin-create-cancel"),
+  createError: document.querySelector("#user-admin-create-error"),
+  accessMessage: document.querySelector("#user-admin-access-message"),
+  resetError: document.querySelector("#user-admin-reset-error"),
+  inviteMessage: document.querySelector("#user-admin-invite-message"),
+  resetClose: document.querySelector("#user-admin-reset-close"),
+  accessCancel: document.querySelector("#user-admin-access-cancel"),
   success: document.querySelector("#user-admin-success"),
   list: document.querySelector("#user-admin-list"),
   count: document.querySelector("#user-admin-count"),
@@ -215,14 +225,39 @@ let userAdminResetIdentityId = null;
 let userAdminResetUsername = "";
 
 userAdminElements.refresh?.addEventListener("click", () => void loadUserAdmin());
+userAdminElements.newButton?.addEventListener("click", openUserAdminCreate);
+userAdminElements.createClose?.addEventListener("click", () => closeUserAdminCreate());
+userAdminElements.createCancel?.addEventListener("click", () => closeUserAdminCreate());
+userAdminElements.createDialog?.addEventListener("cancel", (event) => {
+  if (userAdminBusy) event.preventDefault();
+});
+userAdminElements.resetClose?.addEventListener("click", closeUserAdminPasswordReset);
+userAdminElements.resetDialog?.addEventListener("cancel", (event) => {
+  if (userAdminBusy) event.preventDefault();
+});
+userAdminElements.accessCancel?.addEventListener("click", () => closeUserAdminAccess());
+userAdminElements.accessEditor?.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeUserAdminAccess();
+});
+userAdminElements.accessEditor?.addEventListener("close", () => {
+  userAdminAccessSnapshot = null;
+  userAdminElements.accessList?.replaceChildren();
+});
+userAdminElements.invitation?.addEventListener("close", clearUserAdminInvitation);
+document.addEventListener("click", (event) => {
+  for (const menu of document.querySelectorAll(".user-admin-actions-menu[open]")) {
+    if (!menu.contains(event.target)) menu.open = false;
+  }
+});
 userAdminElements.search?.addEventListener("input", renderUserAdminList);
 userAdminElements.statusFilter?.addEventListener("change", renderUserAdminList);
 userAdminElements.role?.addEventListener("change", renderUserAdminTargets);
 userAdminElements.form?.addEventListener("submit", (event) => void createUserAdminAccount(event));
 userAdminElements.copy?.addEventListener("click", () => void copyUserAdminInvitation());
 userAdminElements.share?.addEventListener("click", () => void shareUserAdminInvitation());
-userAdminElements.inviteClose?.addEventListener("click", clearUserAdminInvitation);
-userAdminElements.accessClose?.addEventListener("click", closeUserAdminAccess);
+userAdminElements.inviteClose?.addEventListener("click", closeUserAdminInvitation);
+userAdminElements.accessClose?.addEventListener("click", () => closeUserAdminAccess());
 userAdminElements.accessForm?.addEventListener("submit", (event) => void saveUserAdminAccess(event));
 userAdminElements.resetForm?.addEventListener("submit", (event) => void saveUserAdminPasswordReset(event));
 userAdminElements.resetCancel?.addEventListener("click", closeUserAdminPasswordReset);
@@ -234,7 +269,33 @@ userAdminElements.resetDialog?.addEventListener("close", () => {
 
 function clearUserAdminInvitation() {
   userAdminInviteText = "";
-  if (userAdminElements.invitation) userAdminElements.invitation.hidden = true;
+  showMessage(userAdminElements.inviteMessage, "");
+}
+
+function closeUserAdminInvitation() {
+  if (userAdminElements.invitation?.open) userAdminElements.invitation.close();
+  clearUserAdminInvitation();
+}
+
+function openUserAdminInvitation() {
+  if (!userAdminInviteText || userAdminElements.invitation?.open) return;
+  showMessage(userAdminElements.inviteMessage, "");
+  userAdminElements.invitation?.showModal();
+}
+
+function closeUserAdminCreate(force = false) {
+  if (!force && userAdminBusy) return;
+  if (userAdminElements.createDialog?.open) userAdminElements.createDialog.close();
+  if (userAdminElements.password) userAdminElements.password.value = "";
+  showMessage(userAdminElements.createError, "");
+}
+
+function openUserAdminCreate() {
+  if (!userAdminReady || userAdminBusy || userAdminElements.createDialog?.open) return;
+  userAdminElements.form?.reset();
+  showMessage(userAdminElements.createError, "");
+  userAdminElements.createDialog?.showModal();
+  void prepareUserAdminView();
 }
 
 function resetUserAdminSessionState() {
@@ -243,8 +304,9 @@ function resetUserAdminSessionState() {
   userAdminBusy = false;
   userAdminUsers = [];
   userAdminTargets = null;
-  clearUserAdminInvitation();
-  closeUserAdminAccess();
+  closeUserAdminInvitation();
+  closeUserAdminCreate(true);
+  closeUserAdminAccess(true);
   closeUserAdminPasswordReset();
   userAdminElements.form?.reset();
   if (userAdminElements.search) userAdminElements.search.value = "";
@@ -306,10 +368,10 @@ function renderUserAdminList() {
   container.replaceChildren();
   const search = (userAdminElements.search?.value || "").trim().toLocaleLowerCase("de-AT");
   const statusFilter = userAdminElements.statusFilter?.value || "all";
+  const isIncomplete = (user) => user.sourceRole === "trainer" &&
+    String(user.subjectId || "").startsWith("ulc-unassigned-trainer:");
   const filtered = userAdminUsers.filter((user) => {
-    const incomplete = user.sourceRole === "trainer" &&
-      String(user.subjectId || "").startsWith("ulc-unassigned-trainer:");
-    const active = user.active === true && user.blocked !== true && !incomplete;
+    const active = user.active === true && user.blocked !== true && !isIncomplete(user);
     const statusMatches = statusFilter === "all" ||
       (statusFilter === "active" && active) ||
       (statusFilter === "inactive" && !active);
@@ -323,6 +385,7 @@ function renderUserAdminList() {
   }
   const roles = { admin: "Administrator", trainer: "Trainer", athlete: "Athlet", parent: "Eltern" };
   for (const user of filtered) {
+    const incomplete = isIncomplete(user);
     const row = document.createElement("article");
     row.className = "user-admin-row";
     const main = document.createElement("div");
@@ -332,61 +395,73 @@ function renderUserAdminList() {
     const meta = document.createElement("span");
     meta.className = "user-admin-row__meta";
     meta.textContent = String(user.username || "") + " · " + (roles[user.sourceRole] || "Unbekannt");
-    const incomplete = user.sourceRole === "trainer" &&
-      String(user.subjectId || "").startsWith("ulc-unassigned-trainer:");
     const status = document.createElement("span");
     status.className = "user-admin-row__status";
     status.textContent = incomplete ? "Einrichtung unvollständig" :
       user.blocked ? "Gesperrt" : user.active ? "Aktiv" : "Inaktiv";
+    if (user.active && !user.blocked && !incomplete) {
+      status.classList.add("user-admin-row__status--active");
+    }
+    main.append(title, meta, status);
     if (incomplete) {
       const note = document.createElement("small");
       note.className = "user-admin-row__meta";
       note.textContent = "Trainerzuordnung fehlt. Konto nicht als Testzugang verwenden.";
       main.append(note);
     }
-    main.append(title, meta);
     const actions = document.createElement("div");
     actions.className = "user-admin-row__actions";
-    actions.append(status);
-    if (user.active && !user.blocked && !incomplete) {
-      const invite = document.createElement("button");
-      invite.type = "button";
-      invite.className = "button button--secondary";
-      invite.textContent = "Link";
-      invite.setAttribute("aria-label", "Anmeldelink für " + String(user.displayName || user.username) + " teilen");
-      invite.addEventListener("click", () => void shareExistingUserAdminLogin(user.username));
-      actions.append(invite);
-    }
+    const addAction = (parent, text, description, handler) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "button button--secondary";
+      button.textContent = text;
+      button.setAttribute("aria-label", description);
+      button.addEventListener("click", () => {
+        const menu = button.closest(".user-admin-actions-menu");
+        if (menu) menu.open = false;
+        handler();
+      });
+      parent.append(button);
+    };
     if (user.sourceRole === "trainer" && user.active && !user.blocked && !incomplete) {
-      const edit = document.createElement("button");
-      edit.type = "button";
-      edit.className = "button button--secondary";
-      edit.textContent = "Rechte";
-      edit.setAttribute("aria-label", "Modulrechte für " + String(user.displayName || user.username));
-      edit.addEventListener("click", () => void openUserAdminAccess(user.identityId));
-      actions.append(edit);
+      addAction(actions, "Rechte", "Modulrechte für " + user.username,
+        () => void openUserAdminAccess(user.identityId));
     }
-    if ((user.sourceRole === "trainer" || user.sourceRole === "athlete") && !incomplete) {
-      if (user.active && !user.blocked) {
-        const reset = document.createElement("button");
-        reset.type = "button";
-        reset.className = "button button--secondary";
-        reset.textContent = "Passwort";
-        reset.setAttribute("aria-label", "Passwort zurücksetzen für " + user.username);
-        reset.addEventListener("click", () => openUserAdminPasswordReset(user));
-        actions.append(reset);
+    const supportsAccountActions = (user.sourceRole === "trainer" || user.sourceRole === "athlete") && !incomplete;
+    const canLink = user.active && !user.blocked && !incomplete;
+    if (canLink || supportsAccountActions) {
+      const menu = document.createElement("details");
+      menu.className = "user-admin-actions-menu";
+      const summary = document.createElement("summary");
+      summary.textContent = "⋯";
+      summary.setAttribute("aria-label", "Weitere Aktionen für " + user.username);
+      summary.setAttribute("title", "Weitere Aktionen");
+      const panel = document.createElement("div");
+      panel.className = "user-admin-actions-menu__content";
+      if (canLink) {
+        addAction(panel, "Link teilen", "Anmeldelink für " + user.username + " teilen",
+          () => void shareExistingUserAdminLogin(user.username));
       }
-      const action = user.blocked ? "unblock" : !user.active ? "reactivate" : "block";
-      if (action) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "button button--secondary";
-        button.textContent = action === "block" ? "Sperren"
-          : action === "unblock" ? "Entsperren" : "Reaktivieren";
-        button.setAttribute("aria-label", button.textContent + ": " + user.username);
-        button.addEventListener("click", () => void changeUserAdminStatus(user, action));
-        actions.append(button);
+      if (supportsAccountActions) {
+        if (user.active && !user.blocked) {
+          addAction(panel, "Passwort zurücksetzen", "Passwort für " + user.username + " zurücksetzen",
+            () => openUserAdminPasswordReset(user));
+        }
+        const action = user.blocked ? "unblock" : !user.active ? "reactivate" : "block";
+        const label = action === "block" ? "Sperren" :
+          action === "unblock" ? "Entsperren" : "Reaktivieren";
+        addAction(panel, label, label + ": " + user.username,
+          () => void changeUserAdminStatus(user, action));
       }
+      menu.append(summary, panel);
+      menu.addEventListener("toggle", () => {
+        if (!menu.open) return;
+        for (const other of container.querySelectorAll(".user-admin-actions-menu[open]")) {
+          if (other !== menu) other.open = false;
+        }
+      });
+      actions.append(menu);
     }
     row.append(main, actions);
     container.append(row);
