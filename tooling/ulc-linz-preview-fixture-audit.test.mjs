@@ -3,7 +3,12 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { classifyUlcPreviewFixture, selectUlcPreviewBlockCandidates } from "./ulc-linz-preview-fixture-audit.mjs";
+import {
+  classifyUlcPreviewFixture,
+  selectUlcPreviewBlockCandidates,
+  countUnexpectedUlcPreviewFixtures,
+  assertNoUlcPreviewE7B9Fixtures,
+} from "./ulc-linz-preview-fixture-audit.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("../", import.meta.url)));
 
@@ -89,4 +94,64 @@ test("audit explicitly reports cross-links and stays entirely read-only", async 
   ]) assert.ok(source.includes(risk), risk);
   assert.match(source, /SET TRANSACTION READ ONLY/);
   assert.match(source, /allowedToPermanentlyDelete: false/);
+});
+
+test("post-deploy guard tolerates protected canonical records and ordinary preview labels", () => {
+  const entries = {
+    groups: [{ id: "grp-1", name: "Preview Selbstanmeldung", classification: "protected" }],
+    athletes: [{ id: "ath-1", name: "Preview Athlet", classification: "protected" }],
+    exercises: [{ id: "ex-1", name: "Preview Warmup", classification: "review" }],
+    blocks: [{ id: "b-1", name: "Preview Sprint", classification: "review" }],
+  };
+  const unexpectedE7B9 = countUnexpectedUlcPreviewFixtures(entries, [
+    { id: "b-1", name: "Preview Sprint" },
+  ]);
+  assert.deepEqual(unexpectedE7B9, {
+    groups: 0, athletes: 0, exercises: 0, blocks: 0,
+  });
+  assert.ok(assertNoUlcPreviewE7B9Fixtures({ unexpectedE7B9 }));
+});
+
+test("post-deploy guard refuses one regenerated fixture, including mixed-revision blocks", () => {
+  const marker = "2f4ab302910e";
+  const entities = {
+    groups: [{ id: "new", name: "E7B9 Preview Group " + marker, classification: "e7b9" }],
+    athletes: [],
+    exercises: [],
+    blocks: [{ id: "mixed", name: "Actual interval set", classification: "review" }],
+  };
+  const unexpectedE7B9 = countUnexpectedUlcPreviewFixtures(entities, [
+    { id: "mixed", name: "E7B9 Preview Block " + marker },
+    { id: "mixed", name: "Actual interval set" },
+    { id: "mixed", name: "E7B9 Save-back " + marker },
+  ]);
+  assert.deepEqual(unexpectedE7B9, {
+    groups: 1, athletes: 0, exercises: 0, blocks: 1,
+  });
+  assert.throws(
+    () => assertNoUlcPreviewE7B9Fixtures({ unexpectedE7B9 }),
+    /Unexpected persistent E7B9 acceptance fixtures/,
+  );
+  assert.throws(
+    () => assertNoUlcPreviewE7B9Fixtures({ unexpectedE7B9: { groups: 0 } }),
+    /inventory is incomplete/,
+  );
+});
+
+test("regression guard is read-only and has a single fail-closed workflow gate", async () => {
+  const source = await readFile(resolve(ROOT, "tooling/ulc-linz-preview-fixture-audit.mjs"), "utf8");
+  const workflow = await readFile(
+    resolve(ROOT, ".github/workflows/ulc-linz-e7b9-preview.yml"), "utf8",
+  );
+  assert.match(source, /SET TRANSACTION READ ONLY/);
+  assert.match(source, /if \(mode === "verify-clean"\)/);
+  assert.match(source, /Do not auto-delete any data/);
+  assert.match(workflow, /- name: Verify no regenerated E7B9 preview fixtures \(read-only\)/);
+  assert.match(workflow, /node \.\/tooling\/ulc-linz-preview-fixture-audit\.mjs verify-clean/);
+  assert.match(workflow, /if: inputs\.operation == 'accept' \|\| inputs\.operation == 'deploy-accept'/);
+  const guard = workflow.indexOf("Verify no regenerated E7B9 preview fixtures (read-only)");
+  assert.ok(guard > workflow.indexOf("Run authenticated E7B9 training-planning acceptance"));
+  assert.ok(guard < workflow.indexOf("Record E7B9 preview operation"));
+  assert.doesNotMatch(workflow, /run: node \.\/tooling\/ulc-linz-training-plans-preview-acceptance\.mjs/);
+  assert.match(workflow, /run: node \.\/tooling\/ulc-linz-training-plans-preview-readonly-acceptance\.mjs/);
 });
