@@ -60,15 +60,7 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                         <input id="training-block-name" minlength="1" maxlength="120" />
                       </label>
                       <label>Kategorie
-                        <input id="training-block-category" maxlength="80" list="training-block-category-suggestions" placeholder="z. B. Drills" autocomplete="off" />
-                        <datalist id="training-block-category-suggestions">
-                          <option value="Aufwärmen"></option>
-                          <option value="Drills"></option>
-                          <option value="Technik"></option>
-                          <option value="Koordination"></option>
-                          <option value="Kraft"></option>
-                          <option value="Ausdauer"></option>
-                        </datalist>
+                        <select id="training-block-category"><option value="">Ohne Kategorie</option></select>
                       </label>
                       <fieldset class="training-block-audience-field">
                         <legend>Trainingsgruppen</legend>
@@ -987,6 +979,36 @@ function renderTrainingBlockAudienceFilter() {
     : "all";
 }
 
+function trainingBlockCategoryLabel(value) {
+  return value ? categoryLabel(value) : "Ohne Kategorie";
+}
+
+function renderTrainingBlockCategoryEditor() {
+  const select = trainingBlockElements.category;
+  if (!select) return;
+  const current = trainingBlockDraft?.category || "";
+  select.replaceChildren();
+  const empty = document.createElement("option");
+  empty.value = "";
+  empty.textContent = "Ohne Kategorie";
+  select.append(empty);
+  // Share the exercise catalog's canonical choices and keys; no separate list to drift.
+  for (const category of EXERCISE_CATEGORIES) {
+    const option = document.createElement("option");
+    option.value = category.key;
+    option.textContent = category.label;
+    select.append(option);
+  }
+  // Keep pre-existing free-text values editable without silently changing them.
+  if (current && !EXERCISE_CATEGORIES.some((category) => category.key === current)) {
+    const legacy = document.createElement("option");
+    legacy.value = current;
+    legacy.textContent = current + " (bisherige Kategorie)";
+    select.append(legacy);
+  }
+  select.value = current;
+}
+
 function renderTrainingBlockCategoryFilter() {
   const select = trainingBlockElements.categoryFilter;
   if (!select) return;
@@ -998,9 +1020,17 @@ function renderTrainingBlockCategoryFilter() {
     option.textContent = label;
     select.append(option);
   }
-  const names = [...new Set(trainingBlocks.map((block) => block.revision.category?.trim()).filter(Boolean))];
-  names.sort((a, b) => a.localeCompare(b, "de", { sensitivity: "base" }));
-  for (const name of names) {
+  for (const category of EXERCISE_CATEGORIES) {
+    const option = document.createElement("option");
+    option.value = category.key;
+    option.textContent = category.label;
+    select.append(option);
+  }
+  const legacyNames = [...new Set(trainingBlocks
+    .map((block) => block.revision.category?.trim())
+    .filter((value) => value && !EXERCISE_CATEGORIES.some((category) => category.key === value)))];
+  legacyNames.sort((a, b) => a.localeCompare(b, "de", { sensitivity: "base" }));
+  for (const name of legacyNames) {
     const option = document.createElement("option");
     option.value = name;
     option.textContent = name;
@@ -1041,7 +1071,7 @@ function renderTrainingBlocks() {
     if (!query) return true;
     return (
       block.revision.name.toLocaleLowerCase("de").includes(query) ||
-      (block.revision.category || "").toLocaleLowerCase("de").includes(query) ||
+      trainingBlockCategoryLabel(block.revision.category).toLocaleLowerCase("de").includes(query) ||
       trainingBlockAudienceSetLabel(block.revision.audienceIds)
         .toLocaleLowerCase("de")
         .includes(query)
@@ -1086,7 +1116,7 @@ function renderTrainingBlocks() {
         block.revision.durationMinutes === null
           ? null
           : String(block.revision.durationMinutes) + " Min.",
-        block.revision.category || "Ohne Kategorie",
+        trainingBlockCategoryLabel(block.revision.category),
         String(block.revision.exercises.length) + " Übung(en)",
         block.isFavorite ? "★ Favorit" : null,
         block.usageCount === 0
@@ -1232,9 +1262,7 @@ function populateTrainingBlockEditor() {
     trainingBlockElements.editorTitle.textContent =
       trainingBlockDraft.name || "Neuer Trainingsblock";
   }
-  if (trainingBlockElements.category) {
-    trainingBlockElements.category.value = trainingBlockDraft.category || "";
-  }
+  renderTrainingBlockCategoryEditor();
   if (trainingBlockElements.name) {
     trainingBlockElements.name.value = trainingBlockDraft.name;
     trainingBlockElements.name.disabled =
@@ -3509,7 +3537,7 @@ for (const control of [
   trainingBlockElements.duration,
   trainingBlockElements.note,
 ]) {
-  control?.addEventListener("input", () => {
+  control?.addEventListener(control === trainingBlockElements.category ? "change" : "input", () => {
     if (control === trainingBlockElements.name && control.value.trim()) {
       control.classList.remove("training-block-field-missing");
       control.removeAttribute("aria-invalid");

@@ -15,6 +15,21 @@ describe("ULC training block planning-aligned UI", () => {
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('block.revision.category !== category');
   });
 
+  it("reuses exercise categories in a dropdown while retaining historical category values", () => {
+    expect(ULC_TRAINING_BLOCKS_HTML).toContain(
+      '<select id="training-block-category"><option value="">Ohne Kategorie</option></select>',
+    );
+    expect(ULC_TRAINING_BLOCKS_HTML).not.toContain("training-block-category-suggestions");
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain("renderTrainingBlockCategoryEditor();");
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain("for (const category of EXERCISE_CATEGORIES)");
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain("option.value = category.key;");
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('legacy.textContent = current + " (bisherige Kategorie)"');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain("trainingBlockCategoryLabel(block.revision.category)");
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
+      'control === trainingBlockElements.category ? "change" : "input"',
+    );
+  });
+
   it("offers compact prescription editing for every catalog exercise", () => {
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
       'trainingBlockParameterValueByKey(draft, item, "sets")',

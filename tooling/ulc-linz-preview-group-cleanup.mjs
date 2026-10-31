@@ -66,6 +66,7 @@ export async function cleanupUlcLinzPreviewGroups(
     let athletesArchived = [];
     let exercisesArchived = [];
     let blocksArchived = [];
+    let saveBackBlocksDeleted = [];
     await database.client.begin(async (transaction) => {
       const identity = await transaction.unsafe(
         "SELECT current_database() AS database_name, current_user AS principal_name",
@@ -166,6 +167,66 @@ export async function cleanupUlcLinzPreviewGroups(
         [EXPECTED_ORGANIZATION],
       );
       blocksArchived = blockRows.map((row) => row.id);
+
+      // Only generated, unreferenced E7B9 save-back templates are disposable.
+      const saveBackRows = await transaction.unsafe(
+        `SELECT block.id
+         FROM appbasis_training_block AS block
+         JOIN appbasis_training_block_revision AS revision
+           ON revision.organization_id = block.organization_id
+          AND revision.block_id = block.id
+          AND revision.revision = block.current_revision
+         WHERE block.organization_id = $1
+           AND revision.revision = 1
+           AND revision.name ~ '^E7B9 Save-back [0-9a-f]{12}$'
+           AND revision.note = 'E7B9 preview source template'
+           AND NOT EXISTS (
+             SELECT 1 FROM appbasis_training_block_usage AS usage
+             WHERE usage.organization_id = block.organization_id AND usage.block_id = block.id
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM appbasis_training_plan_revision_item AS item
+             WHERE item.organization_id = block.organization_id AND item.source_block_id = block.id
+           )
+         FOR UPDATE OF block`,
+        [EXPECTED_ORGANIZATION],
+      );
+      const saveBackIds = saveBackRows.map((row) => row.id);
+      if (saveBackIds.length > 0) {
+        const identifiers = [EXPECTED_ORGANIZATION, saveBackIds];
+        await transaction.unsafe(
+          `DELETE FROM appbasis_training_block_favorite
+           WHERE organization_id = $1 AND block_id = ANY($2::text[])`,
+          identifiers,
+        );
+        await transaction.unsafe(
+          `DELETE FROM appbasis_training_block_revision_item_parameter
+           WHERE organization_id = $1 AND block_id = ANY($2::text[])`,
+          identifiers,
+        );
+        await transaction.unsafe(
+          `DELETE FROM appbasis_training_block_revision_item
+           WHERE organization_id = $1 AND block_id = ANY($2::text[])`,
+          identifiers,
+        );
+        await transaction.unsafe(
+          `DELETE FROM appbasis_training_block_revision
+           WHERE organization_id = $1 AND block_id = ANY($2::text[])`,
+          identifiers,
+        );
+        const deletedRows = await transaction.unsafe(
+          `DELETE FROM appbasis_training_block
+           WHERE organization_id = $1 AND id = ANY($2::text[])
+           RETURNING id`,
+          identifiers,
+        );
+        if (deletedRows.length !== saveBackIds.length) {
+          throw new UlcLinzPreviewGroupCleanupError(
+            "Preview save-back fixtures changed during cleanup; rolling back.",
+          );
+        }
+        saveBackBlocksDeleted = deletedRows.map((row) => row.id);
+      }
     });
 
     return Object.freeze({
@@ -174,6 +235,7 @@ export async function cleanupUlcLinzPreviewGroups(
       archivedAthleteCount: athletesArchived.length,
       archivedExerciseCount: exercisesArchived.length,
       archivedBlockCount: blocksArchived.length,
+      deletedSaveBackBlockCount: saveBackBlocksDeleted.length,
       preservedAthlete: "preview.athlete",
       deactivated: Object.freeze(deactivated.map((item) => Object.freeze(item))),
       preservedGroup: ULC_LINZ_PREVIEW_CANONICAL_ATTENDANCE_GROUP,
@@ -224,7 +286,7 @@ if (isMainModule()) {
       connectionString: process.env.APPBASIS_DATABASE_URL,
     });
     console.log(
-      `ULC preview fixture cleanup PASS: ${result.deactivatedCount} groups, ${result.archivedAthleteCount} athletes, ${result.archivedExerciseCount} exercises, ${result.archivedBlockCount} blocks archived; ${result.preservedGroup} and ${result.preservedAthlete} preserved.`,
+      `ULC preview fixture cleanup PASS: ${result.deactivatedCount} groups, ${result.archivedAthleteCount} athletes, ${result.archivedExerciseCount} exercises, ${result.archivedBlockCount} blocks archived, ${result.deletedSaveBackBlockCount} unused E7B9 save-back fixtures deleted; ${result.preservedGroup} and ${result.preservedAthlete} preserved.`,
     );
   } catch (error) {
     console.error(
