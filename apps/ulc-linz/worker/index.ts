@@ -95,6 +95,7 @@ import {
   UlcLinzAthleteUserProvisioningNotFoundError,
 } from "./athlete-user-provisioning";
 import { recordUlcLinzSecurityEvent } from "./security-events";
+import { UlcUserAccessError } from "./user-admin-access";
 import { generatedUiResponse } from "./ui";
 import {
   createGeneratedPostgresApplicationRuntime,
@@ -240,6 +241,8 @@ export function createGeneratedWorker(
           response = await identitySignOutResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/users") {
           response = await userAdminOverviewResponse(request, runtime, url);
+        } else if (/^\/api\/admin\/users\/[^/]+\/access$/.test(url.pathname)) {
+          response = await userAdminAccessResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/athlete-users") {
           response = await athleteUserAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-users") {
@@ -1998,6 +2001,72 @@ async function identitySignOutResponse(
     secureCookies: url.protocol === "https:",
   });
   return identityHttp.signOut(request);
+}
+
+async function userAdminAccessResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return methodNotAllowedFor("GET, POST", "User permission administration");
+  }
+  if ([...url.searchParams.keys()].length > 0) {
+    return Response.json(
+      { error: { code: "INVALID_REQUEST", message: "Unexpected query parameters." } },
+      { status: 400 },
+    );
+  }
+  const match = /^\/api\/admin\/users\/([^/]+)\/access$/.exec(url.pathname);
+  if (!match) return Response.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+  const userId = decodeURIComponent(match[1] || "");
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) return current;
+  let access: Readonly<{ organizationId: string; actorPrincipalId: string }>;
+  try {
+    access = await runtime.trainerIdentityAccess.assertAdminAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json(
+        { error: { code: error.code, message: "User permissions access denied." } },
+        { status: 403 },
+      );
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+
+  try {
+    if (request.method === "GET") {
+      const permissions = await runtime.userAdminAccess.read(access.organizationId, userId);
+      return Response.json({ permissions });
+    }
+    const body: unknown = await request.json();
+    const permissions = await runtime.userAdminAccess.update(
+      access.organizationId,
+      access.actorPrincipalId,
+      userId,
+      body as Parameters<GeneratedPostgresApplicationRuntime["userAdminAccess"]["update"]>[3],
+    );
+    return Response.json({ permissions });
+  } catch (error) {
+    if (error instanceof SyntaxError || error instanceof TypeError) {
+      return Response.json({ error: { code: "INVALID_REQUEST" } }, { status: 400 });
+    }
+    if (error instanceof UlcUserAccessError) {
+      const status = error.code === "NOT_FOUND" ? 404 :
+        error.code === "DENIED" ? 403 :
+        error.code === "STALE" ? 409 : 400;
+      return Response.json({ error: { code: "USER_ACCESS_" + error.code } }, { status });
+    }
+    throw error;
+  }
 }
 
 async function userAdminOverviewResponse(
