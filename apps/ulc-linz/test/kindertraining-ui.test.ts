@@ -36,7 +36,7 @@ describe("ULC Kindertraining weekly attendance UI", () => {
       "Die ganze Trainingswoche im Blick: Voranmeldungen prüfen und die tatsächliche Anwesenheit gesammelt erfassen.",
     );
     expect(ULC_LINZ_APP_HTML).toContain(
-      "Speichert nur geänderte Tage dieser Woche.",
+      "Änderungen werden automatisch gespeichert.",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '"Voranmeldung: " + kindertrainingRegistrationLabel(participant.intention)',
@@ -95,8 +95,25 @@ describe("ULC Kindertraining weekly attendance UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "attendance: snapshot.participants.map",
     );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("scheduleKindertrainingWeekAutosave();");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("await flushKindertrainingWeekChanges()");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      '"Es gibt ungespeicherte Anwesenheitsänderungen. Wirklich verwerfen?"',
+      "const groupId = kindertrainingLoadedGroupId || elements.kindertrainingGroup?.value ||",
     );
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("discardKindertrainingWeekChanges");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("Wirklich verwerfen?");
   });
+  it("auto-saves after a quiet period, preserves manual retry, and flushes on navigation", () => {
+    expect(ULC_LINZ_APP_HTML).toContain("💾 Jetzt speichern");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("kindertrainingWeekAutosaveTimer = window.setTimeout");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("}, 1200)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("function clearKindertrainingWeekAutosave()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("async function flushKindertrainingWeekChanges()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (!(await flushKindertrainingWeekChanges())) return;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (!(await flushKindertrainingWeekChanges())) {");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("return failedDates.length === 0");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("clearKindertrainingWeekAutosave();");
+    expect(ULC_LINZ_APP_HTML).not.toContain("Woche speichern");
+  });
+
 });
