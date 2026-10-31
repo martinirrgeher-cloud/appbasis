@@ -96,6 +96,7 @@ import {
 } from "./athlete-user-provisioning";
 import { recordUlcLinzSecurityEvent } from "./security-events";
 import { UlcUserAccessError } from "./user-admin-access";
+import { UlcUserAccountError } from "./user-admin-accounts";
 import { generatedUiResponse } from "./ui";
 import {
   createGeneratedPostgresApplicationRuntime,
@@ -243,6 +244,8 @@ export function createGeneratedWorker(
           response = await userAdminOverviewResponse(request, runtime, url);
         } else if (/^\/api\/admin\/users\/[^/]+\/access$/.test(url.pathname)) {
           response = await userAdminAccessResponse(request, runtime, url);
+        } else if (/^\/api\/admin\/users\/[^/]+\/(password-reset|status)$/.test(url.pathname)) {
+          response = await userAdminAccountsResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/athlete-users") {
           response = await athleteUserAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-users") {
@@ -2064,6 +2067,75 @@ async function userAdminAccessResponse(
         error.code === "DENIED" ? 403 :
         error.code === "STALE" ? 409 : 400;
       return Response.json({ error: { code: "USER_ACCESS_" + error.code } }, { status });
+    }
+    throw error;
+  }
+}
+
+async function userAdminAccountsResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return methodNotAllowedFor("POST", "User account administration");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return Response.json({ error: { code: "INVALID_REQUEST" } }, { status: 400 });
+  }
+  const match = /^\/api\/admin\/users\/([^/]+)\/(password-reset|status)$/.exec(url.pathname);
+  if (!match) return Response.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+  const identityId = decodeURIComponent(match[1] || "");
+  const mode = match[2];
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) return current;
+  let access: Readonly<{ organizationId: string; actorPrincipalId: string }>;
+  try {
+    access = await runtime.trainerIdentityAccess.assertAdminAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json({ error: { code: error.code } }, { status: 403 });
+    }
+    if (isPasswordChangeRequiredError(error)) return identityHttp.identityErrorResponse(error);
+    throw error;
+  }
+  let body: Record<string, unknown>;
+  try {
+    const parsed: unknown = await request.json();
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed) ||
+        Object.getPrototypeOf(parsed) !== Object.prototype) throw new Error("INVALID");
+    body = parsed as Record<string, unknown>;
+    const keys = Object.keys(body).sort();
+    const expected = mode === "password-reset" ? ["temporaryPassword"] : ["action"];
+    if (JSON.stringify(keys) !== JSON.stringify(expected)) throw new Error("INVALID");
+  } catch {
+    return Response.json({ error: { code: "INVALID_REQUEST" } }, { status: 400 });
+  }
+  try {
+    if (mode === "password-reset") {
+      const result = await runtime.userAdminAccounts.resetTemporaryPassword(
+        access.organizationId, access.actorPrincipalId, identityId, body.temporaryPassword,
+      );
+      return Response.json({ identityId: result.identityId, username: result.username, passwordReset: true });
+    }
+    if (body.action !== "block" && body.action !== "unblock" &&
+        body.action !== "reactivate") {
+      return Response.json({ error: { code: "INVALID_REQUEST" } }, { status: 400 });
+    }
+    const result = await runtime.userAdminAccounts.changeStatus(
+      access.organizationId, access.actorPrincipalId, identityId, body.action,
+    );
+    return Response.json({ identityId: result.identityId, action: result.action });
+  } catch (error) {
+    if (error instanceof UlcUserAccountError) {
+      const status = error.code === "NOT_FOUND" ? 404 :
+        error.code === "DENIED" ? 403 :
+        error.code === "CONFLICT" ? 409 : 400;
+      return Response.json({ error: { code: "USER_ACCOUNT_" + error.code } }, { status });
     }
     throw error;
   }

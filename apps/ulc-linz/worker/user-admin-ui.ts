@@ -64,8 +64,22 @@ export const ULC_USER_ADMIN_HTML = `
       </label>
       <button type="submit" class="button button--primary" id="user-admin-create">Benutzer anlegen</button>
     </form>
+    <dialog id="user-admin-reset-dialog" class="user-admin-reset-dialog" aria-labelledby="user-admin-reset-title" aria-modal="true">
+      <form id="user-admin-reset-form" class="form-stack">
+        <h2 id="user-admin-reset-title">Temporäres Passwort setzen</h2>
+        <p id="user-admin-reset-target" class="settings-note"></p>
+        <p class="settings-note">Der Benutzer wird auf allen Geräten abgemeldet und muss beim nächsten Login das Passwort ändern.</p>
+        <label>Neues temporäres Passwort
+          <input id="user-admin-reset-password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
+        </label>
+        <div class="user-admin-invite-actions">
+          <button class="button button--primary" type="submit" id="user-admin-reset-confirm">Passwort zurücksetzen</button>
+          <button class="button button--secondary" type="button" id="user-admin-reset-cancel">Abbrechen</button>
+        </div>
+      </form>
+    </dialog>
     <div id="user-admin-invitation" hidden>
-      <p class="settings-note">Zugang angelegt. Du kannst die Einladung am Handy teilen oder kopieren. Sie enthält das temporäre Passwort – verwende einen sicheren Kanal. Das Passwort wird hier nicht dauerhaft gespeichert.</p>
+      <p class="settings-note">Zugang angelegt oder Passwort zurückgesetzt. Du kannst die Einladung am Handy teilen oder kopieren. Sie enthält das temporäre Passwort – verwende einen sicheren Kanal. Das Passwort wird hier nicht dauerhaft gespeichert.</p>
       <div class="user-admin-invite-actions">
         <button type="button" class="button button--primary" id="user-admin-share">Einladung teilen</button>
         <button type="button" class="button button--secondary" id="user-admin-copy">Einladung kopieren</button>
@@ -78,6 +92,10 @@ export const ULC_USER_ADMIN_HTML = `
 
 export const ULC_USER_ADMIN_CSS = `
 .user-admin-list { display: grid; gap: 7px; }
+.user-admin-reset-dialog { width: min(460px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); background: var(--card); overflow-y: auto; }
+.user-admin-reset-dialog::backdrop { background: rgb(15 23 42 / 55%); }
+.user-admin-reset-dialog .form-stack { margin-top: 0; }
+.user-admin-reset-dialog .user-admin-invite-actions { margin-top: 8px; }
 .user-admin-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(112px, .6fr); gap: 8px; margin: 8px 0 12px; }
 .user-admin-filters input, .user-admin-filters select { width: 100%; min-width: 0; font-size: 16px; }
 .user-admin-invite-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -120,6 +138,12 @@ const userAdminElements = Object.freeze({
   copy: document.querySelector("#user-admin-copy"),
   share: document.querySelector("#user-admin-share"),
   inviteClose: document.querySelector("#user-admin-invite-close"),
+  resetDialog: document.querySelector("#user-admin-reset-dialog"),
+  resetForm: document.querySelector("#user-admin-reset-form"),
+  resetTarget: document.querySelector("#user-admin-reset-target"),
+  resetPassword: document.querySelector("#user-admin-reset-password"),
+  resetConfirm: document.querySelector("#user-admin-reset-confirm"),
+  resetCancel: document.querySelector("#user-admin-reset-cancel"),
   accessEditor: document.querySelector("#user-admin-access-editor"),
   accessName: document.querySelector("#user-admin-access-name"),
   accessList: document.querySelector("#user-admin-access-list"),
@@ -135,6 +159,8 @@ let userAdminTargets = null;
 let userAdminGeneration = 0;
 let userAdminInviteText = "";
 let userAdminAccessSnapshot = null;
+let userAdminResetIdentityId = null;
+let userAdminResetUsername = "";
 
 userAdminElements.refresh?.addEventListener("click", () => void loadUserAdmin());
 userAdminElements.search?.addEventListener("input", renderUserAdminList);
@@ -146,6 +172,13 @@ userAdminElements.share?.addEventListener("click", () => void shareUserAdminInvi
 userAdminElements.inviteClose?.addEventListener("click", clearUserAdminInvitation);
 userAdminElements.accessClose?.addEventListener("click", closeUserAdminAccess);
 userAdminElements.accessForm?.addEventListener("submit", (event) => void saveUserAdminAccess(event));
+userAdminElements.resetForm?.addEventListener("submit", (event) => void saveUserAdminPasswordReset(event));
+userAdminElements.resetCancel?.addEventListener("click", closeUserAdminPasswordReset);
+userAdminElements.resetDialog?.addEventListener("close", () => {
+  userAdminResetIdentityId = null;
+  userAdminResetUsername = "";
+  if (userAdminElements.resetPassword) userAdminElements.resetPassword.value = "";
+});
 
 function clearUserAdminInvitation() {
   userAdminInviteText = "";
@@ -160,6 +193,7 @@ function resetUserAdminSessionState() {
   userAdminTargets = null;
   clearUserAdminInvitation();
   closeUserAdminAccess();
+  closeUserAdminPasswordReset();
   userAdminElements.form?.reset();
   if (userAdminElements.search) userAdminElements.search.value = "";
   if (userAdminElements.statusFilter) userAdminElements.statusFilter.value = "all";
@@ -269,6 +303,28 @@ function renderUserAdminList() {
       edit.addEventListener("click", () => void openUserAdminAccess(user.identityId));
       actions.append(edit);
     }
+    if (user.sourceRole === "trainer" || user.sourceRole === "athlete") {
+      if (user.active && !user.blocked) {
+        const reset = document.createElement("button");
+        reset.type = "button";
+        reset.className = "button button--secondary";
+        reset.textContent = "Passwort";
+        reset.setAttribute("aria-label", "Passwort zurücksetzen für " + user.username);
+        reset.addEventListener("click", () => openUserAdminPasswordReset(user));
+        actions.append(reset);
+      }
+      const action = user.blocked ? "unblock" : !user.active ? "reactivate" : "block";
+      if (action) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "button button--secondary";
+        button.textContent = action === "block" ? "Sperren"
+          : action === "unblock" ? "Entsperren" : "Reaktivieren";
+        button.setAttribute("aria-label", button.textContent + ": " + user.username);
+        button.addEventListener("click", () => void changeUserAdminStatus(user, action));
+        actions.append(button);
+      }
+    }
     row.append(main, actions);
     container.append(row);
   }
@@ -278,6 +334,108 @@ function renderUserAdminList() {
       ? "Noch keine Benutzer vorhanden."
       : "Keine Benutzer entsprechen der Suche.";
     container.append(empty);
+  }
+}
+
+function closeUserAdminPasswordReset() {
+  if (userAdminElements.resetDialog?.open) userAdminElements.resetDialog.close();
+  userAdminResetIdentityId = null;
+  userAdminResetUsername = "";
+  if (userAdminElements.resetPassword) userAdminElements.resetPassword.value = "";
+}
+
+function openUserAdminPasswordReset(user) {
+  if (!userAdminReady || userAdminBusy || userAdminElements.resetDialog?.open) return;
+  if (!user?.active || user?.blocked || !["trainer", "athlete"].includes(user.sourceRole)) return;
+  userAdminResetIdentityId = user.identityId;
+  userAdminResetUsername = user.username;
+  if (userAdminElements.resetTarget) userAdminElements.resetTarget.textContent =
+    String(user.displayName || user.username) + " (" + user.username + ")";
+  if (userAdminElements.resetPassword) userAdminElements.resetPassword.value = "";
+  userAdminElements.resetDialog?.showModal();
+  userAdminElements.resetPassword?.focus();
+}
+
+async function saveUserAdminPasswordReset(event) {
+  event.preventDefault();
+  if (!userAdminReady || userAdminBusy || !userAdminResetIdentityId ||
+    !userAdminElements.resetForm?.reportValidity()) return;
+  const generation = userAdminGeneration;
+  const identityId = userAdminResetIdentityId;
+  const username = userAdminResetUsername;
+  const password = userAdminElements.resetPassword?.value || "";
+  if (!window.confirm("Passwort für " + username +
+    " zurücksetzen und alle bisherigen Sitzungen beenden?")) return;
+  userAdminBusy = true;
+  updateUserAdminControls();
+  showMessage(userAdminElements.message, "");
+  clearUserAdminInvitation();
+  try {
+    await requestJson("/api/admin/users/" + encodeURIComponent(identityId) + "/password-reset", {
+      method: "POST",
+      body: JSON.stringify({ temporaryPassword: password }),
+    });
+    if (generation !== userAdminGeneration) return;
+    userAdminInviteText =
+      "ULC Linz neuer Testzugang\n" +
+      "App: " + window.location.origin + "\n" +
+      "Benutzername: " + username + "\n" +
+      "Temporäres Passwort: " + password + "\n" +
+      "Beim nächsten Login das Passwort ändern.";
+    closeUserAdminPasswordReset();
+    if (userAdminElements.invitation) userAdminElements.invitation.hidden = false;
+    showMessage(userAdminElements.success,
+      "Passwort zurückgesetzt. Alle bisherigen Sitzungen beendet. Zugang jetzt sicher teilen.");
+  } catch (error) {
+    if (generation === userAdminGeneration) {
+      showMessage(userAdminElements.message, error?.status === 403
+        ? "Dieses Konto darf nicht zurückgesetzt werden."
+        : error?.status === 409 ? "Der Kontostand hat sich verändert. Bitte Liste aktualisieren."
+          : "Passwort konnte nicht zurückgesetzt werden.");
+    }
+  } finally {
+    if (generation === userAdminGeneration) {
+      userAdminBusy = false;
+      updateUserAdminControls();
+    }
+  }
+}
+
+async function changeUserAdminStatus(user, action) {
+  if (!userAdminReady || userAdminBusy || !user?.identityId) return;
+  const verbs = { block: "sperren", unblock: "entsperren", reactivate: "reaktivieren" };
+  if (!verbs[action] || !window.confirm(user.username + " wirklich " + verbs[action] + "?")) return;
+  const generation = userAdminGeneration;
+  userAdminBusy = true;
+  updateUserAdminControls();
+  showMessage(userAdminElements.message, "");
+  try {
+    await requestJson("/api/admin/users/" + encodeURIComponent(user.identityId) + "/status", {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    });
+    if (generation !== userAdminGeneration) return;
+    const payload = await requestJson("/api/admin/users");
+    if (generation !== userAdminGeneration) return;
+    if (!Array.isArray(payload?.users)) throw new Error("INVALID_USERS");
+    userAdminUsers = payload.users;
+    renderUserAdminList();
+    showMessage(userAdminElements.success,
+      user.username + " wurde " +
+      (action === "block" ? "gesperrt" : action === "unblock" ? "entsperrt" : "reaktiviert") +
+      ". Alte Sitzungen wurden beendet.");
+  } catch (error) {
+    if (generation === userAdminGeneration) {
+      showMessage(userAdminElements.message, error?.status === 403
+        ? "Dieses Konto oder die verknüpfte Person ist nicht für die Aktion freigegeben."
+        : error?.status === 409 ? "Kontostand geändert – bitte Liste aktualisieren."
+          : "Kontostatus konnte nicht geändert werden.");
+    }
+  } finally {
+    if (generation === userAdminGeneration) {
+      userAdminBusy = false;
+      updateUserAdminControls();
+    }
   }
 }
 
@@ -447,6 +605,8 @@ function updateUserAdminControls() {
   if (userAdminElements.share) userAdminElements.share.disabled = userAdminBusy;
   if (userAdminElements.copy) userAdminElements.copy.disabled = userAdminBusy;
   if (userAdminElements.accessSave) userAdminElements.accessSave.disabled = userAdminBusy;
+  if (userAdminElements.resetConfirm) userAdminElements.resetConfirm.disabled = userAdminBusy;
+  if (userAdminElements.resetCancel) userAdminElements.resetCancel.disabled = userAdminBusy;
 }
 
 async function createUserAdminAccount(event) {

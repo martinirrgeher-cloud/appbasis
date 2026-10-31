@@ -40,6 +40,7 @@ export interface PostgresIdentityApplicationRuntime {
   readonly identity: IdentityHttpService;
   readonly lifecycleIdentity: IdentityPostgresLifecycleOwner;
   readonly provisioningIdentity: IdentityPostgresProvisioningOwner;
+  readonly hashTemporaryPassword: (password: string) => Promise<string>;
   readonly sql: IdentityPostgresRuntimeTransactionalSqlClient;
   close(): Promise<void>;
 }

@@ -1,4 +1,5 @@
 import { createPostgresDatabase } from "@appbasis/database";
+import { hashPassword } from "better-auth/crypto";
 
 import { createBetterAuthRuntime } from "./better-auth";
 import { createIdentityRuntime } from "./server";
@@ -80,6 +81,7 @@ export async function createPostgresIdentityApplicationRuntime(
       identity: identity.service,
       lifecycleIdentity: identity.service,
       provisioningIdentity,
+      hashTemporaryPassword: hashPassword,
       sql,
       async close() {
         await connection.client.end();

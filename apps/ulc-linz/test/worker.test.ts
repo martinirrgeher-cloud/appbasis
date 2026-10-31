@@ -527,6 +527,14 @@ function runtime(
         };
       },
     },
+    userAdminAccounts: {
+      async resetTemporaryPassword(_organizationId, _actorPrincipalId, userId) {
+        return { identityId: userId, username: "trainer.user" };
+      },
+      async changeStatus(_organizationId, _actorPrincipalId, userId, action) {
+        return { identityId: userId, username: "trainer.user", action };
+      },
+    },
     userAdminOverview: {
       async listUsers() {
         return [
