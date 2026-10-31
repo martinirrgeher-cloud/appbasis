@@ -68,7 +68,7 @@ describe("ULC mobile review fixes", () => {
 
   it("marks missing block names and shows other exercise prescription units", () => {
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
-      'trainingBlockElements.name.classList.toggle("training-block-field-missing", missingName)',
+      'setTrainingBlockInvalidField(trainingBlockElements.name, missingName)',
     );
     expect(ULC_TRAINING_BLOCKS_CSS).toContain(".training-block-field-missing {");
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
