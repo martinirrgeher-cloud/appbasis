@@ -47,7 +47,7 @@ test("audit uses a read-only transaction and cannot perform deletion", async () 
   assert.match(source, /SET TRANSACTION READ ONLY/);
   assert.match(source, /READ_ONLY_DRY_RUN/);
   assert.match(source, /allowedToPermanentlyDelete: false/);
-  assert.match(source, /Only dry-run is implemented/);
+  assert.match(source, /Only dry-run and read-only verify-clean are implemented/);
   assert.doesNotMatch(source, /tx\.unsafe\(\s*["`][^"`]*(DELETE FROM|TRUNCATE |UPDATE |INSERT INTO)/i);
   for(const x of ["athletePlans","athleteAttendance","athleteRegistrations","athleteDocumentation","athleteIdentities","groupSessions","exerciseBlockOccurrences","exercisePlanOccurrences","blockPlanReferences"]) {
     assert.match(source,new RegExp(x));
