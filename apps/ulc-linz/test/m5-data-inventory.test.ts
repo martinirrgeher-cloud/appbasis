@@ -222,7 +222,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
       notes: expect.arrayContaining([
         "training-block-template-revision-favorite-usage-lifecycle-pending",
         "training-block-notes-may-contain-user-entered-content",
-        "ulc-preview-schema-v2-live-v3-upgrade-pending",
+        "ulc-preview-schema-v4-migration-and-verification-pending",
         "production-lifecycle-activation-not-authorized",
       ]),
     });
