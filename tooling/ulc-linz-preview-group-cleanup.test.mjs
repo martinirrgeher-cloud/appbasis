@@ -71,6 +71,22 @@ test("deactivates only obsolete active Preview groups and preserves the canonica
                   assert.match(sql, /revision\.revision = block\.current_revision/);
                   return [{ id: "old-block" }];
                 }
+                if (sql.includes("SELECT block.id") && sql.includes("FOR UPDATE OF block")) {
+                  assert.deepEqual(parameters, ["ulc-linz-preview"]);
+                  assert.match(sql, /E7B9 Save-back/);
+                  assert.match(sql, /revision.note = 'E7B9 preview source template'/);
+                  assert.match(sql, /NOT EXISTS \(\s*SELECT 1 FROM appbasis_training_block_usage/);
+                  assert.match(sql, /NOT EXISTS \(\s*SELECT 1 FROM appbasis_training_plan_revision_item/);
+                  return [{ id: "unused-saveback" }];
+                }
+                if (sql.includes("DELETE FROM appbasis_training_block\n")) {
+                  assert.deepEqual(parameters, ["ulc-linz-preview", ["unused-saveback"]]);
+                  return [{ id: "unused-saveback" }];
+                }
+                if (sql.includes("DELETE FROM appbasis_training_block_")) {
+                  assert.deepEqual(parameters, ["ulc-linz-preview", ["unused-saveback"]]);
+                  return [];
+                }
                 return [];
               },
             });
@@ -88,12 +104,16 @@ test("deactivates only obsolete active Preview groups and preserves the canonica
   assert.equal(result.archivedAthleteCount, 1);
   assert.equal(result.archivedExerciseCount, 1);
   assert.equal(result.archivedBlockCount, 1);
+  assert.equal(result.deletedSaveBackBlockCount, 1);
   assert.equal(result.preservedAthlete, "preview.athlete");
   assert.equal(result.preservedGroup, "Preview Selbstanmeldung");
   assert.equal(ended, true);
   assert.ok(
     executed.some(({ sql }) => sql.includes("pg_advisory_xact_lock")),
   );
+  const deletes = executed.filter(({ sql }) => sql.includes("DELETE FROM appbasis_training_block"));
+  assert.equal(deletes.length, 5);
+  assert.match(deletes.at(-1).sql, /DELETE FROM appbasis_training_block\n/);
 });
 
 test("requires explicit preview-only approval", () => {
