@@ -223,7 +223,6 @@ test("E7B9 deploy-accept runs deploy, exact-SHA guards, and authenticated accept
     "Verify E7B9 UI and anonymous API boundary",
     "Run authenticated E7B9 training-planning acceptance",
     "Run authenticated attendance dual-mode acceptance",
-    "Remove obsolete Preview training groups",
   ]) {
     assert.ok(step(name).includes(combined), name + " must run in combined mode");
   }
@@ -258,7 +257,6 @@ test("E7B9 deploy-accept runs deploy, exact-SHA guards, and authenticated accept
     "Verify E7B9 UI and anonymous API boundary",
     "Run authenticated E7B9 training-planning acceptance",
     "Run authenticated attendance dual-mode acceptance",
-    "Remove obsolete Preview training groups",
   ];
   let last = -1;
   for (const name of ordered) {
@@ -270,11 +268,11 @@ test("E7B9 deploy-accept runs deploy, exact-SHA guards, and authenticated accept
     step("Run authenticated E7B9 training-planning acceptance"),
     /id: training_plans_acceptance/,
   );
-  const cleanupStep = step("Remove obsolete Preview training groups");
-  assert.match(cleanupStep, /!cancelled\(\)/);
-  assert.match(cleanupStep, /steps\.training_plans_acceptance\.outcome == 'failure'/);
-  assert.match(cleanupStep, /steps\.training_plans_acceptance\.outcome == 'success'/);
-  assert.match(cleanupStep, /ULC_LINZ_PREVIEW_GROUP_CLEANUP_APPLY: "1"/);
+  assert.match(
+    step("Run authenticated E7B9 training-planning acceptance"),
+    /ulc-linz-training-plans-preview-readonly-acceptance\.mjs/,
+  );
+  assert.doesNotMatch(workflow, /ulc-linz-preview-group-cleanup\.mjs/);
   assert.match(workflow, /concurrency:\n  group: generated-preview-ulc-linz/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /\.gitSha == \$sha/);
@@ -330,24 +328,14 @@ test("E7B9 remote acceptance is separately gated and pins the complete training-
   );
   assert.match(
     workflow,
-    /ulc-linz-training-plans-preview-acceptance\.mjs/,
+    /ulc-linz-training-plans-preview-readonly-acceptance\.mjs/,
   );
   assert.match(
     workflow,
     /ulc-linz-attendance-preview-acceptance\.mjs/,
   );
-  assert.match(
-    workflow,
-    /Remove obsolete Preview training groups/,
-  );
-  assert.match(
-    workflow,
-    /ULC_LINZ_PREVIEW_GROUP_CLEANUP_APPLY: "1"/,
-  );
-  assert.match(
-    workflow,
-    /ulc-linz-preview-group-cleanup\.mjs/,
-  );
+  assert.doesNotMatch(workflow, /Remove obsolete Preview training groups/);
+  assert.doesNotMatch(workflow, /ULC_LINZ_PREVIEW_GROUP_CLEANUP_APPLY/);
   for (const marker of [
     'id="registration-quick-action"',
     'id="registration-list"',
