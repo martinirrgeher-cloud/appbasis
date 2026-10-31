@@ -188,6 +188,21 @@ describe("ULC E6C exercise catalog UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("actorPrincipalId");
   });
 
+  it("restores archived exercises directly from the list and editor with permission checks", () => {
+    expect(ULC_EXERCISE_CATALOG_HTML).toContain('id="exercise-catalog-reactivate"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('restore.dataset.exerciseCatalogRestore = item.id;');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('if (!item.isActive && exerciseCatalogCanEdit)');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('void reactivateExerciseCatalogItem(restore.dataset.exerciseCatalogRestore || "")');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('exerciseCatalogSelectedSnapshot = !review && !cloneMode && item.id ? item : null;');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('const selectedDetail = exerciseCatalogSelectedId === id');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('exerciseCatalogEditorReviewMode ||');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('!exerciseCatalogCanEdit ||');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"/api/modules/exercise-catalog/" + encodeURIComponent(id) + "/reactivate"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('if (generation !== exerciseCatalogSessionGeneration) return;');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('Übung wurde wieder aktiviert.');
+    expect(ULC_LINZ_APP_CSS).toContain('.exercise-catalog-restore {');
+  });
+
   it("acknowledges committed mutations without a second refresh request", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "reconcileExerciseCatalogItem(payload.item);",
