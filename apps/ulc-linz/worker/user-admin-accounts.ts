@@ -136,7 +136,7 @@ export class UlcLinzUserAccountService {
           [userId],
         );
       } else if (action === "unblock") {
-        if (!target.active || !target.banned) throw new UlcUserAccountError("CONFLICT");
+        if (!target.banned) throw new UlcUserAccountError("CONFLICT");
         await tx.unsafe(
           `UPDATE "user" SET banned=false, ban_reason=NULL, ban_expires=NULL,
              updated_at=now() WHERE id=$1`,
