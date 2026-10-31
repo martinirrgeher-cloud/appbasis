@@ -55,7 +55,7 @@ export const ULC_USER_ADMIN_CSS = `
 .user-admin-row { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; min-width: 0; }
 .user-admin-row:last-child { border-bottom: 0; }
 .user-admin-row__identity { display: grid; min-width: 0; gap: 2px; overflow-wrap: anywhere; }
-.user-admin-row__meta { font-size: .84rem; color: var(--muted); }
+.user-admin-row__meta { font-size: .84rem; color: var(--secondary); }
 .user-admin-row__status { flex: 0 0 auto; font-size: .8rem; }
 #user-admin-form { display: grid; gap: 10px; }
 #user-admin-form input, #user-admin-form select { width: 100%; min-width: 0; font-size: 16px; }
@@ -283,10 +283,17 @@ async function createUserAdminAccount(event) {
     renderUserAdminTargets();
     showMessage(userAdminElements.success, "Benutzer angelegt. Einladungstext jetzt kopieren.");
     userAdminTargets = null;
-    const payload = await requestJson("/api/admin/users");
-    if (generation === userAdminGeneration && Array.isArray(payload?.users)) {
-      userAdminUsers = payload.users;
-      renderUserAdminList();
+    try {
+      const payload = await requestJson("/api/admin/users");
+      if (generation === userAdminGeneration && Array.isArray(payload?.users)) {
+        userAdminUsers = payload.users;
+        renderUserAdminList();
+      }
+    } catch {
+      if (generation === userAdminGeneration) {
+        showMessage(userAdminElements.success,
+          "Benutzer angelegt. Die Liste konnte nicht aktualisiert werden; Einladungstext kann trotzdem kopiert werden.");
+      }
     }
   } catch (error) {
     if (generation !== userAdminGeneration) return;
