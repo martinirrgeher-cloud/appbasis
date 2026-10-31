@@ -13,7 +13,7 @@ const rows = [{
 
 describe("ULC admin user directory", () => {
   it("lists only tenant-scoped accounts without credentials", async () => {
-    const unsafe = vi.fn(async () => rows);
+    const unsafe = vi.fn(async (_query: string, _parameters?: (string | number | boolean | null)[]) => rows);
     const directory = new PostgresUlcLinzUserAdminOverview({ unsafe });
     const result = await directory.listUsers("ulc-linz-preview");
     expect(unsafe).toHaveBeenCalledOnce();
@@ -35,7 +35,7 @@ describe("ULC admin user directory", () => {
   });
 
   it("rejects invalid organization scoping", async () => {
-    const unsafe = vi.fn(async () => rows);
+    const unsafe = vi.fn(async (_query: string, _parameters?: (string | number | boolean | null)[]) => rows);
     const directory = new PostgresUlcLinzUserAdminOverview({ unsafe });
     await expect(directory.listUsers("")).rejects.toThrow();
     await expect(directory.listUsers("other ")).rejects.toThrow();
