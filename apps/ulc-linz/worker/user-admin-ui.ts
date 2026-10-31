@@ -878,9 +878,9 @@ async function shareUserAdminInvitation() {
     showMessage(userAdminElements.success, result === "shared"
       ? "Einladung geteilt. Bitte sicheren Empfänger prüfen."
       : "Einladung kopiert. Bitte über einen sicheren Kanal weitergeben.");
-    clearUserAdminInvitation();
+    closeUserAdminInvitation();
   } else if (result === "unavailable") {
-    showMessage(userAdminElements.message, "Teilen oder Kopieren ist hier nicht verfügbar.");
+    showMessage(userAdminElements.inviteMessage, "Teilen oder Kopieren ist hier nicht verfügbar.");
   }
 }
 
@@ -908,9 +908,9 @@ async function copyUserAdminInvitation() {
   try {
     await navigator.clipboard.writeText(userAdminInviteText);
     showMessage(userAdminElements.success, "Einladungstext kopiert. Bitte sicher übermitteln.");
-    clearUserAdminInvitation();
+    closeUserAdminInvitation();
   } catch {
-    showMessage(userAdminElements.message, "Kopieren nicht möglich. Bitte Browser-Berechtigung prüfen.");
+    showMessage(userAdminElements.inviteMessage, "Kopieren nicht möglich. Bitte Browser-Berechtigung prüfen.");
   }
 }
 `;
