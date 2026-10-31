@@ -313,8 +313,7 @@ function renderUserAdminList() {
         reset.addEventListener("click", () => openUserAdminPasswordReset(user));
         actions.append(reset);
       }
-      const action = !user.active ? (!user.blocked ? "reactivate" : null)
-        : user.blocked ? "unblock" : "block";
+      const action = user.blocked ? "unblock" : !user.active ? "reactivate" : "block";
       if (action) {
         const button = document.createElement("button");
         button.type = "button";
