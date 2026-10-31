@@ -209,7 +209,7 @@ function validModuleInput(value: unknown): value is {
   const input = value as Record<string, unknown>;
   if (Object.keys(input).sort().join(",") !== "expectedGrants,expectedRevokes,modules") return false;
   const expected = new Set<string>(ULC_TRAINER_ACCESS_MODULES.map((m) => m.key));
-  if (!Array.isArray(input.modules) || input.modules.length !== expected.length) return false;
+  if (!Array.isArray(input.modules) || input.modules.length !== expected.size) return false;
   const seen = new Set<string>();
   for (const module of input.modules) {
     if (module === null || typeof module !== "object" || Array.isArray(module)) return false;
