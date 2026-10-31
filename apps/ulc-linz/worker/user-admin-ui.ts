@@ -349,6 +349,7 @@ async function loadUserAdmin() {
     if (!Array.isArray(payload?.users)) throw new Error("INVALID_USER_ADMIN_RESPONSE");
     userAdminUsers = payload.users;
     renderUserAdminList();
+    if (userAdminTargets !== null) renderUserAdminTargets();
     showMessage(userAdminElements.message, "");
   } catch {
     if (generation === userAdminGeneration) {
@@ -490,6 +491,7 @@ function openUserAdminPasswordReset(user) {
   if (userAdminElements.resetTarget) userAdminElements.resetTarget.textContent =
     String(user.displayName || user.username) + " (" + user.username + ")";
   if (userAdminElements.resetPassword) userAdminElements.resetPassword.value = "";
+  showMessage(userAdminElements.resetError, "");
   userAdminElements.resetDialog?.showModal();
   userAdminElements.resetPassword?.focus();
 }
@@ -521,12 +523,12 @@ async function saveUserAdminPasswordReset(event) {
       "Temporäres Passwort: " + password + "\n" +
       "Beim nächsten Login das Passwort ändern.";
     closeUserAdminPasswordReset();
-    if (userAdminElements.invitation) userAdminElements.invitation.hidden = false;
+    openUserAdminInvitation();
     showMessage(userAdminElements.success,
       "Passwort zurückgesetzt. Alle bisherigen Sitzungen beendet. Zugang jetzt sicher teilen.");
   } catch (error) {
     if (generation === userAdminGeneration) {
-      showMessage(userAdminElements.message, error?.status === 403
+      showMessage(userAdminElements.resetError, error?.status === 403
         ? "Dieses Konto darf nicht zurückgesetzt werden."
         : error?.status === 409 ? "Der Kontostand hat sich verändert. Bitte Liste aktualisieren."
           : "Passwort konnte nicht zurückgesetzt werden.");
@@ -577,18 +579,33 @@ async function changeUserAdminStatus(user, action) {
   }
 }
 
-function closeUserAdminAccess() {
+function userAdminAccessHasChanges() {
+  if (!userAdminAccessSnapshot) return false;
+  const choices = new Map(
+    [...(userAdminElements.accessList?.querySelectorAll("[data-user-access-module]") || [])]
+      .map(select => [select.dataset.userAccessModule, select.value]),
+  );
+  return userAdminAccessSnapshot.modules.some(module =>
+    choices.get(module.key) !== module.level);
+}
+
+function closeUserAdminAccess(force = false) {
+  if (!force && userAdminBusy) return;
+  if (!force && userAdminAccessHasChanges() &&
+    !window.confirm("Ungespeicherte Modulrechte verwerfen?")) return;
+  if (userAdminElements.accessEditor?.open) userAdminElements.accessEditor.close();
   userAdminAccessSnapshot = null;
-  if (userAdminElements.accessEditor) userAdminElements.accessEditor.hidden = true;
   userAdminElements.accessList?.replaceChildren();
+  showMessage(userAdminElements.accessMessage, "");
 }
 
 async function openUserAdminAccess(identityId) {
-  if (!userAdminReady || userAdminBusy || typeof identityId !== "string") return;
+  if (!userAdminReady || userAdminBusy || typeof identityId !== "string" ||
+    userAdminElements.accessEditor?.open) return;
   const generation = userAdminGeneration;
   userAdminBusy = true;
   updateUserAdminControls();
-  closeUserAdminAccess();
+  closeUserAdminAccess(true);
   showMessage(userAdminElements.message, "");
   try {
     const payload = await requestJson("/api/admin/users/" +
@@ -597,8 +614,8 @@ async function openUserAdminAccess(identityId) {
     if (!Array.isArray(payload?.permissions?.modules)) throw new Error("INVALID_ACCESS");
     userAdminAccessSnapshot = payload.permissions;
     renderUserAdminAccess();
-    if (userAdminElements.accessEditor) userAdminElements.accessEditor.hidden = false;
-    userAdminElements.accessEditor?.scrollIntoView({ block: "nearest" });
+    showMessage(userAdminElements.accessMessage, "");
+    userAdminElements.accessEditor?.showModal();
   } catch (error) {
     if (generation === userAdminGeneration) {
       showMessage(userAdminElements.message, error?.status === 403
@@ -670,12 +687,12 @@ async function saveUserAdminAccess(event) {
     if (generation !== userAdminGeneration) return;
     if (!Array.isArray(payload?.permissions?.modules)) throw new Error("INVALID_ACCESS");
     userAdminAccessSnapshot = payload.permissions;
-    renderUserAdminAccess();
+    closeUserAdminAccess(true);
     showMessage(userAdminElements.success,
       "Modulrechte gespeichert. Der Benutzer sollte sich für die Übernahme neu anmelden.");
   } catch (error) {
     if (generation === userAdminGeneration) {
-      showMessage(userAdminElements.message,
+      showMessage(userAdminElements.accessMessage,
         error?.status === 409
           ? "Die Rechte wurden zwischenzeitlich verändert. Schließen und erneut öffnen."
           : error?.status === 403
@@ -708,7 +725,7 @@ async function prepareUserAdminView() {
     renderUserAdminTargets();
   } catch {
     if (generation === userAdminGeneration) {
-      showMessage(userAdminElements.message, "Trainer und Athleten konnten nicht geladen werden.");
+      showMessage(userAdminElements.createError, "Trainer und Athleten konnten nicht geladen werden.");
     }
   }
 }
@@ -740,12 +757,22 @@ function renderUserAdminTargets() {
     option.disabled = Boolean(existing);
     select.append(option);
   }
-  if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+  if ([...select.options].some((option) => option.value === previous && !option.disabled)) {
+    select.value = previous;
+  } else {
+    select.value = "";
+  }
 }
 
 function updateUserAdminControls() {
   if (userAdminElements.refresh) userAdminElements.refresh.disabled = userAdminBusy;
   if (userAdminElements.create) userAdminElements.create.disabled = userAdminBusy;
+  if (userAdminElements.newButton) userAdminElements.newButton.disabled = userAdminBusy;
+  if (userAdminElements.createCancel) userAdminElements.createCancel.disabled = userAdminBusy;
+  if (userAdminElements.createClose) userAdminElements.createClose.disabled = userAdminBusy;
+  if (userAdminElements.accessCancel) userAdminElements.accessCancel.disabled = userAdminBusy;
+  if (userAdminElements.accessClose) userAdminElements.accessClose.disabled = userAdminBusy;
+  if (userAdminElements.resetClose) userAdminElements.resetClose.disabled = userAdminBusy;
   if (userAdminElements.share) userAdminElements.share.disabled = userAdminBusy;
   if (userAdminElements.copy) userAdminElements.copy.disabled = userAdminBusy;
   if (userAdminElements.accessSave) userAdminElements.accessSave.disabled = userAdminBusy;
@@ -788,7 +815,8 @@ async function createUserAdminAccount(event) {
       "Benutzername: " + username + "\n" +
       "Temporäres Passwort: " + temporaryPassword + "\n" +
       "Beim ersten Login bitte das Passwort ändern.";
-    if (userAdminElements.invitation) userAdminElements.invitation.hidden = false;
+    closeUserAdminCreate(true);
+    openUserAdminInvitation();
     userAdminElements.form?.reset();
     if (userAdminElements.password) userAdminElements.password.value = "";
     renderUserAdminTargets();
@@ -808,7 +836,7 @@ async function createUserAdminAccount(event) {
     }
   } catch (error) {
     if (generation !== userAdminGeneration) return;
-    showMessage(userAdminElements.message,
+    showMessage(userAdminElements.createError,
       error?.status === 409
         ? "Der Benutzername oder die Zuordnung ist bereits vergeben."
         : error?.status === 403
