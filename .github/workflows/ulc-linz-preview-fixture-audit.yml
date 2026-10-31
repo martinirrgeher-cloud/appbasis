@@ -41,6 +41,10 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Verify cleanup preflight safety rules
+        run: |
+          node --check ./tooling/ulc-linz-preview-fixture-audit.mjs
+          node --test ./tooling/ulc-linz-preview-fixture-audit.test.mjs
       - name: Validate and mask preview-only database credential
         env:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}

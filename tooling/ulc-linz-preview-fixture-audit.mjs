@@ -84,7 +84,7 @@ export async function auditUlcPreviewFixtures(
           id: x.id, name: x.first_name + " " + x.last_name,
         }))),
         exercises: selectCandidates("exercise", exercises.map(x => ({ id: x.id, name: x.name }))),
-        blocks: selectCandidates("block", blockVersions.map(x => ({ id: x.id, name: x.name }))),
+        blocks: selectUlcPreviewBlockCandidates(blockVersions.map(x => ({ id: x.id, name: x.name }))),
       };
       const ids = (kind) => entities[kind].filter(x => x.classification === "e7b9").map(x => x.id);
       const groupIds = ids("groups");
@@ -119,6 +119,89 @@ export async function auditUlcPreviewFixtures(
         blockUsage: await count("appbasis_training_block_usage", "block_id = ANY($2::text[])", [blockIds]),
         blockFavorites: await count("appbasis_training_block_favorite", "block_id = ANY($2::text[])", [blockIds]),
       };
+      // These links must be reviewed before *any* future cleanup. In particular,
+      // a fixture athlete may belong to a regular training group: deleting the
+      // athlete must not delete or silently modify that group's real members.
+      const externalReferences = {
+        candidateGroupsOtherAthletes: await count(
+          "appbasis_athlete_group_membership",
+          "group_id = ANY($2::text[]) AND NOT (athlete_id = ANY($3::text[]))",
+          [groupIds, athleteIds],
+        ),
+        candidateAthletesOtherGroups: await count(
+          "appbasis_athlete_group_membership",
+          "athlete_id = ANY($2::text[]) AND NOT (group_id = ANY($3::text[]))",
+          [athleteIds, groupIds],
+        ),
+        candidateGroupsOtherAttendance: await count(
+          "ulc_linz_training_attendance",
+          "session_id IN (SELECT id FROM ulc_linz_training_session WHERE organization_id=$1 AND group_id = ANY($2::text[])) AND NOT (athlete_id = ANY($3::text[]))",
+          [groupIds, athleteIds],
+        ),
+        candidateGroupsOtherRegistrations: await count(
+          "ulc_linz_training_registration",
+          "session_id IN (SELECT id FROM ulc_linz_training_session WHERE organization_id=$1 AND group_id = ANY($2::text[])) AND NOT (athlete_id = ANY($3::text[]))",
+          [groupIds, athleteIds],
+        ),
+        candidateAthletesOtherAttendance: await count(
+          "ulc_linz_training_attendance",
+          "athlete_id = ANY($2::text[]) AND NOT EXISTS (SELECT 1 FROM ulc_linz_training_session s WHERE s.id=ulc_linz_training_attendance.session_id AND s.organization_id=$1 AND s.group_id = ANY($3::text[]))",
+          [athleteIds, groupIds],
+        ),
+        candidateAthletesOtherRegistrations: await count(
+          "ulc_linz_training_registration",
+          "athlete_id = ANY($2::text[]) AND NOT EXISTS (SELECT 1 FROM ulc_linz_training_session s WHERE s.id=ulc_linz_training_registration.session_id AND s.organization_id=$1 AND s.group_id = ANY($3::text[]))",
+          [athleteIds, groupIds],
+        ),
+        candidateAthleteContacts: await count(
+          "appbasis_athlete_contact", "athlete_id = ANY($2::text[])", [athleteIds],
+        ),
+        candidateAthleteIdentities: dependencies.athleteIdentities,
+        candidateGroupsOtherExercises: await count(
+          "appbasis_exercise_catalog_audience",
+          "audience_id = ANY($2::text[]) AND NOT (exercise_id = ANY($3::text[]))",
+          [groupIds, exerciseIds],
+        ),
+        candidateGroupsOtherBlocks: await count(
+          "appbasis_training_block_revision",
+          "block_id <> ALL($3::text[]) AND (audience_id = ANY($2::text[]) OR audience_ids && $2::text[])",
+          [groupIds, blockIds],
+        ),
+        candidateExercisesOtherBlocks: await count(
+          "appbasis_training_block_revision_item",
+          "exercise_id = ANY($2::text[]) AND NOT (block_id = ANY($3::text[]))",
+          [exerciseIds, blockIds],
+        ),
+        candidateExercisesOtherPlans: await count(
+          "appbasis_training_plan_revision_item",
+          "source_exercise_id = ANY($2::text[]) AND NOT EXISTS (SELECT 1 FROM appbasis_training_plan p WHERE p.organization_id=$1 AND p.id=appbasis_training_plan_revision_item.plan_id AND p.subject_id = ANY($3::text[]))",
+          [exerciseIds, athleteIds],
+        ),
+        candidateBlocksOtherPlans: await count(
+          "appbasis_training_plan_revision_item",
+          "source_block_id = ANY($2::text[]) AND NOT EXISTS (SELECT 1 FROM appbasis_training_plan p WHERE p.organization_id=$1 AND p.id=appbasis_training_plan_revision_item.plan_id AND p.subject_id = ANY($3::text[]))",
+          [blockIds, athleteIds],
+        ),
+        candidateExercisesPrivateMedia: dependencies.exercisePrivateMedia,
+        candidateBlocksFavorites: dependencies.blockFavorites,
+      };
+      const activeCandidates = {
+        groups: await count("appbasis_training_group", "id = ANY($2::text[]) AND is_active=true", [groupIds]),
+        athletes: await count("appbasis_athlete", "id = ANY($2::text[]) AND is_active=true", [athleteIds]),
+        exercises: await count("appbasis_exercise_catalog_item", "id = ANY($2::text[]) AND is_active=true", [exerciseIds]),
+        blocks: await count("appbasis_training_block", "id = ANY($2::text[]) AND is_active=true", [blockIds]),
+      };
+      const existingProtectedGroupLinks = await tx.unsafe(
+        "SELECT a.id AS athlete_id, a.first_name || ' ' || a.last_name AS athlete_name, g.name AS group_name " +
+        "FROM appbasis_athlete_group_membership m " +
+        "JOIN appbasis_athlete a ON a.organization_id=m.organization_id AND a.id=m.athlete_id " +
+        "JOIN appbasis_training_group g ON g.organization_id=m.organization_id AND g.id=m.group_id " +
+        "WHERE m.organization_id=$1 AND a.id = ANY($2::text[]) AND NOT (g.id = ANY($3::text[])) " +
+        "ORDER BY a.id, g.id LIMIT 30",
+        [ORGANIZATION, athleteIds, groupIds],
+      );
+      const externalLinkTotal = Object.values(externalReferences).reduce((sum, amount) => sum + amount, 0);
+      const activeTotal = Object.values(activeCandidates).reduce((sum, amount) => sum + amount, 0);
       const all = Object.entries(entities).map(([kind, items]) => ({
         kind,
         e7b9: items.filter(x => x.classification === "e7b9").length,
@@ -128,7 +211,7 @@ export async function auditUlcPreviewFixtures(
           .map(x => ({ id: x.id, name: x.name })),
       }));
       const digest = createHash("sha256")
-        .update(JSON.stringify({ entities, dependencies })).digest("hex");
+        .update(JSON.stringify({ entities, dependencies, externalReferences, activeCandidates, existingProtectedGroupLinks })).digest("hex");
       return Object.freeze({
         status: "review-required",
         mode: "READ_ONLY_DRY_RUN",
@@ -136,14 +219,41 @@ export async function auditUlcPreviewFixtures(
         organization: ORGANIZATION,
         inventory: all,
         dependencies,
+        externalReferences,
+        activeCandidates,
+        existingProtectedGroupLinks,
+        cleanupReviewState: externalLinkTotal > 0 || activeTotal > 0
+          ? "LINKED_DATA_REVIEW_REQUIRED" : "INACTIVE_CANDIDATES_REVIEW_REQUIRED",
         digest,
         allowedToPermanentlyDelete: false,
-        note: "Only exact E7B9 names are candidates; other Preview and all linked history require explicit review. No records modified.",
+        note: "Only exact E7B9 names with fully matching block revision histories are candidates. Cross-links and archived history require explicit review and a separate authorized cleanup. No records modified.",
       });
     });
   } finally {
     await database.close();
   }
+}
+
+export function selectUlcPreviewBlockCandidates(entries) {
+  // The block id is shared across all its revisions. Never classify the whole
+  // block as disposable just because *one* revision has an acceptance-test name.
+  const grouped = new Map();
+  for (const item of entries) {
+    const revisions = grouped.get(item.id) ?? [];
+    revisions.push(item);
+    grouped.set(item.id, revisions);
+  }
+  const result = [];
+  for (const [id, revisions] of grouped) {
+    const classes = revisions.map(item => classifyUlcPreviewFixture("block", item.name));
+    const hasTestRevision = classes.includes("e7b9");
+    const hasReviewRevision = classes.includes("review");
+    if (!hasTestRevision && !hasReviewRevision) continue;
+    const classification = hasTestRevision && classes.every(c => c === "e7b9")
+      ? "e7b9" : "review";
+    result.push({ id, name: revisions[0].name, classification });
+  }
+  return result.sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function selectCandidates(kind, entries) {
