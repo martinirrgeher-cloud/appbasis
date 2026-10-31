@@ -612,12 +612,14 @@ ${ULC_TRAINING_DOCUMENTATION_HTML}
 
           <section class="app-section" data-app-section="countdown" id="countdown" hidden>
             <section class="hero countdown-hero">
-              <div>
+              <div class="countdown-hero__title">
                 <p class="eyebrow">Nützliches</p>
                 <h1>Intervall-Countdown</h1>
-                <p class="summary">Für Belastungs- und Pausenintervalle im Training.</p>
               </div>
-              <button class="button button--secondary" type="button" data-open-view="useful">← Nützliches</button>
+              <div class="countdown-hero__actions">
+                <button class="button button--secondary countdown-icon-action" type="button" data-open-view="useful" aria-label="Zurück zu Nützliches" title="Zurück zu Nützliches">←</button>
+                <button class="button button--secondary countdown-icon-action" id="countdown-settings-open" type="button" aria-label="Countdown-Einstellungen öffnen" aria-haspopup="dialog" aria-controls="countdown-settings-dialog" title="Einstellungen">⚙</button>
+              </div>
             </section>
 
             <p class="message message--error" id="app-message" role="alert" hidden></p>
@@ -640,8 +642,11 @@ ${ULC_TRAINING_DOCUMENTATION_HTML}
               </div>
             </section>
 
-            <details class="card countdown-settings">
-              <summary>⚙ Einstellungen</summary>
+            <dialog class="countdown-settings-dialog" id="countdown-settings-dialog" aria-labelledby="settings-title" aria-modal="true">
+              <header class="countdown-settings-dialog__header">
+                <strong>Einstellungen</strong>
+                <button class="button button--secondary countdown-icon-action" id="countdown-settings-close" type="button" aria-label="Einstellungen schließen" title="Schließen">✕</button>
+              </header>
               <section class="settings-panel" id="settings" aria-labelledby="settings-title">
                 <div class="section-heading">
                   <div>
@@ -673,8 +678,9 @@ ${ULC_TRAINING_DOCUMENTATION_HTML}
                   </label>
                 </form>
                 <p class="settings-note">0 bei den Ansageintervallen bedeutet: nur die letzten fünf Sekunden werden einzeln angesagt.</p>
+                <button class="button button--primary countdown-settings-dialog__done" id="countdown-settings-done" type="button">Fertig</button>
               </section>
-            </details>
+            </dialog>
           </section>
         </main>
       </div>
@@ -1468,24 +1474,53 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 .utility-card { display: grid; gap: 12px; padding: 16px; }
 .countdown-hero {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
-.countdown-settings {
-  margin-top: 16px;
-  overflow: hidden;
+.countdown-hero__title { min-width: 0; flex: 1 1 auto; }
+.countdown-hero h1 { font-size: clamp(1.2rem, 5vw, 1.8rem); overflow-wrap: anywhere; }
+.countdown-hero__actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.countdown-icon-action {
+  display: inline-flex;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
   padding: 0;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font-size: 1.25rem;
 }
-.countdown-settings > summary {
-  min-height: var(--touch);
-  padding: 12px 14px;
-  cursor: pointer;
-  font-weight: 800;
-  list-style: none;
+.countdown-settings-dialog {
+  box-sizing: border-box;
+  width: min(480px, calc(100vw - 24px));
+  max-width: 480px;
+  max-height: calc(100dvh - 24px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  overflow-y: auto;
+  box-shadow: 0 20px 70px rgba(15,23,42,.24);
 }
-.countdown-settings > summary::-webkit-details-marker { display: none; }
-.countdown-settings[open] > summary { border-bottom: 1px solid var(--border); }
+.countdown-settings-dialog::backdrop { background: rgba(15,23,42,.55); }
+.countdown-settings-dialog__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+.countdown-settings-dialog__done { width: 100%; min-height: 44px; margin-top: 16px; }
 .settings-panel { margin-top: 0; padding: 16px; scroll-margin-top: 80px; }
 .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .section-heading > span { color: #64748b; font-size: .8rem; white-space: nowrap; }
@@ -1506,7 +1541,7 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 .settings-panel.is-locked { opacity: .68; }
 @media (max-width: 480px) {
   .settings-grid { grid-template-columns: 1fr; }
-  .countdown-hero { align-items: stretch; flex-direction: column; }
+  .countdown-hero { align-items: center; flex-direction: row; }
   .masterdata-form .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .masterdata-overlay-form .settings-grid { grid-template-columns: 1fr; }
   .masterdata-athlete-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2047,6 +2082,10 @@ const elements = {
   stopButton: document.querySelector("#stop-button"),
   resetButton: document.querySelector("#reset-button"),
   settingsPanel: document.querySelector("#settings"),
+  countdownSettingsDialog: document.querySelector("#countdown-settings-dialog"),
+  countdownSettingsOpen: document.querySelector("#countdown-settings-open"),
+  countdownSettingsClose: document.querySelector("#countdown-settings-close"),
+  countdownSettingsDone: document.querySelector("#countdown-settings-done"),
   settingsForm: document.querySelector("#settings-form"),
   rounds: document.querySelector("#rounds"),
   workSeconds: document.querySelector("#work-seconds"),
@@ -2150,6 +2189,17 @@ elements.startButton?.addEventListener("click", () => void startCountdown());
 elements.pauseButton?.addEventListener("click", () => void togglePause());
 elements.stopButton?.addEventListener("click", () => void stopCountdown());
 elements.resetButton?.addEventListener("click", () => void resetCountdown());
+elements.countdownSettingsOpen?.addEventListener("click", openCountdownSettings);
+elements.countdownSettingsClose?.addEventListener("click", closeCountdownSettings);
+elements.countdownSettingsDone?.addEventListener("click", closeCountdownSettings);
+elements.countdownSettingsDialog?.addEventListener("click", (event) => {
+  if (event.target === elements.countdownSettingsDialog) closeCountdownSettings();
+});
+elements.countdownSettingsDialog?.addEventListener("close", () => {
+  if (document.querySelector("#countdown")?.hidden === false) {
+    elements.countdownSettingsOpen?.focus();
+  }
+});
 elements.settingsForm?.addEventListener("input", handleSettingsInput);
 elements.masterdataImportOpen?.addEventListener("click", () => {
   if (masterdataExchangeBusy || !masterdataReady || !masterdataCanEdit) return;
@@ -4030,6 +4080,7 @@ function showAppSection(section) {
     (section === "training-plans" && trainingPlansReady) ||
     (section === "training-documentation" && trainingDocumentationReady);
   const target = allowed ? section : "home";
+  if (target !== "countdown") closeCountdownSettings();
   for (const candidate of document.querySelectorAll("[data-app-section]")) {
     candidate.hidden = candidate.dataset.appSection !== target;
   }
@@ -6565,6 +6616,18 @@ function emptyToNull(value) {
   return normalized.length === 0 ? null : normalized;
 }
 
+function openCountdownSettings() {
+  const dialog = elements.countdownSettingsDialog;
+  if (!dialog || dialog.open) return;
+  dialog.showModal();
+  elements.countdownSettingsClose?.focus();
+}
+
+function closeCountdownSettings() {
+  const dialog = elements.countdownSettingsDialog;
+  if (dialog?.open) dialog.close();
+}
+
 function handleSettingsInput() {
   const settings = readSettings();
   if (settings !== null) {
@@ -7057,6 +7120,7 @@ async function releaseWakeLock() {
 }
 
 function showView(view) {
+  if (view !== "app") closeCountdownSettings();
   if (elements.loginView) elements.loginView.hidden = view !== "login";
   if (elements.passwordView) elements.passwordView.hidden = view !== "password";
   if (elements.appView) elements.appView.hidden = view !== "app";
