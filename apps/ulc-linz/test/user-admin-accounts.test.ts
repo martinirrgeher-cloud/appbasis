@@ -34,7 +34,7 @@ function setup(overrides: Record<string, unknown> = {}) {
     ): Promise<T> {
       const tx: Pick<UlcUserAccountSql, "unsafe"> = {
         async unsafe(query, parameters) {
-          calls.push({ query, parameters });
+          calls.push({ query, ...(parameters === undefined ? {} : { parameters }) });
           if (query.includes("SELECT membership.identity_id")) return [target];
           if (query.startsWith("UPDATE account")) return [{ id: "credential-1" }];
           if (query.startsWith("UPDATE appbasis_identity_security_state")) return [{ identity_id: USER }];
