@@ -3335,8 +3335,13 @@ function setExerciseCatalogBusy(next) {
   if (elements.exerciseCatalogNew) {
     elements.exerciseCatalogNew.disabled = next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit;
   }
+  const selectedExercise = exerciseCatalogItems.find(
+    (item) => item.id === exerciseCatalogSelectedId,
+  );
   if (elements.exerciseCatalogSave) {
-    elements.exerciseCatalogSave.disabled = next || exerciseCatalogEditorReviewMode;
+    elements.exerciseCatalogSave.disabled =
+      next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit ||
+      selectedExercise?.isActive === false;
   }
   if (elements.exerciseCatalogClone) {
     elements.exerciseCatalogClone.disabled =
@@ -3346,7 +3351,16 @@ function setExerciseCatalogBusy(next) {
       !exerciseCatalogSelectedId;
   }
   if (elements.exerciseCatalogDeactivate) {
-    elements.exerciseCatalogDeactivate.disabled = next || exerciseCatalogEditorReviewMode;
+    elements.exerciseCatalogDeactivate.disabled =
+      next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit ||
+      !selectedExercise || !selectedExercise.isActive;
+  }
+  // Opening a catalog item sets busy=true before the editor is populated.
+  // On completion, the action must be explicitly re-enabled for an archived item.
+  if (elements.exerciseCatalogReactivate) {
+    elements.exerciseCatalogReactivate.disabled =
+      next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit ||
+      !selectedExercise || selectedExercise.isActive;
   }
   if (elements.exerciseCatalogParameterAdd) {
     elements.exerciseCatalogParameterAdd.disabled = next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit;

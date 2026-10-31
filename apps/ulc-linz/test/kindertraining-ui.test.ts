@@ -56,7 +56,14 @@ describe("ULC Kindertraining weekly attendance UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "const dates = registrationWeekDates(weekStart);",
     );
-    expect(ULC_LINZ_APP_SCRIPT).toContain("Promise.all(");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("const responses = await Promise.allSettled(");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("kindertrainingWeekFailedDates = failedDates;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "for (const sessionDate of registrationWeekDates(kindertrainingWeekStart))",
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "Die übrigen Tage bleiben sichtbar.",
+    );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "kindertrainingWeekSnapshots = snapshots;",
     );
