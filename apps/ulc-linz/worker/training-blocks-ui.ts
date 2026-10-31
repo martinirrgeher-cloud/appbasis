@@ -62,6 +62,9 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                       <label>Kategorie
                         <select id="training-block-category"><option value="">Ohne Kategorie</option></select>
                       </label>
+                      <label id="training-block-custom-category-field" class="training-block-custom-category" hidden>Neue Kategorie
+                        <input id="training-block-custom-category" type="text" maxlength="80" placeholder="z. B. Drills" autocomplete="off" />
+                      </label>
                       <fieldset class="training-block-audience-field">
                         <legend>Trainingsgruppen</legend>
                         <div class="training-block-audience-picker" id="training-block-audience" role="group" aria-label="Trainingsgruppen auswählen"></div>
@@ -165,6 +168,8 @@ export const ULC_TRAINING_BLOCKS_CSS = `
   padding: 12px;
 }
 .training-block-groups { display: grid; gap: 12px; }
+.training-block-custom-category[hidden] { display: none !important; }
+.training-block-custom-category input { width: 100%; min-width: 0; font-size: 16px; }
 .training-block-group {
   overflow: hidden;
   border: 1px solid var(--border);
@@ -653,6 +658,8 @@ const trainingBlockElements = Object.freeze({
   audienceFilter: document.querySelector("#training-block-audience-filter"),
   categoryFilter: document.querySelector("#training-block-category-filter"),
   category: document.querySelector("#training-block-category"),
+  customCategoryField: document.querySelector("#training-block-custom-category-field"),
+  customCategory: document.querySelector("#training-block-custom-category"),
   statusFilter: document.querySelector("#training-block-status-filter"),
   newButton: document.querySelector("#training-block-new"),
   editor: document.querySelector("#training-block-editor"),
@@ -992,21 +999,50 @@ function renderTrainingBlockCategoryEditor() {
   empty.value = "";
   empty.textContent = "Ohne Kategorie";
   select.append(empty);
-  // Share the exercise catalog's canonical choices and keys; no separate list to drift.
+
+  // Existing block categories are independent from training-group assignments.
+  // Standard exercise category keys remain available for compatibility.
   for (const category of EXERCISE_CATEGORIES) {
     const option = document.createElement("option");
     option.value = category.key;
     option.textContent = category.label;
     select.append(option);
   }
-  // Keep pre-existing free-text values editable without silently changing them.
-  if (current && !EXERCISE_CATEGORIES.some((category) => category.key === current)) {
-    const legacy = document.createElement("option");
-    legacy.value = current;
-    legacy.textContent = current + " (bisherige Kategorie)";
-    select.append(legacy);
+  const existing = [...new Set([
+    ...trainingBlocks.map((block) => block.revision.category?.trim()),
+    current,
+  ].filter((value) => value &&
+    !EXERCISE_CATEGORIES.some((category) => category.key === value) &&
+    !["all", "uncategorized", "__new__"].includes(value)))];
+  existing.sort((a, b) => a.localeCompare(b, "de", { sensitivity: "base" }));
+  for (const name of existing) {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name === current
+      ? name + " (bisherige Kategorie)" : name;
+    select.append(option);
   }
+  const create = document.createElement("option");
+  create.value = "__new__";
+  create.textContent = "＋ Neue Kategorie anlegen";
+  select.append(create);
   select.value = current;
+  if (trainingBlockElements.customCategory) trainingBlockElements.customCategory.value = "";
+  setTrainingBlockCustomCategoryOpen(false);
+}
+
+function setTrainingBlockCustomCategoryOpen(open) {
+  const custom = open === true;
+  if (trainingBlockElements.customCategoryField) {
+    trainingBlockElements.customCategoryField.hidden = !custom;
+  }
+  if (trainingBlockElements.customCategory) {
+    trainingBlockElements.customCategory.disabled = !custom ||
+      !trainingBlocksCanEdit || trainingBlockSelected?.isActive === false ||
+      trainingBlockSaveBusy || trainingBlockDeactivateBusy ||
+      trainingBlockDuplicateBusy || trainingBlockReloadBusy || trainingBlockFavoriteBusy;
+    if (custom) trainingBlockElements.customCategory.focus();
+  }
 }
 
 function renderTrainingBlockCategoryFilter() {
@@ -1394,6 +1430,10 @@ function refreshTrainingBlockEditorLock() {
     trainingBlockElements.note,
   ]) {
     if (control) control.disabled = !editable;
+  }
+  if (trainingBlockElements.customCategory) {
+    trainingBlockElements.customCategory.disabled = !editable ||
+      trainingBlockElements.category?.value !== "__new__";
   }
   if (trainingBlockElements.close) {
     trainingBlockElements.close.disabled = locked;
@@ -1849,7 +1889,9 @@ function markTrainingBlockDirty() {
 function syncTrainingBlockDraftFromFields() {
   if (!trainingBlockDraft) return;
   trainingBlockDraft.name = (trainingBlockElements.name?.value || "").trim();
-  trainingBlockDraft.category = (trainingBlockElements.category?.value || "").trim();
+  trainingBlockDraft.category = (trainingBlockElements.category?.value === "__new__"
+    ? trainingBlockElements.customCategory?.value || ""
+    : trainingBlockElements.category?.value || "").trim();
   const duration = trainingBlockElements.duration?.value || "";
   trainingBlockDraft.durationMinutes =
     duration === "" ? null : Number(duration);
@@ -2061,9 +2103,12 @@ async function saveTrainingBlock() {
   }
   if (!trainingBlockDraftReady(payload)) {
     const missingName = !payload?.name?.trim();
+    const isNewCategory = trainingBlockElements.category?.value === "__new__";
     const invalidCategory =
-      payload?.category !== null && (typeof payload?.category !== "string" ||
-        payload.category.length > 80);
+      (isNewCategory && (!payload?.category ||
+        ["all", "uncategorized", "__new__"].includes(payload.category))) ||
+      (payload?.category !== null && (typeof payload?.category !== "string" ||
+        payload.category.length > 80));
     const invalidDuration = payload?.durationMinutes !== null &&
       (!Number.isSafeInteger(payload?.durationMinutes) ||
         payload.durationMinutes < 1 || payload.durationMinutes > 2_147_483_647);
@@ -2072,6 +2117,8 @@ async function saveTrainingBlock() {
       payload.audienceIds.some((id) => typeof id !== "string" || !id);
     setTrainingBlockInvalidField(trainingBlockElements.name, missingName);
     setTrainingBlockInvalidField(trainingBlockElements.category, invalidCategory);
+    setTrainingBlockInvalidField(trainingBlockElements.customCategory,
+      Boolean(invalidCategory && isNewCategory));
     setTrainingBlockInvalidField(trainingBlockElements.duration, invalidDuration);
     setTrainingBlockInvalidField(trainingBlockElements.audience, invalidAudience);
     const fields = [
@@ -2090,6 +2137,7 @@ async function saveTrainingBlock() {
   for (const control of [
     trainingBlockElements.name,
     trainingBlockElements.category,
+    trainingBlockElements.customCategory,
     trainingBlockElements.duration,
     trainingBlockElements.audience,
   ]) setTrainingBlockInvalidField(control, false);
@@ -3527,7 +3575,7 @@ async function compareTrainingBlockRevisions() {
   }
 }
 
-trainingBlockElements.search?.addEventListener("input", renderTrainingBlocks);trainingBlockElements.search?.addEventListener("input", renderTrainingBlocks);
+trainingBlockElements.search?.addEventListener("input", renderTrainingBlocks);
 trainingBlockElements.audienceFilter?.addEventListener("change", renderTrainingBlocks);
 trainingBlockElements.categoryFilter?.addEventListener("change", renderTrainingBlocks);
 trainingBlockElements.statusFilter?.addEventListener("change", renderTrainingBlocks);
@@ -3562,6 +3610,9 @@ for (const control of [
   trainingBlockElements.note,
 ]) {
   control?.addEventListener(control === trainingBlockElements.category ? "change" : "input", () => {
+    if (control === trainingBlockElements.category) {
+      setTrainingBlockCustomCategoryOpen(control.value === "__new__");
+    }
     if (
       (control === trainingBlockElements.name && control.value.trim()) ||
       (control === trainingBlockElements.category && control.value.length <= 80) ||
@@ -3571,6 +3622,15 @@ for (const control of [
     syncTrainingBlockDraftFromFields();
     markTrainingBlockDirty();
   });
+trainingBlockElements.customCategory?.addEventListener("input", () => {
+  if (trainingBlockElements.category?.value !== "__new__") return;
+  const value = trainingBlockElements.customCategory.value.trim();
+  if (value && value.length <= 80 && !["all", "uncategorized", "__new__"].includes(value)) {
+    setTrainingBlockInvalidField(trainingBlockElements.customCategory, false);
+  }
+  syncTrainingBlockDraftFromFields();
+  markTrainingBlockDirty();
+});
 }
 trainingBlockElements.audience?.addEventListener("click", handleTrainingBlockAudienceClick);
 trainingBlockElements.list?.addEventListener("click", (event) => {
