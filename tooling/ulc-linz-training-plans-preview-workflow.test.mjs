@@ -255,8 +255,8 @@ test("E7B9 deploy-accept runs deploy, exact-SHA guards, and authenticated accept
     "Require exact deployed E7B9 build",
     "Verify deployed preview runtime and database",
     "Verify E7B9 UI and anonymous API boundary",
-    "Run authenticated E7B9 training-planning acceptance",
     "Run authenticated attendance dual-mode acceptance",
+    "Run authenticated E7B9 training-planning acceptance",
   ];
   let last = -1;
   for (const name of ordered) {
