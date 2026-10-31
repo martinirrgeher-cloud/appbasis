@@ -1,4 +1,5 @@
 import { createPostgresDatabase } from "@appbasis/database";
+import { hashPassword } from "better-auth/crypto";
 
 import { createBetterAuthRuntime } from "./better-auth";
 import { createIdentityRuntime } from "./server";
