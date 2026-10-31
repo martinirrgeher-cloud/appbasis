@@ -847,7 +847,8 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="useful" data-nav-priority="8" hidden disabled');
     expect(ULC_LINZ_APP_HTML).not.toContain('data-nav-view="settings"');
     expect(ULC_LINZ_APP_HTML).toContain('data-app-section="countdown"');
-    expect(ULC_LINZ_APP_HTML).toContain('class="card countdown-settings"');
+    expect(ULC_LINZ_APP_HTML).toContain('class="countdown-settings-dialog"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="countdown-settings-open"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('showAppSection("home");');
     expect(ULC_LINZ_APP_SCRIPT).toContain("async function navigateAppSection(section)");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
