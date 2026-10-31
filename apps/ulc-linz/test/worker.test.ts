@@ -507,6 +507,26 @@ function runtime(
         };
       },
     },
+    userAdminAccess: {
+      async read(_organizationId, userId) {
+        return {
+          userId,
+          username: "test.trainer",
+          modules: [{ key: "countdown", label: "Countdown", level: "view" as const }],
+          expectedGrants: [],
+          expectedRevokes: [],
+        };
+      },
+      async update(_organizationId, _actorPrincipalId, userId) {
+        return {
+          userId,
+          username: "test.trainer",
+          modules: [{ key: "countdown", label: "Countdown", level: "edit" as const }],
+          expectedGrants: [],
+          expectedRevokes: [],
+        };
+      },
+    },
     userAdminOverview: {
       async listUsers() {
         return [
@@ -4232,6 +4252,90 @@ describe("ULC organization user administration API", () => {
         headers: { cookie: currentIdentity.sessionToken },
       }),
       validEnv,
+    );
+    expect(response.status).toBe(403);
+    expect(touched).toBe(false);
+  });
+});
+
+describe("ULC trainer module permission administration API", () => {
+  it("reads and saves only within the server-authorized tenant", async () => {
+    let received: unknown = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        trainerIdentityAccess: {
+          async assertAdminAccess() {
+            return { organizationId: "verein-server", actorPrincipalId: "admin-1" };
+          },
+        },
+        userAdminAccess: {
+          async read(organizationId, userId) {
+            received = { organizationId, userId };
+            return { userId, username: "trainer.test",
+              modules: [{ key: "countdown", label: "Countdown", level: "view" as const }],
+              expectedGrants: [], expectedRevokes: [] };
+          },
+          async update(organizationId, actorPrincipalId, userId, input) {
+            received = { organizationId, actorPrincipalId, userId, input };
+            return { userId, username: "trainer.test",
+              modules: [{ key: "countdown", label: "Countdown", level: "edit" as const }],
+              expectedGrants: [], expectedRevokes: [] };
+          },
+        },
+      };
+    });
+    const get = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/users/trainer-1/access", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }), validEnv,
+    );
+    expect(get.status).toBe(200);
+    expect(received).toEqual({ organizationId: "verein-server", userId: "trainer-1" });
+    const body = { modules: [{ key: "countdown", level: "edit" }],
+      expectedGrants: [], expectedRevokes: [] };
+    const post = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/users/trainer-1/access", {
+        method: "POST",
+        headers: { cookie: currentIdentity.sessionToken, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }), validEnv,
+    );
+    expect(post.status).toBe(200);
+    expect(received).toEqual({
+      organizationId: "verein-server", actorPrincipalId: "admin-1",
+      userId: "trainer-1", input: body,
+    });
+    const injection = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/users/trainer-1/access?organizationId=other", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }), validEnv,
+    );
+    expect(injection.status).toBe(400);
+  });
+
+  it("denies edits to non-admin callers", async () => {
+    let touched = false;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        trainerIdentityAccess: {
+          async assertAdminAccess() {
+            throw new UlcLinzAuthorizationDeniedError();
+          },
+        },
+        userAdminAccess: {
+          async read() { touched = true; throw new Error("should not be reached"); },
+          async update() { touched = true; throw new Error("should not be reached"); },
+        },
+      };
+    });
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/users/admin-1/access", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }), validEnv,
     );
     expect(response.status).toBe(403);
     expect(touched).toBe(false);

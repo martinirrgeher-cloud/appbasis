@@ -14,6 +14,17 @@ export const ULC_USER_ADMIN_HTML = `
     </div>
     <div id="user-admin-list" class="user-admin-list"></div>
   </section>
+  <section class="card" id="user-admin-access-editor" hidden>
+    <div class="section-heading">
+      <div><h2>Modulrechte</h2><p id="user-admin-access-name"></p></div>
+      <button class="button button--secondary" type="button" id="user-admin-access-close">Schließen</button>
+    </div>
+    <p class="settings-note">Nur für Trainerkonten. Die Rolle bleibt unverändert; pro Modul wird Kein Zugriff, Lesen oder Bearbeiten vergeben.</p>
+    <form id="user-admin-access-form">
+      <div class="user-admin-access-list" id="user-admin-access-list"></div>
+      <button class="button button--primary" type="submit" id="user-admin-access-save">Rechte speichern</button>
+    </form>
+  </section>
   <section class="card">
     <div class="section-heading"><div><h2>Testzugang anlegen</h2></div></div>
     <p class="settings-note">Ein Zugang wird mit einem vorhandenen Trainer oder Athleten verknüpft. Zum Testen kann davor in den Stammdaten ein eigener Test-Trainer oder Test-Athlet erstellt werden. Der Benutzer muss beim ersten Login sein Passwort ändern.</p>
@@ -59,6 +70,11 @@ export const ULC_USER_ADMIN_CSS = `
 .user-admin-row__status { flex: 0 0 auto; font-size: .8rem; }
 #user-admin-form { display: grid; gap: 10px; }
 #user-admin-form input, #user-admin-form select { width: 100%; min-width: 0; font-size: 16px; }
+.user-admin-access-list { display: grid; gap: 8px; margin: 12px 0; }
+.user-admin-access-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, 150px); gap: 10px; align-items: center; }
+.user-admin-access-row select { min-height: 42px; min-width: 0; width: 100%; font-size: 16px; }
+.user-admin-row__actions { display: flex; gap: 5px; align-items: center; flex: 0 0 auto; }
+.user-admin-row__actions .button { min-height: 38px; padding: 4px 8px; }
 #user-admin-invitation { margin-top: 12px; }
 #user-admin-invitation .button { margin: 3px; }
 `;
@@ -81,6 +97,12 @@ const userAdminElements = Object.freeze({
   invitation: document.querySelector("#user-admin-invitation"),
   copy: document.querySelector("#user-admin-copy"),
   inviteClose: document.querySelector("#user-admin-invite-close"),
+  accessEditor: document.querySelector("#user-admin-access-editor"),
+  accessName: document.querySelector("#user-admin-access-name"),
+  accessList: document.querySelector("#user-admin-access-list"),
+  accessForm: document.querySelector("#user-admin-access-form"),
+  accessSave: document.querySelector("#user-admin-access-save"),
+  accessClose: document.querySelector("#user-admin-access-close"),
 });
 
 let userAdminReady = false;
@@ -89,12 +111,15 @@ let userAdminUsers = [];
 let userAdminTargets = null;
 let userAdminGeneration = 0;
 let userAdminInviteText = "";
+let userAdminAccessSnapshot = null;
 
 userAdminElements.refresh?.addEventListener("click", () => void loadUserAdmin());
 userAdminElements.role?.addEventListener("change", renderUserAdminTargets);
 userAdminElements.form?.addEventListener("submit", (event) => void createUserAdminAccount(event));
 userAdminElements.copy?.addEventListener("click", () => void copyUserAdminInvitation());
 userAdminElements.inviteClose?.addEventListener("click", clearUserAdminInvitation);
+userAdminElements.accessClose?.addEventListener("click", closeUserAdminAccess);
+userAdminElements.accessForm?.addEventListener("submit", (event) => void saveUserAdminAccess(event));
 
 function clearUserAdminInvitation() {
   userAdminInviteText = "";
@@ -108,6 +133,7 @@ function resetUserAdminSessionState() {
   userAdminUsers = [];
   userAdminTargets = null;
   clearUserAdminInvitation();
+  closeUserAdminAccess();
   userAdminElements.form?.reset();
   userAdminElements.list?.replaceChildren();
   if (userAdminElements.count) userAdminElements.count.textContent = "";
@@ -180,13 +206,138 @@ function renderUserAdminList() {
     status.className = "user-admin-row__status";
     status.textContent = user.blocked ? "Gesperrt" : user.active ? "Aktiv" : "Inaktiv";
     main.append(title, meta);
-    row.append(main, status);
+    const actions = document.createElement("div");
+    actions.className = "user-admin-row__actions";
+    actions.append(status);
+    if (user.sourceRole === "trainer" && user.active && !user.blocked) {
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "button button--secondary";
+      edit.textContent = "Rechte";
+      edit.setAttribute("aria-label", "Modulrechte für " + String(user.displayName || user.username));
+      edit.addEventListener("click", () => void openUserAdminAccess(user.identityId));
+      actions.append(edit);
+    }
+    row.append(main, actions);
     container.append(row);
   }
   if (userAdminUsers.length === 0) {
     const empty = document.createElement("p");
     empty.textContent = "Noch keine Benutzer vorhanden.";
     container.append(empty);
+  }
+}
+
+function closeUserAdminAccess() {
+  userAdminAccessSnapshot = null;
+  if (userAdminElements.accessEditor) userAdminElements.accessEditor.hidden = true;
+  userAdminElements.accessList?.replaceChildren();
+}
+
+async function openUserAdminAccess(identityId) {
+  if (!userAdminReady || userAdminBusy || typeof identityId !== "string") return;
+  const generation = userAdminGeneration;
+  userAdminBusy = true;
+  updateUserAdminControls();
+  closeUserAdminAccess();
+  showMessage(userAdminElements.message, "");
+  try {
+    const payload = await requestJson("/api/admin/users/" +
+      encodeURIComponent(identityId) + "/access");
+    if (generation !== userAdminGeneration) return;
+    if (!Array.isArray(payload?.permissions?.modules)) throw new Error("INVALID_ACCESS");
+    userAdminAccessSnapshot = payload.permissions;
+    renderUserAdminAccess();
+    if (userAdminElements.accessEditor) userAdminElements.accessEditor.hidden = false;
+    userAdminElements.accessEditor?.scrollIntoView({ block: "nearest" });
+  } catch (error) {
+    if (generation === userAdminGeneration) {
+      showMessage(userAdminElements.message, error?.status === 403
+        ? "Für dieses Konto dürfen die Modulrechte nicht bearbeitet werden."
+        : "Modulrechte konnten nicht geladen werden.");
+    }
+  } finally {
+    if (generation === userAdminGeneration) {
+      userAdminBusy = false;
+      updateUserAdminControls();
+    }
+  }
+}
+
+function renderUserAdminAccess() {
+  const snapshot = userAdminAccessSnapshot;
+  if (!snapshot || !userAdminElements.accessList) return;
+  if (userAdminElements.accessName) {
+    userAdminElements.accessName.textContent = String(snapshot.username || "");
+  }
+  userAdminElements.accessList.replaceChildren();
+  for (const module of snapshot.modules) {
+    const row = document.createElement("label");
+    row.className = "user-admin-access-row";
+    const name = document.createElement("span");
+    name.textContent = String(module.label || module.key);
+    const select = document.createElement("select");
+    select.dataset.userAccessModule = String(module.key);
+    for (const [value, label] of [
+      ["none", "Kein Zugriff"],
+      ["view", "Lesen"],
+      ["edit", "Bearbeiten"],
+    ]) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      select.append(option);
+    }
+    select.value = module.level;
+    row.append(name, select);
+    userAdminElements.accessList.append(row);
+  }
+}
+
+async function saveUserAdminAccess(event) {
+  event.preventDefault();
+  if (!userAdminReady || userAdminBusy || !userAdminAccessSnapshot) return;
+  const snapshot = userAdminAccessSnapshot;
+  const generation = userAdminGeneration;
+  const selects = [...(userAdminElements.accessList?.querySelectorAll("[data-user-access-module]") || [])];
+  const modules = selects.map((select) => ({
+    key: select.dataset.userAccessModule,
+    level: select.value,
+  }));
+  userAdminBusy = true;
+  updateUserAdminControls();
+  showMessage(userAdminElements.message, "");
+  showMessage(userAdminElements.success, "");
+  try {
+    const payload = await requestJson("/api/admin/users/" +
+      encodeURIComponent(snapshot.userId) + "/access", {
+      method: "POST",
+      body: JSON.stringify({
+        modules,
+        expectedGrants: snapshot.expectedGrants,
+        expectedRevokes: snapshot.expectedRevokes,
+      }),
+    });
+    if (generation !== userAdminGeneration) return;
+    if (!Array.isArray(payload?.permissions?.modules)) throw new Error("INVALID_ACCESS");
+    userAdminAccessSnapshot = payload.permissions;
+    renderUserAdminAccess();
+    showMessage(userAdminElements.success,
+      "Modulrechte gespeichert. Der Benutzer sollte sich für die Übernahme neu anmelden.");
+  } catch (error) {
+    if (generation === userAdminGeneration) {
+      showMessage(userAdminElements.message,
+        error?.status === 409
+          ? "Die Rechte wurden zwischenzeitlich verändert. Schließen und erneut öffnen."
+          : error?.status === 403
+            ? "Du darfst diese Modulrechte nicht bearbeiten."
+            : "Modulrechte konnten nicht gespeichert werden.");
+    }
+  } finally {
+    if (generation === userAdminGeneration) {
+      userAdminBusy = false;
+      updateUserAdminControls();
+    }
   }
 }
 
@@ -240,6 +391,7 @@ function renderUserAdminTargets() {
 function updateUserAdminControls() {
   if (userAdminElements.refresh) userAdminElements.refresh.disabled = userAdminBusy;
   if (userAdminElements.create) userAdminElements.create.disabled = userAdminBusy;
+  if (userAdminElements.accessSave) userAdminElements.accessSave.disabled = userAdminBusy;
 }
 
 async function createUserAdminAccount(event) {
