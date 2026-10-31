@@ -1,4 +1,4 @@
-export const ULC_USER_ADMIN_HTML = \`
+export const ULC_USER_ADMIN_HTML = `
 <section class="app-section user-admin-page" data-app-section="users" id="users" hidden>
   <section class="hero user-admin-hero">
     <div class="user-admin-title-row">
@@ -115,9 +115,9 @@ export const ULC_USER_ADMIN_HTML = \`
     </div>
   </dialog>
 </section>
-\`;
+`;
 
-export const ULC_USER_ADMIN_CSS = \`
+export const ULC_USER_ADMIN_CSS = `
 .user-admin-page, .user-admin-card { min-width: 0; }
 .user-admin-hero { margin-bottom: 10px; }
 .user-admin-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -167,7 +167,7 @@ export const ULC_USER_ADMIN_CSS = \`
   .user-admin-row__actions .button { padding: 6px 7px; }
   .user-admin-access-row { grid-template-columns: minmax(0, 1fr) minmax(108px, 128px); }
 }
-\`;
+`;
 
 export const ULC_USER_ADMIN_SCRIPT = String.raw`
 const userAdminElements = Object.freeze({
