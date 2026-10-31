@@ -12,6 +12,7 @@ import {
 import {
   createUlcLinzTrainerUserProvisioningService,
   UlcLinzTrainerUserProvisioningConflictError,
+  UlcLinzTrainerUserProvisioningNotFoundError,
 } from "../worker/trainer-user-provisioning";
 
 function identityState(identityId = "identity-1") {
@@ -67,7 +68,10 @@ describe("ULC trainer user provisioning", () => {
     const sql = {
       async unsafe(query: string) {
         sqlCalls.push(query);
-        if (query.includes("INSERT INTO ulc_linz_membership")) {
+        if (query.includes("AS trainer_claimed")) {
+            return [{ trainer_exists: true, trainer_claimed: false }];
+          }
+          if (query.includes("INSERT INTO ulc_linz_membership")) {
           return [
             {
               organization_id: "verein-1",
@@ -196,6 +200,9 @@ describe("ULC trainer user provisioning", () => {
       },
       sql: {
         async unsafe(query: string) {
+          if (query.includes("AS trainer_claimed")) {
+            return [{ trainer_exists: true, trainer_claimed: false }];
+          }
           if (query.includes("INSERT INTO ulc_linz_membership")) {
             return [];
           }
@@ -289,6 +296,9 @@ describe("ULC trainer user provisioning", () => {
       },
       sql: {
         async unsafe(query: string) {
+          if (query.includes("AS trainer_claimed")) {
+            return [{ trainer_exists: true, trainer_claimed: false }];
+          }
           if (query.includes("INSERT INTO ulc_linz_membership")) {
             return [];
           }
@@ -351,6 +361,9 @@ describe("ULC trainer user provisioning", () => {
       },
       sql: {
         async unsafe(query: string) {
+          if (query.includes("AS trainer_claimed")) {
+            return [{ trainer_exists: true, trainer_claimed: false }];
+          }
           if (query.includes("INSERT INTO ulc_linz_membership")) {
             return [];
           }
@@ -398,4 +411,48 @@ describe("ULC trainer user provisioning", () => {
       }),
     ).rejects.toBeInstanceOf(UlcLinzTrainerUserProvisioningConflictError);
   });
+  it("rejects an already-linked or missing trainer without creating an identity", async () => {
+    for (const scenario of [
+      { exists: true, claimed: true, error: UlcLinzTrainerUserProvisioningConflictError },
+      { exists: false, claimed: false, error: UlcLinzTrainerUserProvisioningNotFoundError },
+    ]) {
+      let identityCreated = false;
+      const service = createUlcLinzTrainerUserProvisioningService({
+        identityProvisioning: {
+          async createInitialUser() {
+            identityCreated = true;
+            return identityState();
+          },
+        },
+        sql: {
+          async unsafe(query: string, parameters?: (string | number | boolean | null)[]) {
+            expect(query).toContain("AS trainer_claimed");
+            expect(parameters).toEqual(["verein-1", "trainer-1"]);
+            return [{ trainer_exists: scenario.exists, trainer_claimed: scenario.claimed }];
+          },
+        },
+        permissions: permissionStore(),
+        accessAdministration: {
+          async replacePrincipalAccess() {
+            throw new Error("must not provision permissions for an unavailable trainer");
+          },
+        },
+        trainerIdentityLinks: {
+          async bindTrainer() {
+            throw new Error("must not bind an unavailable trainer");
+          },
+        },
+      });
+      await expect(service.createTrainerUser({
+        organizationId: "verein-1",
+        actorPrincipalId: "admin-1",
+        username: "trainer.a",
+        displayName: "Trainer A",
+        temporaryPassword: "temporary-value-123",
+        trainerId: "trainer-1",
+      })).rejects.toBeInstanceOf(scenario.error);
+      expect(identityCreated).toBe(false);
+    }
+  });
+
 });
