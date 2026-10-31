@@ -547,6 +547,7 @@ export class TrainingBlockService {
       name: draft.name,
       audienceId: draft.audienceId,
       audienceIds: draft.audienceIds,
+      category: draft.category,
       durationMinutes: draft.durationMinutes,
       note: draft.note,
       exercises: Object.freeze(nextExercises),
