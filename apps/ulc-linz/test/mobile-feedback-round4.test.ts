@@ -38,7 +38,7 @@ describe("ULC mobile review fixes", () => {
       'id="kindertraining-week-current" type="button">Aktuelle Woche',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
-      'id="kindertraining-week-save" type="button" disabled>💾 Speichern',
+      'id="kindertraining-week-save" type="button" disabled>💾 Jetzt speichern',
     );
   });
 
