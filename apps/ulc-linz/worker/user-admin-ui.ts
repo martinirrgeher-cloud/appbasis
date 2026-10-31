@@ -1,19 +1,20 @@
-export const ULC_USER_ADMIN_HTML = `
-<section class="app-section" data-app-section="users" id="users" hidden>
-  <section class="hero">
-    <p class="eyebrow">Organisation</p>
-    <h1>Benutzer</h1>
-    <p class="summary">Konten prüfen und Testzugänge für Trainer oder Athleten anlegen.</p>
+export const ULC_USER_ADMIN_HTML = \`
+<section class="app-section user-admin-page" data-app-section="users" id="users" hidden>
+  <section class="hero user-admin-hero">
+    <div class="user-admin-title-row">
+      <h1>Benutzer</h1>
+      <button type="button" class="button button--primary user-admin-icon-action" id="user-admin-new" title="Neuen Benutzer anlegen" aria-label="Neuen Benutzer anlegen">＋</button>
+    </div>
   </section>
   <p id="user-admin-message" class="message message--error" role="alert" hidden></p>
   <p id="user-admin-success" class="message message--success" role="status" hidden></p>
-  <section class="card">
-    <div class="section-heading">
-      <div><h2>Benutzerkonten <span id="user-admin-count"></span></h2></div>
-      <button type="button" class="button button--secondary" id="user-admin-refresh">Aktualisieren</button>
+  <section class="card user-admin-card">
+    <div class="section-heading user-admin-list-heading">
+      <h2>Benutzerkonten <span id="user-admin-count"></span></h2>
+      <button type="button" class="button button--secondary user-admin-icon-action" id="user-admin-refresh" title="Benutzer aktualisieren" aria-label="Benutzer aktualisieren">↻</button>
     </div>
     <div class="user-admin-filters">
-      <label>Benutzer suchen
+      <label>Suche
         <input id="user-admin-search" type="search" placeholder="Name oder Benutzername" maxlength="120" autocomplete="off" />
       </label>
       <label>Status
@@ -26,20 +27,14 @@ export const ULC_USER_ADMIN_HTML = `
     </div>
     <div id="user-admin-list" class="user-admin-list"></div>
   </section>
-  <section class="card" id="user-admin-access-editor" hidden>
-    <div class="section-heading">
-      <div><h2>Modulrechte</h2><p id="user-admin-access-name"></p></div>
-      <button class="button button--secondary" type="button" id="user-admin-access-close">Schließen</button>
-    </div>
-    <p class="settings-note">Nur für Trainerkonten. Die Rolle bleibt unverändert; pro Modul wird Kein Zugriff, Lesen oder Bearbeiten vergeben.</p>
-    <form id="user-admin-access-form">
-      <div class="user-admin-access-list" id="user-admin-access-list"></div>
-      <button class="button button--primary" type="submit" id="user-admin-access-save">Rechte speichern</button>
-    </form>
-  </section>
-  <section class="card">
-    <div class="section-heading"><div><h2>Testzugang anlegen</h2></div></div>
-    <p class="settings-note">Ein Zugang wird mit einem vorhandenen Trainer oder Athleten verknüpft. Zum Testen kann davor in den Stammdaten ein eigener Test-Trainer oder Test-Athlet erstellt werden. Der Benutzer muss beim ersten Login sein Passwort ändern. Bereits mit einem Konto verknüpfte Trainer können nicht nochmals ausgewählt werden.</p>
+
+  <dialog id="user-admin-create-dialog" class="user-admin-dialog" aria-labelledby="user-admin-create-title" aria-modal="true">
+    <header class="user-admin-dialog__header">
+      <h2 id="user-admin-create-title">Benutzer anlegen</h2>
+      <button type="button" class="button button--secondary user-admin-dialog__close" id="user-admin-create-close" aria-label="Anlegen schließen" title="Schließen">✕</button>
+    </header>
+    <p class="settings-note">Bestehenden Trainer oder Athleten zuordnen. Beim ersten Login muss das Passwort geändert werden.</p>
+    <p id="user-admin-create-error" class="message message--error" role="alert" hidden></p>
     <form id="user-admin-form" class="form-stack">
       <label>Rolle
         <select id="user-admin-role" required>
@@ -62,60 +57,117 @@ export const ULC_USER_ADMIN_HTML = `
       <label>Temporäres Passwort
         <input id="user-admin-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required />
       </label>
-      <button type="submit" class="button button--primary" id="user-admin-create">Benutzer anlegen</button>
-    </form>
-    <dialog id="user-admin-reset-dialog" class="user-admin-reset-dialog" aria-labelledby="user-admin-reset-title" aria-modal="true">
-      <form id="user-admin-reset-form" class="form-stack">
-        <h2 id="user-admin-reset-title">Temporäres Passwort setzen</h2>
-        <p id="user-admin-reset-target" class="settings-note"></p>
-        <p class="settings-note">Der Benutzer wird auf allen Geräten abgemeldet und muss beim nächsten Login das Passwort ändern.</p>
-        <label>Neues temporäres Passwort
-          <input id="user-admin-reset-password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
-        </label>
-        <div class="user-admin-invite-actions">
-          <button class="button button--primary" type="submit" id="user-admin-reset-confirm">Passwort zurücksetzen</button>
-          <button class="button button--secondary" type="button" id="user-admin-reset-cancel">Abbrechen</button>
-        </div>
-      </form>
-    </dialog>
-    <div id="user-admin-invitation" hidden>
-      <p class="settings-note">Zugang angelegt oder Passwort zurückgesetzt. Du kannst die Einladung am Handy teilen oder kopieren. Sie enthält das temporäre Passwort – verwende einen sicheren Kanal. Das Passwort wird hier nicht dauerhaft gespeichert.</p>
-      <div class="user-admin-invite-actions">
-        <button type="button" class="button button--primary" id="user-admin-share">Einladung teilen</button>
-        <button type="button" class="button button--secondary" id="user-admin-copy">Einladung kopieren</button>
-        <button type="button" class="button button--secondary" id="user-admin-invite-close">Schließen</button>
+      <div class="user-admin-dialog__footer">
+        <button type="button" class="button button--secondary" id="user-admin-create-cancel">Abbrechen</button>
+        <button type="submit" class="button button--primary" id="user-admin-create">Anlegen</button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="user-admin-access-editor" class="user-admin-dialog" aria-labelledby="user-admin-access-title" aria-modal="true">
+    <header class="user-admin-dialog__header">
+      <div>
+        <h2 id="user-admin-access-title">Modulrechte</h2>
+        <p id="user-admin-access-name" class="user-admin-dialog__subheading"></p>
+      </div>
+      <button class="button button--secondary user-admin-dialog__close" type="button" id="user-admin-access-close" aria-label="Modulrechte schließen" title="Schließen">✕</button>
+    </header>
+    <p class="settings-note">Pro Modul: Kein Zugriff, Lesen oder Bearbeiten. Die Trainerrolle bleibt unverändert.</p>
+    <p id="user-admin-access-message" class="message message--error" role="alert" hidden></p>
+    <form id="user-admin-access-form">
+      <div class="user-admin-access-list" id="user-admin-access-list"></div>
+      <div class="user-admin-dialog__footer">
+        <button class="button button--secondary" type="button" id="user-admin-access-cancel">Abbrechen</button>
+        <button class="button button--primary" type="submit" id="user-admin-access-save">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="user-admin-reset-dialog" class="user-admin-dialog" aria-labelledby="user-admin-reset-title" aria-modal="true">
+    <header class="user-admin-dialog__header">
+      <h2 id="user-admin-reset-title">Passwort zurücksetzen</h2>
+      <button type="button" class="button button--secondary user-admin-dialog__close" id="user-admin-reset-close" aria-label="Passwortfenster schließen" title="Schließen">✕</button>
+    </header>
+    <form id="user-admin-reset-form" class="form-stack">
+      <p id="user-admin-reset-target" class="settings-note"></p>
+      <p class="settings-note">Alle bisherigen Sitzungen werden beendet. Beim nächsten Login muss das Passwort geändert werden.</p>
+      <p id="user-admin-reset-error" class="message message--error" role="alert" hidden></p>
+      <label>Neues temporäres Passwort
+        <input id="user-admin-reset-password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
+      </label>
+      <div class="user-admin-dialog__footer">
+        <button class="button button--secondary" type="button" id="user-admin-reset-cancel">Abbrechen</button>
+        <button class="button button--primary" type="submit" id="user-admin-reset-confirm">Zurücksetzen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="user-admin-invitation" class="user-admin-dialog" aria-labelledby="user-admin-invite-title" aria-modal="true">
+    <header class="user-admin-dialog__header">
+      <h2 id="user-admin-invite-title">Zugang weitergeben</h2>
+      <button type="button" class="button button--secondary user-admin-dialog__close" id="user-admin-invite-close" aria-label="Einladung schließen" title="Schließen">✕</button>
+    </header>
+    <p class="settings-note">Zugang angelegt oder Passwort zurückgesetzt. Die Einladung enthält das temporäre Passwort – bitte nur über einen sicheren Kanal teilen. Das Passwort wird hier nicht dauerhaft gespeichert.</p>
+    <p id="user-admin-invite-message" class="message message--error" role="alert" hidden></p>
+    <div class="user-admin-dialog__footer user-admin-invite-actions">
+      <button type="button" class="button button--primary" id="user-admin-share">Einladung teilen</button>
+      <button type="button" class="button button--secondary" id="user-admin-copy">Kopieren</button>
     </div>
-  </section>
+  </dialog>
 </section>
-`;
+\`;
 
-export const ULC_USER_ADMIN_CSS = `
-.user-admin-list { display: grid; gap: 7px; }
-.user-admin-reset-dialog { width: min(460px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); background: var(--card); overflow-y: auto; }
-.user-admin-reset-dialog::backdrop { background: rgb(15 23 42 / 55%); }
-.user-admin-reset-dialog .form-stack { margin-top: 0; }
-.user-admin-reset-dialog .user-admin-invite-actions { margin-top: 8px; }
-.user-admin-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(112px, .6fr); gap: 8px; margin: 8px 0 12px; }
-.user-admin-filters input, .user-admin-filters select { width: 100%; min-width: 0; font-size: 16px; }
-.user-admin-invite-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-@media (max-width: 380px) { .user-admin-filters { grid-template-columns: minmax(0, 1fr); } }
-
-.user-admin-row { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; min-width: 0; }
+export const ULC_USER_ADMIN_CSS = \`
+.user-admin-page, .user-admin-card { min-width: 0; }
+.user-admin-hero { margin-bottom: 10px; }
+.user-admin-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.user-admin-title-row h1 { margin: 0; }
+.user-admin-icon-action { width: 42px; min-width: 42px; min-height: 42px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 1.35rem; line-height: 1; }
+.user-admin-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.user-admin-list-heading h2 { margin: 0; font-size: 1.08rem; }
+.user-admin-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(108px, .52fr); gap: 8px; margin: 10px 0 4px; }
+.user-admin-filters label { min-width: 0; font-size: .82rem; }
+.user-admin-filters input, .user-admin-filters select { width: 100%; min-width: 0; min-height: 40px; font-size: 16px; }
+.user-admin-list { display: grid; gap: 0; min-width: 0; }
+.user-admin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); min-width: 0; }
 .user-admin-row:last-child { border-bottom: 0; }
-.user-admin-row__identity { display: grid; min-width: 0; gap: 2px; overflow-wrap: anywhere; }
-.user-admin-row__meta { font-size: .84rem; color: var(--secondary); }
-.user-admin-row__status { flex: 0 0 auto; font-size: .8rem; }
-#user-admin-form { display: grid; gap: 10px; }
-#user-admin-form input, #user-admin-form select { width: 100%; min-width: 0; font-size: 16px; }
-.user-admin-access-list { display: grid; gap: 8px; margin: 12px 0; }
-.user-admin-access-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, 150px); gap: 10px; align-items: center; }
-.user-admin-access-row select { min-height: 42px; min-width: 0; width: 100%; font-size: 16px; }
-.user-admin-row__actions { display: flex; gap: 5px; align-items: center; justify-content: flex-end; flex-wrap: wrap; flex: 0 1 auto; max-width: 57%; }
-.user-admin-row__actions .button { min-height: 38px; padding: 4px 8px; }
-#user-admin-invitation { margin-top: 12px; }
-#user-admin-invitation .button { margin: 3px; }
-`;
+.user-admin-row__identity { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.user-admin-row__identity strong { font-size: 1rem; line-height: 1.2; }
+.user-admin-row__meta { font-size: .81rem; color: var(--secondary); }
+.user-admin-row__status { font-size: .77rem; font-weight: 600; color: var(--secondary); }
+.user-admin-row__status--active { color: var(--text); }
+.user-admin-row__actions { display: flex; align-items: center; gap: 5px; justify-content: flex-end; min-width: 0; }
+.user-admin-row__actions .button, .user-admin-actions-menu summary { min-height: 38px; padding: 6px 9px; font-size: .88rem; white-space: nowrap; }
+.user-admin-actions-menu { position: relative; }
+.user-admin-actions-menu summary { display: inline-flex; align-items: center; justify-content: center; list-style: none; cursor: pointer; border: 1px solid var(--border); border-radius: var(--radius); font-size: 1.3rem; line-height: 1; min-width: 38px; }
+.user-admin-actions-menu summary::-webkit-details-marker { display: none; }
+.user-admin-actions-menu[open] summary { background: var(--card); }
+.user-admin-actions-menu__content { position: absolute; right: 0; top: calc(100% + 3px); z-index: 15; min-width: 160px; max-width: min(260px, calc(100vw - 44px)); padding: 5px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 7px 22px rgb(0 0 0 / 16%); display: grid; gap: 3px; }
+.user-admin-actions-menu__content button { display: block; width: 100%; text-align: left; min-height: 40px; }
+.user-admin-dialog { width: min(510px, calc(100vw - 20px)); max-width: min(510px, calc(100vw - 20px)); max-height: calc(100dvh - 20px); padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); color: var(--text); overflow-y: auto; box-sizing: border-box; }
+.user-admin-dialog::backdrop { background: rgb(15 23 42 / 55%); }
+.user-admin-dialog__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; position: sticky; top: -16px; padding: 5px 0 12px; background: var(--card); z-index: 2; }
+.user-admin-dialog__header h2 { margin: 0; font-size: 1.24rem; }
+.user-admin-dialog__subheading { margin: 3px 0 0; color: var(--secondary); font-size: .86rem; }
+.user-admin-dialog__close { flex: 0 0 auto; width: 38px; min-height: 38px; padding: 0; }
+.user-admin-dialog__footer { position: sticky; bottom: -16px; margin-top: 12px; padding: 12px 0 3px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; background: var(--card); z-index: 2; }
+.user-admin-dialog__footer .button { min-height: 40px; }
+.user-admin-dialog .form-stack { display: grid; gap: 10px; margin-top: 0; }
+.user-admin-dialog input, .user-admin-dialog select { min-width: 0; width: 100%; font-size: 16px; }
+.user-admin-dialog .message { margin: 9px 0; }
+.user-admin-access-list { display: grid; gap: 0; margin: 8px 0; }
+.user-admin-access-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 148px); gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.user-admin-access-row span { min-width: 0; overflow-wrap: anywhere; font-size: .9rem; }
+.user-admin-access-row select { min-height: 40px; }
+.user-admin-invite-actions { justify-content: flex-start; }
+@media (max-width: 390px) {
+  .user-admin-dialog { width: calc(100vw - 12px); max-width: calc(100vw - 12px); max-height: calc(100dvh - 12px); padding: 12px; }
+  .user-admin-dialog__header { top: -12px; }
+  .user-admin-dialog__footer { bottom: -12px; }
+  .user-admin-row__actions .button { padding: 6px 7px; }
+  .user-admin-access-row { grid-template-columns: minmax(0, 1fr) minmax(108px, 128px); }
+}
+\`;
 
 export const ULC_USER_ADMIN_SCRIPT = String.raw`
 const userAdminElements = Object.freeze({
