@@ -276,6 +276,7 @@ async function applyManifestMigrations(
       migration !== "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql" &&
       migration !== "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql" &&
       migration !== "modules/training-blocks/migrations/0002_appbasis_training_block_multi_audience.sql" &&
+      migration !== "modules/training-blocks/migrations/0003_appbasis_training_block_category.sql" &&
       migration !== "modules/training-plans/migrations/0000_appbasis_training_plans_foundation.sql" &&
       migration !== "modules/training-plans/migrations/0001_appbasis_training_plan_subject_deletion.sql" &&
       migration !== "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql" &&
