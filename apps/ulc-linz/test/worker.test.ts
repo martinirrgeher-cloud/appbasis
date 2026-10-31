@@ -507,6 +507,21 @@ function runtime(
         };
       },
     },
+    userAdminOverview: {
+      async listUsers() {
+        return [
+          {
+            identityId: "identity-worker-1",
+            username: "admin.worker",
+            displayName: "Worker Admin",
+            sourceRole: "admin",
+            subjectId: "admin-subject",
+            active: true,
+            blocked: false,
+          },
+        ];
+      },
+    },
     trainerIdentityLinks: {
       async listBindings() {
         return [];
