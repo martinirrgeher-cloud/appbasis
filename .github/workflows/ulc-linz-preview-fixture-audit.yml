@@ -1,0 +1,62 @@
+name: ULC Preview fixture inventory (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ulc-preview-fixture-audit
+  cancel-in-progress: false
+
+jobs:
+  inventory:
+    name: Preview legacy fixtures — dry-run
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: generated-preview-ulc-linz
+    steps:
+      - name: Require exact main branch
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          test "$WORKFLOW_REF" = 'refs/heads/main'
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.21.0
+          run_install: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate and mask preview-only database credential
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$APPBASIS_DATABASE_URL"
+          echo "::add-mask::$APPBASIS_DATABASE_URL"
+      - name: Inspect obsolete fixtures and their linked history — NO WRITES
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-preview-fixture-audit.mjs dry-run
+      - name: Review before permanent deletion
+        run: |
+          {
+            echo 'Preview fixture audit completed in READ-ONLY mode.'
+            echo 'No data deletion is implemented or authorized by this workflow.'
+            echo 'The resulting audit digest and dependency counts must be reviewed before any separately approved permanent cleanup.'
+          } >> "$GITHUB_STEP_SUMMARY"
