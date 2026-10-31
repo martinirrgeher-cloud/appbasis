@@ -210,14 +210,16 @@ export async function auditUlcPreviewFixtures(
         sample: items.filter(x => x.classification === "e7b9").slice(0, 5)
           .map(x => ({ id: x.id, name: x.name })),
       }));
+      const unexpectedE7B9 = countUnexpectedUlcPreviewFixtures(entities, blockVersions);
       const digest = createHash("sha256")
-        .update(JSON.stringify({ entities, dependencies, externalReferences, activeCandidates, existingProtectedGroupLinks })).digest("hex");
+        .update(JSON.stringify({ entities, dependencies, externalReferences, activeCandidates, existingProtectedGroupLinks, unexpectedE7B9 })).digest("hex");
       return Object.freeze({
         status: "review-required",
         mode: "READ_ONLY_DRY_RUN",
         database: DATABASE,
         organization: ORGANIZATION,
         inventory: all,
+        unexpectedE7B9,
         dependencies,
         externalReferences,
         activeCandidates,
@@ -232,6 +234,44 @@ export async function auditUlcPreviewFixtures(
   } finally {
     await database.close();
   }
+}
+
+/**
+ * Post-acceptance regression guard: exact historic E7B9 names must never
+ * reappear in the persistent preview tenant. A mixed-revision block counts
+ * here too, even when the cleanup audit intentionally flags it for review.
+ */
+export function countUnexpectedUlcPreviewFixtures(entities, blockVersions) {
+  const ids = (kind) => (entities[kind] ?? [])
+    .filter(item => item.classification === "e7b9").length;
+  const unsafeBlockIds = new Set(
+    blockVersions
+      .filter(item => classifyUlcPreviewFixture("block", item.name) === "e7b9")
+      .map(item => item.id),
+  );
+  return Object.freeze({
+    groups: ids("groups"),
+    athletes: ids("athletes"),
+    exercises: ids("exercises"),
+    blocks: unsafeBlockIds.size,
+  });
+}
+
+export function assertNoUlcPreviewE7B9Fixtures(result) {
+  const counts = result?.unexpectedE7B9;
+  if (!counts || !["groups", "athletes", "exercises", "blocks"]
+    .every(kind => Number.isSafeInteger(counts[kind]) && counts[kind] >= 0)) {
+    throw new UlcPreviewFixtureAuditError("Preview acceptance fixture inventory is incomplete.");
+  }
+  if (Object.values(counts).some(value => value !== 0)) {
+    throw new UlcPreviewFixtureAuditError(
+      "Unexpected persistent E7B9 acceptance fixtures: " +
+      ["groups", "athletes", "exercises", "blocks"]
+        .map(kind => kind + "=" + counts[kind]).join(", ") +
+      ". Stop: inspect read-only audit. Do not auto-delete any data.",
+    );
+  }
+  return result;
 }
 
 export function selectUlcPreviewBlockCandidates(entries) {
@@ -271,12 +311,22 @@ function selectCandidates(kind, entries) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  if (process.argv.slice(2).some(arg => arg !== "dry-run")) {
-    console.error("Only dry-run is implemented. Permanent deletion requires a separate approved change.");
+  const args = process.argv.slice(2);
+  const mode = args[0] ?? "dry-run";
+  if (args.length > 1 || !["dry-run", "verify-clean"].includes(mode)) {
+    console.error("Only dry-run and read-only verify-clean are implemented. Permanent deletion requires a separate approved change.");
     process.exitCode = 1;
   } else {
     auditUlcPreviewFixtures({ connectionString: process.env.APPBASIS_DATABASE_URL })
-      .then(result => console.log(JSON.stringify(result, null, 2)))
+      .then(result => {
+        if (mode === "verify-clean") {
+          assertNoUlcPreviewE7B9Fixtures(result);
+          console.log("E7B9 persistent preview fixture regression guard PASS: " +
+            "groups=0, athletes=0, exercises=0, blocks=0.");
+        } else {
+          console.log(JSON.stringify(result, null, 2));
+        }
+      })
       .catch(error => { console.error(error?.message || "Preview fixture audit failed."); process.exitCode = 1; });
   }
 }
