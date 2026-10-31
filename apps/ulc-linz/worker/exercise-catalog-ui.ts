@@ -297,7 +297,7 @@ export const ULC_EXERCISE_CATALOG_CSS = `
 }
 .exercise-catalog-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 44px;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: stretch;
   border: 1px solid var(--border);
@@ -349,6 +349,13 @@ export const ULC_EXERCISE_CATALOG_CSS = `
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.exercise-catalog-row__actions { display: flex; align-items: stretch; }
+.exercise-catalog-restore {
+  width: 44px; min-height: 44px; border: 0; border-left: 1px solid var(--border);
+  background: transparent; color: var(--text); font-size: 1.4rem; font-weight: 700;
+  cursor: pointer;
+}
+.exercise-catalog-restore:disabled { opacity: .4; cursor: wait; }
 .exercise-catalog-favorite {
   display: grid;
   width: 44px;
@@ -1094,6 +1101,7 @@ let exerciseCatalogFeatures = {
   privateVideoUpload: false,
 };
 let exerciseCatalogSelectedId = null;
+let exerciseCatalogSelectedSnapshot = null;
 let exerciseCatalogCloneSourceId = null;
 let exerciseCatalogParameterDrafts = [];
 let exerciseCatalogBusy = false;
@@ -1547,7 +1555,20 @@ function renderExerciseCatalogList() {
     );
     favorite.textContent = item.isFavorite ? "★" : "☆";
 
-    row.append(main, favorite);
+    const actions = document.createElement("div");
+    actions.className = "exercise-catalog-row__actions";
+    if (!item.isActive && exerciseCatalogCanEdit) {
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "exercise-catalog-restore";
+      restore.dataset.exerciseCatalogRestore = item.id;
+      restore.title = "Übung wieder aktivieren";
+      restore.setAttribute("aria-label", "Übung „" + item.name + "“ wieder aktivieren");
+      restore.textContent = "↻";
+      actions.append(restore);
+    }
+    actions.append(favorite);
+    row.append(main, actions);
     container.append(row);
   }
 }
@@ -1667,6 +1688,7 @@ function populateExerciseCatalogEditor(item, options = {}) {
   const cloneMode = cloneSourceId !== null;
   const editable = !review && exerciseCatalogCanEdit && item.isActive;
   exerciseCatalogCloneSourceId = cloneSourceId;
+  exerciseCatalogSelectedSnapshot = !review && !cloneMode && item.id ? item : null;
   exerciseCatalogEditorReviewMode = review;
   setExerciseCatalogFilterOpen(false);
   if (elements.exerciseCatalogEditor) elements.exerciseCatalogEditor.hidden = false;
@@ -1828,6 +1850,7 @@ function closeExerciseCatalogEditor(force = false) {
     return false;
   }
   exerciseCatalogSelectedId = null;
+  exerciseCatalogSelectedSnapshot = null;
   exerciseCatalogCloneSourceId = null;
   exerciseCatalogParameterDrafts = [];
   exerciseCatalogEditorDirty = false;
@@ -2592,36 +2615,52 @@ async function deactivateExerciseCatalogItem() {
   setExerciseCatalogBusy(false);
 }
 
-async function reactivateExerciseCatalogItem() {
+async function reactivateExerciseCatalogItem(id = exerciseCatalogSelectedId) {
   if (
     exerciseCatalogEditorReviewMode ||
     !exerciseCatalogCanEdit ||
-    !exerciseCatalogSelectedId ||
+    typeof id !== "string" ||
+    !id ||
     exerciseCatalogBusy
   ) return;
-  const item = exerciseCatalogItems.find((candidate) => candidate.id === exerciseCatalogSelectedId);
+  const selectedDetail = exerciseCatalogSelectedId === id
+    ? exerciseCatalogSelectedSnapshot : null;
+  const item = selectedDetail ||
+    exerciseCatalogItems.find((candidate) => candidate.id === id);
   if (!item || item.isActive) return;
   if (!window.confirm("Übung „" + item.name + "“ wieder aktivieren?")) return;
+
+  const generation = exerciseCatalogSessionGeneration;
   setExerciseCatalogBusy(true);
   showMessage(elements.exerciseCatalogMessage, "");
   showMessage(elements.exerciseCatalogSuccess, "");
   try {
     await requestJson(
-      "/api/modules/exercise-catalog/" + encodeURIComponent(item.id) + "/reactivate",
+      "/api/modules/exercise-catalog/" + encodeURIComponent(id) + "/reactivate",
       { method: "POST" },
     );
+    if (generation !== exerciseCatalogSessionGeneration) return;
     exerciseCatalogItems = sortedExerciseCatalogItems(
       exerciseCatalogItems.map((candidate) =>
-        candidate.id === item.id ? { ...candidate, isActive: true } : candidate,
+        candidate.id === id ? { ...candidate, isActive: true } : candidate,
       ),
     );
+    if (exerciseCatalogSelectedId === id) closeExerciseCatalogEditor(true);
     renderExerciseCatalogList();
-    closeExerciseCatalogEditor(true);
     showMessage(elements.exerciseCatalogSuccess, "Übung wurde wieder aktiviert.");
-  } catch {
-    showMessage(elements.exerciseCatalogMessage, "Die Übung konnte nicht aktiviert werden.");
+  } catch (error) {
+    if (generation === exerciseCatalogSessionGeneration) {
+      showMessage(
+        elements.exerciseCatalogMessage,
+        error?.status === 403
+          ? "Zum Aktivieren dieser Übung fehlt die Berechtigung."
+          : error?.status === 404 || error?.status === 409
+            ? "Übung wurde zwischenzeitlich geändert. Bitte die Übersicht aktualisieren."
+            : "Die Übung konnte nicht aktiviert werden.",
+      );
+    }
   } finally {
-    setExerciseCatalogBusy(false);
+    if (generation === exerciseCatalogSessionGeneration) setExerciseCatalogBusy(false);
   }
 }
 
@@ -3358,9 +3397,11 @@ function setExerciseCatalogBusy(next) {
   // Opening a catalog item sets busy=true before the editor is populated.
   // On completion, the action must be explicitly re-enabled for an archived item.
   if (elements.exerciseCatalogReactivate) {
+    const detail = exerciseCatalogSelectedSnapshot?.id === exerciseCatalogSelectedId
+      ? exerciseCatalogSelectedSnapshot : selectedExercise;
     elements.exerciseCatalogReactivate.disabled =
       next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit ||
-      !selectedExercise || selectedExercise.isActive;
+      !detail || detail.isActive;
   }
   if (elements.exerciseCatalogParameterAdd) {
     elements.exerciseCatalogParameterAdd.disabled = next || exerciseCatalogEditorReviewMode || !exerciseCatalogCanEdit;
@@ -3388,6 +3429,11 @@ function setExerciseCatalogBusy(next) {
 }
 
 function handleExerciseCatalogListClick(event) {
+  const restore = event.target.closest("[data-exercise-catalog-restore]");
+  if (restore) {
+    void reactivateExerciseCatalogItem(restore.dataset.exerciseCatalogRestore || "");
+    return;
+  }
   const favorite = event.target.closest("[data-exercise-catalog-favorite]");
   if (favorite) {
     void toggleExerciseCatalogFavorite(favorite.dataset.exerciseCatalogFavorite || "");
