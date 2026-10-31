@@ -577,9 +577,9 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <div class="card kindertraining-week-savebar">
                 <div>
                   <strong id="kindertraining-week-state">Gespeichert</strong>
-                  <small>Speichert nur geänderte Tage dieser Woche.</small>
+                  <small>Änderungen werden automatisch gespeichert.</small>
                 </div>
-                <button class="button button--primary" id="kindertraining-week-save" type="button" disabled>💾 Speichern</button>
+                <button class="button button--secondary" id="kindertraining-week-save" type="button" disabled>💾 Jetzt speichern</button>
               </div>
               <div class="kindertraining-week-days" id="kindertraining-week-days" aria-live="polite"></div>
             </section>
@@ -2105,6 +2105,7 @@ let kindertrainingWeekDirtyDates = new Set();
 let kindertrainingWeekExpandedDates = new Set();
 let kindertrainingWeekFailedDates = new Set();
 let kindertrainingWeekSaving = false;
+let kindertrainingWeekAutosaveTimer = null;
 let kindertrainingWeekLoadId = 0;
 let kindertrainingLoadedGroupId = "";
 let masterdataLoading = false;
@@ -2448,6 +2449,7 @@ function resetAttendanceSessionState() {
   kindertrainingWeekExpandedDates = new Set();
   kindertrainingWeekFailedDates = new Set();
   kindertrainingWeekSaving = false;
+  clearKindertrainingWeekAutosave();
   kindertrainingWeekLoadId += 1;
   kindertrainingLoadedGroupId = "";
   renderKindertrainingGroups();
@@ -3087,6 +3089,7 @@ function germanWeekday(value) {
 async function bootstrapKindertraining() {
   const generation = attendanceSessionGeneration;
   kindertrainingReady = false;
+  clearKindertrainingWeekAutosave();
   kindertrainingGroups = [];
   kindertrainingSnapshot = null;
   kindertrainingWeekStart = localWeekStart(new Date());
@@ -3450,9 +3453,11 @@ function refreshKindertrainingWeekControls() {
   }
   if (elements.kindertrainingWeekState) {
     elements.kindertrainingWeekState.textContent = kindertrainingWeekSaving
-      ? "Woche wird gespeichert …"
+      ? "Änderungen werden gespeichert …"
       : kindertrainingWeekDirtyDates.size > 0
-        ? String(kindertrainingWeekDirtyDates.size) + " Tag(e) ungespeichert"
+        ? kindertrainingWeekAutosaveTimer !== null
+          ? "Automatisches Speichern vorgemerkt …"
+          : String(kindertrainingWeekDirtyDates.size) + " Tag(e) noch ungespeichert"
         : "Gespeichert";
   }
 }
@@ -3552,17 +3557,37 @@ async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
   }
 }
 
-function discardKindertrainingWeekChanges() {
+function clearKindertrainingWeekAutosave() {
+  if (kindertrainingWeekAutosaveTimer === null) return;
+  window.clearTimeout(kindertrainingWeekAutosaveTimer);
+  kindertrainingWeekAutosaveTimer = null;
+}
+
+function scheduleKindertrainingWeekAutosave() {
+  clearKindertrainingWeekAutosave();
+  if (
+    !kindertrainingReady ||
+    kindertrainingLoading ||
+    kindertrainingWeekSaving ||
+    kindertrainingWeekDirtyDates.size === 0
+  ) return;
+  // Debounce rapid status taps and note entry to avoid a request per keystroke.
+  kindertrainingWeekAutosaveTimer = window.setTimeout(() => {
+    kindertrainingWeekAutosaveTimer = null;
+    void saveKindertrainingWeek();
+  }, 1200);
+}
+
+async function flushKindertrainingWeekChanges() {
+  clearKindertrainingWeekAutosave();
   if (kindertrainingWeekDirtyDates.size === 0) return true;
-  return window.confirm(
-    "Es gibt ungespeicherte Anwesenheitsänderungen. Wirklich verwerfen?",
-  );
+  const saved = await saveKindertrainingWeek();
+  return saved && kindertrainingWeekDirtyDates.size === 0;
 }
 
 async function moveKindertrainingWeek(offset) {
   if (kindertrainingLoading || kindertrainingWeekSaving) return;
-  if (!discardKindertrainingWeekChanges()) return;
-  kindertrainingWeekDirtyDates = new Set();
+  if (!(await flushKindertrainingWeekChanges())) return;
   kindertrainingWeekStart =
     offset === 0
       ? localWeekStart(new Date())
@@ -3576,8 +3601,7 @@ async function moveKindertrainingWeek(offset) {
 
 async function reloadKindertrainingWeek() {
   if (kindertrainingLoading || kindertrainingWeekSaving) return;
-  if (!discardKindertrainingWeekChanges()) return;
-  kindertrainingWeekDirtyDates = new Set();
+  if (!(await flushKindertrainingWeekChanges())) return;
   await loadKindertrainingWeek({ preserveExpansion: true });
 }
 
@@ -3587,15 +3611,15 @@ async function handleKindertrainingWeekGroupChange() {
   if (
     kindertrainingWeekDirtyDates.size > 0 &&
     kindertrainingLoadedGroupId &&
-    nextGroupId !== kindertrainingLoadedGroupId &&
-    !discardKindertrainingWeekChanges()
+    nextGroupId !== kindertrainingLoadedGroupId
   ) {
-    if (elements.kindertrainingGroup) {
-      elements.kindertrainingGroup.value = kindertrainingLoadedGroupId;
+    if (!(await flushKindertrainingWeekChanges())) {
+      if (elements.kindertrainingGroup) {
+        elements.kindertrainingGroup.value = kindertrainingLoadedGroupId;
+      }
+      return;
     }
-    return;
   }
-  kindertrainingWeekDirtyDates = new Set();
   kindertrainingWeekSnapshots = [];
   kindertrainingWeekExpandedDates = new Set();
   kindertrainingWeekFailedDates = new Set();
@@ -3613,6 +3637,7 @@ function updateKindertrainingWeekSnapshot(sessionDate, update) {
 function markKindertrainingWeekDirty(sessionDate) {
   kindertrainingWeekDirtyDates.add(sessionDate);
   showMessage(elements.kindertrainingSuccess, "");
+  scheduleKindertrainingWeekAutosave();
   refreshKindertrainingWeekControls();
 }
 
@@ -3696,21 +3721,22 @@ function handleKindertrainingWeekInput(event) {
 }
 
 async function saveKindertrainingWeek() {
+  clearKindertrainingWeekAutosave();
   if (
     !kindertrainingReady ||
     kindertrainingLoading ||
-    kindertrainingWeekSaving ||
-    kindertrainingWeekDirtyDates.size === 0
-  ) {
-    return;
-  }
+    kindertrainingWeekSaving
+  ) return false;
+  if (kindertrainingWeekDirtyDates.size === 0) return true;
 
   const generation = attendanceSessionGeneration;
-  const groupId = elements.kindertrainingGroup?.value || "";
+  // When the user changes the group select, unsaved days still belong to
+  // the previous group. Never send those drafts to the newly selected group.
+  const groupId = kindertrainingLoadedGroupId || elements.kindertrainingGroup?.value || "";
   const dirtySnapshots = kindertrainingWeekSnapshots.filter((snapshot) =>
     kindertrainingWeekDirtyDates.has(snapshot.sessionDate),
   );
-  if (!groupId || dirtySnapshots.length === 0) return;
+  if (!groupId || dirtySnapshots.length === 0) return false;
 
   kindertrainingWeekSaving = true;
   showMessage(elements.kindertrainingMessage, "");
@@ -3741,7 +3767,7 @@ async function saveKindertrainingWeek() {
         return withKindertrainingWeekDraft(saved);
       }),
     );
-    if (generation !== attendanceSessionGeneration) return;
+    if (generation !== attendanceSessionGeneration) return false;
 
     const failedDates = [];
     let savedCount = 0;
@@ -3773,6 +3799,7 @@ async function saveKindertrainingWeek() {
         "success",
       );
     }
+    return failedDates.length === 0;
   } finally {
     if (generation === attendanceSessionGeneration) {
       kindertrainingWeekSaving = false;
