@@ -520,7 +520,7 @@ jobs:
           APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
           APPBASIS_PREVIEW_USER_USERNAME: preview.admin
           APPBASIS_PREVIEW_USER_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_PASSWORD }}
-        run: node ./tooling/ulc-linz-training-plans-preview-acceptance.mjs
+        run: node ./tooling/ulc-linz-training-plans-preview-readonly-acceptance.mjs
 
       - name: Run authenticated attendance dual-mode acceptance
         if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
@@ -530,16 +530,10 @@ jobs:
           APPBASIS_PREVIEW_USER_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_PASSWORD }}
         run: node ./tooling/ulc-linz-attendance-preview-acceptance.mjs
 
-      # Cleanup is safe and tenant-scoped. Acceptance can create fixtures before
-      # a transient HTTP failure; archive them even if an acceptance check fails.
-      # Never run cleanup after a failed deploy or skipped authentication phase.
-      - name: Remove obsolete Preview training groups
-        if: ${{ !cancelled() && (inputs.operation == 'accept' || inputs.operation == 'deploy-accept') && (steps.training_plans_acceptance.outcome == 'success' || steps.training_plans_acceptance.outcome == 'failure') }}
-        env:
-          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
-          ULC_LINZ_PREVIEW_GROUP_CLEANUP_APPLY: "1"
-        run: node ./tooling/ulc-linz-preview-group-cleanup.mjs
-
+      # Acceptance is read-only for training plans; the attendance smoke reuses
+      # its canonical fixtures. Never archive or delete unrelated Preview
+      # records automatically as part of deploying application code.
+      # Legacy fixture review/deletion is a separate explicitly approved process.
 
       - name: Record E7B9 preview operation
         run: |
