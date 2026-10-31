@@ -93,7 +93,7 @@ export const ULC_USER_ADMIN_CSS = `
 .user-admin-access-list { display: grid; gap: 8px; margin: 12px 0; }
 .user-admin-access-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, 150px); gap: 10px; align-items: center; }
 .user-admin-access-row select { min-height: 42px; min-width: 0; width: 100%; font-size: 16px; }
-.user-admin-row__actions { display: flex; gap: 5px; align-items: center; flex: 0 0 auto; }
+.user-admin-row__actions { display: flex; gap: 5px; align-items: center; justify-content: flex-end; flex-wrap: wrap; flex: 0 1 auto; max-width: 57%; }
 .user-admin-row__actions .button { min-height: 38px; padding: 4px 8px; }
 #user-admin-invitation { margin-top: 12px; }
 #user-admin-invitation .button { margin: 3px; }
@@ -255,7 +255,7 @@ function renderUserAdminList() {
       const invite = document.createElement("button");
       invite.type = "button";
       invite.className = "button button--secondary";
-      invite.textContent = "Einladen";
+      invite.textContent = "Link";
       invite.setAttribute("aria-label", "Anmeldelink für " + String(user.displayName || user.username) + " teilen");
       invite.addEventListener("click", () => void shareExistingUserAdminLogin(user.username));
       actions.append(invite);
@@ -499,7 +499,7 @@ async function createUserAdminAccount(event) {
     } catch {
       if (generation === userAdminGeneration) {
         showMessage(userAdminElements.success,
-          "Benutzer angelegt. Die Liste konnte nicht aktualisiert werden; Einladungstext kann trotzdem kopiert werden.");
+          "Benutzer angelegt. Die Liste konnte nicht aktualisiert werden; die Einladung kann trotzdem geteilt oder kopiert werden.");
       }
     }
   } catch (error) {
@@ -555,9 +555,9 @@ async function shareUserAdminInvitation() {
 async function shareExistingUserAdminLogin(username) {
   if (!userAdminReady || typeof username !== "string" || !username) return;
   // Existing credentials are never accessible: share only app URL + username.
-  const text = "ULC Linz Anmeldung\\n" +
-    "App: " + window.location.origin + "\\n" +
-    "Benutzername: " + username + "\\n" +
+  const text = "ULC Linz Anmeldung\n" +
+    "App: " + window.location.origin + "\n" +
+    "Benutzername: " + username + "\n" +
     "Bitte mit deinem bestehenden Passwort anmelden. Falls du es nicht kennst, den Administrator kontaktieren.";
   const generation = userAdminGeneration;
   const result = await shareUserAdminText(text, "ULC Linz Anmeldung");
