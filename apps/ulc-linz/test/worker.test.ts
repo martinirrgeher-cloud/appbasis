@@ -851,7 +851,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata" data-nav-priority="7" hidden disabled');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="registration" data-nav-priority="1" hidden disabled');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" data-nav-priority="2" hidden disabled');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining" data-nav-priority="2" disabled>Anwesenheit');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="useful" data-nav-priority="8" hidden disabled');
     expect(ULC_LINZ_APP_HTML).not.toContain('data-nav-view="settings"');
     expect(ULC_LINZ_APP_HTML).toContain('data-app-section="countdown"');
