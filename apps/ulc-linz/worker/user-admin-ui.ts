@@ -39,7 +39,7 @@ export const ULC_USER_ADMIN_HTML = `
   </section>
   <section class="card">
     <div class="section-heading"><div><h2>Testzugang anlegen</h2></div></div>
-    <p class="settings-note">Ein Zugang wird mit einem vorhandenen Trainer oder Athleten verknüpft. Zum Testen kann davor in den Stammdaten ein eigener Test-Trainer oder Test-Athlet erstellt werden. Der Benutzer muss beim ersten Login sein Passwort ändern.</p>
+    <p class="settings-note">Ein Zugang wird mit einem vorhandenen Trainer oder Athleten verknüpft. Zum Testen kann davor in den Stammdaten ein eigener Test-Trainer oder Test-Athlet erstellt werden. Der Benutzer muss beim ersten Login sein Passwort ändern. Bereits mit einem Konto verknüpfte Trainer können nicht nochmals ausgewählt werden.</p>
     <form id="user-admin-form" class="form-stack">
       <label>Rolle
         <select id="user-admin-role" required>
@@ -255,7 +255,9 @@ function renderUserAdminList() {
   const search = (userAdminElements.search?.value || "").trim().toLocaleLowerCase("de-AT");
   const statusFilter = userAdminElements.statusFilter?.value || "all";
   const filtered = userAdminUsers.filter((user) => {
-    const active = user.active === true && user.blocked !== true;
+    const incomplete = user.sourceRole === "trainer" &&
+      String(user.subjectId || "").startsWith("ulc-unassigned-trainer:");
+    const active = user.active === true && user.blocked !== true && !incomplete;
     const statusMatches = statusFilter === "all" ||
       (statusFilter === "active" && active) ||
       (statusFilter === "inactive" && !active);
@@ -278,14 +280,23 @@ function renderUserAdminList() {
     const meta = document.createElement("span");
     meta.className = "user-admin-row__meta";
     meta.textContent = String(user.username || "") + " · " + (roles[user.sourceRole] || "Unbekannt");
+    const incomplete = user.sourceRole === "trainer" &&
+      String(user.subjectId || "").startsWith("ulc-unassigned-trainer:");
     const status = document.createElement("span");
     status.className = "user-admin-row__status";
-    status.textContent = user.blocked ? "Gesperrt" : user.active ? "Aktiv" : "Inaktiv";
+    status.textContent = incomplete ? "Einrichtung unvollständig" :
+      user.blocked ? "Gesperrt" : user.active ? "Aktiv" : "Inaktiv";
+    if (incomplete) {
+      const note = document.createElement("small");
+      note.className = "user-admin-row__meta";
+      note.textContent = "Trainerzuordnung fehlt. Konto nicht als Testzugang verwenden.";
+      main.append(note);
+    }
     main.append(title, meta);
     const actions = document.createElement("div");
     actions.className = "user-admin-row__actions";
     actions.append(status);
-    if (user.active && !user.blocked) {
+    if (user.active && !user.blocked && !incomplete) {
       const invite = document.createElement("button");
       invite.type = "button";
       invite.className = "button button--secondary";
@@ -294,7 +305,7 @@ function renderUserAdminList() {
       invite.addEventListener("click", () => void shareExistingUserAdminLogin(user.username));
       actions.append(invite);
     }
-    if (user.sourceRole === "trainer" && user.active && !user.blocked) {
+    if (user.sourceRole === "trainer" && user.active && !user.blocked && !incomplete) {
       const edit = document.createElement("button");
       edit.type = "button";
       edit.className = "button button--secondary";
@@ -303,7 +314,7 @@ function renderUserAdminList() {
       edit.addEventListener("click", () => void openUserAdminAccess(user.identityId));
       actions.append(edit);
     }
-    if (user.sourceRole === "trainer" || user.sourceRole === "athlete") {
+    if ((user.sourceRole === "trainer" || user.sourceRole === "athlete") && !incomplete) {
       if (user.active && !user.blocked) {
         const reset = document.createElement("button");
         reset.type = "button";
@@ -593,7 +604,13 @@ function renderUserAdminTargets() {
       : [item.firstName, item.lastName].filter(Boolean).join(" ");
     const option = document.createElement("option");
     option.value = item.id;
-    option.textContent = label || item.name || item.id;
+    const existing = userAdminUsers.find(user =>
+      user.sourceRole === role && user.subjectId === item.id &&
+      user.active === true && user.blocked !== true);
+    option.textContent = existing
+      ? (label || item.name || item.id) + " – Konto vorhanden (" + existing.username + ")"
+      : (label || item.name || item.id);
+    option.disabled = Boolean(existing);
     select.append(option);
   }
   if ([...select.options].some((option) => option.value === previous)) select.value = previous;
