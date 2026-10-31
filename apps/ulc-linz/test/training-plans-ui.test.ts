@@ -11,7 +11,7 @@ import {
 } from "../worker/ui";
 
 describe("ULC E7B6 training plan block template UI", () => {
-  it("keeps planning after registration and training in primary navigation", () => {
+  it("keeps planning accessible in the permission-gated Mehr menu", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung',
     );
@@ -19,7 +19,7 @@ describe("ULC E7B6 training plan block template UI", () => {
       'id="training-plan-quick-action"',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      '"training-plans",\n  "training-documentation",\n  "exercise-catalog"',
+      '"training-plans") return trainingPlansReady;',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain("bootstrapTrainingPlans()");
     expect(ULC_LINZ_APP_SCRIPT).toContain(

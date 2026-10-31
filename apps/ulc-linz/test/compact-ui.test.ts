@@ -7,30 +7,40 @@ import {
 } from "../worker/ui";
 
 describe("ULC E4D.5 compact mobile layout", () => {
-  it("keeps only three permission-aware primary navigation items and moves the rest under Mehr", () => {
-    expect(ULC_LINZ_APP_HTML).toContain('id="app-nav-primary"');
-    expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="home" data-nav-priority="0">Start',
+  it("pins Start, Anwesenheit and Doku while grouping secondary destinations under Mehr", () => {
+    const primary = ULC_LINZ_APP_HTML.slice(
+      ULC_LINZ_APP_HTML.indexOf('id="app-nav-primary"'),
+      ULC_LINZ_APP_HTML.indexOf('id="app-nav-overflow"'),
     );
+    expect(primary).toContain('data-nav-view="home" data-nav-priority="0">Start');
+    expect(primary).toContain('data-nav-view="kindertraining" data-nav-priority="2" disabled>Anwesenheit');
+    expect(primary).toContain('data-nav-view="training-documentation" data-nav-priority="4" disabled>Doku');
+    expect(primary).not.toContain('data-nav-view="registration"');
+    expect(primary).not.toContain('data-nav-view="training-plans"');
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-nav-view="registration" data-nav-priority="1" hidden disabled>Anmeldung',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="kindertraining" data-nav-priority="2" hidden disabled>Training',
-    );
-    expect(ULC_LINZ_APP_HTML).toContain(
       'data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung',
     );
-    expect(ULC_LINZ_APP_HTML).toContain(
-      'id="app-nav-more" type="button" aria-expanded="false"',
-    );
-    expect(ULC_LINZ_APP_HTML).toContain('id="app-nav-overflow"');
-    expect(ULC_LINZ_APP_SCRIPT).toContain("const primary = available.slice(0, 3);");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("const overflow = available.slice(3);");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("isAppNavigationAvailable");
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-group="training"');
+    expect(ULC_LINZ_APP_HTML).toContain("<summary>Trainingsinhalte</summary>");
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="exercise-catalog"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-group="administration"');
+    expect(ULC_LINZ_APP_HTML).toContain("<summary>Verwaltung</summary>");
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="users"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="app-sign-out"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("const APP_NAV_FIXED = Object.freeze([");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('control.hidden = !fixed && !available');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('control.disabled = !available');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('group.hidden = !hasVisibleItems');
     expect(ULC_LINZ_APP_SCRIPT).toContain("setAppNavMoreOpen(false);");
     expect(ULC_LINZ_APP_CSS).toContain(".app-nav__overflow {");
     expect(ULC_LINZ_APP_CSS).toContain("bottom: calc(100% + 6px);");
+    expect(ULC_LINZ_APP_CSS).toContain("max-height: min(72dvh, 620px)");
+    expect(ULC_LINZ_APP_CSS).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");
   });
 
   it("keeps athlete registration visible while preserving role-gated access", () => {

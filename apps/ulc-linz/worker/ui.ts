@@ -78,19 +78,31 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
         <nav class="app-nav" aria-label="Hauptnavigation">
           <div class="app-nav__primary" id="app-nav-primary">
             <button class="app-nav__link is-active" type="button" data-nav-view="home" data-nav-priority="0">Start</button>
-            <button class="app-nav__link" type="button" data-nav-view="registration" data-nav-priority="1" hidden disabled>Anmeldung</button>
-            <button class="app-nav__link" type="button" data-nav-view="kindertraining" data-nav-priority="2" hidden disabled>Training</button>
-            <button class="app-nav__link" type="button" data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung</button>
-            <button class="app-nav__link" type="button" data-nav-view="training-documentation" data-nav-priority="4" hidden disabled>Dokumentation</button>
-            <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="5" hidden disabled>Übungen</button>
-            <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="6" hidden disabled>Blöcke</button>
-            <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="7" hidden disabled>Stammdaten</button>
-            <button class="app-nav__link" type="button" data-nav-view="users" data-nav-priority="9" hidden disabled>Benutzer</button>
-            <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="8" hidden disabled>Nützliches</button>
-            <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" hidden>Mehr</button>
+            <button class="app-nav__link" type="button" data-nav-view="kindertraining" data-nav-priority="2" disabled>Anwesenheit</button>
+            <button class="app-nav__link" type="button" data-nav-view="training-documentation" data-nav-priority="4" disabled>Doku</button>
+            <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" aria-haspopup="true">Mehr</button>
           </div>
           <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden>
-            <button class="app-nav__link app-nav__signout" id="app-sign-out" type="button">Abmelden / Benutzer wechseln</button>
+            <button class="app-nav__link" type="button" data-nav-view="registration" data-nav-priority="1" hidden disabled>Anmeldung</button>
+            <button class="app-nav__link" type="button" data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung</button>
+            <details class="app-nav__group" data-nav-group="training" hidden>
+              <summary>Trainingsinhalte</summary>
+              <div class="app-nav__group-list">
+                <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="5" hidden disabled>Übungen</button>
+                <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="6" hidden disabled>Blöcke</button>
+              </div>
+            </details>
+            <details class="app-nav__group" data-nav-group="administration" hidden>
+              <summary>Verwaltung</summary>
+              <div class="app-nav__group-list">
+                <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="7" hidden disabled>Stammdaten</button>
+                <button class="app-nav__link" type="button" data-nav-view="users" data-nav-priority="9" hidden disabled>Benutzer</button>
+              </div>
+            </details>
+            <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="8" hidden disabled>Nützliches</button>
+            <div class="app-nav__overflow-footer">
+              <button class="app-nav__link app-nav__signout" id="app-sign-out" type="button">Abmelden / Benutzer wechseln</button>
+            </div>
           </div>
         </nav>
 
@@ -853,7 +865,18 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   background: white;
   box-shadow: 0 12px 36px rgb(15 23 42 / 18%);
 }
-.app-nav__overflow[hidden] { display: none !important; }
+.app-nav__overflow[hidden], .app-nav__link[hidden], .app-nav__group[hidden] { display: none !important; }
+.app-nav__overflow { max-height: min(72dvh, 620px); overflow-y: auto; overscroll-behavior: contain; }
+.app-nav__primary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.app-nav__group { min-width: 0; border: 1px solid var(--border); border-radius: 10px; }
+.app-nav__group summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; cursor: pointer; font-size: .86rem; font-weight: 800; color: var(--text); }
+.app-nav__group summary::after { content: "⌄"; font-size: 1.05rem; }
+.app-nav__group[open] summary::after { content: "⌃"; }
+.app-nav__group.is-active summary { color: #1d4ed8; }
+.app-nav__group-list { display: grid; gap: 3px; padding: 0 5px 5px 12px; }
+.app-nav__overflow-footer { padding-top: 6px; border-top: 1px solid var(--border); }
+.app-nav__overflow-footer .app-nav__link { width: 100%; }
+.app-nav__more[aria-expanded="true"] { background: #dbeafe; color: #1d4ed8; }
 .app-nav__link {
   display: inline-flex;
   min-height: var(--touch);
@@ -2281,17 +2304,10 @@ document.addEventListener("reset", (event) => {
   form.querySelector(".ulc-validation-summary")?.remove();
 });
 
-const APP_NAV_PRIORITY = Object.freeze([
+const APP_NAV_FIXED = Object.freeze([
   "home",
-  "registration",
   "kindertraining",
-  "training-plans",
   "training-documentation",
-  "exercise-catalog",
-  "training-blocks",
-  "masterdata",
-  "users",
-  "useful",
 ]);
 
 let appNavMoreOpen = false;
@@ -4098,46 +4114,32 @@ function isAppNavigationAvailable(section) {
 }
 
 function refreshAppNavigation() {
-  const controls = new Map();
+  const fixedSections = new Set(APP_NAV_FIXED);
+  let secondaryAvailable = 0;
   for (const control of document.querySelectorAll("[data-nav-view]")) {
-    controls.set(control.dataset.navView || "", control);
-    control.hidden = true;
-    control.disabled = true;
+    const section = control.dataset.navView || "";
+    const available = isAppNavigationAvailable(section);
+    const fixed = fixedSections.has(section);
+    // Keep the three core destinations in fixed positions, even when permission-gated.
+    control.hidden = !fixed && !available;
+    control.disabled = !available;
+    if (!fixed && available) secondaryAvailable += 1;
   }
-
-  const available = APP_NAV_PRIORITY
-    .map((section) => controls.get(section))
-    .filter(
-      (control) =>
-        control && isAppNavigationAvailable(control.dataset.navView || ""),
-    );
-  const primary = available.slice(0, 3);
-  const overflow = available.slice(3);
-
-  for (const control of primary) {
-    control.hidden = false;
-    control.disabled = false;
-    elements.appNavPrimary?.insertBefore(control, elements.appNavMore ?? null);
+  for (const group of elements.appNavOverflow?.querySelectorAll("[data-nav-group]") ?? []) {
+    const hasVisibleItems = [...group.querySelectorAll("[data-nav-view]")]
+      .some(control => !control.hidden && !control.disabled);
+    group.hidden = !hasVisibleItems;
+    if (!hasVisibleItems) group.open = false;
   }
-  for (const control of overflow) {
-    control.hidden = false;
-    control.disabled = false;
-    elements.appNavOverflow?.append(control);
-  }
-
-  const hasOverflow = overflow.length > 0 || elements.appSignOut !== null;
+  const hasOverflow = secondaryAvailable > 0 || elements.appSignOut !== null;
   if (!hasOverflow) appNavMoreOpen = false;
   if (elements.appNavMore) {
     elements.appNavMore.hidden = !hasOverflow;
-    elements.appNavMore.setAttribute(
-      "aria-expanded",
-      hasOverflow && appNavMoreOpen ? "true" : "false",
-    );
+    elements.appNavMore.setAttribute("aria-expanded", hasOverflow && appNavMoreOpen ? "true" : "false");
   }
   if (elements.appNavOverflow) {
     elements.appNavOverflow.hidden = !hasOverflow || !appNavMoreOpen;
   }
-
   const activeSection =
     document.querySelector("[data-app-section]:not([hidden])")?.dataset.appSection ||
     "home";
@@ -4146,17 +4148,24 @@ function refreshAppNavigation() {
 
 function setAppNavMoreOpen(open) {
   const hasOverflow =
-    (elements.appNavOverflow?.querySelectorAll("[data-nav-view]").length ?? 0) > 0 ||
+    [...(elements.appNavOverflow?.querySelectorAll("[data-nav-view]") ?? [])]
+      .some(control => !control.hidden && !control.disabled) ||
     elements.appSignOut !== null;
   appNavMoreOpen = hasOverflow && open;
   if (elements.appNavMore) {
-    elements.appNavMore.setAttribute(
-      "aria-expanded",
-      appNavMoreOpen ? "true" : "false",
-    );
+    elements.appNavMore.setAttribute("aria-expanded", appNavMoreOpen ? "true" : "false");
   }
   if (elements.appNavOverflow) {
     elements.appNavOverflow.hidden = !appNavMoreOpen;
+  }
+  if (appNavMoreOpen) {
+    const currentSection =
+      document.querySelector("[data-app-section]:not([hidden])")?.dataset.appSection || "home";
+    const current = currentSection === "countdown" ? "useful" : currentSection;
+    const group = [...(elements.appNavOverflow?.querySelectorAll("[data-nav-group]") ?? [])]
+      .find(item => [...item.querySelectorAll("[data-nav-view]")]
+        .some(link => link.dataset.navView === current && !link.hidden));
+    if (group) group.open = true;
   }
 }
 
@@ -4172,6 +4181,10 @@ function syncAppNavigationActive(section) {
     ...(elements.appNavOverflow?.querySelectorAll("[data-nav-view]") ?? []),
   ].some((control) => control.dataset.navView === navigationSection);
   elements.appNavMore?.classList.toggle("is-active", overflowActive);
+  for (const group of elements.appNavOverflow?.querySelectorAll("[data-nav-group]") ?? []) {
+    group.classList.toggle("is-active", [...group.querySelectorAll("[data-nav-view]")]
+      .some(control => control.dataset.navView === navigationSection));
+  }
 }
 
 function refreshAppAvailability() {
