@@ -35,7 +35,7 @@ interface Target {
 export class UlcLinzUserAccountService {
   constructor(
     private readonly sql: UlcUserAccountSql,
-    private readonly hashPassword: (password: string) => Promise<string> = hashIdentityTemporaryPassword,
+    private readonly hashPassword: (password: string) => Promise<string>,
   ) {}
 
   private async target(tx: Pick<UlcUserAccountSql, "unsafe">, org: string, id: string): Promise<Target> {
