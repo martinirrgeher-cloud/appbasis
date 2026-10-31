@@ -103,6 +103,11 @@ export function createUlcLinzTrainerUserProvisioningService({
       const actorPrincipalId = requiredIdentifier(input.actorPrincipalId);
       const trainerId = requiredIdentifier(input.trainerId);
 
+      // Verify the selected trainer before provisioning a new identity. A
+      // conflicting active account must not leave a half-created test user.
+      // The later bindTrainer check remains authoritative for concurrent writes.
+      await assertTrainerAvailable({ sql, organizationId, trainerId });
+
       let identity;
       try {
         identity = await identityProvisioning.createInitialUser(
@@ -186,6 +191,38 @@ export function createUlcLinzTrainerUserProvisioningService({
       });
     },
   });
+}
+
+async function assertTrainerAvailable({
+  sql,
+  organizationId,
+  trainerId,
+}: {
+  readonly sql: UlcLinzTrainerUserProvisioningSqlClient;
+  readonly organizationId: string;
+  readonly trainerId: string;
+}): Promise<void> {
+  const rows = await sql.unsafe(
+    `SELECT EXISTS (
+       SELECT 1 FROM appbasis_trainer
+       WHERE id=$2 AND organization_id=$1 AND is_active=true
+     ) AS trainer_exists,
+     EXISTS (
+       SELECT 1 FROM ulc_linz_membership membership
+       JOIN "user" account ON account.id=membership.identity_id
+       WHERE membership.organization_id=$1
+         AND membership.subject_id=$2
+         AND membership.source_role='trainer'
+         AND membership.active=true
+         AND COALESCE(account.banned,false)=false
+     ) AS trainer_claimed`,
+    [organizationId, trainerId],
+  );
+  if (rows.length !== 1 ||
+      typeof rows[0]?.trainer_exists !== "boolean" ||
+      typeof rows[0]?.trainer_claimed !== "boolean") blocked();
+  if (!rows[0].trainer_exists) throw new UlcLinzTrainerUserProvisioningNotFoundError();
+  if (rows[0].trainer_claimed) throw new UlcLinzTrainerUserProvisioningConflictError();
 }
 
 async function ensureTrainerMembership({
