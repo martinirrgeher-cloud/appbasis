@@ -29,9 +29,10 @@ function setup(overrides: Record<string, unknown> = {}) {
   };
   const sql: UlcUserAccountSql = {
     async unsafe() { throw new Error("Writes must be transactional"); },
-    async begin<T>(callback: (transaction: UlcUserAccountSql) => Promise<T>): Promise<T> {
-      const tx: UlcUserAccountSql = {
-        ...sql,
+    async begin<T>(
+      callback: (transaction: Pick<UlcUserAccountSql, "unsafe">) => Promise<T>,
+    ): Promise<T> {
+      const tx: Pick<UlcUserAccountSql, "unsafe"> = {
         async unsafe(query, parameters) {
           calls.push({ query, parameters });
           if (query.includes("SELECT membership.identity_id")) return [target];
