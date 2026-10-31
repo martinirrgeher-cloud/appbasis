@@ -78,7 +78,7 @@ describe("ULC user invitations and mobile account search", () => {
     expect(source).toContain("bestehenden Passwort");
     expect(source).not.toContain("temporaryPassword");
     expect(source).not.toContain("userAdminInviteText");
-    expect(ULC_USER_ADMIN_SCRIPT).toContain("if (user.active && !user.blocked)");
+    expect(ULC_USER_ADMIN_SCRIPT).toContain("const canLink = user.active && !user.blocked && !incomplete && !retired");
     expect(ULC_USER_ADMIN_SCRIPT).toContain("shareExistingUserAdminLogin(user.username)");
   });
 

@@ -1,19 +1,20 @@
 export const ULC_USER_ADMIN_HTML = `
-<section class="app-section" data-app-section="users" id="users" hidden>
-  <section class="hero">
-    <p class="eyebrow">Organisation</p>
-    <h1>Benutzer</h1>
-    <p class="summary">Konten prüfen und Testzugänge für Trainer oder Athleten anlegen.</p>
+<section class="app-section user-admin-page" data-app-section="users" id="users" hidden>
+  <section class="hero user-admin-hero">
+    <div class="user-admin-title-row">
+      <h1>Benutzer</h1>
+      <button type="button" class="button button--primary user-admin-icon-action" id="user-admin-new" title="Neuen Benutzer anlegen" aria-label="Neuen Benutzer anlegen">＋</button>
+    </div>
   </section>
   <p id="user-admin-message" class="message message--error" role="alert" hidden></p>
   <p id="user-admin-success" class="message message--success" role="status" hidden></p>
-  <section class="card">
-    <div class="section-heading">
-      <div><h2>Benutzerkonten <span id="user-admin-count"></span></h2></div>
-      <button type="button" class="button button--secondary" id="user-admin-refresh">Aktualisieren</button>
+  <section class="card user-admin-card">
+    <div class="section-heading user-admin-list-heading">
+      <h2>Benutzerkonten <span id="user-admin-count"></span></h2>
+      <button type="button" class="button button--secondary user-admin-icon-action" id="user-admin-refresh" title="Benutzer aktualisieren" aria-label="Benutzer aktualisieren">↻</button>
     </div>
     <div class="user-admin-filters">
-      <label>Benutzer suchen
+      <label>Suche
         <input id="user-admin-search" type="search" placeholder="Name oder Benutzername" maxlength="120" autocomplete="off" />
       </label>
       <label>Status
@@ -26,20 +27,14 @@ export const ULC_USER_ADMIN_HTML = `
     </div>
     <div id="user-admin-list" class="user-admin-list"></div>
   </section>
-  <section class="card" id="user-admin-access-editor" hidden>
-    <div class="section-heading">
-      <div><h2>Modulrechte</h2><p id="user-admin-access-name"></p></div>
-      <button class="button button--secondary" type="button" id="user-admin-access-close">Schließen</button>
-    </div>
-    <p class="settings-note">Nur für Trainerkonten. Die Rolle bleibt unverändert; pro Modul wird Kein Zugriff, Lesen oder Bearbeiten vergeben.</p>
-    <form id="user-admin-access-form">
-      <div class="user-admin-access-list" id="user-admin-access-list"></div>
-      <button class="button button--primary" type="submit" id="user-admin-access-save">Rechte speichern</button>
-    </form>
-  </section>
-  <section class="card">
-    <div class="section-heading"><div><h2>Testzugang anlegen</h2></div></div>
-    <p class="settings-note">Ein Zugang wird mit einem vorhandenen Trainer oder Athleten verknüpft. Zum Testen kann davor in den Stammdaten ein eigener Test-Trainer oder Test-Athlet erstellt werden. Der Benutzer muss beim ersten Login sein Passwort ändern. Bereits mit einem Konto verknüpfte Trainer können nicht nochmals ausgewählt werden.</p>
+
+  <dialog id="user-admin-create-dialog" class="user-admin-dialog" aria-labelledby="user-admin-create-title" aria-modal="true">
+    <header class="user-admin-dialog__header">
+      <h2 id="user-admin-create-title">Benutzer anlegen</h2>
+      <button type="button" class="button button--secondary user-admin-dialog__close" id="user-admin-create-close" aria-label="Anlegen schließen" title="Schließen">✕</button>
+    </header>
+    <p class="settings-note">Bestehenden Trainer oder Athleten zuordnen. Beim ersten Login muss das Passwort geändert werden.</p>
+    <p id="user-admin-create-error" class="message message--error" role="alert" hidden></p>
     <form id="user-admin-form" class="form-stack">
       <label>Rolle
         <select id="user-admin-role" required>
@@ -62,64 +57,131 @@ export const ULC_USER_ADMIN_HTML = `
       <label>Temporäres Passwort
         <input id="user-admin-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required />
       </label>
-      <button type="submit" class="button button--primary" id="user-admin-create">Benutzer anlegen</button>
-    </form>
-    <dialog id="user-admin-reset-dialog" class="user-admin-reset-dialog" aria-labelledby="user-admin-reset-title" aria-modal="true">
-      <form id="user-admin-reset-form" class="form-stack">
-        <h2 id="user-admin-reset-title">Temporäres Passwort setzen</h2>
-        <p id="user-admin-reset-target" class="settings-note"></p>
-        <p class="settings-note">Der Benutzer wird auf allen Geräten abgemeldet und muss beim nächsten Login das Passwort ändern.</p>
-        <label>Neues temporäres Passwort
-          <input id="user-admin-reset-password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
-        </label>
-        <div class="user-admin-invite-actions">
-          <button class="button button--primary" type="submit" id="user-admin-reset-confirm">Passwort zurücksetzen</button>
-          <button class="button button--secondary" type="button" id="user-admin-reset-cancel">Abbrechen</button>
-        </div>
-      </form>
-    </dialog>
-    <div id="user-admin-invitation" hidden>
-      <p class="settings-note">Zugang angelegt oder Passwort zurückgesetzt. Du kannst die Einladung am Handy teilen oder kopieren. Sie enthält das temporäre Passwort – verwende einen sicheren Kanal. Das Passwort wird hier nicht dauerhaft gespeichert.</p>
-      <div class="user-admin-invite-actions">
-        <button type="button" class="button button--primary" id="user-admin-share">Einladung teilen</button>
-        <button type="button" class="button button--secondary" id="user-admin-copy">Einladung kopieren</button>
-        <button type="button" class="button button--secondary" id="user-admin-invite-close">Schließen</button>
+      <div class="user-admin-dialog__footer">
+        <button type="button" class="button button--secondary" id="user-admin-create-cancel">Abbrechen</button>
+        <button type="submit" class="button button--primary" id="user-admin-create">Anlegen</button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="user-admin-access-editor" class="user-admin-dialog" aria-labelledby="user-admin-access-title" aria-modal="true">
+    <header class="user-admin-dialog__header">
+      <div>
+        <h2 id="user-admin-access-title">Modulrechte</h2>
+        <p id="user-admin-access-name" class="user-admin-dialog__subheading"></p>
+      </div>
+      <button class="button button--secondary user-admin-dialog__close" type="button" id="user-admin-access-close" aria-label="Modulrechte schließen" title="Schließen">✕</button>
+    </header>
+    <p class="settings-note">Pro Modul: Kein Zugriff, Lesen oder Bearbeiten. Die Trainerrolle bleibt unverändert.</p>
+    <p id="user-admin-access-message" class="message message--error" role="alert" hidden></p>
+    <form id="user-admin-access-form">
+      <div class="user-admin-access-list" id="user-admin-access-list"></div>
+      <div class="user-admin-dialog__footer">
+        <button class="button button--secondary" type="button" id="user-admin-access-cancel">Abbrechen</button>
+        <button class="button button--primary" type="submit" id="user-admin-access-save">Speichern</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="user-admin-reset-dialog" class="user-admin-dialog" aria-labelledby="user-admin-reset-title" aria-modal="true">
+    <header class="user-admin-dialog__header">
+      <h2 id="user-admin-reset-title">Passwort zurücksetzen</h2>
+      <button type="button" class="button button--secondary user-admin-dialog__close" id="user-admin-reset-close" aria-label="Passwortfenster schließen" title="Schließen">✕</button>
+    </header>
+    <form id="user-admin-reset-form" class="form-stack">
+      <p id="user-admin-reset-target" class="settings-note"></p>
+      <p class="settings-note">Alle bisherigen Sitzungen werden beendet. Beim nächsten Login muss das Passwort geändert werden.</p>
+      <p id="user-admin-reset-error" class="message message--error" role="alert" hidden></p>
+      <label>Neues temporäres Passwort
+        <input id="user-admin-reset-password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required />
+      </label>
+      <div class="user-admin-dialog__footer">
+        <button class="button button--secondary" type="button" id="user-admin-reset-cancel">Abbrechen</button>
+        <button class="button button--primary" type="submit" id="user-admin-reset-confirm">Zurücksetzen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="user-admin-invitation" class="user-admin-dialog" aria-labelledby="user-admin-invite-title" aria-modal="true">
+    <header class="user-admin-dialog__header">
+      <h2 id="user-admin-invite-title">Zugang weitergeben</h2>
+      <button type="button" class="button button--secondary user-admin-dialog__close" id="user-admin-invite-close" aria-label="Einladung schließen" title="Schließen">✕</button>
+    </header>
+    <p class="settings-note">Zugang angelegt oder Passwort zurückgesetzt. Die Einladung enthält das temporäre Passwort – bitte nur über einen sicheren Kanal teilen. Das Passwort wird hier nicht dauerhaft gespeichert.</p>
+    <p id="user-admin-invite-message" class="message message--error" role="alert" hidden></p>
+    <div class="user-admin-dialog__footer user-admin-invite-actions">
+      <button type="button" class="button button--primary" id="user-admin-share">Einladung teilen</button>
+      <button type="button" class="button button--secondary" id="user-admin-copy">Kopieren</button>
     </div>
-  </section>
+  </dialog>
 </section>
 `;
 
 export const ULC_USER_ADMIN_CSS = `
-.user-admin-list { display: grid; gap: 7px; }
-.user-admin-reset-dialog { width: min(460px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); background: var(--card); overflow-y: auto; }
-.user-admin-reset-dialog::backdrop { background: rgb(15 23 42 / 55%); }
-.user-admin-reset-dialog .form-stack { margin-top: 0; }
-.user-admin-reset-dialog .user-admin-invite-actions { margin-top: 8px; }
-.user-admin-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(112px, .6fr); gap: 8px; margin: 8px 0 12px; }
-.user-admin-filters input, .user-admin-filters select { width: 100%; min-width: 0; font-size: 16px; }
-.user-admin-invite-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-@media (max-width: 380px) { .user-admin-filters { grid-template-columns: minmax(0, 1fr); } }
-
-.user-admin-row { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; min-width: 0; }
+.user-admin-page, .user-admin-card { min-width: 0; }
+.user-admin-hero { margin-bottom: 10px; }
+.user-admin-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.user-admin-title-row h1 { margin: 0; }
+.user-admin-icon-action { width: 42px; min-width: 42px; min-height: 42px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 1.35rem; line-height: 1; }
+.user-admin-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.user-admin-list-heading h2 { margin: 0; font-size: 1.08rem; }
+.user-admin-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(108px, .52fr); gap: 8px; margin: 10px 0 4px; }
+.user-admin-filters label { min-width: 0; font-size: .82rem; }
+.user-admin-filters input, .user-admin-filters select { width: 100%; min-width: 0; min-height: 40px; font-size: 16px; }
+.user-admin-list { display: grid; gap: 0; min-width: 0; }
+.user-admin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); min-width: 0; }
 .user-admin-row:last-child { border-bottom: 0; }
-.user-admin-row__identity { display: grid; min-width: 0; gap: 2px; overflow-wrap: anywhere; }
-.user-admin-row__meta { font-size: .84rem; color: var(--secondary); }
-.user-admin-row__status { flex: 0 0 auto; font-size: .8rem; }
-#user-admin-form { display: grid; gap: 10px; }
-#user-admin-form input, #user-admin-form select { width: 100%; min-width: 0; font-size: 16px; }
-.user-admin-access-list { display: grid; gap: 8px; margin: 12px 0; }
-.user-admin-access-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, 150px); gap: 10px; align-items: center; }
-.user-admin-access-row select { min-height: 42px; min-width: 0; width: 100%; font-size: 16px; }
-.user-admin-row__actions { display: flex; gap: 5px; align-items: center; justify-content: flex-end; flex-wrap: wrap; flex: 0 1 auto; max-width: 57%; }
-.user-admin-row__actions .button { min-height: 38px; padding: 4px 8px; }
-#user-admin-invitation { margin-top: 12px; }
-#user-admin-invitation .button { margin: 3px; }
+.user-admin-row__identity { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.user-admin-row__identity strong { font-size: 1rem; line-height: 1.2; }
+.user-admin-row__meta { font-size: .81rem; color: var(--secondary); }
+.user-admin-row__status { font-size: .77rem; font-weight: 600; color: var(--secondary); }
+.user-admin-row__status--active { color: var(--text); }
+.user-admin-row__actions { display: flex; align-items: center; gap: 5px; justify-content: flex-end; min-width: 0; }
+.user-admin-row__actions .button, .user-admin-actions-menu summary { min-height: 38px; padding: 6px 9px; font-size: .88rem; white-space: nowrap; }
+.user-admin-actions-menu { position: relative; }
+.user-admin-actions-menu summary { display: inline-flex; align-items: center; justify-content: center; list-style: none; cursor: pointer; border: 1px solid var(--border); border-radius: var(--radius); font-size: 1.3rem; line-height: 1; min-width: 38px; }
+.user-admin-actions-menu summary::-webkit-details-marker { display: none; }
+.user-admin-actions-menu[open] summary { background: var(--card); }
+.user-admin-actions-menu__content { position: absolute; right: 0; top: calc(100% + 3px); z-index: 15; min-width: 160px; max-width: min(260px, calc(100vw - 44px)); padding: 5px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 7px 22px rgb(0 0 0 / 16%); display: grid; gap: 3px; }
+.user-admin-actions-menu__content button { display: block; width: 100%; text-align: left; min-height: 40px; }
+.user-admin-dialog { width: min(510px, calc(100vw - 20px)); max-width: min(510px, calc(100vw - 20px)); max-height: calc(100dvh - 20px); padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--card); color: var(--text); overflow-y: auto; box-sizing: border-box; }
+.user-admin-dialog::backdrop { background: rgb(15 23 42 / 55%); }
+.user-admin-dialog__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; position: sticky; top: -16px; padding: 5px 0 12px; background: var(--card); z-index: 2; }
+.user-admin-dialog__header h2 { margin: 0; font-size: 1.24rem; }
+.user-admin-dialog__subheading { margin: 3px 0 0; color: var(--secondary); font-size: .86rem; }
+.user-admin-dialog__close { flex: 0 0 auto; width: 38px; min-height: 38px; padding: 0; }
+.user-admin-dialog__footer { position: sticky; bottom: -16px; margin-top: 12px; padding: 12px 0 3px; display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; background: var(--card); z-index: 2; }
+.user-admin-dialog__footer .button { min-height: 40px; }
+.user-admin-dialog .form-stack { display: grid; gap: 10px; margin-top: 0; }
+.user-admin-dialog input, .user-admin-dialog select { min-width: 0; width: 100%; font-size: 16px; }
+.user-admin-dialog .message { margin: 9px 0; }
+.user-admin-access-list { display: grid; gap: 0; margin: 8px 0; }
+.user-admin-access-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 148px); gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.user-admin-access-row span { min-width: 0; overflow-wrap: anywhere; font-size: .9rem; }
+.user-admin-access-row select { min-height: 40px; }
+.user-admin-invite-actions { justify-content: flex-start; }
+@media (max-width: 390px) {
+  .user-admin-dialog { width: calc(100vw - 12px); max-width: calc(100vw - 12px); max-height: calc(100dvh - 12px); padding: 12px; }
+  .user-admin-dialog__header { top: -12px; }
+  .user-admin-dialog__footer { bottom: -12px; }
+  .user-admin-row__actions .button { padding: 6px 7px; }
+  .user-admin-access-row { grid-template-columns: minmax(0, 1fr) minmax(108px, 128px); }
+}
 `;
 
 export const ULC_USER_ADMIN_SCRIPT = String.raw`
 const userAdminElements = Object.freeze({
   message: document.querySelector("#user-admin-message"),
+  createDialog: document.querySelector("#user-admin-create-dialog"),
+  newButton: document.querySelector("#user-admin-new"),
+  createClose: document.querySelector("#user-admin-create-close"),
+  createCancel: document.querySelector("#user-admin-create-cancel"),
+  createError: document.querySelector("#user-admin-create-error"),
+  accessMessage: document.querySelector("#user-admin-access-message"),
+  resetError: document.querySelector("#user-admin-reset-error"),
+  inviteMessage: document.querySelector("#user-admin-invite-message"),
+  resetClose: document.querySelector("#user-admin-reset-close"),
+  accessCancel: document.querySelector("#user-admin-access-cancel"),
   success: document.querySelector("#user-admin-success"),
   list: document.querySelector("#user-admin-list"),
   count: document.querySelector("#user-admin-count"),
@@ -163,14 +225,39 @@ let userAdminResetIdentityId = null;
 let userAdminResetUsername = "";
 
 userAdminElements.refresh?.addEventListener("click", () => void loadUserAdmin());
+userAdminElements.newButton?.addEventListener("click", openUserAdminCreate);
+userAdminElements.createClose?.addEventListener("click", () => closeUserAdminCreate());
+userAdminElements.createCancel?.addEventListener("click", () => closeUserAdminCreate());
+userAdminElements.createDialog?.addEventListener("cancel", (event) => {
+  if (userAdminBusy) event.preventDefault();
+});
+userAdminElements.resetClose?.addEventListener("click", closeUserAdminPasswordReset);
+userAdminElements.resetDialog?.addEventListener("cancel", (event) => {
+  if (userAdminBusy) event.preventDefault();
+});
+userAdminElements.accessCancel?.addEventListener("click", () => closeUserAdminAccess());
+userAdminElements.accessEditor?.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeUserAdminAccess();
+});
+userAdminElements.accessEditor?.addEventListener("close", () => {
+  userAdminAccessSnapshot = null;
+  userAdminElements.accessList?.replaceChildren();
+});
+userAdminElements.invitation?.addEventListener("close", clearUserAdminInvitation);
+document.addEventListener("click", (event) => {
+  for (const menu of document.querySelectorAll(".user-admin-actions-menu[open]")) {
+    if (!menu.contains(event.target)) menu.open = false;
+  }
+});
 userAdminElements.search?.addEventListener("input", renderUserAdminList);
 userAdminElements.statusFilter?.addEventListener("change", renderUserAdminList);
 userAdminElements.role?.addEventListener("change", renderUserAdminTargets);
 userAdminElements.form?.addEventListener("submit", (event) => void createUserAdminAccount(event));
 userAdminElements.copy?.addEventListener("click", () => void copyUserAdminInvitation());
 userAdminElements.share?.addEventListener("click", () => void shareUserAdminInvitation());
-userAdminElements.inviteClose?.addEventListener("click", clearUserAdminInvitation);
-userAdminElements.accessClose?.addEventListener("click", closeUserAdminAccess);
+userAdminElements.inviteClose?.addEventListener("click", closeUserAdminInvitation);
+userAdminElements.accessClose?.addEventListener("click", () => closeUserAdminAccess());
 userAdminElements.accessForm?.addEventListener("submit", (event) => void saveUserAdminAccess(event));
 userAdminElements.resetForm?.addEventListener("submit", (event) => void saveUserAdminPasswordReset(event));
 userAdminElements.resetCancel?.addEventListener("click", closeUserAdminPasswordReset);
@@ -182,7 +269,33 @@ userAdminElements.resetDialog?.addEventListener("close", () => {
 
 function clearUserAdminInvitation() {
   userAdminInviteText = "";
-  if (userAdminElements.invitation) userAdminElements.invitation.hidden = true;
+  showMessage(userAdminElements.inviteMessage, "");
+}
+
+function closeUserAdminInvitation() {
+  if (userAdminElements.invitation?.open) userAdminElements.invitation.close();
+  clearUserAdminInvitation();
+}
+
+function openUserAdminInvitation() {
+  if (!userAdminInviteText || userAdminElements.invitation?.open) return;
+  showMessage(userAdminElements.inviteMessage, "");
+  userAdminElements.invitation?.showModal();
+}
+
+function closeUserAdminCreate(force = false) {
+  if (!force && userAdminBusy) return;
+  if (userAdminElements.createDialog?.open) userAdminElements.createDialog.close();
+  if (userAdminElements.password) userAdminElements.password.value = "";
+  showMessage(userAdminElements.createError, "");
+}
+
+function openUserAdminCreate() {
+  if (!userAdminReady || userAdminBusy || userAdminElements.createDialog?.open) return;
+  userAdminElements.form?.reset();
+  showMessage(userAdminElements.createError, "");
+  userAdminElements.createDialog?.showModal();
+  void prepareUserAdminView();
 }
 
 function resetUserAdminSessionState() {
@@ -191,8 +304,9 @@ function resetUserAdminSessionState() {
   userAdminBusy = false;
   userAdminUsers = [];
   userAdminTargets = null;
-  clearUserAdminInvitation();
-  closeUserAdminAccess();
+  closeUserAdminInvitation();
+  closeUserAdminCreate(true);
+  closeUserAdminAccess(true);
   closeUserAdminPasswordReset();
   userAdminElements.form?.reset();
   if (userAdminElements.search) userAdminElements.search.value = "";
@@ -235,6 +349,7 @@ async function loadUserAdmin() {
     if (!Array.isArray(payload?.users)) throw new Error("INVALID_USER_ADMIN_RESPONSE");
     userAdminUsers = payload.users;
     renderUserAdminList();
+    if (userAdminTargets !== null) renderUserAdminTargets();
     showMessage(userAdminElements.message, "");
   } catch {
     if (generation === userAdminGeneration) {
@@ -254,10 +369,13 @@ function renderUserAdminList() {
   container.replaceChildren();
   const search = (userAdminElements.search?.value || "").trim().toLocaleLowerCase("de-AT");
   const statusFilter = userAdminElements.statusFilter?.value || "all";
+  const isIncomplete = (user) => user.sourceRole === "trainer" &&
+    String(user.subjectId || "").startsWith("ulc-unassigned-trainer:");
+  const isRetired = (user) => user.sourceRole === "trainer" &&
+    String(user.subjectId || "").startsWith("ulc-detached-trainer:");
   const filtered = userAdminUsers.filter((user) => {
-    const incomplete = user.sourceRole === "trainer" &&
-      String(user.subjectId || "").startsWith("ulc-unassigned-trainer:");
-    const active = user.active === true && user.blocked !== true && !incomplete;
+    const active = user.active === true && user.blocked !== true &&
+      !isIncomplete(user) && !isRetired(user);
     const statusMatches = statusFilter === "all" ||
       (statusFilter === "active" && active) ||
       (statusFilter === "inactive" && !active);
@@ -271,6 +389,8 @@ function renderUserAdminList() {
   }
   const roles = { admin: "Administrator", trainer: "Trainer", athlete: "Athlet", parent: "Eltern" };
   for (const user of filtered) {
+    const incomplete = isIncomplete(user);
+    const retired = isRetired(user);
     const row = document.createElement("article");
     row.className = "user-admin-row";
     const main = document.createElement("div");
@@ -280,61 +400,76 @@ function renderUserAdminList() {
     const meta = document.createElement("span");
     meta.className = "user-admin-row__meta";
     meta.textContent = String(user.username || "") + " · " + (roles[user.sourceRole] || "Unbekannt");
-    const incomplete = user.sourceRole === "trainer" &&
-      String(user.subjectId || "").startsWith("ulc-unassigned-trainer:");
     const status = document.createElement("span");
     status.className = "user-admin-row__status";
     status.textContent = incomplete ? "Einrichtung unvollständig" :
+      retired ? "Ehemaliger Testzugang" :
       user.blocked ? "Gesperrt" : user.active ? "Aktiv" : "Inaktiv";
+    if (user.active && !user.blocked && !incomplete && !retired) {
+      status.classList.add("user-admin-row__status--active");
+    }
+    main.append(title, meta, status);
     if (incomplete) {
       const note = document.createElement("small");
       note.className = "user-admin-row__meta";
       note.textContent = "Trainerzuordnung fehlt. Konto nicht als Testzugang verwenden.";
       main.append(note);
     }
-    main.append(title, meta);
     const actions = document.createElement("div");
     actions.className = "user-admin-row__actions";
-    actions.append(status);
-    if (user.active && !user.blocked && !incomplete) {
-      const invite = document.createElement("button");
-      invite.type = "button";
-      invite.className = "button button--secondary";
-      invite.textContent = "Link";
-      invite.setAttribute("aria-label", "Anmeldelink für " + String(user.displayName || user.username) + " teilen");
-      invite.addEventListener("click", () => void shareExistingUserAdminLogin(user.username));
-      actions.append(invite);
+    const addAction = (parent, text, description, handler) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "button button--secondary";
+      button.textContent = text;
+      button.setAttribute("aria-label", description);
+      button.addEventListener("click", () => {
+        const menu = button.closest(".user-admin-actions-menu");
+        if (menu) menu.open = false;
+        handler();
+      });
+      parent.append(button);
+    };
+    if (user.sourceRole === "trainer" && user.active && !user.blocked &&
+      !incomplete && !retired) {
+      addAction(actions, "Rechte", "Modulrechte für " + user.username,
+        () => void openUserAdminAccess(user.identityId));
     }
-    if (user.sourceRole === "trainer" && user.active && !user.blocked && !incomplete) {
-      const edit = document.createElement("button");
-      edit.type = "button";
-      edit.className = "button button--secondary";
-      edit.textContent = "Rechte";
-      edit.setAttribute("aria-label", "Modulrechte für " + String(user.displayName || user.username));
-      edit.addEventListener("click", () => void openUserAdminAccess(user.identityId));
-      actions.append(edit);
-    }
-    if ((user.sourceRole === "trainer" || user.sourceRole === "athlete") && !incomplete) {
-      if (user.active && !user.blocked) {
-        const reset = document.createElement("button");
-        reset.type = "button";
-        reset.className = "button button--secondary";
-        reset.textContent = "Passwort";
-        reset.setAttribute("aria-label", "Passwort zurücksetzen für " + user.username);
-        reset.addEventListener("click", () => openUserAdminPasswordReset(user));
-        actions.append(reset);
+    const supportsAccountActions = (user.sourceRole === "trainer" || user.sourceRole === "athlete") &&
+      !incomplete && !retired;
+    const canLink = user.active && !user.blocked && !incomplete && !retired;
+    if (canLink || supportsAccountActions) {
+      const menu = document.createElement("details");
+      menu.className = "user-admin-actions-menu";
+      const summary = document.createElement("summary");
+      summary.textContent = "⋯";
+      summary.setAttribute("aria-label", "Weitere Aktionen für " + user.username);
+      summary.setAttribute("title", "Weitere Aktionen");
+      const panel = document.createElement("div");
+      panel.className = "user-admin-actions-menu__content";
+      if (canLink) {
+        addAction(panel, "Link teilen", "Anmeldelink für " + user.username + " teilen",
+          () => void shareExistingUserAdminLogin(user.username));
       }
-      const action = user.blocked ? "unblock" : !user.active ? "reactivate" : "block";
-      if (action) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "button button--secondary";
-        button.textContent = action === "block" ? "Sperren"
-          : action === "unblock" ? "Entsperren" : "Reaktivieren";
-        button.setAttribute("aria-label", button.textContent + ": " + user.username);
-        button.addEventListener("click", () => void changeUserAdminStatus(user, action));
-        actions.append(button);
+      if (supportsAccountActions) {
+        if (user.active && !user.blocked) {
+          addAction(panel, "Passwort zurücksetzen", "Passwort für " + user.username + " zurücksetzen",
+            () => openUserAdminPasswordReset(user));
+        }
+        const action = user.blocked ? "unblock" : !user.active ? "reactivate" : "block";
+        const label = action === "block" ? "Sperren" :
+          action === "unblock" ? "Entsperren" : "Reaktivieren";
+        addAction(panel, label, label + ": " + user.username,
+          () => void changeUserAdminStatus(user, action));
       }
+      menu.append(summary, panel);
+      menu.addEventListener("toggle", () => {
+        if (!menu.open) return;
+        for (const other of container.querySelectorAll(".user-admin-actions-menu[open]")) {
+          if (other !== menu) other.open = false;
+        }
+      });
+      actions.append(menu);
     }
     row.append(main, actions);
     container.append(row);
@@ -363,6 +498,7 @@ function openUserAdminPasswordReset(user) {
   if (userAdminElements.resetTarget) userAdminElements.resetTarget.textContent =
     String(user.displayName || user.username) + " (" + user.username + ")";
   if (userAdminElements.resetPassword) userAdminElements.resetPassword.value = "";
+  showMessage(userAdminElements.resetError, "");
   userAdminElements.resetDialog?.showModal();
   userAdminElements.resetPassword?.focus();
 }
@@ -394,12 +530,12 @@ async function saveUserAdminPasswordReset(event) {
       "Temporäres Passwort: " + password + "\n" +
       "Beim nächsten Login das Passwort ändern.";
     closeUserAdminPasswordReset();
-    if (userAdminElements.invitation) userAdminElements.invitation.hidden = false;
+    openUserAdminInvitation();
     showMessage(userAdminElements.success,
       "Passwort zurückgesetzt. Alle bisherigen Sitzungen beendet. Zugang jetzt sicher teilen.");
   } catch (error) {
     if (generation === userAdminGeneration) {
-      showMessage(userAdminElements.message, error?.status === 403
+      showMessage(userAdminElements.resetError, error?.status === 403
         ? "Dieses Konto darf nicht zurückgesetzt werden."
         : error?.status === 409 ? "Der Kontostand hat sich verändert. Bitte Liste aktualisieren."
           : "Passwort konnte nicht zurückgesetzt werden.");
@@ -450,18 +586,33 @@ async function changeUserAdminStatus(user, action) {
   }
 }
 
-function closeUserAdminAccess() {
+function userAdminAccessHasChanges() {
+  if (!userAdminAccessSnapshot) return false;
+  const choices = new Map(
+    [...(userAdminElements.accessList?.querySelectorAll("[data-user-access-module]") || [])]
+      .map(select => [select.dataset.userAccessModule, select.value]),
+  );
+  return userAdminAccessSnapshot.modules.some(module =>
+    choices.get(module.key) !== module.level);
+}
+
+function closeUserAdminAccess(force = false) {
+  if (!force && userAdminBusy) return;
+  if (!force && userAdminAccessHasChanges() &&
+    !window.confirm("Ungespeicherte Modulrechte verwerfen?")) return;
+  if (userAdminElements.accessEditor?.open) userAdminElements.accessEditor.close();
   userAdminAccessSnapshot = null;
-  if (userAdminElements.accessEditor) userAdminElements.accessEditor.hidden = true;
   userAdminElements.accessList?.replaceChildren();
+  showMessage(userAdminElements.accessMessage, "");
 }
 
 async function openUserAdminAccess(identityId) {
-  if (!userAdminReady || userAdminBusy || typeof identityId !== "string") return;
+  if (!userAdminReady || userAdminBusy || typeof identityId !== "string" ||
+    userAdminElements.accessEditor?.open) return;
   const generation = userAdminGeneration;
   userAdminBusy = true;
   updateUserAdminControls();
-  closeUserAdminAccess();
+  closeUserAdminAccess(true);
   showMessage(userAdminElements.message, "");
   try {
     const payload = await requestJson("/api/admin/users/" +
@@ -470,8 +621,8 @@ async function openUserAdminAccess(identityId) {
     if (!Array.isArray(payload?.permissions?.modules)) throw new Error("INVALID_ACCESS");
     userAdminAccessSnapshot = payload.permissions;
     renderUserAdminAccess();
-    if (userAdminElements.accessEditor) userAdminElements.accessEditor.hidden = false;
-    userAdminElements.accessEditor?.scrollIntoView({ block: "nearest" });
+    showMessage(userAdminElements.accessMessage, "");
+    userAdminElements.accessEditor?.showModal();
   } catch (error) {
     if (generation === userAdminGeneration) {
       showMessage(userAdminElements.message, error?.status === 403
@@ -543,12 +694,12 @@ async function saveUserAdminAccess(event) {
     if (generation !== userAdminGeneration) return;
     if (!Array.isArray(payload?.permissions?.modules)) throw new Error("INVALID_ACCESS");
     userAdminAccessSnapshot = payload.permissions;
-    renderUserAdminAccess();
+    closeUserAdminAccess(true);
     showMessage(userAdminElements.success,
       "Modulrechte gespeichert. Der Benutzer sollte sich für die Übernahme neu anmelden.");
   } catch (error) {
     if (generation === userAdminGeneration) {
-      showMessage(userAdminElements.message,
+      showMessage(userAdminElements.accessMessage,
         error?.status === 409
           ? "Die Rechte wurden zwischenzeitlich verändert. Schließen und erneut öffnen."
           : error?.status === 403
@@ -581,7 +732,7 @@ async function prepareUserAdminView() {
     renderUserAdminTargets();
   } catch {
     if (generation === userAdminGeneration) {
-      showMessage(userAdminElements.message, "Trainer und Athleten konnten nicht geladen werden.");
+      showMessage(userAdminElements.createError, "Trainer und Athleten konnten nicht geladen werden.");
     }
   }
 }
@@ -613,12 +764,22 @@ function renderUserAdminTargets() {
     option.disabled = Boolean(existing);
     select.append(option);
   }
-  if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+  if ([...select.options].some((option) => option.value === previous && !option.disabled)) {
+    select.value = previous;
+  } else {
+    select.value = "";
+  }
 }
 
 function updateUserAdminControls() {
   if (userAdminElements.refresh) userAdminElements.refresh.disabled = userAdminBusy;
   if (userAdminElements.create) userAdminElements.create.disabled = userAdminBusy;
+  if (userAdminElements.newButton) userAdminElements.newButton.disabled = userAdminBusy;
+  if (userAdminElements.createCancel) userAdminElements.createCancel.disabled = userAdminBusy;
+  if (userAdminElements.createClose) userAdminElements.createClose.disabled = userAdminBusy;
+  if (userAdminElements.accessCancel) userAdminElements.accessCancel.disabled = userAdminBusy;
+  if (userAdminElements.accessClose) userAdminElements.accessClose.disabled = userAdminBusy;
+  if (userAdminElements.resetClose) userAdminElements.resetClose.disabled = userAdminBusy;
   if (userAdminElements.share) userAdminElements.share.disabled = userAdminBusy;
   if (userAdminElements.copy) userAdminElements.copy.disabled = userAdminBusy;
   if (userAdminElements.accessSave) userAdminElements.accessSave.disabled = userAdminBusy;
@@ -661,7 +822,8 @@ async function createUserAdminAccount(event) {
       "Benutzername: " + username + "\n" +
       "Temporäres Passwort: " + temporaryPassword + "\n" +
       "Beim ersten Login bitte das Passwort ändern.";
-    if (userAdminElements.invitation) userAdminElements.invitation.hidden = false;
+    closeUserAdminCreate(true);
+    openUserAdminInvitation();
     userAdminElements.form?.reset();
     if (userAdminElements.password) userAdminElements.password.value = "";
     renderUserAdminTargets();
@@ -681,7 +843,7 @@ async function createUserAdminAccount(event) {
     }
   } catch (error) {
     if (generation !== userAdminGeneration) return;
-    showMessage(userAdminElements.message,
+    showMessage(userAdminElements.createError,
       error?.status === 409
         ? "Der Benutzername oder die Zuordnung ist bereits vergeben."
         : error?.status === 403
@@ -723,9 +885,9 @@ async function shareUserAdminInvitation() {
     showMessage(userAdminElements.success, result === "shared"
       ? "Einladung geteilt. Bitte sicheren Empfänger prüfen."
       : "Einladung kopiert. Bitte über einen sicheren Kanal weitergeben.");
-    clearUserAdminInvitation();
+    closeUserAdminInvitation();
   } else if (result === "unavailable") {
-    showMessage(userAdminElements.message, "Teilen oder Kopieren ist hier nicht verfügbar.");
+    showMessage(userAdminElements.inviteMessage, "Teilen oder Kopieren ist hier nicht verfügbar.");
   }
 }
 
@@ -753,9 +915,9 @@ async function copyUserAdminInvitation() {
   try {
     await navigator.clipboard.writeText(userAdminInviteText);
     showMessage(userAdminElements.success, "Einladungstext kopiert. Bitte sicher übermitteln.");
-    clearUserAdminInvitation();
+    closeUserAdminInvitation();
   } catch {
-    showMessage(userAdminElements.message, "Kopieren nicht möglich. Bitte Browser-Berechtigung prüfen.");
+    showMessage(userAdminElements.inviteMessage, "Kopieren nicht möglich. Bitte Browser-Berechtigung prüfen.");
   }
 }
 `;

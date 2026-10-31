@@ -21,7 +21,7 @@ describe("ULC administration onboarding UI", () => {
   });
 
   it("edits module rights only for active trainer users through existing admin session", () => {
-    expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-access-editor" hidden');
+    expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-access-editor"');
     expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-access-form"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('user.sourceRole === "trainer" && user.active && !user.blocked');
     expect(ULC_LINZ_APP_SCRIPT).toContain('encodeURIComponent(snapshot.userId) + "/access"');
@@ -36,4 +36,29 @@ describe("ULC administration onboarding UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('navigator.clipboard.writeText(userAdminInviteText)');
     expect(ULC_LINZ_APP_HTML).toContain("kein automatischer Versand");
   });
+  it("uses one compact overview plus a consistent modal for each edit action", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-new"');
+    expect(ULC_LINZ_APP_HTML).toContain('<dialog id="user-admin-create-dialog"');
+    expect(ULC_LINZ_APP_HTML).toContain('<dialog id="user-admin-access-editor"');
+    expect(ULC_LINZ_APP_HTML).toContain('<dialog id="user-admin-reset-dialog"');
+    expect(ULC_LINZ_APP_HTML).toContain('<dialog id="user-admin-invitation"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('userAdminElements.createDialog?.showModal()');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('userAdminElements.accessEditor?.showModal()');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('userAdminElements.invitation?.showModal()');
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("userAdminElements.accessEditor?.scrollIntoView");
+    expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-create-cancel"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-access-cancel"');
+  });
+
+  it("keeps the user overview compact and protects unsaved rights", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain('menu.className = "user-admin-actions-menu"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('addAction(actions, "Rechte"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('function userAdminAccessHasChanges()');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('window.confirm("Ungespeicherte Modulrechte verwerfen?")');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('if (userAdminBusy) event.preventDefault()');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('clearUserAdminInvitation();');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('closeUserAdminInvitation();');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('userAdminElements.accessEditor?.addEventListener("cancel"');
+  });
+
 });
