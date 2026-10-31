@@ -4,7 +4,6 @@ import {
   roleId,
   PrincipalPermissionAdministrationError,
   RoleAdministrationError,
-  type CapabilityId,
   type PermissionStore,
   type PostgresPrincipalAccessAdministration,
 } from "@appbasis/permissions";
@@ -209,14 +208,14 @@ function validModuleInput(value: unknown): value is {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const input = value as Record<string, unknown>;
   if (Object.keys(input).sort().join(",") !== "expectedGrants,expectedRevokes,modules") return false;
-  const expected = ULC_TRAINER_ACCESS_MODULES.map((m) => m.key);
+  const expected = new Set<string>(ULC_TRAINER_ACCESS_MODULES.map((m) => m.key));
   if (!Array.isArray(input.modules) || input.modules.length !== expected.length) return false;
   const seen = new Set<string>();
   for (const module of input.modules) {
     if (module === null || typeof module !== "object" || Array.isArray(module)) return false;
     const candidate = module as Record<string, unknown>;
     if (Object.keys(candidate).sort().join(",") !== "key,level" ||
-        typeof candidate.key !== "string" || !expected.includes(candidate.key) ||
+        typeof candidate.key !== "string" || !expected.has(candidate.key) ||
         seen.has(candidate.key) || !["none", "view", "edit"].includes(String(candidate.level))) return false;
     seen.add(candidate.key);
   }
