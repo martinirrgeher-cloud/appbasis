@@ -1,4 +1,4 @@
-export const ULC_USER_ADMIN_HTML = \`
+export const ULC_USER_ADMIN_HTML = `
 <section class="app-section" data-app-section="users" id="users" hidden>
   <section class="hero">
     <p class="eyebrow">Organisation</p>
@@ -48,9 +48,9 @@ export const ULC_USER_ADMIN_HTML = \`
     </div>
   </section>
 </section>
-\`;
+`;
 
-export const ULC_USER_ADMIN_CSS = \`
+export const ULC_USER_ADMIN_CSS = `
 .user-admin-list { display: grid; gap: 7px; }
 .user-admin-row { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; min-width: 0; }
 .user-admin-row:last-child { border-bottom: 0; }
@@ -61,9 +61,9 @@ export const ULC_USER_ADMIN_CSS = \`
 #user-admin-form input, #user-admin-form select { width: 100%; min-width: 0; font-size: 16px; }
 #user-admin-invitation { margin-top: 12px; }
 #user-admin-invitation .button { margin: 3px; }
-\`;
+`;
 
-export const ULC_USER_ADMIN_SCRIPT = String.raw\`
+export const ULC_USER_ADMIN_SCRIPT = String.raw`
 const userAdminElements = Object.freeze({
   message: document.querySelector("#user-admin-message"),
   success: document.querySelector("#user-admin-success"),
@@ -272,10 +272,10 @@ async function createUserAdminAccount(event) {
     if (generation !== userAdminGeneration) return;
     // No automatic email is sent. Only the admin can copy this one-time message.
     userAdminInviteText =
-      "ULC Linz Testzugang\\n" +
-      "App: " + window.location.origin + "\\n" +
-      "Benutzername: " + username + "\\n" +
-      "Temporäres Passwort: " + temporaryPassword + "\\n" +
+      "ULC Linz Testzugang\n" +
+      "App: " + window.location.origin + "\n" +
+      "Benutzername: " + username + "\n" +
+      "Temporäres Passwort: " + temporaryPassword + "\n" +
       "Beim ersten Login bitte das Passwort ändern.";
     if (userAdminElements.invitation) userAdminElements.invitation.hidden = false;
     userAdminElements.form?.reset();
@@ -314,4 +314,4 @@ async function copyUserAdminInvitation() {
     showMessage(userAdminElements.message, "Kopieren nicht möglich. Bitte Browser-Berechtigung prüfen.");
   }
 }
-\`;
+`;
