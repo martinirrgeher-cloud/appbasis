@@ -12,6 +12,18 @@ export const ULC_USER_ADMIN_HTML = `
       <div><h2>Benutzerkonten <span id="user-admin-count"></span></h2></div>
       <button type="button" class="button button--secondary" id="user-admin-refresh">Aktualisieren</button>
     </div>
+    <div class="user-admin-filters">
+      <label>Benutzer suchen
+        <input id="user-admin-search" type="search" placeholder="Name oder Benutzername" maxlength="120" autocomplete="off" />
+      </label>
+      <label>Status
+        <select id="user-admin-status-filter">
+          <option value="all">Alle</option>
+          <option value="active">Aktiv</option>
+          <option value="inactive">Inaktiv / gesperrt</option>
+        </select>
+      </label>
+    </div>
     <div id="user-admin-list" class="user-admin-list"></div>
   </section>
   <section class="card" id="user-admin-access-editor" hidden>
@@ -53,9 +65,12 @@ export const ULC_USER_ADMIN_HTML = `
       <button type="submit" class="button button--primary" id="user-admin-create">Benutzer anlegen</button>
     </form>
     <div id="user-admin-invitation" hidden>
-      <p class="settings-note">Der Zugang wurde erstellt. Den Einladungstext jetzt kopieren und über einen sicheren Kanal weitergeben. Das Passwort wird hier nicht dauerhaft gespeichert.</p>
-      <button type="button" class="button button--secondary" id="user-admin-copy">Einladungstext kopieren</button>
-      <button type="button" class="button button--secondary" id="user-admin-invite-close">Schließen</button>
+      <p class="settings-note">Zugang angelegt. Du kannst die Einladung am Handy teilen oder kopieren. Sie enthält das temporäre Passwort – verwende einen sicheren Kanal. Das Passwort wird hier nicht dauerhaft gespeichert.</p>
+      <div class="user-admin-invite-actions">
+        <button type="button" class="button button--primary" id="user-admin-share">Einladung teilen</button>
+        <button type="button" class="button button--secondary" id="user-admin-copy">Einladung kopieren</button>
+        <button type="button" class="button button--secondary" id="user-admin-invite-close">Schließen</button>
+      </div>
     </div>
   </section>
 </section>
@@ -63,6 +78,11 @@ export const ULC_USER_ADMIN_HTML = `
 
 export const ULC_USER_ADMIN_CSS = `
 .user-admin-list { display: grid; gap: 7px; }
+.user-admin-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(112px, .6fr); gap: 8px; margin: 8px 0 12px; }
+.user-admin-filters input, .user-admin-filters select { width: 100%; min-width: 0; font-size: 16px; }
+.user-admin-invite-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+@media (max-width: 380px) { .user-admin-filters { grid-template-columns: minmax(0, 1fr); } }
+
 .user-admin-row { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; min-width: 0; }
 .user-admin-row:last-child { border-bottom: 0; }
 .user-admin-row__identity { display: grid; min-width: 0; gap: 2px; overflow-wrap: anywhere; }
@@ -73,7 +93,7 @@ export const ULC_USER_ADMIN_CSS = `
 .user-admin-access-list { display: grid; gap: 8px; margin: 12px 0; }
 .user-admin-access-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, 150px); gap: 10px; align-items: center; }
 .user-admin-access-row select { min-height: 42px; min-width: 0; width: 100%; font-size: 16px; }
-.user-admin-row__actions { display: flex; gap: 5px; align-items: center; flex: 0 0 auto; }
+.user-admin-row__actions { display: flex; gap: 5px; align-items: center; justify-content: flex-end; flex-wrap: wrap; flex: 0 1 auto; max-width: 57%; }
 .user-admin-row__actions .button { min-height: 38px; padding: 4px 8px; }
 #user-admin-invitation { margin-top: 12px; }
 #user-admin-invitation .button { margin: 3px; }
@@ -86,6 +106,8 @@ const userAdminElements = Object.freeze({
   list: document.querySelector("#user-admin-list"),
   count: document.querySelector("#user-admin-count"),
   refresh: document.querySelector("#user-admin-refresh"),
+  search: document.querySelector("#user-admin-search"),
+  statusFilter: document.querySelector("#user-admin-status-filter"),
   form: document.querySelector("#user-admin-form"),
   role: document.querySelector("#user-admin-role"),
   target: document.querySelector("#user-admin-target"),
@@ -96,6 +118,7 @@ const userAdminElements = Object.freeze({
   create: document.querySelector("#user-admin-create"),
   invitation: document.querySelector("#user-admin-invitation"),
   copy: document.querySelector("#user-admin-copy"),
+  share: document.querySelector("#user-admin-share"),
   inviteClose: document.querySelector("#user-admin-invite-close"),
   accessEditor: document.querySelector("#user-admin-access-editor"),
   accessName: document.querySelector("#user-admin-access-name"),
@@ -114,9 +137,12 @@ let userAdminInviteText = "";
 let userAdminAccessSnapshot = null;
 
 userAdminElements.refresh?.addEventListener("click", () => void loadUserAdmin());
+userAdminElements.search?.addEventListener("input", renderUserAdminList);
+userAdminElements.statusFilter?.addEventListener("change", renderUserAdminList);
 userAdminElements.role?.addEventListener("change", renderUserAdminTargets);
 userAdminElements.form?.addEventListener("submit", (event) => void createUserAdminAccount(event));
 userAdminElements.copy?.addEventListener("click", () => void copyUserAdminInvitation());
+userAdminElements.share?.addEventListener("click", () => void shareUserAdminInvitation());
 userAdminElements.inviteClose?.addEventListener("click", clearUserAdminInvitation);
 userAdminElements.accessClose?.addEventListener("click", closeUserAdminAccess);
 userAdminElements.accessForm?.addEventListener("submit", (event) => void saveUserAdminAccess(event));
@@ -135,6 +161,8 @@ function resetUserAdminSessionState() {
   clearUserAdminInvitation();
   closeUserAdminAccess();
   userAdminElements.form?.reset();
+  if (userAdminElements.search) userAdminElements.search.value = "";
+  if (userAdminElements.statusFilter) userAdminElements.statusFilter.value = "all";
   userAdminElements.list?.replaceChildren();
   if (userAdminElements.count) userAdminElements.count.textContent = "";
   showMessage(userAdminElements.message, "");
@@ -190,9 +218,23 @@ function renderUserAdminList() {
   const container = userAdminElements.list;
   if (!container) return;
   container.replaceChildren();
-  if (userAdminElements.count) userAdminElements.count.textContent = "(" + userAdminUsers.length + ")";
+  const search = (userAdminElements.search?.value || "").trim().toLocaleLowerCase("de-AT");
+  const statusFilter = userAdminElements.statusFilter?.value || "all";
+  const filtered = userAdminUsers.filter((user) => {
+    const active = user.active === true && user.blocked !== true;
+    const statusMatches = statusFilter === "all" ||
+      (statusFilter === "active" && active) ||
+      (statusFilter === "inactive" && !active);
+    const text = [user.displayName, user.username].filter(Boolean).join(" ")
+      .toLocaleLowerCase("de-AT");
+    return statusMatches && text.includes(search);
+  });
+  if (userAdminElements.count) {
+    userAdminElements.count.textContent = "(" + filtered.length +
+      (filtered.length === userAdminUsers.length ? "" : " von " + userAdminUsers.length) + ")";
+  }
   const roles = { admin: "Administrator", trainer: "Trainer", athlete: "Athlet", parent: "Eltern" };
-  for (const user of userAdminUsers) {
+  for (const user of filtered) {
     const row = document.createElement("article");
     row.className = "user-admin-row";
     const main = document.createElement("div");
@@ -209,6 +251,15 @@ function renderUserAdminList() {
     const actions = document.createElement("div");
     actions.className = "user-admin-row__actions";
     actions.append(status);
+    if (user.active && !user.blocked) {
+      const invite = document.createElement("button");
+      invite.type = "button";
+      invite.className = "button button--secondary";
+      invite.textContent = "Link";
+      invite.setAttribute("aria-label", "Anmeldelink für " + String(user.displayName || user.username) + " teilen");
+      invite.addEventListener("click", () => void shareExistingUserAdminLogin(user.username));
+      actions.append(invite);
+    }
     if (user.sourceRole === "trainer" && user.active && !user.blocked) {
       const edit = document.createElement("button");
       edit.type = "button";
@@ -221,9 +272,11 @@ function renderUserAdminList() {
     row.append(main, actions);
     container.append(row);
   }
-  if (userAdminUsers.length === 0) {
+  if (filtered.length === 0) {
     const empty = document.createElement("p");
-    empty.textContent = "Noch keine Benutzer vorhanden.";
+    empty.textContent = userAdminUsers.length === 0
+      ? "Noch keine Benutzer vorhanden."
+      : "Keine Benutzer entsprechen der Suche.";
     container.append(empty);
   }
 }
@@ -391,6 +444,8 @@ function renderUserAdminTargets() {
 function updateUserAdminControls() {
   if (userAdminElements.refresh) userAdminElements.refresh.disabled = userAdminBusy;
   if (userAdminElements.create) userAdminElements.create.disabled = userAdminBusy;
+  if (userAdminElements.share) userAdminElements.share.disabled = userAdminBusy;
+  if (userAdminElements.copy) userAdminElements.copy.disabled = userAdminBusy;
   if (userAdminElements.accessSave) userAdminElements.accessSave.disabled = userAdminBusy;
 }
 
@@ -422,7 +477,7 @@ async function createUserAdminAccount(event) {
       body: JSON.stringify(body),
     });
     if (generation !== userAdminGeneration) return;
-    // No automatic email is sent. Only the admin can copy this one-time message.
+    // No automatic email is sent. The admin can share or copy this one-time message.
     userAdminInviteText =
       "ULC Linz Testzugang\n" +
       "App: " + window.location.origin + "\n" +
@@ -433,7 +488,7 @@ async function createUserAdminAccount(event) {
     userAdminElements.form?.reset();
     if (userAdminElements.password) userAdminElements.password.value = "";
     renderUserAdminTargets();
-    showMessage(userAdminElements.success, "Benutzer angelegt. Einladungstext jetzt kopieren.");
+    showMessage(userAdminElements.success, "Benutzer angelegt. Einladung jetzt teilen oder kopieren.");
     userAdminTargets = null;
     try {
       const payload = await requestJson("/api/admin/users");
@@ -444,7 +499,7 @@ async function createUserAdminAccount(event) {
     } catch {
       if (generation === userAdminGeneration) {
         showMessage(userAdminElements.success,
-          "Benutzer angelegt. Die Liste konnte nicht aktualisiert werden; Einladungstext kann trotzdem kopiert werden.");
+          "Benutzer angelegt. Die Liste konnte nicht aktualisiert werden; die Einladung kann trotzdem geteilt oder kopiert werden.");
       }
     }
   } catch (error) {
@@ -460,6 +515,59 @@ async function createUserAdminAccount(event) {
       userAdminBusy = false;
       updateUserAdminControls();
     }
+  }
+}
+
+async function shareUserAdminText(text, title) {
+  if (typeof navigator.share === "function") {
+    try {
+      await navigator.share({ title, text });
+      return "shared";
+    } catch (error) {
+      if (error?.name === "AbortError") return "cancelled";
+      // Browser denied share; offer clipboard as a fallback.
+    }
+  }
+  if (typeof navigator.clipboard?.writeText !== "function") return "unavailable";
+  try {
+    await navigator.clipboard.writeText(text);
+    return "copied";
+  } catch {
+    return "unavailable";
+  }
+}
+
+async function shareUserAdminInvitation() {
+  if (!userAdminInviteText) return;
+  const generation = userAdminGeneration;
+  const result = await shareUserAdminText(userAdminInviteText, "ULC Linz Testzugang");
+  if (generation !== userAdminGeneration) return;
+  if (result === "shared" || result === "copied") {
+    showMessage(userAdminElements.success, result === "shared"
+      ? "Einladung geteilt. Bitte sicheren Empfänger prüfen."
+      : "Einladung kopiert. Bitte über einen sicheren Kanal weitergeben.");
+    clearUserAdminInvitation();
+  } else if (result === "unavailable") {
+    showMessage(userAdminElements.message, "Teilen oder Kopieren ist hier nicht verfügbar.");
+  }
+}
+
+async function shareExistingUserAdminLogin(username) {
+  if (!userAdminReady || typeof username !== "string" || !username) return;
+  // Existing credentials are never accessible: share only app URL + username.
+  const text = "ULC Linz Anmeldung\n" +
+    "App: " + window.location.origin + "\n" +
+    "Benutzername: " + username + "\n" +
+    "Bitte mit deinem bestehenden Passwort anmelden. Falls du es nicht kennst, den Administrator kontaktieren.";
+  const generation = userAdminGeneration;
+  const result = await shareUserAdminText(text, "ULC Linz Anmeldung");
+  if (generation !== userAdminGeneration) return;
+  if (result === "shared" || result === "copied") {
+    showMessage(userAdminElements.success, result === "shared"
+      ? "Anmeldelink geteilt (ohne Passwort)."
+      : "Anmeldelink kopiert (ohne Passwort).");
+  } else if (result === "unavailable") {
+    showMessage(userAdminElements.message, "Teilen oder Kopieren ist hier nicht verfügbar.");
   }
 }
 
