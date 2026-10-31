@@ -2250,6 +2250,16 @@ function updateUlcFormValidation(form) {
 document.addEventListener("invalid", (event) => {
   const form = event.target?.form;
   if (!form?.matches?.(ULC_VALIDATED_FORMS)) return;
+  // The exercise editor has tabbed panels: reveal the invalid field before
+  // the native browser constraint-validation focus attempt.
+  if (form.id === "exercise-catalog-form") {
+    const panel = event.target.closest?.("[data-exercise-catalog-panel]");
+    if (panel?.hidden) {
+      document.querySelector(
+        "[data-exercise-catalog-tab='" + panel.dataset.exerciseCatalogPanel + "']",
+      )?.click();
+    }
+  }
   form.classList.add("ulc-validation-attempted");
   updateUlcFormValidation(form);
 }, true);
