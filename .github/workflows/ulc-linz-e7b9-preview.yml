@@ -531,9 +531,14 @@ jobs:
         run: node ./tooling/ulc-linz-training-plans-preview-readonly-acceptance.mjs
 
       # Acceptance is read-only for training plans; the attendance smoke reuses
-      # its canonical fixtures. Never archive or delete unrelated Preview
-      # records automatically as part of deploying application code.
-      # Legacy fixture review/deletion is a separate explicitly approved process.
+      # its canonical fixtures. Fail closed if old acceptance scripts start
+      # creating unique test records again. This check only performs SELECTs:
+      # archive/deletion of historical data requires separate approval.
+      - name: Verify no regenerated E7B9 preview fixtures (read-only)
+        if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-preview-fixture-audit.mjs verify-clean
 
       - name: Record E7B9 preview operation
         run: |
