@@ -371,8 +371,11 @@ function renderUserAdminList() {
   const statusFilter = userAdminElements.statusFilter?.value || "all";
   const isIncomplete = (user) => user.sourceRole === "trainer" &&
     String(user.subjectId || "").startsWith("ulc-unassigned-trainer:");
+  const isRetired = (user) => user.sourceRole === "trainer" &&
+    String(user.subjectId || "").startsWith("ulc-detached-trainer:");
   const filtered = userAdminUsers.filter((user) => {
-    const active = user.active === true && user.blocked !== true && !isIncomplete(user);
+    const active = user.active === true && user.blocked !== true &&
+      !isIncomplete(user) && !isRetired(user);
     const statusMatches = statusFilter === "all" ||
       (statusFilter === "active" && active) ||
       (statusFilter === "inactive" && !active);
@@ -387,6 +390,7 @@ function renderUserAdminList() {
   const roles = { admin: "Administrator", trainer: "Trainer", athlete: "Athlet", parent: "Eltern" };
   for (const user of filtered) {
     const incomplete = isIncomplete(user);
+    const retired = isRetired(user);
     const row = document.createElement("article");
     row.className = "user-admin-row";
     const main = document.createElement("div");
@@ -399,8 +403,9 @@ function renderUserAdminList() {
     const status = document.createElement("span");
     status.className = "user-admin-row__status";
     status.textContent = incomplete ? "Einrichtung unvollständig" :
+      retired ? "Ehemaliger Testzugang" :
       user.blocked ? "Gesperrt" : user.active ? "Aktiv" : "Inaktiv";
-    if (user.active && !user.blocked && !incomplete) {
+    if (user.active && !user.blocked && !incomplete && !retired) {
       status.classList.add("user-admin-row__status--active");
     }
     main.append(title, meta, status);
@@ -425,12 +430,14 @@ function renderUserAdminList() {
       });
       parent.append(button);
     };
-    if (user.sourceRole === "trainer" && user.active && !user.blocked && !incomplete) {
+    if (user.sourceRole === "trainer" && user.active && !user.blocked &&
+      !incomplete && !retired) {
       addAction(actions, "Rechte", "Modulrechte für " + user.username,
         () => void openUserAdminAccess(user.identityId));
     }
-    const supportsAccountActions = (user.sourceRole === "trainer" || user.sourceRole === "athlete") && !incomplete;
-    const canLink = user.active && !user.blocked && !incomplete;
+    const supportsAccountActions = (user.sourceRole === "trainer" || user.sourceRole === "athlete") &&
+      !incomplete && !retired;
+    const canLink = user.active && !user.blocked && !incomplete && !retired;
     if (canLink || supportsAccountActions) {
       const menu = document.createElement("details");
       menu.className = "user-admin-actions-menu";
