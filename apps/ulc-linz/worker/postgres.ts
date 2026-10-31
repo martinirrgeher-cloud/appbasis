@@ -91,6 +91,7 @@ import { PostgresUlcLinzTrainerIdentityLinks } from "./trainer-identity-postgres
 import { createUlcLinzTrainerUserProvisioningService } from "./trainer-user-provisioning";
 import { createUlcLinzAthleteUserProvisioningService } from "./athlete-user-provisioning";
 import { PostgresUlcLinzUserAdminOverview } from "./user-admin-overview";
+import { UlcLinzTrainerUserAccessService } from "./user-admin-access";
 import {
   createPostgresUlcLinzSecurityEventLogger,
   type BufferedUlcLinzSecurityEventLogger,
@@ -110,6 +111,7 @@ export interface GeneratedPostgresApplicationRuntime {
   u12Access: UlcLinzU12AccessService;
   trainerIdentityAccess: UlcLinzTrainerIdentityAdminAccessService;
   userAdminOverview: Pick<PostgresUlcLinzUserAdminOverview, "listUsers">;
+  userAdminAccess: Pick<UlcLinzTrainerUserAccessService, "read" | "update">;
   trainerIdentityLinks: Pick<
     PostgresUlcLinzTrainerIdentityLinks,
     "listBindings" | "bindTrainer"
@@ -517,6 +519,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       u12Access,
       trainerIdentityAccess,
       userAdminOverview: new PostgresUlcLinzUserAdminOverview(applicationSql),
+      userAdminAccess: new UlcLinzTrainerUserAccessService(applicationSql, permissions, accessAdministration),
       trainerIdentityLinks,
       trainerUserProvisioning,
       athleteUserProvisioning,
