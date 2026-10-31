@@ -1466,6 +1466,80 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
   color: var(--text);
 }
 .timer-actions .button { min-height: 58px; font-size: 1rem; }
+
+/* The training timer occupies the viewport between the real app header and
+   bottom navigation. Other app sections retain their normal document scroll. */
+body.countdown-screen-active { overflow: hidden; }
+body.countdown-screen-active #countdown {
+  position: fixed;
+  top: var(--countdown-top-inset, 56px);
+  bottom: var(--countdown-bottom-inset, 56px);
+  left: 0;
+  right: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 8px;
+  width: min(100%, 52rem);
+  min-width: 0;
+  margin: 0 auto;
+  padding: 8px 12px;
+  overflow: hidden;
+}
+body.countdown-screen-active #countdown > .countdown-hero {
+  min-height: 40px;
+  padding: 0;
+}
+body.countdown-screen-active #countdown .countdown-hero .eyebrow { display: none; }
+body.countdown-screen-active #countdown .countdown-hero h1 { margin: 0; }
+body.countdown-screen-active #countdown .countdown-layout {
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+  gap: 8px;
+}
+body.countdown-screen-active #countdown .timer-stage {
+  min-height: 0;
+  height: 100%;
+  padding: clamp(8px, 2dvh, 24px);
+}
+body.countdown-screen-active #countdown .timer-topline {
+  margin-bottom: clamp(4px, 1.5dvh, 12px);
+  font-size: clamp(.75rem, 3vw, 1rem);
+}
+body.countdown-screen-active #countdown .timer-value {
+  font-size: clamp(3rem, min(22vw, 17dvh), 9rem);
+}
+body.countdown-screen-active #countdown .timer-hint {
+  margin-top: clamp(5px, 1.5dvh, 12px);
+  margin-bottom: 0;
+  font-size: clamp(.73rem, 2.9vw, .92rem);
+}
+body.countdown-screen-active #countdown .timer-actions {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 78px), 1fr));
+  gap: 6px;
+}
+body.countdown-screen-active #countdown .timer-actions .button {
+  grid-column: auto;
+  min-height: clamp(44px, 7dvh, 58px);
+  padding: 0 4px;
+  font-size: clamp(.8rem, 3.3vw, 1rem);
+}
+@media (max-height: 520px) {
+  body.countdown-screen-active #countdown { gap: 4px; padding-block: 4px; }
+  body.countdown-screen-active #countdown .countdown-layout { gap: 4px; }
+  body.countdown-screen-active #countdown .timer-topline { margin-bottom: 3px; }
+  body.countdown-screen-active #countdown .timer-hint { margin-top: 3px; }
+}
+@media (max-height: 350px) {
+  /* Avoid clipping vital controls at extreme zoom or tiny landscape heights. */
+  body.countdown-screen-active { overflow: auto; }
+  body.countdown-screen-active #countdown {
+    position: static;
+    min-height: calc(100dvh - var(--countdown-top-inset, 56px) - var(--countdown-bottom-inset, 56px));
+    overflow: visible;
+  }
+  body.countdown-screen-active #countdown .timer-stage { min-height: 140px; }
+}
 .button--start { background: #0f172a; color: white; }
 .button--pause { border-color: #f59e0b; background: #fef3c7; color: #92400e; }
 .button--stop { border-color: #fca5a5; background: #fee2e2; color: #991b1b; }
@@ -4094,6 +4168,24 @@ function refreshAppAvailability() {
   }
 }
 
+function syncCountdownViewportInsets() {
+  const header = document.querySelector(".app-header");
+  const nav = document.querySelector(".app-nav");
+  if (!header || !nav) return;
+  document.documentElement.style.setProperty(
+    "--countdown-top-inset", Math.ceil(header.getBoundingClientRect().height) + "px",
+  );
+  document.documentElement.style.setProperty(
+    "--countdown-bottom-inset", Math.ceil(nav.getBoundingClientRect().height) + "px",
+  );
+}
+
+window.addEventListener("resize", () => {
+  if (document.body.classList.contains("countdown-screen-active")) {
+    syncCountdownViewportInsets();
+  }
+});
+
 function showAppSection(section) {
   const allowed =
     section === "home" ||
@@ -4108,12 +4200,16 @@ function showAppSection(section) {
     (section === "training-documentation" && trainingDocumentationReady);
   const target = allowed ? section : "home";
   if (target !== "countdown") closeCountdownSettings();
+  document.body.classList.toggle("countdown-screen-active", target === "countdown");
+  if (target === "countdown") syncCountdownViewportInsets();
   for (const candidate of document.querySelectorAll("[data-app-section]")) {
     candidate.hidden = candidate.dataset.appSection !== target;
   }
   setAppNavMoreOpen(false);
   syncAppNavigationActive(target);
-  if (target !== "home") {
+  if (target === "countdown") {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  } else if (target !== "home") {
     document.querySelector("[data-app-section='" + target + "']")?.scrollIntoView({ block: "start" });
   } else {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -7147,7 +7243,10 @@ async function releaseWakeLock() {
 }
 
 function showView(view) {
-  if (view !== "app") closeCountdownSettings();
+  if (view !== "app") {
+    closeCountdownSettings();
+    document.body.classList.remove("countdown-screen-active");
+  }
   if (elements.loginView) elements.loginView.hidden = view !== "login";
   if (elements.passwordView) elements.passwordView.hidden = view !== "password";
   if (elements.appView) elements.appView.hidden = view !== "app";

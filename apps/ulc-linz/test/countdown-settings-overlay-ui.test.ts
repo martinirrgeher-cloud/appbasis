@@ -42,7 +42,9 @@ describe("ULC Countdown compact navigation and modal settings", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('dialog.showModal()');
     expect(ULC_LINZ_APP_SCRIPT).toContain('if (dialog?.open) dialog.close()');
     expect(ULC_LINZ_APP_SCRIPT).toContain('if (target !== "countdown") closeCountdownSettings()');
-    expect(ULC_LINZ_APP_SCRIPT).toContain('if (view !== "app") closeCountdownSettings()');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('if (view !== "app") {');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('closeCountdownSettings();');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('document.body.classList.remove("countdown-screen-active")');
     expect(ULC_LINZ_APP_SCRIPT).toContain('elements.settingsPanel?.classList.toggle("is-locked", locked)');
     expect(ULC_LINZ_APP_SCRIPT).toContain('elements.settingsForm?.addEventListener("input", handleSettingsInput)');
   });
