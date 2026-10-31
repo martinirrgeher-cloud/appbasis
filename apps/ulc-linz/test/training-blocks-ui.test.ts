@@ -23,11 +23,30 @@ describe("ULC training block planning-aligned UI", () => {
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain("renderTrainingBlockCategoryEditor();");
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain("for (const category of EXERCISE_CATEGORIES)");
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain("option.value = category.key;");
-    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('legacy.textContent = current + " (bisherige Kategorie)"');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('name + " (bisherige Kategorie)"');
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain("trainingBlockCategoryLabel(block.revision.category)");
     expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain(
       'control === trainingBlockElements.category ? "change" : "input"',
     );
+  });
+
+  it("creates a custom block category without altering group filters or existing keys", () => {
+    expect(ULC_TRAINING_BLOCKS_HTML).toContain('id="training-block-custom-category"');
+    expect(ULC_TRAINING_BLOCKS_HTML).toContain('maxlength="80" placeholder="z. B. Drills"');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('create.value = "__new__"');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('＋ Neue Kategorie anlegen');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('setTrainingBlockCustomCategoryOpen(control.value === "__new__")');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('trainingBlockElements.customCategory?.addEventListener("input"');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('trainingBlockElements.category?.value === "__new__"');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('trainingBlockDraft.category || null');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('block.revision.category !== category');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('trainingBlockElements.audienceFilter?.addEventListener("change", renderTrainingBlocks)');
+    expect(ULC_TRAINING_BLOCKS_SCRIPT).toContain('trainingBlockElements.categoryFilter?.addEventListener("change", renderTrainingBlocks)');
+  });
+
+  it("attaches only one search input listener per block view", () => {
+    const occurrence = 'trainingBlockElements.search?.addEventListener("input", renderTrainingBlocks);';
+    expect(ULC_TRAINING_BLOCKS_SCRIPT.split(occurrence)).toHaveLength(2);
   });
 
   it("offers compact prescription editing for every catalog exercise", () => {
