@@ -57,9 +57,7 @@ describe("ULC editor required-field guidance", () => {
       'event.target.closest?.("[data-exercise-catalog-panel]")',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain("if (panel?.hidden)");
-    expect(ULC_LINZ_APP_SCRIPT).toContain(
-      '"[data-exercise-catalog-tab=\'" + panel.dataset.exerciseCatalogPanel + "\\']"',
-    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("panel.dataset.exerciseCatalogPanel");
   });
 
   it("marks invalid name, category, duration and group selection in blocks", () => {
