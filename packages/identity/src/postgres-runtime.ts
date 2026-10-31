@@ -81,6 +81,7 @@ export async function createPostgresIdentityApplicationRuntime(
       identity: identity.service,
       lifecycleIdentity: identity.service,
       provisioningIdentity,
+      hashTemporaryPassword: hashPassword,
       sql,
       async close() {
         await connection.client.end();
