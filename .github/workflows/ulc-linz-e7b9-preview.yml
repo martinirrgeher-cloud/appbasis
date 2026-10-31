@@ -513,6 +513,14 @@ jobs:
 
       # On deploy-accept, these checks only run after provider deployment,
       # exact-SHA verification, runtime/database smoke and anonymous API guards.
+      - name: Run authenticated attendance dual-mode acceptance
+        if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+          APPBASIS_PREVIEW_USER_USERNAME: preview.admin
+          APPBASIS_PREVIEW_USER_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_PASSWORD }}
+        run: node ./tooling/ulc-linz-attendance-preview-acceptance.mjs
+
       - name: Run authenticated E7B9 training-planning acceptance
         id: training_plans_acceptance
         if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
@@ -521,14 +529,6 @@ jobs:
           APPBASIS_PREVIEW_USER_USERNAME: preview.admin
           APPBASIS_PREVIEW_USER_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_PASSWORD }}
         run: node ./tooling/ulc-linz-training-plans-preview-readonly-acceptance.mjs
-
-      - name: Run authenticated attendance dual-mode acceptance
-        if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
-        env:
-          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
-          APPBASIS_PREVIEW_USER_USERNAME: preview.admin
-          APPBASIS_PREVIEW_USER_PASSWORD: ${{ secrets.APPBASIS_PREVIEW_USER_PASSWORD }}
-        run: node ./tooling/ulc-linz-attendance-preview-acceptance.mjs
 
       # Acceptance is read-only for training plans; the attendance smoke reuses
       # its canonical fixtures. Never archive or delete unrelated Preview
