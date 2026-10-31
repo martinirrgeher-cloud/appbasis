@@ -40,7 +40,7 @@ export class UlcLinzUserAccountService {
     private readonly hashPassword: (password: string) => Promise<string> = hashIdentityTemporaryPassword,
   ) {}
 
-  private async target(tx: UlcUserAccountSql, org: string, id: string): Promise<Target> {
+  private async target(tx: Pick<UlcUserAccountSql, "unsafe">, org: string, id: string): Promise<Target> {
     const rows = await tx.unsafe(
       `SELECT membership.identity_id, membership.source_role, membership.active,
               account.username, COALESCE(account.banned,false) AS banned,
