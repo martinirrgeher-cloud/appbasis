@@ -238,6 +238,8 @@ export function createGeneratedWorker(
           response = await u12SessionResponse(request, runtime, url);
         } else if (url.pathname === "/api/auth/sign-out") {
           response = await identitySignOutResponse(request, runtime, url);
+        } else if (url.pathname === "/api/admin/users") {
+          response = await userAdminOverviewResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/athlete-users") {
           response = await athleteUserAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-users") {
@@ -1996,6 +1998,59 @@ async function identitySignOutResponse(
     secureCookies: url.protocol === "https:",
   });
   return identityHttp.signOut(request);
+}
+
+async function userAdminOverviewResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return methodNotAllowedFor("GET", "User administration");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return Response.json(
+      { error: { code: "INVALID_REQUEST", message: "Invalid user directory query." } },
+      { status: 400 },
+    );
+  }
+
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) {
+    if (current.status >= 400) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: null,
+        organizationId: null,
+        action: "view",
+        targetId: "user-admin",
+        reasonCode: "identity-access-denied",
+      });
+    }
+    return current;
+  }
+
+  let access: Readonly<{ organizationId: string; actorPrincipalId: string }>;
+  try {
+    access = await runtime.trainerIdentityAccess.assertAdminAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json(
+        { error: { code: error.code, message: "User administration access denied." } },
+        { status: 403 },
+      );
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+  const users = await runtime.userAdminOverview.listUsers(access.organizationId);
+  return Response.json({ users });
 }
 
 async function athleteUserAdminResponse(

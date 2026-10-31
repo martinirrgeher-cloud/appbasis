@@ -507,6 +507,21 @@ function runtime(
         };
       },
     },
+    userAdminOverview: {
+      async listUsers() {
+        return [
+          {
+            identityId: "identity-worker-1",
+            username: "admin.worker",
+            displayName: "Worker Admin",
+            sourceRole: "admin",
+            subjectId: "admin-subject",
+            active: true,
+            blocked: false,
+          },
+        ];
+      },
+    },
     trainerIdentityLinks: {
       async listBindings() {
         return [];
@@ -4134,6 +4149,92 @@ describe("Trainer identity administration API", () => {
     );
 
     expect(response.status).toBe(403);
+  });
+});
+
+describe("ULC organization user administration API", () => {
+  it("returns only the server-authorized tenant's account directory", async () => {
+    let receivedOrganization: string | null = null;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        trainerIdentityAccess: {
+          async assertAdminAccess() {
+            return { organizationId: "verein-server", actorPrincipalId: "identity-worker-1" };
+          },
+        },
+        userAdminOverview: {
+          async listUsers(organizationId) {
+            receivedOrganization = organizationId;
+            return [{
+              identityId: "test-1",
+              username: "test.trainer",
+              displayName: "Test Trainer",
+              sourceRole: "trainer" as const,
+              subjectId: "trainer-1",
+              active: true,
+              blocked: false,
+            }];
+          },
+        },
+      };
+    });
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/users", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+    expect(response.status).toBe(200);
+    expect(receivedOrganization).toBe("verein-server");
+    await expect(response.json()).resolves.toEqual({
+      users: [{
+        identityId: "test-1",
+        username: "test.trainer",
+        displayName: "Test Trainer",
+        sourceRole: "trainer",
+        subjectId: "trainer-1",
+        active: true,
+        blocked: false,
+      }],
+    });
+    const injection = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/users?organizationId=verein-other", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+    expect(injection.status).toBe(400);
+  });
+
+  it("denies non-admins without listing user data", async () => {
+    let touched = false;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        trainerIdentityAccess: {
+          async assertAdminAccess() {
+            throw new UlcLinzAuthorizationDeniedError();
+          },
+        },
+        userAdminOverview: {
+          async listUsers() {
+            touched = true;
+            return [];
+          },
+        },
+      };
+    });
+    const response = await worker.fetch(
+      new Request("https://ulc.example.test/api/admin/users", {
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+    expect(response.status).toBe(403);
+    expect(touched).toBe(false);
   });
 });
 

@@ -1,4 +1,9 @@
 import {
+  ULC_USER_ADMIN_HTML,
+  ULC_USER_ADMIN_CSS,
+  ULC_USER_ADMIN_SCRIPT,
+} from "./user-admin-ui";
+import {
   ULC_EXERCISE_CATALOG_CSS,
   ULC_EXERCISE_CATALOG_HTML,
   ULC_EXERCISE_CATALOG_SCRIPT,
@@ -80,6 +85,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="5" hidden disabled>Übungen</button>
             <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="6" hidden disabled>Blöcke</button>
             <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="7" hidden disabled>Stammdaten</button>
+            <button class="app-nav__link" type="button" data-nav-view="users" data-nav-priority="9" hidden disabled>Benutzer</button>
             <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="8" hidden disabled>Nützliches</button>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" hidden>Mehr</button>
           </div>
@@ -115,6 +121,15 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary dashboard-action" id="registration-quick-action" type="button" data-open-view="registration" disabled>Anmeldung öffnen</button>
                 <small id="registration-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card dashboard-card--primary" id="user-admin-dashboard" hidden>
+                <div>
+                  <p class="eyebrow">Organisation</p>
+                  <h2>Benutzerverwaltung</h2>
+                  <p>Testzugänge anlegen und bestehende Konten prüfen.</p>
+                </div>
+                <button class="button button--primary dashboard-action" type="button" data-open-view="users">Benutzer öffnen</button>
               </article>
 
               <article class="card dashboard-card dashboard-card--primary">
@@ -592,6 +607,8 @@ ${ULC_TRAINING_DOCUMENTATION_HTML}
               </article>
             </section>
           </section>
+
+          ${ULC_USER_ADMIN_HTML}
 
           <section class="app-section" data-app-section="countdown" id="countdown" hidden>
             <section class="hero countdown-hero">
@@ -1812,6 +1829,7 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
 }
 .masterdata-icon-action__label { display: none; }
 
+${ULC_USER_ADMIN_CSS}
 `;
 
 export const ULC_LINZ_APP_SCRIPT = `const SETTINGS_KEY = "ulc-linz.countdown.settings.v1";
@@ -1842,6 +1860,7 @@ const elements = {
   countdownAccessLabel: document.querySelector("#countdown-access-label"),
   masterdataQuickAction: document.querySelector("#masterdata-quick-action"),
   masterdataAccessLabel: document.querySelector("#masterdata-access-label"),
+  userAdminDashboard: document.querySelector("#user-admin-dashboard"),
   registrationDashboard: document.querySelector("#registration-dashboard"),
   registrationQuickAction: document.querySelector("#registration-quick-action"),
   registrationAccessLabel: document.querySelector("#registration-access-label"),
@@ -2049,6 +2068,7 @@ const APP_NAV_PRIORITY = Object.freeze([
   "exercise-catalog",
   "training-blocks",
   "masterdata",
+  "users",
   "useful",
 ]);
 
@@ -2311,6 +2331,8 @@ ${ULC_TRAINING_PLANS_SCRIPT}
 
 ${ULC_TRAINING_DOCUMENTATION_SCRIPT}
 
+${ULC_USER_ADMIN_SCRIPT}
+
 void restoreSession();
 
 async function restoreSession() {
@@ -2546,6 +2568,7 @@ async function handleSignOut() {
     setTrainingPlanSessionIdentity("");
     resetAttendanceSessionState();
     resetMasterdataSessionState();
+    resetUserAdminSessionState();
     resetTrainingBlockSessionState();
     resetExerciseCatalogSessionState();
     resetTrainingPlanSessionState();
@@ -2587,6 +2610,7 @@ async function acceptSession(next) {
   await Promise.all([
     bootstrapCountdown(),
     bootstrapMasterdata(),
+    bootstrapUserAdmin(),
     bootstrapSelfRegistration(),
     bootstrapKindertraining(),
     bootstrapExerciseCatalog(),
@@ -3801,6 +3825,7 @@ async function bootstrapMasterdata() {
 function isAppNavigationAvailable(section) {
   if (section === "home") return true;
   if (section === "masterdata") return masterdataReady;
+  if (section === "users") return userAdminReady;
   if (section === "registration") return selfRegistrationReady;
   if (section === "kindertraining") return kindertrainingReady;
   if (section === "exercise-catalog") return exerciseCatalogReady;
@@ -3944,6 +3969,7 @@ function refreshAppAvailability() {
   if (elements.masterdataQuickAction) {
     elements.masterdataQuickAction.disabled = !masterdataReady;
   }
+  if (elements.userAdminDashboard) elements.userAdminDashboard.hidden = !userAdminReady;
   if (elements.masterdataImportOpen) {
     elements.masterdataImportOpen.disabled =
       !masterdataReady || !masterdataCanEdit || masterdataExchangeBusy;
@@ -3984,6 +4010,7 @@ function showAppSection(section) {
     section === "home" ||
     ((section === "useful" || section === "countdown") && countdownReady) ||
     (section === "masterdata" && masterdataReady) ||
+    (section === "users" && userAdminReady) ||
     (section === "registration" && selfRegistrationReady) ||
     (section === "kindertraining" && kindertrainingReady) ||
     (section === "exercise-catalog" && exerciseCatalogReady) ||
@@ -4002,6 +4029,7 @@ function showAppSection(section) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   if (target === "masterdata") void loadMasterdata();
+  if (target === "users") void prepareUserAdminView();
   if (target === "registration") prepareSelfRegistrationView();
   if (target === "kindertraining") prepareKindertrainingView();
   if (target === "exercise-catalog") prepareExerciseCatalogView();
