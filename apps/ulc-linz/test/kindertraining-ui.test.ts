@@ -9,7 +9,7 @@ import {
 describe("ULC Kindertraining weekly attendance UI", () => {
   it("ships a mobile weekly attendance workspace", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="kindertraining" data-nav-priority="2" hidden disabled',
+      'data-nav-view="kindertraining" data-nav-priority="2" disabled>Anwesenheit',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-app-section="kindertraining"',
