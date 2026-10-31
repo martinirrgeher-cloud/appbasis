@@ -30,6 +30,7 @@ export interface CreateTrainingBlockDraftInput {
    */
   readonly audienceId?: string | null;
   readonly audienceIds?: readonly string[];
+  readonly category?: string | null;
   readonly durationMinutes?: number | null;
   readonly note?: string | null;
   readonly exercises?: readonly TrainingBlockExerciseInput[];
@@ -39,6 +40,7 @@ export interface TrainingBlockDraft {
   readonly name: string;
   readonly audienceId: string | null;
   readonly audienceIds: readonly string[];
+  readonly category: string | null;
   readonly durationMinutes: number | null;
   readonly note: string | null;
   readonly exercises: readonly TrainingBlockExerciseDraft[];
@@ -73,6 +75,7 @@ export function normalizeTrainingBlockDraft(
     name: requiredText(input.name, "Training block name", 120),
     audienceId: audiences[0] ?? null,
     audienceIds: audiences,
+    category: optionalText(input.category, "Training block category", 80),
     durationMinutes: optionalDuration(input.durationMinutes),
     note: optionalText(input.note, "Training block note", 3000),
     exercises: Object.freeze(

@@ -41,14 +41,6 @@ test("E7B9 workflow keeps inspect read-only and gates every preview mutation exp
 
   assert.match(
     workflow,
-    /ulc-linz-training-blocks-parity-preview\.mjs inspect/,
-  );
-  assert.match(
-    workflow,
-    /ulc-linz-training-blocks-parity-preview\.mjs verify/,
-  );
-  assert.match(
-    workflow,
     /ulc-linz-attendance-preview\.mjs inspect/,
   );
   assert.match(
@@ -65,19 +57,19 @@ test("E7B9 workflow keeps inspect read-only and gates every preview mutation exp
   );
   assert.match(
     workflow,
-    /ulc-linz-training-blocks-v3-preview\.mjs inspect/,
+    /ulc-linz-training-blocks-v4-preview\.mjs inspect/,
   );
   assert.match(
     workflow,
-    /APPBASIS_APPLY_TRAINING_BLOCKS_V3_PREVIEW: "1"/,
+    /APPBASIS_APPLY_TRAINING_BLOCKS_V4_PREVIEW: "1"/,
   );
   assert.match(
     workflow,
-    /ulc-linz-training-blocks-v3-preview\.mjs apply/,
+    /ulc-linz-training-blocks-v4-preview\.mjs apply/,
   );
   assert.match(
     workflow,
-    /ulc-linz-training-blocks-v3-preview\.mjs verify/,
+    /ulc-linz-training-blocks-v4-preview\.mjs verify/,
   );
   assert.match(
     workflow,
@@ -151,9 +143,8 @@ test("E7B9 skips redundant schema inspections during deploy and accept but retai
   }
 
   const inspectOnlyWhenNeeded = [
-    "Inspect current training-blocks-v2 preview state",
     "Inspect current attendance preview state",
-    "Inspect current training-blocks-v3 preview state",
+    "Inspect current training-blocks-v4 preview state",
     "Inspect current training-documentation preview state",
     "Inspect current training-plans preview state",
   ];
@@ -166,9 +157,8 @@ test("E7B9 skips redundant schema inspections during deploy and accept but retai
   }
 
   for (const name of [
-    "Require current training-blocks-v2 baseline before mutation",
     "Require current attendance schema before runtime operation",
-    "Require current training-blocks-v3 schema before runtime operation",
+    "Require current training-blocks-v4 schema before runtime operation",
   ]) {
     assert.match(step(name), /if: inputs\.operation != 'inspect'/);
     assert.match(step(name), /\.mjs verify/);
@@ -238,9 +228,8 @@ test("E7B9 deploy-accept runs deploy, exact-SHA guards, and authenticated accept
     assert.ok(step(name).includes(combined), name + " must run in combined mode");
   }
   for (const name of [
-    "Inspect current training-blocks-v2 preview state",
     "Inspect current attendance preview state",
-    "Inspect current training-blocks-v3 preview state",
+    "Inspect current training-blocks-v4 preview state",
     "Inspect current training-documentation preview state",
     "Inspect current training-plans preview state",
     "Apply training-plans schema v2",

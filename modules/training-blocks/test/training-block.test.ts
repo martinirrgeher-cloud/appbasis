@@ -28,6 +28,7 @@ describe("training-blocks domain", () => {
       name: "Beschleunigung A",
       audienceId: "group-sprint",
       audienceIds: ["group-sprint"],
+      category: null,
       durationMinutes: 35,
       note: "Technik vor Intensität",
       exercises: [

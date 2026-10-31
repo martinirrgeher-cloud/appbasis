@@ -8,6 +8,7 @@ import {
   classifyUlcTrainingBlocksParityPreviewShape,
   loadUlcTrainingBlocksParityPreviewPlan,
   UlcTrainingBlocksParityPreviewExecutionError,
+  UlcTrainingBlocksParityPreviewConfigurationError,
 } from "./ulc-linz-training-blocks-parity-preview.mjs";
 
 const repositoryRoot = resolve(
@@ -25,25 +26,11 @@ const targetTables = [
   "appbasis_training_block_usage",
 ];
 
-test("E7A6 preview plan pins only the canonical schema-v2 parity delta", async () => {
-  const plan = await loadUlcTrainingBlocksParityPreviewPlan({ repositoryRoot });
-  assert.equal(plan.application, "ulc-linz");
-  assert.equal(plan.moduleId, "training-blocks");
-  assert.equal(plan.target.schemaVersion, 2);
-  assert.equal(
-    plan.target.migrationPath,
-    "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql",
+test("historical v2 parity plan fails closed when published owner advances to v4", async () => {
+  await assert.rejects(
+    loadUlcTrainingBlocksParityPreviewPlan({ repositoryRoot }),
+    UlcTrainingBlocksParityPreviewConfigurationError,
   );
-  assert.deepEqual(plan.target.baselineTables, baselineTables);
-  assert.deepEqual(plan.target.tables, targetTables);
-  assert.equal(plan.migration.relativePath, plan.target.migrationPath);
-  assert.equal(plan.migration.statements.length, 4);
-  assert.equal(plan.productionChanged, false);
-  const source = await readFile(
-    resolve(repositoryRoot, "tooling/ulc-linz-training-blocks-parity-preview.mjs"),
-    "utf8",
-  );
-  assert.match(source, /set_config\('search_path', 'public', true\)/);
 });
 
 test("E7A6 preview shape requires the complete E7A5 baseline", () => {
