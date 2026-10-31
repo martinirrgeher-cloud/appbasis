@@ -798,6 +798,22 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .message { margin: 8px 0 0; padding: 9px 10px; border-radius: var(--control-radius); font-size: .84rem; }
 .message--error { background: var(--danger-surface); color: var(--danger); }
 .message--success { background: #dcfce7; color: #166534; }
+/* Highlight only after an attempted form submission, not on fresh forms. */
+.ulc-validation-attempted :is(input, select, textarea):invalid {
+  border-color: #ca8a04;
+  background: #fef9c3;
+  box-shadow: 0 0 0 2px rgb(234 179 8 / 18%);
+}
+.ulc-validation-summary {
+  margin: 0 0 10px;
+  padding: 9px 11px;
+  border: 1px solid #eab308;
+  border-radius: var(--control-radius);
+  background: #fefce8;
+  color: #854d0e;
+  font-size: .86rem;
+  line-height: 1.4;
+}
 .app-session-message {
   position: fixed;
   right: 12px;
@@ -2182,6 +2198,88 @@ const defaultSettings = {
 const MASTERDATA_XLSX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const MASTERDATA_IMPORT_MAX_FILE_BYTES = 5 * 1024 * 1024;
+
+// Native constraint validation is shared by all current ULC editor forms.
+ // Planning and documentation are deliberately excluded from this UX change.
+const ULC_VALIDATED_FORMS = [
+  "#athlete-form",
+  "#trainer-form",
+  "#group-form",
+  "#athlete-contact-form",
+  "#athlete-group-form",
+  "#trainer-group-form",
+  "#athlete-user-form",
+  "#trainer-user-form",
+  "#trainer-identity-form",
+  "#exercise-catalog-form",
+  "#user-admin-form",
+].join(", ");
+
+function ulcFieldDisplayName(control) {
+  const label = control.closest("label");
+  const text = label
+    ? [...label.childNodes]
+      .filter((node) => node.nodeType === Node.TEXT_NODE)
+      .map((node) => node.textContent || "")
+      .join(" ").trim()
+    : "";
+  return text || control.getAttribute("aria-label") || control.name ||
+    control.id || "Eingabe";
+}
+
+function updateUlcFormValidation(form) {
+  if (!form.classList.contains("ulc-validation-attempted")) return;
+  const invalid = [...form.querySelectorAll("input:invalid, select:invalid, textarea:invalid")]
+    .filter((control) => !control.disabled && !control.closest("[hidden]"));
+  let summary = form.querySelector(".ulc-validation-summary");
+  if (invalid.length === 0) {
+    summary?.remove();
+    return;
+  }
+  if (!summary) {
+    summary = document.createElement("p");
+    summary.className = "ulc-validation-summary";
+    summary.setAttribute("role", "alert");
+    form.prepend(summary);
+  }
+  const names = [...new Set(invalid.map(ulcFieldDisplayName))];
+  summary.textContent = "Bitte prüfen: " + names.slice(0, 6).join(", ") +
+    (names.length > 6 ? " und " + (names.length - 6) + " weitere Felder" : "") + ".";
+}
+
+document.addEventListener("invalid", (event) => {
+  const form = event.target?.form;
+  if (!form?.matches?.(ULC_VALIDATED_FORMS)) return;
+  // The exercise editor has tabbed panels: reveal the invalid field before
+  // the native browser constraint-validation focus attempt.
+  if (form.id === "exercise-catalog-form") {
+    const panel = event.target.closest?.("[data-exercise-catalog-panel]");
+    if (panel?.hidden) {
+      document.querySelector(
+        "[data-exercise-catalog-tab='" + panel.dataset.exerciseCatalogPanel + "']",
+      )?.click();
+    }
+  }
+  form.classList.add("ulc-validation-attempted");
+  updateUlcFormValidation(form);
+}, true);
+
+document.addEventListener("input", (event) => {
+  const form = event.target?.form;
+  if (form?.matches?.(ULC_VALIDATED_FORMS)) updateUlcFormValidation(form);
+});
+
+document.addEventListener("change", (event) => {
+  const form = event.target?.form;
+  if (form?.matches?.(ULC_VALIDATED_FORMS)) updateUlcFormValidation(form);
+});
+
+document.addEventListener("reset", (event) => {
+  const form = event.target;
+  if (!form?.matches?.(ULC_VALIDATED_FORMS)) return;
+  form.classList.remove("ulc-validation-attempted");
+  form.querySelector(".ulc-validation-summary")?.remove();
+});
 
 const APP_NAV_PRIORITY = Object.freeze([
   "home",
