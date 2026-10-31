@@ -507,6 +507,26 @@ function runtime(
         };
       },
     },
+    userAdminAccess: {
+      async read(_organizationId, userId) {
+        return {
+          userId,
+          username: "test.trainer",
+          modules: [{ key: "countdown", label: "Countdown", level: "view" as const }],
+          expectedGrants: [],
+          expectedRevokes: [],
+        };
+      },
+      async update(_organizationId, _actorPrincipalId, userId) {
+        return {
+          userId,
+          username: "test.trainer",
+          modules: [{ key: "countdown", label: "Countdown", level: "edit" as const }],
+          expectedGrants: [],
+          expectedRevokes: [],
+        };
+      },
+    },
     userAdminOverview: {
       async listUsers() {
         return [
