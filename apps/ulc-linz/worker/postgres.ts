@@ -521,7 +521,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       u12Access,
       trainerIdentityAccess,
       userAdminOverview: new PostgresUlcLinzUserAdminOverview(applicationSql),
-      userAdminAccounts: new UlcLinzUserAccountService(applicationSql),
+      userAdminAccounts: new UlcLinzUserAccountService(applicationSql, identityRuntime.hashTemporaryPassword),
       userAdminAccess: new UlcLinzTrainerUserAccessService(applicationSql, permissions, accessAdministration),
       trainerIdentityLinks,
       trainerUserProvisioning,
