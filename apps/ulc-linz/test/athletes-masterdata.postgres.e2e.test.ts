@@ -316,8 +316,9 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       const closedMembership = restored.athleteGroupMemberships.find(
         (item) => item.athleteId === athlete.id,
       );
-      expect(closedMembership?.endedOn).toBeTruthy();
-      const nextAssignment = new Date(closedMembership!.endedOn + "T12:00:00Z");
+      const endedOn = closedMembership?.endedOn;
+      if (typeof endedOn !== "string") throw new Error("Archived membership must be closed.");
+      const nextAssignment = new Date(endedOn + "T12:00:00Z");
       nextAssignment.setUTCDate(nextAssignment.getUTCDate() + 1);
       await repository.createAthleteGroupMembership(tenant, {
         athleteId: athlete.id,
