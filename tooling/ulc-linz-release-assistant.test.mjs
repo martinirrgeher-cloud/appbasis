@@ -94,3 +94,22 @@ test("release assistant is one shared approval entry, not a bypass of canonical 
   assert.ok(!workflow.includes("wrangler versions"));
   assert.ok(!workflow.includes("sql "));
 });
+
+test("ULC assistant stops before composition dispatch when pinned production evidence or module readiness is blocked", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/ulc-linz-release-assistant.yml", import.meta.url),
+    "utf8",
+  );
+  const plan = workflow.indexOf("      - name: Require unchanged main and inspect approved M6 history");
+  const preflight = workflow.indexOf("      - name: Verify production composition before composition-gate dispatch");
+  const dispatch = workflow.indexOf("      - name: Dispatch exactly one authorized canonical M6 step");
+  assert.ok(plan > 0 && preflight > plan && dispatch > preflight);
+  const guard = workflow.slice(preflight, dispatch);
+  assert.ok(guard.includes("steps.next.outputs.step == 'composition_gate'"));
+  assert.ok(guard.includes("if ! node ./tooling/production-contract.mjs ulc-linz --require-ready; then"));
+  assert.ok(guard.includes("No M6 child run was dispatched."));
+  assert.ok(guard.includes("exit 1"));
+  assert.ok(guard.includes('jq -r \'.modules[]\' apps/ulc-linz/appbasis.production.json'));
+  assert.ok(!guard.includes("wrangler"));
+  assert.ok(!guard.includes("dispatches"));
+});
