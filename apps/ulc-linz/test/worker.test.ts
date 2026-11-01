@@ -512,7 +512,10 @@ function runtime(
         return {
           userId,
           username: "test.trainer",
-          modules: [{ key: "countdown", label: "Countdown", level: "view" as const }],
+          sourceRole: "trainer" as const,
+          editable: true,
+          profiles: [],
+          modules: [{ key: "countdown", label: "Countdown", level: "view" as const, editable: true }],
           expectedGrants: [],
           expectedRevokes: [],
         };
@@ -521,7 +524,10 @@ function runtime(
         return {
           userId,
           username: "test.trainer",
-          modules: [{ key: "countdown", label: "Countdown", level: "edit" as const }],
+          sourceRole: "trainer" as const,
+          editable: true,
+          profiles: [],
+          modules: [{ key: "countdown", label: "Countdown", level: "edit" as const, editable: true }],
           expectedGrants: [],
           expectedRevokes: [],
         };
@@ -4283,13 +4289,15 @@ describe("ULC trainer module permission administration API", () => {
           async read(organizationId, userId) {
             received = { organizationId, userId };
             return { userId, username: "trainer.test",
-              modules: [{ key: "countdown", label: "Countdown", level: "view" as const }],
+              sourceRole: "trainer" as const, editable: true, profiles: [],
+              modules: [{ key: "countdown", label: "Countdown", level: "view" as const, editable: true }],
               expectedGrants: [], expectedRevokes: [] };
           },
           async update(organizationId, actorPrincipalId, userId, input) {
             received = { organizationId, actorPrincipalId, userId, input };
             return { userId, username: "trainer.test",
-              modules: [{ key: "countdown", label: "Countdown", level: "edit" as const }],
+              sourceRole: "trainer" as const, editable: true, profiles: [],
+              modules: [{ key: "countdown", label: "Countdown", level: "edit" as const, editable: true }],
               expectedGrants: [], expectedRevokes: [] };
           },
         },
