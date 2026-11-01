@@ -31,7 +31,7 @@ describe("ULC athlete user administration UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("masterdataShowInactiveAthletes = elements.athleteShowInactive.checked;");
     expect(ULC_LINZ_APP_SCRIPT).toContain("const inactiveAthletes = snapshot.athletes.filter((athlete) => athlete.isActive === false);");
     expect(ULC_LINZ_APP_SCRIPT).toContain('elements.athleteInactiveCount.textContent = "(" + String(inactiveAthletes.length) + ")";');
-    expect(ULC_LINZ_APP_SCRIPT).toContain('athlete.isActive === false ? " · inaktiv" : ""');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('item?.isActive === false ? " · inaktiv" : ""');
     expect(ULC_LINZ_APP_SCRIPT).toContain('elements.athleteDetailReactivate.hidden = athlete.isActive !== false || !masterdataCanEdit;');
     expect(ULC_LINZ_APP_SCRIPT).toContain('"/api/modules/athletes/masterdata/" + type + "/" + encodeURIComponent(id) + "/reactivate"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("Frühere Gruppenzuordnungen werden nicht automatisch wiederhergestellt.");
