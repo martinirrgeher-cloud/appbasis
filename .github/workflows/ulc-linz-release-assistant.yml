@@ -90,6 +90,26 @@ jobs:
             echo "### ULC Production Release: nächster Schritt \`$STEP\`" >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Verify production composition before composition-gate dispatch
+        if: steps.next.outputs.status == 'next' && steps.next.outputs.step == 'composition_gate'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Read-only evaluation. Never dispatch a production gate while the pinned
+          # app/module evidence or the selected-module readiness is invalid.
+          if ! node ./tooling/production-contract.mjs ulc-linz --require-ready; then
+            echo '::error title=ULC production composition blocked::Selected modules or pinned evidence are not production-ready. No M6 child run was dispatched.'
+            {
+              echo '### ULC Production: composition gate vor Dispatch gesperrt'
+              echo 'Der kanonische Produktionsvertrag ist nicht bereit. Kein Provider-Write erfolgt.'
+              jq -r '.blockers[] | "- App: " + .' apps/ulc-linz/appbasis.production.json
+              while IFS= read -r module; do
+                jq -r --arg module "$module" 'select(.status == "blocked") | .blockers[] | "- " + $module + ": " + .' "modules/$module/appbasis.production.json"
+              done < <(jq -r '.modules[]' apps/ulc-linz/appbasis.production.json)
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
       - name: Dispatch exactly one authorized canonical M6 step
         if: steps.next.outputs.status == 'next'
         shell: bash
