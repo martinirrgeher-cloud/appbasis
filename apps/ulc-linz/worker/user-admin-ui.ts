@@ -72,7 +72,11 @@ export const ULC_USER_ADMIN_HTML = `
       </div>
       <button class="button button--secondary user-admin-dialog__close" type="button" id="user-admin-access-close" aria-label="Modulrechte schließen" title="Schließen">✕</button>
     </header>
-    <p class="settings-note">Pro Modul: Kein Zugriff, Lesen oder Bearbeiten. Die Trainerrolle bleibt unverändert.</p>
+    <p class="settings-note">Berechtigungsprofil als Vorlage wählen und danach einzelne Module anpassen. Profil „Funktionär“ ist vorerst eine Rechtevorlage für Trainerkonten, keine technische Administratorrolle.</p>
+    <label id="user-admin-profile-row" class="user-admin-profile-row" hidden>Berechtigungsprofil
+      <select id="user-admin-profile"><option value="">Individuelle Berechtigungen</option></select>
+    </label>
+    <p id="user-admin-access-scope" class="settings-note"></p>
     <p id="user-admin-access-message" class="message message--error" role="alert" hidden></p>
     <form id="user-admin-access-form">
       <div class="user-admin-access-list" id="user-admin-access-list"></div>
@@ -129,6 +133,9 @@ export const ULC_USER_ADMIN_CSS = `
 .user-admin-filters label { min-width: 0; font-size: .82rem; }
 .user-admin-filters input, .user-admin-filters select { width: 100%; min-width: 0; min-height: 40px; font-size: 16px; }
 .user-admin-list { display: grid; gap: 0; min-width: 0; }
+.user-admin-profile-row { display: grid; gap: 5px; margin: 10px 0; }
+.user-admin-profile-row select { width: 100%; min-height: 42px; font-size: 16px; }
+.user-admin-access-row select:disabled { opacity: .75; }
 .user-admin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); min-width: 0; }
 .user-admin-row:last-child { border-bottom: 0; }
 .user-admin-row__identity { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
@@ -208,6 +215,9 @@ const userAdminElements = Object.freeze({
   resetCancel: document.querySelector("#user-admin-reset-cancel"),
   accessEditor: document.querySelector("#user-admin-access-editor"),
   accessName: document.querySelector("#user-admin-access-name"),
+  accessScope: document.querySelector("#user-admin-access-scope"),
+  profileRow: document.querySelector("#user-admin-profile-row"),
+  profile: document.querySelector("#user-admin-profile"),
   accessList: document.querySelector("#user-admin-access-list"),
   accessForm: document.querySelector("#user-admin-access-form"),
   accessSave: document.querySelector("#user-admin-access-save"),
@@ -259,6 +269,7 @@ userAdminElements.share?.addEventListener("click", () => void shareUserAdminInvi
 userAdminElements.inviteClose?.addEventListener("click", closeUserAdminInvitation);
 userAdminElements.accessClose?.addEventListener("click", () => closeUserAdminAccess());
 userAdminElements.accessForm?.addEventListener("submit", (event) => void saveUserAdminAccess(event));
+userAdminElements.profile?.addEventListener("change", applyUserAdminPermissionProfile);
 userAdminElements.resetForm?.addEventListener("submit", (event) => void saveUserAdminPasswordReset(event));
 userAdminElements.resetCancel?.addEventListener("click", closeUserAdminPasswordReset);
 userAdminElements.resetDialog?.addEventListener("close", () => {
@@ -430,11 +441,10 @@ function renderUserAdminList() {
       });
       parent.append(button);
     };
-    if (user.sourceRole === "trainer" && user.active && !user.blocked &&
-      !incomplete && !retired) {
-      addAction(actions, "Rechte", "Modulrechte für " + user.username,
-        () => void openUserAdminAccess(user.identityId));
-    }
+    // All identities have a rights overview; only authorized, active roles
+    // may modify their bounded module permissions.
+    addAction(actions, "Rechte", "Modulrechte für " + user.username,
+      () => void openUserAdminAccess(user.identityId));
     const supportsAccountActions = (user.sourceRole === "trainer" || user.sourceRole === "athlete") &&
       !incomplete && !retired;
     const canLink = user.active && !user.blocked && !incomplete && !retired;
@@ -626,7 +636,7 @@ async function openUserAdminAccess(identityId) {
   } catch (error) {
     if (generation === userAdminGeneration) {
       showMessage(userAdminElements.message, error?.status === 403
-        ? "Für dieses Konto dürfen die Modulrechte nicht bearbeitet werden."
+        ? "Die Modulrechte dieses Kontos können derzeit nicht geladen werden (Sicherheits- oder Rollenprüfung)."
         : "Modulrechte konnten nicht geladen werden.");
     }
   } finally {
@@ -640,8 +650,38 @@ async function openUserAdminAccess(identityId) {
 function renderUserAdminAccess() {
   const snapshot = userAdminAccessSnapshot;
   if (!snapshot || !userAdminElements.accessList) return;
+  const labels = { admin: "Administrator", trainer: "Trainer", athlete: "Athlet", parent: "Eltern" };
   if (userAdminElements.accessName) {
-    userAdminElements.accessName.textContent = String(snapshot.username || "");
+    userAdminElements.accessName.textContent =
+      String(snapshot.username || "") + " · " + (labels[snapshot.sourceRole] || "Rolle unbekannt");
+  }
+  if (userAdminElements.accessScope) {
+    userAdminElements.accessScope.textContent = !snapshot.editable
+      ? "Nur Ansicht: Inaktive oder gesperrte Konten können nicht geändert werden."
+      : snapshot.sourceRole === "admin"
+        ? "Technische Administratorrechte bleiben geschützt. App-Modulrechte können angepasst und im Zweifel über dieses Menü wiederhergestellt werden."
+        : snapshot.sourceRole === "athlete" || snapshot.sourceRole === "parent"
+          ? "Persönlicher Datenzugriff bleibt eingeschränkt. Nicht verfügbare Module sind gesperrt."
+          : "Individuelle Anpassungen gelten nur für diese Person. Technische Rolle und Systemrechte bleiben unverändert.";
+  }
+  if (userAdminElements.accessSave) userAdminElements.accessSave.hidden = !snapshot.editable;
+  if (userAdminElements.profileRow) {
+    userAdminElements.profileRow.hidden = !snapshot.editable || !snapshot.profiles?.length;
+  }
+  const profileSelect = userAdminElements.profile;
+  if (profileSelect) {
+    profileSelect.replaceChildren();
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "Individuelle Berechtigungen";
+    profileSelect.append(empty);
+    for (const profile of snapshot.profiles || []) {
+      const option = document.createElement("option");
+      option.value = String(profile.id);
+      option.textContent = String(profile.name) + " – " + String(profile.description);
+      profileSelect.append(option);
+    }
+    profileSelect.value = "";
   }
   userAdminElements.accessList.replaceChildren();
   for (const module of snapshot.modules) {
@@ -662,14 +702,29 @@ function renderUserAdminAccess() {
       select.append(option);
     }
     select.value = module.level;
+    select.disabled = module.editable !== true || snapshot.editable !== true;
+    if (select.disabled) select.title = "Durch Rolle oder Kontostatus geschützt";
     row.append(name, select);
     userAdminElements.accessList.append(row);
   }
 }
 
+function applyUserAdminPermissionProfile() {
+  const snapshot = userAdminAccessSnapshot;
+  if (!snapshot?.editable) return;
+  const profile = snapshot.profiles?.find(item => item.id === userAdminElements.profile?.value);
+  if (!profile || profile.sourceRole !== snapshot.sourceRole) return;
+  const selections = new Map(profile.modules.map(item => [item.key, item.level]));
+  for (const select of userAdminElements.accessList?.querySelectorAll("[data-user-access-module]") || []) {
+    if (!select.disabled && selections.has(select.dataset.userAccessModule)) {
+      select.value = selections.get(select.dataset.userAccessModule);
+    }
+  }
+}
+
 async function saveUserAdminAccess(event) {
   event.preventDefault();
-  if (!userAdminReady || userAdminBusy || !userAdminAccessSnapshot) return;
+  if (!userAdminReady || userAdminBusy || !userAdminAccessSnapshot?.editable) return;
   const snapshot = userAdminAccessSnapshot;
   const generation = userAdminGeneration;
   const selects = [...(userAdminElements.accessList?.querySelectorAll("[data-user-access-module]") || [])];
