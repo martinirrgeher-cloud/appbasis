@@ -17,7 +17,7 @@ export const ULC_LINZ_M5_MANAGED_MODULE_KEYS = Object.freeze([
   "user_management",
 ]);
 
-const NON_ADMIN_SOURCE_ROLES = new Set(["trainer", "athlete", "parent"]);
+const NON_ADMIN_SOURCE_ROLES = new Set(["trainer", "athlete", "parent", "functionary"]);
 const USER_MANAGEMENT_MODULE = "user_management";
 
 export function mapUlcLinzManagedPermissionsToPrincipalOverrides({
