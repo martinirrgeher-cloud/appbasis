@@ -755,11 +755,16 @@ function renderUserAdminTargets() {
       : [item.firstName, item.lastName].filter(Boolean).join(" ");
     const option = document.createElement("option");
     option.value = item.id;
+    // Each linked identity, including inactive/blocked accounts, must be
+    // managed through its existing row. Creating a second account for the
+    // same person would fail at the server and confuse invited testers.
     const existing = userAdminUsers.find(user =>
-      user.sourceRole === role && user.subjectId === item.id &&
-      user.active === true && user.blocked !== true);
+      user.sourceRole === role && user.subjectId === item.id);
+    const existingStatus = existing?.blocked ? "gesperrt" :
+      existing?.active === false ? "inaktiv" : "aktiv";
     option.textContent = existing
-      ? (label || item.name || item.id) + " – Konto vorhanden (" + existing.username + ")"
+      ? (label || item.name || item.id) + " – Konto " + existingStatus +
+        " (" + existing.username + "; in der Benutzerliste verwalten)"
       : (label || item.name || item.id);
     option.disabled = Boolean(existing);
     select.append(option);
