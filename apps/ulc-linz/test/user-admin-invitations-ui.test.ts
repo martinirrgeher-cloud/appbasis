@@ -19,6 +19,37 @@ function shareWith(navigator: object) {
   ) => Promise<ShareResult>;
 }
 
+function renderedTargetOptions(
+  role: "trainer" | "athlete",
+  accounts: readonly Record<string, unknown>[],
+  targets: Record<string, unknown>[],
+) {
+  const start = ULC_USER_ADMIN_SCRIPT.indexOf("function renderUserAdminTargets() {");
+  const end = ULC_USER_ADMIN_SCRIPT.indexOf("\nfunction updateUserAdminControls()", start);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  const source = ULC_USER_ADMIN_SCRIPT.slice(start, end);
+  const select = {
+    value: "",
+    options: [] as { value: string; textContent: string; disabled: boolean }[],
+    replaceChildren() { this.options = []; },
+    append(option: { value: string; textContent: string; disabled: boolean }) {
+      this.options.push(option);
+    },
+  };
+  const render = new Function(
+    "document", "userAdminElements", "userAdminUsers", "userAdminTargets",
+    source + "\nreturn renderUserAdminTargets;",
+  )(
+    { createElement: () => ({ value: "", textContent: "", disabled: false }) },
+    { target: select, role: { value: role } },
+    accounts,
+    role === "trainer" ? { trainers: targets, athletes: [] } : { trainers: [], athletes: targets },
+  ) as () => void;
+  render();
+  return select.options;
+}
+
 describe("ULC user invitations and mobile account search", () => {
   it("offers mobile share plus clipboard fallback, with a clear security notice", () => {
     expect(ULC_USER_ADMIN_HTML).toContain('id="user-admin-share"');
@@ -80,6 +111,48 @@ describe("ULC user invitations and mobile account search", () => {
     expect(source).not.toContain("userAdminInviteText");
     expect(ULC_USER_ADMIN_SCRIPT).toContain("const canLink = user.active && !user.blocked && !incomplete && !retired");
     expect(ULC_USER_ADMIN_SCRIPT).toContain("shareExistingUserAdminLogin(user.username)");
+  });
+
+  it("blocks duplicate onboarding for already linked active, blocked, and inactive accounts", () => {
+    const subjects = ["trainer-active", "trainer-blocked", "trainer-inactive", "trainer-new"];
+    const accounts = [
+      { identityId: "u1", username: "trainer.aktiv", sourceRole: "trainer",
+        subjectId: subjects[0], active: true, blocked: false },
+      { identityId: "u2", username: "trainer.gesperrt", sourceRole: "trainer",
+        subjectId: subjects[1], active: true, blocked: true },
+      { identityId: "u3", username: "trainer.inaktiv", sourceRole: "trainer",
+        subjectId: subjects[2], active: false, blocked: false },
+      // A different role must not erroneously block a trainer target.
+      { identityId: "u4", username: "athlete.other", sourceRole: "athlete",
+        subjectId: subjects[3], active: true, blocked: false },
+    ];
+    const targets = subjects.map((id) => ({ id, firstName: "Demo", lastName: id, isActive: true }));
+    const options = renderedTargetOptions("trainer", accounts, targets);
+    expect(options).toHaveLength(5); // Includes the empty placeholder.
+    expect(options[1]).toMatchObject({ value: subjects[0], disabled: true });
+    expect(options[1]!.textContent).toContain("Konto aktiv");
+    expect(options[2]).toMatchObject({ value: subjects[1], disabled: true });
+    expect(options[2]!.textContent).toContain("Konto gesperrt");
+    expect(options[3]).toMatchObject({ value: subjects[2], disabled: true });
+    expect(options[3]!.textContent).toContain("Konto inaktiv");
+    expect(options[4]).toMatchObject({ value: subjects[3], disabled: false });
+    expect(options[2]!.textContent).toContain("in der Benutzerliste verwalten");
+    expect(ULC_USER_ADMIN_HTML).toContain("nicht erneut anlegen");
+  });
+
+  it("hides inactive athletes and prevents a second athlete account for the same person", () => {
+    const options = renderedTargetOptions("athlete", [
+      { username: "athlete.one", sourceRole: "athlete",
+        subjectId: "athlete-linked", active: false, blocked: true },
+    ], [
+      { id: "athlete-linked", firstName: "Test", lastName: "Athlet", isActive: true },
+      { id: "athlete-archived", firstName: "Inaktiv", lastName: "Athlet", isActive: false },
+      { id: "athlete-available", firstName: "Neu", lastName: "Athlet", isActive: true },
+    ]);
+    expect(options.map(option => option.value)).toEqual(["", "athlete-linked", "athlete-available"]);
+    expect(options[1]).toMatchObject({ disabled: true });
+    expect(options[1]!.textContent).toContain("gesperrt");
+    expect(options[2]).toMatchObject({ disabled: false });
   });
 
   it("filters user records locally and clears the filter on session reset", () => {
