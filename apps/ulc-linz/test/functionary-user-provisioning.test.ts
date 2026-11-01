@@ -11,7 +11,7 @@ const ADMIN = "identity-admin";
 const USER = "identity-functionary";
 
 function setup({ ready = true, membership = true } = {}) {
-  const sqlCalls: { sql: string; params?: unknown[] }[] = [];
+  const sqlCalls: { sql: string; params: unknown[] | undefined }[] = [];
   const sql: UlcFunctionarySql = {
     async unsafe(query, params) {
       sqlCalls.push({ sql: query, params });
@@ -50,8 +50,14 @@ function setup({ ready = true, membership = true } = {}) {
     })),
   } as unknown as PermissionStore;
   const replacePrincipalAccess = vi.fn(async (
-    principal: unknown, roles: readonly string[],
+    _principal: unknown, roles: readonly string[],
     overrides: { grants: readonly string[]; revokes: readonly string[] },
+    _audit: { actorPrincipalId: string; reason: string },
+    _constraints: {
+      expectedRoleIds: readonly string[];
+      expectedGrants: readonly string[];
+      expectedRevokes: readonly string[];
+    },
   ) => ({ roleIds: roles, grants: overrides.grants, revokes: overrides.revokes }));
   const svc = createUlcFunctionaryUserProvisioningService({
     identityProvisioning: { createInitialUser } as unknown as IdentityPostgresProvisioningOwner,
