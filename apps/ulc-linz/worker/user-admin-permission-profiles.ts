@@ -23,7 +23,7 @@ export interface UlcPermissionPreset {
   readonly id: string;
   readonly name: string;
   readonly description: string;
-  readonly sourceRole: Exclude<UlcUserSourceRole, "admin">;
+  readonly sourceRole: UlcUserSourceRole;
   readonly modules: readonly { readonly key: string; readonly level: UlcUserAccessChoice }[];
 }
 
@@ -34,7 +34,7 @@ const MODULE_KEYS = ULC_USER_ACCESS_MODULES.map(module => module.key);
 // subject-safe documentation module and the personal countdown as editable.
 export const ULC_PERMISSION_EDITABLE_BY_ROLE: Readonly<Record<UlcUserSourceRole, readonly string[]>> =
   Object.freeze({
-    admin: Object.freeze([]),
+    admin: Object.freeze([...MODULE_KEYS]),
     trainer: Object.freeze([...MODULE_KEYS]),
     athlete: Object.freeze(["training_documentation", "countdown"]),
     parent: Object.freeze(["training_documentation", "countdown"]),
@@ -57,6 +57,11 @@ function preset(
 }
 
 export const ULC_PERMISSION_PRESETS: readonly UlcPermissionPreset[] = Object.freeze([
+  preset("administrator", "Administrator", "Alle App-Module, technische Administratorrolle bleibt separat", "admin", {
+    kindertraining: "edit", u12: "edit", athletes: "edit",
+    exercise_catalog: "edit", training_blocks: "edit", training_planning: "edit",
+    training_documentation: "edit", countdown: "edit",
+  }),
   preset("kindertrainer", "Kindertrainer", "Anwesenheit und U12 betreuen", "trainer", {
     kindertraining: "edit", u12: "edit", countdown: "edit",
   }),
