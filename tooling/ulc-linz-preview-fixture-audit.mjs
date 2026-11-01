@@ -232,7 +232,9 @@ export async function auditUlcPreviewFixtures(
       });
     });
   } finally {
-    await database.close();
+    // createPostgresDatabase exposes the postgres-js connection as client.
+    // The returned wrapper has no close() method; end() closes the pool.
+    await database.client.end();
   }
 }
 
