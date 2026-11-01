@@ -252,6 +252,78 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       });
     });
 
+    it("reactivates archived athletes without reopening group history or changing contacts or other tenants", async () => {
+      const repository = new PostgresAthleteMasterdataRepository(requiredConnection().client);
+      const tenant = "verein-restoration";
+      const otherTenant = "verein-unrelated";
+      const group = await repository.createTrainingGroup(tenant, {
+        name: "U12 Wiederaufnahme", shortName: "U12R", sortOrder: 1,
+      });
+      const athlete = await repository.createAthlete(tenant, {
+        firstName: "Mia", lastName: "Testfall", birthYear: 2014,
+        notes: "Sicher erhalten",
+      });
+      const contact = await repository.createAthleteContact(tenant, athlete.id, {
+        contactName: "Kontaktperson",
+        relationship: "Erziehungsberechtigt",
+        phone: "06640000000",
+        priority: 1,
+        isEmergency: true,
+        notes: "Notruf",
+      });
+      expect(contact?.id).toBeTruthy();
+      const membership = await repository.createAthleteGroupMembership(tenant, {
+        athleteId: athlete.id,
+        groupId: group.id,
+        startedOn: "2026-09-01",
+      });
+      expect(membership.endedOn).toBeNull();
+      const before = await repository.readOrganizationSnapshot(tenant);
+      expect(before.athletes.find((entry) => entry.id === athlete.id)?.isActive).toBe(true);
+
+      expect(await repository.deactivateAthlete(tenant, athlete.id)).toBe(true);
+      expect(await repository.deactivateAthlete(tenant, athlete.id)).toBe(false);
+      const archived = await repository.readOrganizationSnapshot(tenant);
+      expect(archived.athletes.find((entry) => entry.id === athlete.id)?.isActive).toBe(false);
+      expect(archived.athleteGroupMemberships.filter(
+        (item) => item.athleteId === athlete.id && item.endedOn === null,
+      )).toHaveLength(0);
+      expect(archived.athleteContacts.find((item) => item.id === contact?.id)).toBeDefined();
+
+      expect(await repository.reactivateAthlete(otherTenant, athlete.id)).toBe(false);
+      expect(await repository.reactivateAthlete(tenant, athlete.id)).toBe(true);
+      expect(await repository.reactivateAthlete(tenant, athlete.id)).toBe(false);
+      const restored = await repository.readOrganizationSnapshot(tenant);
+      expect(restored.athletes.find((item) => item.id === athlete.id)).toMatchObject({
+        firstName: "Mia",
+        lastName: "Testfall",
+        birthYear: 2014,
+        notes: "Sicher erhalten",
+        isActive: true,
+      });
+      expect(restored.athleteContacts.find((item) => item.id === contact?.id)).toMatchObject({
+        contactName: "Kontaktperson",
+        isEmergency: true,
+        notes: "Notruf",
+      });
+      expect(restored.athleteGroupMemberships.filter(
+        (item) => item.athleteId === athlete.id && item.endedOn === null,
+      )).toHaveLength(0);
+      expect(restored.athleteGroupMemberships.filter(
+        (item) => item.athleteId === athlete.id,
+      )).toHaveLength(1);
+
+      await repository.createAthleteGroupMembership(tenant, {
+        athleteId: athlete.id,
+        groupId: group.id,
+        startedOn: "2026-11-03",
+      });
+      const reassigned = await repository.readOrganizationSnapshot(tenant);
+      expect(reassigned.athleteGroupMemberships.filter(
+        (item) => item.athleteId === athlete.id && item.endedOn === null,
+      )).toHaveLength(1);
+    });
+
     function requiredConnection() {
       if (isolatedConnection === null) {
         throw new Error("The isolated ULC Stammdaten PostgreSQL database is not ready.");
