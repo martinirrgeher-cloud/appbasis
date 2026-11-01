@@ -20,6 +20,7 @@ const QUARANTINABLE_SOURCE_ROLES = new Set<UlcLinzQuarantinableSourceRole>([
   "trainer",
   "athlete",
   "parent",
+  "functionary",
 ]);
 const CAPABILITY_PREFIX = `${roleDataScope.principalPermissionMapping.capabilityNamespace}:`;
 
