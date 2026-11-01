@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,47 @@ test("ULC production composition fails closed after attendance changes bound pro
     () => evaluateAppProductionComposition(repositoryRoot, "ulc-linz"),
     /Production evidence drifted: (?:modules\/athletes\/|apps\/ulc-linz\/privacy\/m5-)/,
   );
+});
+
+
+test("ULC current export inventory is reviewed, pinned and still excludes sensitive training data", async () => {
+  const appRoot = join(repositoryRoot, "apps", "ulc-linz");
+  const productionContract = JSON.parse(
+    await readFile(join(appRoot, "appbasis.production.json"), "utf8"),
+  );
+  assert.equal(productionContract.status, "blocked");
+  assert.equal(productionContract.crossCutting.dataExport, "verified");
+  assert.equal(productionContract.crossCutting.applicationLifecycle, "blocked");
+  assert.equal(productionContract.crossCutting.privacy, "blocked");
+  const entries = productionContract.evidence.dataExport;
+  assert.equal(entries.length, 2);
+  for (const entry of entries) {
+    const content = await readFile(join(repositoryRoot, entry.path), "utf8");
+    assert.equal(gitBlobSha(content), entry.gitBlobSha, entry.path);
+  }
+
+  const exportContract = JSON.parse(
+    await readFile(join(appRoot, "privacy", "m5-export-contract.json"), "utf8"),
+  );
+  const exported = exportContract.datasets.flatMap((dataset) =>
+    dataset.sourceTables.map((table) => table.owner + ":" + table.table)
+  );
+  const excluded = exportContract.excludedTables.map((table) =>
+    table.owner + ":" + table.table
+  );
+  assert.equal(exportContract.unknownDataset, "deny");
+  assert.deepEqual(exportContract.datasets.map((dataset) => dataset.id), ["member-contact"]);
+  for (const sensitive of [
+    "athletes:appbasis_athlete_contact",
+    "ulc-linz-lifecycle:ulc_linz_training_registration",
+    "ulc-linz-lifecycle:ulc_linz_training_registration_change",
+    "training-documentation:appbasis_training_documentation",
+    "training-documentation:appbasis_training_documentation_revision",
+    "training-plans:appbasis_training_plan_subject_deletion",
+  ]) {
+    assert.equal(exported.includes(sensitive), false, sensitive);
+    assert.ok(excluded.includes(sensitive), sensitive);
+  }
 });
 
 test("module contracts fail closed on database/status mismatch", () => {
