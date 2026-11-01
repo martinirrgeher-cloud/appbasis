@@ -173,7 +173,7 @@ jobs:
               and (
                 $prerequisite_kind != "lifecycle-preflight"
                 or (
-                  .name == "M5 ULC Protected Lifecycle Operations"
+                  .path == ".github/workflows/m5-ulc-protected-lifecycle-operations.yml"
                   and (
                     .display_title == "preflight"
                     or (.display_title | type == "string" and test("^m6-chain-[1-9][0-9]*-1-lifecycle_preflight$"))
