@@ -241,7 +241,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <div class="section-heading masterdata-list-heading">
                 <div><p class="eyebrow">Athleten</p><h2>Athleten <span class="masterdata-inline-count" id="athlete-count">(0)</span></h2></div>
                 <div class="masterdata-heading-actions">
-                  <label class="masterdata-inactive-toggle"><input id="athlete-show-inactive" type="checkbox" /> Inaktive</label>
+                  <label class="masterdata-inactive-toggle"><input id="athlete-show-inactive" type="checkbox" /> Inaktive anzeigen <span id="athlete-inactive-count">(0)</span></label>
                   <button class="button button--primary masterdata-icon-action" id="athlete-new" type="button" aria-label="Athlet anlegen" title="Athlet anlegen">
                     <span aria-hidden="true">＋</span><span class="masterdata-icon-action__label">Athlet</span>
                   </button>
@@ -2074,6 +2074,7 @@ const elements = {
   masterdataExport: document.querySelector("#masterdata-export"),
   athleteList: document.querySelector("#athlete-list"),
   athleteShowInactive: document.querySelector("#athlete-show-inactive"),
+  athleteInactiveCount: document.querySelector("#athlete-inactive-count"),
   trainerShowInactive: document.querySelector("#trainer-show-inactive"),
   groupShowInactive: document.querySelector("#group-show-inactive"),
   athleteNew: document.querySelector("#athlete-new"),
@@ -2751,6 +2752,7 @@ function resetMasterdataSessionState() {
   elements.trainerList?.replaceChildren();
   elements.groupList?.replaceChildren();
   if (elements.athleteCount) elements.athleteCount.textContent = "(0)";
+  if (elements.athleteInactiveCount) elements.athleteInactiveCount.textContent = "(0)";
   if (elements.trainerCount) elements.trainerCount.textContent = "(0)";
   if (elements.groupCount) elements.groupCount.textContent = "(0)";
   if (elements.masterdataImportFile) elements.masterdataImportFile.value = "";
@@ -5344,6 +5346,10 @@ function renderMasterdata(snapshot) {
     trainerGroups.set(membership.trainerId, names);
   }
 
+  const inactiveAthletes = snapshot.athletes.filter((athlete) => athlete.isActive === false);
+  if (elements.athleteInactiveCount) {
+    elements.athleteInactiveCount.textContent = "(" + String(inactiveAthletes.length) + ")";
+  }
   const visibleAthletes = masterdataShowInactiveAthletes
     ? snapshot.athletes
     : snapshot.athletes.filter((athlete) => athlete.isActive !== false);
@@ -6340,7 +6346,9 @@ function renderMasterdataAthleteOverlay(snapshot) {
 
   if (elements.athleteDetailReactivate) {
     elements.athleteDetailReactivate.hidden = athlete.isActive !== false || !masterdataCanEdit;
-    elements.athleteDetailReactivate.disabled = !masterdataCanEdit;
+    elements.athleteDetailReactivate.disabled = !masterdataCanEdit || masterdataLoading;
+    elements.athleteDetailReactivate.title =
+      "Athlet wieder aktivieren; Gruppenzuordnungen anschließend neu vergeben";
   }
   renderMasterdataAthleteContacts(snapshot, athlete.id);
   if (elements.athleteContactAthlete) {

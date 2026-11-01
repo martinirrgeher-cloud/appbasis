@@ -22,6 +22,22 @@ describe("ULC athlete user administration UI", () => {
     );
   });
 
+  it("shows archived athletes on demand with a visible count and safe restoration", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="athlete-show-inactive"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="athlete-inactive-count"');
+    expect(ULC_LINZ_APP_HTML).toContain('Inaktive anzeigen');
+    expect(ULC_LINZ_APP_HTML).toContain('id="athlete-detail-reactivate"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("let masterdataShowInactiveAthletes = false;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("masterdataShowInactiveAthletes = elements.athleteShowInactive.checked;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("const inactiveAthletes = snapshot.athletes.filter((athlete) => athlete.isActive === false);");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('elements.athleteInactiveCount.textContent = "(" + String(inactiveAthletes.length) + ")";');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('item?.isActive === false ? " · inaktiv" : ""');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('elements.athleteDetailReactivate.hidden = athlete.isActive !== false || !masterdataCanEdit;');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('"/api/modules/athletes/masterdata/" + type + "/" + encodeURIComponent(id) + "/reactivate"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Frühere Gruppenzuordnungen werden nicht automatisch wiederhergestellt.");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (elements.athleteInactiveCount) elements.athleteInactiveCount.textContent = \"(0)\";");
+  });
+
   it("does not allow the client to select a different athlete for the account", () => {
     expect(ULC_LINZ_APP_HTML).not.toContain('id="athlete-user-athlete"');
     expect(ULC_LINZ_APP_SCRIPT).not.toContain(
