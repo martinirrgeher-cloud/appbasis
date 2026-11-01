@@ -23,6 +23,7 @@ import {
   ULC_TRAINING_DOCUMENTATION_HTML,
   ULC_TRAINING_DOCUMENTATION_SCRIPT,
 } from "./training-documentation-ui";
+import { generatedPwaResponse } from "./pwa";
 
 export const ULC_LINZ_APP_HTML = `<!doctype html>
 <html lang="de">
@@ -30,6 +31,13 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#147a46" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="ULC Linz" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>ULC Linz</title>
     <link rel="stylesheet" href="/app.css" />
   </head>
@@ -40,7 +48,10 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
           <span class="app-brand__mark" aria-hidden="true">ULC</span>
           <span class="app-brand__copy"><strong>ULC Linz</strong><small>Vereins-App</small></span>
         </a>
-        <span class="app-badge">AppBasis</span>
+        <div class="app-header__actions">
+          <button id="app-install" class="app-install" type="button" hidden>App installieren</button>
+          <span class="app-badge">AppBasis</span>
+        </div>
       </header>
 
       <main class="gate-shell" id="login-view">
@@ -746,6 +757,8 @@ button, input, select, textarea { font: inherit; }
   background: rgb(255 255 255 / 94%);
   backdrop-filter: blur(12px);
 }
+.app-header__actions { display: flex; align-items: center; gap: 6px; }
+.app-install { min-height: 36px; border: 1px solid var(--border-strong); border-radius: 9px; padding: 0 9px; background: white; color: var(--text); font-size: .76rem; font-weight: 750; cursor: pointer; }
 .app-brand { display: flex; min-height: var(--touch); align-items: center; gap: 8px; color: var(--text); text-decoration: none; }
 .app-brand__mark {
   display: grid;
@@ -7431,11 +7444,42 @@ async function requestJson(path, init = {}) {
   }
   return payload;
 }
+// Browser installation: no offline or user-data caching.
+const ulcInstallButton = document.querySelector("#app-install");
+let ulcDeferredInstallPrompt = null;
+const ulcIsStandalone = () => window.matchMedia("(display-mode: standalone)").matches ||
+  navigator.standalone === true;
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  ulcDeferredInstallPrompt = event;
+  if (ulcInstallButton && !ulcIsStandalone()) ulcInstallButton.hidden = false;
+});
+ulcInstallButton?.addEventListener("click", async () => {
+  if (!ulcDeferredInstallPrompt) return;
+  const prompt = ulcDeferredInstallPrompt;
+  ulcDeferredInstallPrompt = null;
+  ulcInstallButton.hidden = true;
+  try { await prompt.prompt(); await prompt.userChoice; } catch {
+    // Browser menu remains available if the prompt is not accepted.
+  }
+});
+window.addEventListener("appinstalled", () => {
+  ulcDeferredInstallPrompt = null;
+  if (ulcInstallButton) ulcInstallButton.hidden = true;
+});
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+  });
+}
+
 `;
 
 export function generatedUiResponse(request: Request): Response | null {
   const pathname = new URL(request.url).pathname;
   if (request.method !== "GET" && request.method !== "HEAD") return null;
+  const pwaResponse = generatedPwaResponse(request);
+  if (pwaResponse !== null) return pwaResponse;
 
   if (pathname === "/") {
     return staticResponse(
