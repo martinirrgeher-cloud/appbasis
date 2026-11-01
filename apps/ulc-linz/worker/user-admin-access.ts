@@ -99,7 +99,10 @@ export class UlcLinzTrainerUserAccessService {
     }
     const role = await this.permissions.findRole(expectedRole);
     if (role === null) throw new UlcUserAccessError("DENIED");
-    const editable = sourceRole !== "admin" && row.active === true && row.blocked === false;
+    // Editing app module overrides never changes the immutable technical
+    // role. Administrators may also customize modules without losing their
+    // protected organization-administration access.
+    const editable = row.active === true && row.blocked === false;
     return { username: row.username, principal, role, expectedRole, sourceRole: checkedRole, editable };
   }
 
@@ -145,7 +148,9 @@ export class UlcLinzTrainerUserAccessService {
       throw new UlcUserAccessError("INVALID");
     }
     const found = await this.target(organizationId, userId);
-    if (!found.editable || actorPrincipalId === userId) throw new UlcUserAccessError("DENIED");
+    if (!found.editable || (actorPrincipalId === userId && found.sourceRole !== "admin")) {
+      throw new UlcUserAccessError("DENIED");
+    }
     const currentGrants = [...found.principal.grants].map(String).sort();
     const currentRevokes = [...found.principal.revokes].map(String).sort();
     if (!equalSorted(currentGrants, input.expectedGrants) ||
