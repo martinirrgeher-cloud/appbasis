@@ -8,6 +8,7 @@ import {
   selectUlcPreviewBlockCandidates,
   countUnexpectedUlcPreviewFixtures,
   assertNoUlcPreviewE7B9Fixtures,
+  auditUlcPreviewFixtures,
 } from "./ulc-linz-preview-fixture-audit.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("../", import.meta.url)));
@@ -154,4 +155,63 @@ test("regression guard is read-only and has a single fail-closed workflow gate",
   assert.ok(guard < workflow.indexOf("Record E7B9 preview operation"));
   assert.doesNotMatch(workflow, /run: node \.\/tooling\/ulc-linz-training-plans-preview-acceptance\.mjs/);
   assert.match(workflow, /run: node \.\/tooling\/ulc-linz-training-plans-preview-readonly-acceptance\.mjs/);
+});
+
+test("read-only fixture guard releases postgres-js pool after successful verification", async () => {
+  const queries = [];
+  const closed = [];
+  const databaseUrl = "postgresql://preview_fixture_role:testing@ep-preview-test.eu-central-1.aws.neon.tech/appbasis_ulc_linz_preview";
+  const db = {
+    client: {
+      begin: async (callback) => callback({
+        async unsafe(sql, params = []) {
+          queries.push({ sql, params });
+          if (sql.includes("current_database()")) {
+            return [{ db: "appbasis_ulc_linz_preview", principal: "preview_fixture_role" }];
+          }
+          // Empty E7B9 inventory; only read-only SELECTs are allowed.
+          if (sql.startsWith("SELECT")) return [];
+          if (sql === "SET TRANSACTION READ ONLY") return [];
+          throw new Error("Write attempted by preview audit.");
+        },
+      }),
+      end: async () => { closed.push(true); },
+    },
+  };
+  const result = await auditUlcPreviewFixtures(
+    { connectionString: databaseUrl },
+    { databaseFactory: () => db },
+  );
+  assert.deepEqual(result.unexpectedE7B9, { groups: 0, athletes: 0, exercises: 0, blocks: 0 });
+  assertNoUlcPreviewE7B9Fixtures(result);
+  assert.deepEqual(closed, [true], "postgres-js pool must be closed once after success");
+  assert.equal(queries[0].sql, "SET TRANSACTION READ ONLY");
+  assert.ok(queries.every(x => x.sql.startsWith("SELECT") || x.sql === "SET TRANSACTION READ ONLY"));
+});
+
+test("read-only fixture guard closes postgres-js pool even when audit query fails", async () => {
+  let closed = 0;
+  const databaseUrl = "postgresql://preview_fixture_role:testing@ep-preview-test.eu-central-1.aws.neon.tech/appbasis_ulc_linz_preview";
+  const db = {
+    client: {
+      begin: async () => { throw new Error("audit query failed"); },
+      end: async () => { closed += 1; },
+    },
+  };
+  await assert.rejects(
+    auditUlcPreviewFixtures(
+      { connectionString: databaseUrl },
+      { databaseFactory: () => db },
+    ),
+    /audit query failed/,
+  );
+  assert.equal(closed, 1);
+});
+
+test("production database adapter exposes client.end and not database.close", async () => {
+  const client = await readFile(resolve(ROOT, "packages/database/src/client.ts"), "utf8");
+  const source = await readFile(resolve(ROOT, "tooling/ulc-linz-preview-fixture-audit.mjs"), "utf8");
+  assert.match(client, /client,\s*database: drizzle\(client\)/);
+  assert.match(source, /await database\.client\.end\(\)/);
+  assert.doesNotMatch(source, /database\.close\(\)/);
 });
