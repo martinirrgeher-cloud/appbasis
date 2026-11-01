@@ -20,10 +20,15 @@ describe("ULC administration onboarding UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).not.toContain('POST /api/admin/users');
   });
 
-  it("edits module rights only for active trainer users through existing admin session", () => {
+  it("opens a rights overview for every account and edits only allowed modules", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-access-editor"');
     expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-access-form"');
-    expect(ULC_LINZ_APP_SCRIPT).toContain('user.sourceRole === "trainer" && user.active && !user.blocked');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('addAction(actions, "Rechte", "Modulrechte für " + user.username');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('select.disabled = module.editable !== true || snapshot.editable !== true');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('userAdminElements.accessSave.hidden = !snapshot.editable');
+    expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-profile"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('function applyUserAdminPermissionProfile()');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('if (!userAdminReady || userAdminBusy || !userAdminAccessSnapshot?.editable) return');
     expect(ULC_LINZ_APP_SCRIPT).toContain('encodeURIComponent(snapshot.userId) + "/access"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('expectedGrants: snapshot.expectedGrants');
     expect(ULC_LINZ_APP_SCRIPT).toContain('expectedRevokes: snapshot.expectedRevokes');
