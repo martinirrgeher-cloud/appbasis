@@ -5,8 +5,8 @@ import type {
   UlcLinzSubjectScopeResolver,
 } from "./authorization";
 
-const SOURCE_ROLES = new Set(["admin", "trainer", "athlete", "parent"] as const);
-const DELETABLE_SOURCE_ROLES = new Set(["trainer", "athlete", "parent"] as const);
+const SOURCE_ROLES = new Set(["admin", "trainer", "athlete", "parent", "functionary"] as const);
+const DELETABLE_SOURCE_ROLES = new Set(["trainer", "athlete", "parent", "functionary"] as const);
 const DELETION_MARKER_RETENTION_DAYS = 35;
 const MAX_RETENTION_EXCEPTION_REASON_LENGTH = 1000;
 const MAX_RETENTION_EXCEPTION_REVIEW_MONTHS = 12;
@@ -20,7 +20,7 @@ export interface UlcLinzSqlClient {
   ): PromiseLike<readonly Record<string, unknown>[]>;
 }
 
-export type UlcLinzSourceRole = "admin" | "trainer" | "athlete" | "parent";
+export type UlcLinzSourceRole = "admin" | "trainer" | "athlete" | "parent" | "functionary";
 export type UlcLinzDeletableSourceRole = Exclude<UlcLinzSourceRole, "admin">;
 
 export interface UlcLinzLifecycleTarget {
