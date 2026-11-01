@@ -107,7 +107,7 @@ function deletableSourceRole(
   state: Extract<UlcLinzRetentionState, { status: "due" }>,
 ): UlcLinzDeletableSourceRole {
   const value = state.target.sourceRole;
-  if (value !== "trainer" && value !== "athlete" && value !== "parent") blocked();
+  if (value !== "trainer" && value !== "athlete" && value !== "parent" && value !== "functionary") blocked();
   return value;
 }
 

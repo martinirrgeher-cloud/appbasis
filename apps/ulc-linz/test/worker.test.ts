@@ -591,6 +591,16 @@ function runtime(
         };
       },
     },
+    functionaryUserProvisioning: {
+      async createFunctionaryUser(input) {
+        return {
+          identityId: "identity-functionary-created",
+          username: input.username,
+          displayName: input.displayName,
+          mustChangePassword: true as const,
+        };
+      },
+    },
     athleteMasterdata,
     kindertraining,
     selfRegistration,

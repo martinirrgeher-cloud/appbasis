@@ -40,9 +40,10 @@ export const ULC_USER_ADMIN_HTML = `
         <select id="user-admin-role" required>
           <option value="trainer">Trainer</option>
           <option value="athlete">Athlet</option>
+          <option value="functionary">Funktionär</option>
         </select>
       </label>
-      <label>Zuordnung
+      <label id="user-admin-target-row">Zuordnung
         <select id="user-admin-target" required><option value="">Bitte auswählen</option></select>
       </label>
       <label>Benutzername
@@ -72,7 +73,7 @@ export const ULC_USER_ADMIN_HTML = `
       </div>
       <button class="button button--secondary user-admin-dialog__close" type="button" id="user-admin-access-close" aria-label="Modulrechte schließen" title="Schließen">✕</button>
     </header>
-    <p class="settings-note">Berechtigungsprofil als Vorlage wählen und danach einzelne Module anpassen. Profil „Funktionär“ ist vorerst eine Rechtevorlage für Trainerkonten, keine technische Administratorrolle.</p>
+    <p class="settings-note">Berechtigungsprofil als Vorlage wählen und danach einzelne Module anpassen. Funktionäre haben eine eigene Vereinsrolle ohne technische Administratorrechte.</p>
     <label id="user-admin-profile-row" class="user-admin-profile-row" hidden>Berechtigungsprofil
       <select id="user-admin-profile"><option value="">Individuelle Berechtigungen</option></select>
     </label>
@@ -198,6 +199,7 @@ const userAdminElements = Object.freeze({
   form: document.querySelector("#user-admin-form"),
   role: document.querySelector("#user-admin-role"),
   target: document.querySelector("#user-admin-target"),
+  targetRow: document.querySelector("#user-admin-target-row"),
   username: document.querySelector("#user-admin-username"),
   name: document.querySelector("#user-admin-name"),
   email: document.querySelector("#user-admin-email"),
@@ -306,6 +308,7 @@ function openUserAdminCreate() {
   userAdminElements.form?.reset();
   showMessage(userAdminElements.createError, "");
   userAdminElements.createDialog?.showModal();
+  renderUserAdminTargets();
   void prepareUserAdminView();
 }
 
@@ -398,7 +401,7 @@ function renderUserAdminList() {
     userAdminElements.count.textContent = "(" + filtered.length +
       (filtered.length === userAdminUsers.length ? "" : " von " + userAdminUsers.length) + ")";
   }
-  const roles = { admin: "Administrator", trainer: "Trainer", athlete: "Athlet", parent: "Eltern" };
+  const roles = { admin: "Administrator", trainer: "Trainer", athlete: "Athlet", parent: "Eltern", functionary: "Funktionär" };
   for (const user of filtered) {
     const incomplete = isIncomplete(user);
     const retired = isRetired(user);
@@ -445,7 +448,8 @@ function renderUserAdminList() {
     // may modify their bounded module permissions.
     addAction(actions, "Rechte", "Modulrechte für " + user.username,
       () => void openUserAdminAccess(user.identityId));
-    const supportsAccountActions = (user.sourceRole === "trainer" || user.sourceRole === "athlete") &&
+    const supportsAccountActions = (user.sourceRole === "trainer" || user.sourceRole === "athlete" ||
+      user.sourceRole === "functionary") &&
       !incomplete && !retired;
     const canLink = user.active && !user.blocked && !incomplete && !retired;
     if (canLink || supportsAccountActions) {
@@ -650,7 +654,7 @@ async function openUserAdminAccess(identityId) {
 function renderUserAdminAccess() {
   const snapshot = userAdminAccessSnapshot;
   if (!snapshot || !userAdminElements.accessList) return;
-  const labels = { admin: "Administrator", trainer: "Trainer", athlete: "Athlet", parent: "Eltern" };
+  const labels = { admin: "Administrator", trainer: "Trainer", athlete: "Athlet", parent: "Eltern", functionary: "Funktionär" };
   if (userAdminElements.accessName) {
     userAdminElements.accessName.textContent =
       String(snapshot.username || "") + " · " + (labels[snapshot.sourceRole] || "Rolle unbekannt");
@@ -795,13 +799,21 @@ async function prepareUserAdminView() {
 function renderUserAdminTargets() {
   const select = userAdminElements.target;
   if (!select) return;
+  const role = userAdminElements.role?.value || "trainer";
+  if (role === "functionary") {
+    if (userAdminElements.targetRow) userAdminElements.targetRow.hidden = true;
+    select.required = false;
+    select.replaceChildren();
+    return;
+  }
+  if (userAdminElements.targetRow) userAdminElements.targetRow.hidden = false;
+  select.required = true;
   const previous = select.value;
   select.replaceChildren();
   const empty = document.createElement("option");
   empty.value = "";
   empty.textContent = "Bitte auswählen";
   select.append(empty);
-  const role = userAdminElements.role?.value || "trainer";
   const targets = role === "athlete" ? userAdminTargets?.athletes : userAdminTargets?.trainers;
   for (const item of targets || []) {
     if (item.isActive === false) continue;
@@ -851,7 +863,7 @@ async function createUserAdminAccount(event) {
   event.preventDefault();
   if (!userAdminReady || userAdminBusy || !userAdminElements.form?.reportValidity()) return;
   const role = userAdminElements.role?.value;
-  if (role !== "trainer" && role !== "athlete") return;
+  if (role !== "trainer" && role !== "athlete" && role !== "functionary") return;
   const generation = userAdminGeneration;
   const username = userAdminElements.username?.value || "";
   const temporaryPassword = userAdminElements.password?.value || "";
@@ -860,9 +872,9 @@ async function createUserAdminAccount(event) {
     displayName: userAdminElements.name?.value?.trim() || "",
     temporaryPassword,
     ...(userAdminElements.email?.value.trim() ? { contactEmail: userAdminElements.email.value.trim() } : {}),
-    ...(role === "trainer"
-      ? { trainerId: userAdminElements.target?.value || "" }
-      : { athleteId: userAdminElements.target?.value || "" }),
+    ...(role === "functionary" ? {} :
+      role === "trainer" ? { trainerId: userAdminElements.target?.value || "" }
+        : { athleteId: userAdminElements.target?.value || "" }),
   };
   userAdminBusy = true;
   updateUserAdminControls();
@@ -870,7 +882,8 @@ async function createUserAdminAccount(event) {
   showMessage(userAdminElements.message, "");
   showMessage(userAdminElements.success, "");
   try {
-    await requestJson(role === "trainer" ? "/api/admin/trainer-users" : "/api/admin/athlete-users", {
+    await requestJson(role === "functionary" ? "/api/admin/functionary-users" :
+      role === "trainer" ? "/api/admin/trainer-users" : "/api/admin/athlete-users", {
       method: "POST",
       body: JSON.stringify(body),
     });
@@ -905,7 +918,9 @@ async function createUserAdminAccount(event) {
     if (generation !== userAdminGeneration) return;
     showMessage(userAdminElements.createError,
       error?.status === 409
-        ? "Der Benutzername oder die Zuordnung ist bereits vergeben."
+        ? (role === "functionary"
+          ? "Funktionär kann noch nicht angelegt werden: Schema/Rolle nicht bereit oder Benutzername bereits vorhanden."
+          : "Der Benutzername oder die Zuordnung ist bereits vergeben.")
         : error?.status === 403
           ? "Keine Berechtigung zum Anlegen von Benutzern."
           : "Benutzer konnte nicht angelegt werden. Bitte Angaben prüfen.");

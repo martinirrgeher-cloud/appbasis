@@ -181,7 +181,7 @@ async function applyUlcLifecycleMigrations(
   expect(owner).toEqual({
     id: "ulc-linz-lifecycle",
     root: "apps/ulc-linz",
-    schemaVersion: 9,
+    schemaVersion: 10,
     migrations: [
       "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
       "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -192,10 +192,26 @@ async function applyUlcLifecycleMigrations(
       "apps/ulc-linz/migrations/0006_ulc_linz_training_module_groups.sql",
       "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
       "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql",
+      "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
     ],
   });
   if (owner === undefined) throw new Error("Expected ULC lifecycle database owner.");
-  for (const migration of owner.migrations) {
+  // The native functionary migration inserts the application role into the
+  // permissions service. Reproduce its canonical prerequisites in isolation.
+  const permissions = manifest.owners.find((candidate) => candidate.id === "permissions");
+  expect(permissions).toEqual({
+    id: "permissions",
+    root: "packages/permissions",
+    schemaVersion: 4,
+    migrations: [
+      "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
+      "packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql",
+      "packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
+      "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql",
+    ],
+  });
+  if (permissions === undefined) throw new Error("Expected ULC permissions database owner.");
+  for (const migration of [...permissions.migrations, ...owner.migrations]) {
     const sql = await readFile(new URL(`../../../${migration}`, import.meta.url), "utf8");
     for (const statement of sql.split("--> statement-breakpoint")) {
       if (statement.trim() !== "") await client.unsafe(statement);

@@ -96,6 +96,7 @@ import {
 } from "./athlete-user-provisioning";
 import { recordUlcLinzSecurityEvent } from "./security-events";
 import { UlcUserAccessError } from "./user-admin-access";
+import { UlcFunctionaryProvisioningError } from "./functionary-user-provisioning";
 import { UlcUserAccountError } from "./user-admin-accounts";
 import { generatedUiResponse } from "./ui";
 import {
@@ -250,6 +251,8 @@ export function createGeneratedWorker(
           response = await athleteUserAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-users") {
           response = await trainerUserAdminResponse(request, runtime, url);
+        } else if (url.pathname === "/api/admin/functionary-users") {
+          response = await functionaryUserAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-identities") {
           response = await trainerIdentityAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/athletes") {
@@ -2343,6 +2346,77 @@ async function athleteUserJsonBody(
     throw new InvalidAthleteUserRequestError();
   }
   return body;
+}
+
+async function functionaryUserAdminResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return methodNotAllowedFor("POST", "Functionary user administration");
+  }
+  if ([...url.searchParams.keys()].length !== 0) {
+    return Response.json({ error: { code: "INVALID_FUNCTIONARY_USER_REQUEST" } }, { status: 400 });
+  }
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity, secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) return current;
+  let access: Readonly<{ organizationId: string; actorPrincipalId: string }>;
+  try {
+    access = await runtime.trainerIdentityAccess.assertAdminAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json({ error: { code: error.code } }, { status: 403 });
+    }
+    if (isPasswordChangeRequiredError(error)) return identityHttp.identityErrorResponse(error);
+    throw error;
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    const parsed: unknown = await request.json();
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed) ||
+        Object.getPrototypeOf(parsed) !== Object.prototype) throw new Error("INVALID");
+    body = parsed as Record<string, unknown>;
+    const keys = Object.keys(body).sort();
+    const base = ["displayName", "temporaryPassword", "username"];
+    const withEmail = ["contactEmail", ...base].sort();
+    if ((JSON.stringify(keys) !== JSON.stringify(base) &&
+         JSON.stringify(keys) !== JSON.stringify(withEmail)) ||
+        Object.getOwnPropertySymbols(body).length > 0 ||
+        !validTrainerUsername(body.username) ||
+        !validTrainerDisplayName(body.displayName) ||
+        !validTemporaryPassword(body.temporaryPassword) ||
+        (body.contactEmail !== undefined && !validContactEmail(body.contactEmail))) {
+      throw new Error("INVALID");
+    }
+  } catch {
+    return Response.json({ error: { code: "INVALID_FUNCTIONARY_USER_REQUEST" } }, { status: 400 });
+  }
+  try {
+    const functionaryUser = await runtime.functionaryUserProvisioning.createFunctionaryUser({
+      organizationId: access.organizationId,
+      actorPrincipalId: access.actorPrincipalId,
+      username: body.username as string,
+      displayName: body.displayName as string,
+      temporaryPassword: body.temporaryPassword as string,
+      ...(body.contactEmail === undefined ? {} : { contactEmail: body.contactEmail as string }),
+    });
+    return Response.json({ functionaryUser }, { status: 201 });
+  } catch (error) {
+    if (error instanceof UlcFunctionaryProvisioningError) {
+      const status = error.code === "INVALID" ? 400 : 409;
+      return Response.json({ error: {
+        code: error.code === "NOT_READY" ? "FUNCTIONARY_SCHEMA_NOT_READY" :
+          error.code === "CONFLICT" ? "FUNCTIONARY_USER_CONFLICT" :
+            "INVALID_FUNCTIONARY_USER_REQUEST",
+      } }, { status });
+    }
+    throw error;
+  }
 }
 
 async function trainerUserAdminResponse(

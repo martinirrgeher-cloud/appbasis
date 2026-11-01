@@ -6,6 +6,11 @@
       "migration": "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
       "sha256": "53a04446fa4e31e6a9b6794d7c7d13b6e5f354008ae0198290bef58705fcdfe6",
       "classification": "historical-access-control-only"
+    },
+    {
+      "migration": "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
+      "sha256": "e1c4be02e774e93f24b4ea147b33c97a01e31a2ef12072f769961ce2ff851e33",
+      "classification": "historical-access-control-only"
     }
   ]
 }

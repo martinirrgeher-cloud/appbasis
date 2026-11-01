@@ -101,12 +101,15 @@ describe("ULC E6A exercise catalog schema", () => {
         candidate.id === "ulc-linz-lifecycle",
     );
 
-    expect(owner?.schemaVersion).toBe(9);
+    expect(owner?.schemaVersion).toBe(10);
     expect(owner?.migrations?.[7]).toBe(
       "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
     );
     expect(owner?.migrations?.[8]).toBe(
       "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql",
+    );
+    expect(owner?.migrations?.[9]).toBe(
+      "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
     );
   });
 });

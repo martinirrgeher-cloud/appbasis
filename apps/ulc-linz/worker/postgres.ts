@@ -90,6 +90,7 @@ import {
 import { PostgresUlcLinzTrainerIdentityLinks } from "./trainer-identity-postgres";
 import { createUlcLinzTrainerUserProvisioningService } from "./trainer-user-provisioning";
 import { createUlcLinzAthleteUserProvisioningService } from "./athlete-user-provisioning";
+import { createUlcFunctionaryUserProvisioningService } from "./functionary-user-provisioning";
 import { PostgresUlcLinzUserAdminOverview } from "./user-admin-overview";
 import { UlcLinzUserAccountService } from "./user-admin-accounts";
 import { UlcLinzTrainerUserAccessService } from "./user-admin-access";
@@ -123,6 +124,9 @@ export interface GeneratedPostgresApplicationRuntime {
   >;
   athleteUserProvisioning: ReturnType<
     typeof createUlcLinzAthleteUserProvisioningService
+  >;
+  functionaryUserProvisioning: ReturnType<
+    typeof createUlcFunctionaryUserProvisioningService
   >;
   athleteMasterdata: Pick<
     PostgresAthleteMasterdataRepository,
@@ -291,6 +295,13 @@ export async function createGeneratedPostgresApplicationRuntime(
       });
     const athleteUserProvisioning =
       createUlcLinzAthleteUserProvisioningService({
+        identityProvisioning: identityRuntime.provisioningIdentity,
+        sql: applicationSql,
+        permissions,
+        accessAdministration,
+      });
+    const functionaryUserProvisioning =
+      createUlcFunctionaryUserProvisioningService({
         identityProvisioning: identityRuntime.provisioningIdentity,
         sql: applicationSql,
         permissions,
@@ -526,6 +537,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       trainerIdentityLinks,
       trainerUserProvisioning,
       athleteUserProvisioning,
+      functionaryUserProvisioning,
       athleteMasterdata,
       kindertraining,
       selfRegistration,

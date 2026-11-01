@@ -16,7 +16,7 @@ const known = ULC_TRAINER_ACCESS_MODULES.flatMap(m => [
   capabilityId("ulc-linz:module:" + m.key + ":view"),
   capabilityId("ulc-linz:module:" + m.key + ":edit"),
 ]);
-type SourceRole = "admin" | "trainer" | "athlete" | "parent";
+type SourceRole = "admin" | "trainer" | "athlete" | "parent" | "functionary";
 
 function fixture(role: SourceRole, opts: {
   active?: boolean; blocked?: boolean; accountRole?: string; extraGrants?: string[];
@@ -60,10 +60,13 @@ describe("ULC org-scoped role permissions and functionary presets", () => {
     const access = await service.read(ORG, USER);
     expect(access.sourceRole).toBe("admin");
     expect(access.editable).toBe(true);
-    expect(access.modules.every(m => m.editable)).toBe(true);
+    expect(access.modules.find(m => m.key === "athletes")?.editable).toBe(false);
+    expect(access.modules.filter(m => m.key !== "athletes").every(m => m.editable)).toBe(true);
     expect(access.profiles.map(p => p.name)).toEqual(["Administrator"]);
     await service.update(ORG, USER, USER, {
-      modules: access.modules.map(m => ({ key: m.key, level: "none" as const })),
+      modules: access.modules.map(m => ({
+        key: m.key, level: m.key === "athletes" ? m.level : "none" as const,
+      })),
       expectedGrants: access.expectedGrants,
       expectedRevokes: access.expectedRevokes,
     });
@@ -134,15 +137,17 @@ describe("ULC org-scoped role permissions and functionary presets", () => {
 
   it("functionary is a reusable bounded profile without technical admin elevation", async () => {
     const profiles = permissionPresetsForRole("trainer");
-    expect(profiles.map(p => p.name)).toEqual(["Kindertrainer", "Leistungstrainer", "Funktionär"]);
-    const functionary = profiles.find(p => p.id === "funktionaer")!;
-    expect(functionary.sourceRole).toBe("trainer");
+    expect(profiles.map(p => p.name)).toEqual(["Kindertrainer", "Leistungstrainer"]);
+    const functionary = permissionPresetsForRole("functionary").find(p => p.id === "funktionaer")!;
+    expect(functionary.sourceRole).toBe("functionary");
     expect(functionary.modules.every(m => m.level !== "edit")).toBe(true);
     expect(functionary.modules.find(m => m.key === "athletes")?.level).toBe("view");
-    expect(ULC_PERMISSION_EDITABLE_BY_ROLE.admin).toContain("athletes");
+    expect(ULC_PERMISSION_EDITABLE_BY_ROLE.admin).not.toContain("athletes");
     expect(permissionPresetsForRole("admin").map(p => p.id)).toEqual(["administrator"]);
-    const { service, changes } = fixture("trainer");
+    const { service, changes } = fixture("functionary");
     const snapshot = await service.read(ORG, USER);
+    expect(snapshot.modules.find(m => m.key === "kindertraining")?.editable).toBe(false);
+    expect(snapshot.modules.find(m => m.key === "athletes")?.editable).toBe(true);
     await service.update(ORG, ACTOR, USER, {
       modules: functionary.modules,
       expectedGrants: snapshot.expectedGrants, expectedRevokes: snapshot.expectedRevokes,

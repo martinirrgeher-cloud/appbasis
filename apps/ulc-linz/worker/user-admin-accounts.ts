@@ -47,6 +47,7 @@ export class UlcLinzUserAccountService {
               CASE
                 WHEN membership.source_role='trainer' THEN trainer.is_active
                 WHEN membership.source_role='athlete' THEN athlete.is_active
+                WHEN membership.source_role='functionary' THEN true
                 ELSE false
               END AS subject_active
        FROM ulc_linz_membership membership
@@ -66,7 +67,8 @@ export class UlcLinzUserAccountService {
     const row = rows[0] as unknown as Target;
     // Business-admin or technical Better Auth administrators are never
     // editable by this organization-scoped endpoint.
-    if ((row.source_role !== "trainer" && row.source_role !== "athlete") ||
+    if ((row.source_role !== "trainer" && row.source_role !== "athlete" &&
+         row.source_role !== "functionary") ||
       row.role?.split(",").map(s => s.trim()).includes("admin") ||
       row.role?.split(",").map(s => s.trim()).includes("superadmin")) {
       throw new UlcUserAccountError("DENIED");
