@@ -169,7 +169,8 @@ test("read-only fixture guard releases postgres-js pool after successful verific
           if (sql.includes("current_database()")) {
             return [{ db: "appbasis_ulc_linz_preview", principal: "preview_fixture_role" }];
           }
-          // Empty E7B9 inventory; only read-only SELECTs are allowed.
+          // Empty E7B9 inventory: aggregate count SELECT always returns one row.
+          if (sql.startsWith("SELECT count(*)::int AS total")) return [{ total: 0 }];
           if (sql.startsWith("SELECT")) return [];
           if (sql === "SET TRANSACTION READ ONLY") return [];
           throw new Error("Write attempted by preview audit.");
