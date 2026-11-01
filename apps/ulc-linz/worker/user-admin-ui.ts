@@ -657,10 +657,12 @@ function renderUserAdminAccess() {
   }
   if (userAdminElements.accessScope) {
     userAdminElements.accessScope.textContent = !snapshot.editable
-      ? "Nur Ansicht: Administratorrechte sind geschützt; inaktive oder gesperrte Konten können nicht geändert werden."
-      : snapshot.sourceRole === "athlete" || snapshot.sourceRole === "parent"
-        ? "Persönlicher Datenzugriff bleibt eingeschränkt. Nicht verfügbare Module sind gesperrt."
-        : "Individuelle Anpassungen gelten nur für diese Person. Technische Rolle und Systemrechte bleiben unverändert.";
+      ? "Nur Ansicht: Inaktive oder gesperrte Konten können nicht geändert werden."
+      : snapshot.sourceRole === "admin"
+        ? "Technische Administratorrechte bleiben geschützt. App-Modulrechte können angepasst und im Zweifel über dieses Menü wiederhergestellt werden."
+        : snapshot.sourceRole === "athlete" || snapshot.sourceRole === "parent"
+          ? "Persönlicher Datenzugriff bleibt eingeschränkt. Nicht verfügbare Module sind gesperrt."
+          : "Individuelle Anpassungen gelten nur für diese Person. Technische Rolle und Systemrechte bleiben unverändert.";
   }
   if (userAdminElements.accessSave) userAdminElements.accessSave.hidden = !snapshot.editable;
   if (userAdminElements.profileRow) {
