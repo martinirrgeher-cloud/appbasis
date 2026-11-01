@@ -313,10 +313,16 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         (item) => item.athleteId === athlete.id,
       )).toHaveLength(1);
 
+      const closedMembership = restored.athleteGroupMemberships.find(
+        (item) => item.athleteId === athlete.id,
+      );
+      expect(closedMembership?.endedOn).toBeTruthy();
+      const nextAssignment = new Date(closedMembership!.endedOn + "T12:00:00Z");
+      nextAssignment.setUTCDate(nextAssignment.getUTCDate() + 1);
       await repository.createAthleteGroupMembership(tenant, {
         athleteId: athlete.id,
         groupId: group.id,
-        startedOn: "2026-11-03",
+        startedOn: nextAssignment.toISOString().slice(0, 10),
       });
       const reassigned = await repository.readOrganizationSnapshot(tenant);
       expect(reassigned.athleteGroupMemberships.filter(
