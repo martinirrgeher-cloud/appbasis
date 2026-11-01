@@ -152,8 +152,9 @@ export class UlcLinzTrainerUserAccessService {
       throw new UlcUserAccessError("STALE");
     }
 
+    const editableModules = ULC_PERMISSION_EDITABLE_BY_ROLE[found.sourceRole];
     const managedCapabilities = new Set(
-      ULC_TRAINER_ACCESS_MODULES.flatMap((module) => [
+      ULC_TRAINER_ACCESS_MODULES.filter(module => editableModules.includes(module.key)).flatMap((module) => [
         moduleCapability(module.key, "view"),
         moduleCapability(module.key, "edit"),
       ]),
@@ -163,7 +164,6 @@ export class UlcLinzTrainerUserAccessService {
     const defaults = new Set(found.role.capabilities.map(String));
     const existingGrants = new Set(currentGrants);
     const existingRevokes = new Set(currentRevokes);
-    const editableModules = ULC_PERMISSION_EDITABLE_BY_ROLE[found.sourceRole];
     for (const choice of input.modules) {
       if (!editableModules.includes(choice.key)) {
         // Locked modules must be preserved; never mutate capabilities outside
