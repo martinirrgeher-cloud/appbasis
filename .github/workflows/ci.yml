@@ -162,6 +162,9 @@ jobs:
       - name: Test M5 restore authority regressions
         run: node --test ./tooling/ulc-linz-m5-restore-authority-regression.test.mjs
 
+      - name: Test ULC central release assistant safety
+        run: node --test ./tooling/ulc-linz-release-assistant.test.mjs
+
       - name: Typecheck
         run: pnpm run typecheck
 

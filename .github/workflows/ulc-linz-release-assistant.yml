@@ -1,0 +1,137 @@
+name: ULC Linz – Nächster Release-Schritt
+
+on:
+  workflow_dispatch:
+    inputs:
+      approve_step:
+        description: 'Diesen automatisch ermittelten nächsten Produktionsschritt ausdrücklich freigeben'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: ulc-linz-one-entry-release
+  cancel-in-progress: false
+
+jobs:
+  next-approved-release-step:
+    name: Nächsten M6-Schritt sicher auswählen und ausführen
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Require fresh approval from main on first attempt
+        shell: bash
+        env:
+          APPROVE_STEP: ${{ inputs.approve_step }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$GITHUB_RUN_ATTEMPT" = "1"
+          test "$APPROVE_STEP" = true || { echo 'Operator approval is required for this single step.' >&2; exit 1; }
+
+      - name: Check out exact approved head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require unchanged main and inspect approved M6 history
+        id: next
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          AUTH=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json")
+          branch="$RUNNER_TEMP/ulc-release-main.json"
+          runs="$RUNNER_TEMP/ulc-release-history.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${AUTH[@]}" "$API/branches/main" -o "$branch"
+          jq -e --arg sha "$GITHUB_SHA" '.commit.sha == $sha' "$branch" >/dev/null || {
+            echo 'main drifted from approved SHA.' >&2
+            exit 1
+          }
+          # Fetch all dispatches on the exact head; do not assume the first page is exhaustive.
+          node --input-type=module <<'NODE'
+          import { writeFile } from 'node:fs/promises';
+          import { selectNextUlcProductionReleaseStep } from './tooling/ulc-linz-release-assistant.mjs';
+          const api = 'https://api.github.com/repos/' + process.env.GITHUB_REPOSITORY;
+          const headers = { Authorization: 'Bearer ' + process.env.GH_TOKEN, Accept: 'application/vnd.github+json' };
+          const history = [];
+          let total = null;
+          for (let page = 1; page <= 5; page++) {
+            const query = new URLSearchParams({ branch: 'main', event: 'workflow_dispatch', head_sha: process.env.GITHUB_SHA, per_page: '100', page: String(page) });
+            const response = await fetch(api + '/actions/runs?' + query, { headers });
+            if (!response.ok) throw new Error('Cannot verify workflow-run history: HTTP ' + response.status);
+            const payload = await response.json();
+            if (!Array.isArray(payload.workflow_runs) || !Number.isSafeInteger(payload.total_count)) {
+              throw new Error('Incomplete workflow-run inventory.');
+            }
+            if (total === null) total = payload.total_count;
+            history.push(...payload.workflow_runs);
+            if (history.length >= total) break;
+          }
+          if (history.length !== total || total > 500) throw new Error('Incomplete or unbounded workflow-run inventory.');
+          const result = selectNextUlcProductionReleaseStep({ headSha: process.env.GITHUB_SHA, runs: history });
+          await writeFile(process.env.RUNNER_TEMP + '/ulc-release-choice.json', JSON.stringify(result));
+          NODE
+          STEP="$(jq -r '.step // empty' "$RUNNER_TEMP/ulc-release-choice.json")"
+          STATUS="$(jq -r '.status' "$RUNNER_TEMP/ulc-release-choice.json")"
+          test "$STATUS" = next || test "$STATUS" = complete
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "step=$STEP" >> "$GITHUB_OUTPUT"
+          if test "$STATUS" = complete; then
+            echo '### ULC Production Release: alle acht kanonischen M6-Schritte erfolgreich.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ULC Production Release: nächster Schritt \`$STEP\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Dispatch exactly one authorized canonical M6 step
+        if: steps.next.outputs.status == 'next'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT_STEP: ${{ steps.next.outputs.step }}
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          AUTH=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json")
+          current="$RUNNER_TEMP/main-before-dispatch.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${AUTH[@]}" "$API/branches/main" -o "$current"
+          jq -e --arg sha "$GITHUB_SHA" '.commit.sha == $sha' "$current" >/dev/null || {
+            echo 'main changed before dispatch.' >&2; exit 1
+          }
+          payload="$(jq -nc --arg step "$NEXT_STEP" '{ref:"main",inputs:{step:$step,approve_step:"true"},return_run_details:true}')"
+          # No retry on an ambiguous response: investigate before a fresh approval.
+          response="$RUNNER_TEMP/ulc-m6-dispatch.json"
+          http="$(curl --silent --show-error --connect-timeout 10 --max-time 40 -o "$response" -w '%{http_code}' -X POST "${AUTH[@]}" -H 'Content-Type: application/json' --data "$payload" "$API/actions/workflows/m6-ulc-production-refresh-chain.yml/dispatches")"
+          test "$http" = 200 || { echo "Dispatch ambiguous/failed (HTTP $http); inspect Actions; never retry automatically." >&2; exit 1; }
+          id="$(jq -r '.workflow_run_id // empty' "$response")"
+          [[ "$id" =~ ^[1-9][0-9]*$ ]] || { echo 'Dispatch response has no exact run ID.' >&2; exit 1; }
+          echo "Canonical M6 parent: https://github.com/$GITHUB_REPOSITORY/actions/runs/$id" >> "$GITHUB_STEP_SUMMARY"
+
+          # Wait on the EXACT dispatched run; never accept success from another release.
+          deadline=$(( $(date +%s) + 8400 ))
+          while test "$(date +%s)" -lt "$deadline"; do
+            run="$RUNNER_TEMP/ulc-m6-exact-run.json"
+            curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${AUTH[@]}" "$API/actions/runs/$id" -o "$run"
+            jq -e --arg sha "$GITHUB_SHA" --argjson id "$id" '
+              .id == $id and .head_sha == $sha and .head_branch == "main" and
+              .path == ".github/workflows/m6-ulc-production-refresh-chain.yml" and
+              .event == "workflow_dispatch" and .run_attempt == 1
+            ' "$run" >/dev/null || { echo 'M6 run identity drift.' >&2; exit 1; }
+            if test "$(jq -r '.status' "$run")" = completed; then
+              jq -e '.conclusion == "success"' "$run" >/dev/null || {
+                echo 'The exact authorized M6 step failed; new operator approval required.' >&2; exit 1
+              }
+              echo "### PASS – \`$NEXT_STEP\` (einzeln geprüft und freigegeben)" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo 'M6 chain still running after bounded observation. Inspect exact run; no automatic retry.' >&2
+          exit 1
