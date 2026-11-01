@@ -84,6 +84,7 @@ export class UlcLinzTrainerUserAccessService {
         sourceRole !== "athlete" && sourceRole !== "parent") {
       throw new UlcUserAccessError("DENIED");
     }
+    const checkedRole = sourceRole as UlcUserSourceRole;
     if (!validIdentifier(row.username) || typeof row.active !== "boolean" ||
         typeof row.blocked !== "boolean") throw new UlcUserAccessError("INVALID");
     const technicalRoles = typeof row.role === "string" ? row.role.split(",").map(s => s.trim()) : [];
@@ -91,7 +92,7 @@ export class UlcLinzTrainerUserAccessService {
       throw new UlcUserAccessError("DENIED");
     }
     const principal = await this.permissions.findPrincipal(principalId(userId));
-    const expectedRole = roleId(roleDataScope.runtimeRoleIds[sourceRole]);
+    const expectedRole = roleId(roleDataScope.runtimeRoleIds[checkedRole]);
     if (principal === null || principal.roleIds.length !== 1 ||
         principal.roleIds[0] !== expectedRole) {
       throw new UlcUserAccessError("DENIED");
@@ -99,7 +100,7 @@ export class UlcLinzTrainerUserAccessService {
     const role = await this.permissions.findRole(expectedRole);
     if (role === null) throw new UlcUserAccessError("DENIED");
     const editable = sourceRole !== "admin" && row.active === true && row.blocked === false;
-    return { username: row.username, principal, role, expectedRole, sourceRole, editable };
+    return { username: row.username, principal, role, expectedRole, sourceRole: checkedRole, editable };
   }
 
   async read(organizationId: string, userId: string): Promise<UlcUserAccessSnapshot> {
