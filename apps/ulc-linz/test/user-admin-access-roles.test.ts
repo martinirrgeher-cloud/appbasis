@@ -55,19 +55,22 @@ function fixture(role: SourceRole, opts: {
 }
 
 describe("ULC org-scoped role permissions and functionary presets", () => {
-  it("shows read-only admin rights, and cannot change or assign technical admin authority", async () => {
+  it("allows administrators to tailor modules without modifying their technical administrator role", async () => {
     const { service, changes } = fixture("admin");
     const access = await service.read(ORG, USER);
     expect(access.sourceRole).toBe("admin");
-    expect(access.editable).toBe(false);
-    expect(access.modules.every(m => !m.editable)).toBe(true);
-    expect(access.profiles).toEqual([]);
-    await expect(service.update(ORG, ACTOR, USER, {
-      modules: access.modules.map(m => ({ key: m.key, level: m.level })),
+    expect(access.editable).toBe(true);
+    expect(access.modules.every(m => m.editable)).toBe(true);
+    expect(access.profiles.map(p => p.name)).toEqual(["Administrator"]);
+    await service.update(ORG, USER, USER, {
+      modules: access.modules.map(m => ({ key: m.key, level: "none" as const })),
       expectedGrants: access.expectedGrants,
       expectedRevokes: access.expectedRevokes,
-    })).rejects.toMatchObject({ code: "DENIED" });
-    expect(changes).toHaveLength(0);
+    });
+    expect(changes).toHaveLength(1);
+    const change = changes[0] as { roleIds: readonly string[]; access: { revokes: readonly string[] } };
+    expect(change.roleIds).toEqual(["ulc-linz:admin"]);
+    expect(change.access.revokes).toContain("ulc-linz:module:kindertraining:view");
   });
 
   it("exposes individual athlete module rights but rejects organization-wide capability grants", async () => {
@@ -136,8 +139,8 @@ describe("ULC org-scoped role permissions and functionary presets", () => {
     expect(functionary.sourceRole).toBe("trainer");
     expect(functionary.modules.every(m => m.level !== "edit")).toBe(true);
     expect(functionary.modules.find(m => m.key === "athletes")?.level).toBe("view");
-    expect(ULC_PERMISSION_EDITABLE_BY_ROLE.admin).toEqual([]);
-    expect(permissionPresetsForRole("admin")).toEqual([]);
+    expect(ULC_PERMISSION_EDITABLE_BY_ROLE.admin).toContain("athletes");
+    expect(permissionPresetsForRole("admin").map(p => p.id)).toEqual(["administrator"]);
     const { service, changes } = fixture("trainer");
     const snapshot = await service.read(ORG, USER);
     await service.update(ORG, ACTOR, USER, {
