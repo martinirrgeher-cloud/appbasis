@@ -31,13 +31,13 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light" />
-    <meta name="theme-color" content="#0f172a" />
+    <meta name="theme-color" content="#147a46" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="ULC Linz" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon-192.png" type="image/png" sizes="192x192" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>ULC Linz</title>
     <link rel="stylesheet" href="/app.css" />
   </head>
