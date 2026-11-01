@@ -33,7 +33,7 @@ export const ULC_USER_ADMIN_HTML = `
       <h2 id="user-admin-create-title">Benutzer anlegen</h2>
       <button type="button" class="button button--secondary user-admin-dialog__close" id="user-admin-create-close" aria-label="Anlegen schließen" title="Schließen">✕</button>
     </header>
-    <p class="settings-note">Bestehenden Trainer oder Athleten zuordnen. Beim ersten Login muss das Passwort geändert werden.</p>
+    <p class="settings-note">Bestehenden Trainer oder Athleten zuordnen. Bereits verknüpfte Konten – auch gesperrte oder inaktive – in der Benutzerliste verwalten, nicht erneut anlegen. Beim ersten Login muss das Passwort geändert werden.</p>
     <p id="user-admin-create-error" class="message message--error" role="alert" hidden></p>
     <form id="user-admin-form" class="form-stack">
       <label>Rolle
