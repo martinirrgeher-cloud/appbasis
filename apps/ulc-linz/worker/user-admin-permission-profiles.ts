@@ -34,7 +34,9 @@ const MODULE_KEYS = ULC_USER_ACCESS_MODULES.map(module => module.key);
 // subject-safe documentation module and the personal countdown as editable.
 export const ULC_PERMISSION_EDITABLE_BY_ROLE: Readonly<Record<UlcUserSourceRole, readonly string[]>> =
   Object.freeze({
-    admin: Object.freeze([...MODULE_KEYS]),
+    // The user-administration access service requires athletes:edit. Keep
+    // this single administrative capability non-revocable to prevent lockout.
+    admin: Object.freeze(MODULE_KEYS.filter(key => key !== "athletes")),
     trainer: Object.freeze([...MODULE_KEYS]),
     functionary: Object.freeze(["athletes", "exercise_catalog", "training_blocks",
       "training_planning", "training_documentation", "countdown"]),
