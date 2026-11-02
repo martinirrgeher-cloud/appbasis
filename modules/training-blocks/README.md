@@ -11,7 +11,7 @@ training sessions, attendance and later athlete/day planning.
 - Package: `@appbasis/training-blocks`
 - Capabilities: `training-blocks:view`, `training-blocks:edit`
 - Database owner: this module only
-- Current schema version: 5
+- Current schema version: 6
 
 The foundation is revision-ready from the first schema:
 
@@ -132,3 +132,37 @@ of a plan or person identifier would be unsafe. A future app/module
 lifecycle must establish owner evidence, write blocking, restore replay,
 retention rules and full regression tests before targeted erasure or
 anonymization is enabled. No production/runtime activation is implied.
+
+## Opt-in schema v6: atomic subject usage attribution (not deployed)
+
+The module-owned schema v6 adds `appbasis_training_block_usage_subject`
+with an exact organization/usage foreign key and a subject-scoped persistent
+deletion marker. Neither table is populated by a migration or automatically
+inferred from historic `sourceRef` values.
+
+The restricted PostgreSQL `recordVerifiedSubjectUsageOnce` method writes
+the complete usage event and its canonical subject/plan/item attribution in
+**one transaction**, guarded by a per-organization-and-subject advisory lock.
+The ULC application **must first verify** the current authoritative plan,
+subject, item, block and deterministic event ID (PR #493). Attempts to claim
+legacy unattributed events, reassign an event to a different subject, reuse
+an event ID with modified data or write following a deletion marker fail
+closed. Normal usage interfaces stay unchanged.
+
+The restricted `markSubjectDeletedAndRemoveAttributedUsage` method
+atomically inserts a 35-day deletion marker and erases **only** usage events
+that are explicitly attributed to that organization and subject. Retries
+are safe and the same advisory lock serializes writes against deletion.
+The marker is NOT purged automatically, including after 35 days, and
+subject ownership is different from principal/identity ownership.
+
+**Not production ready:** This is a separate, unused module primitive:
+no application calling path, no HTTP/UI, no automatic subject-delete
+composition, no runtime migration, no historical backfill and no operator
+restore/purge flow. Existing legacy writes can still create unattributed
+events and must not be mistaken for subject-scoped writes. Before wiring
+the app, prove the source-plan-to-subject mapping and authorization,
+disable unsafe legacy writes for subject bookings, and reconcile subject
+tombstones across restored backups. Free-text notes and unowned legacy
+events still require an independent privacy policy. `training-blocks`
+and `ulc-linz` production gates remain blocked.
