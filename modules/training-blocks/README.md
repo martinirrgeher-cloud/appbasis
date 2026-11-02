@@ -110,3 +110,25 @@ full reconciliation, the principal can no longer write, and other owners have
 completed their deletion lifecycle. This preflight alone never qualifies as
 a production retention, restore, or authorization gate. No purge or runtime
 caller is activated. Both production contracts remain blocked.
+
+## Usage lifecycle ownership gap: read-only inventory
+
+`PostgresTrainingBlockRepository.inspectUsagePrivacy(organizationId)` is
+a privileged, organization-scoped, **read-only** report. It returns only
+counts: total usage, training-plan source kind, missing training-plan
+references, other kinds, free-text notes, and events with source references.
+Neither note text nor opaque source references are returned. The query is
+performed in a repeatable-read, read-only PostgreSQL transaction and does
+not modify usage, favorites or revisions.
+
+**No deletion may be inferred from this report.** Current usage rows store
+`source_kind`, optional `source_ref` and optional `note`, but no
+authoritative `subject_id` or `principal_id`. The ULC training-plan
+writer currently creates `training_plan` references formatted
+`planId:itemId`; these are not independently authoritative subject
+ownership proofs. Legacy events can omit the reference entirely and notes
+can contain personal information. Deleting usage by matching a substring
+of a plan or person identifier would be unsafe. A future app/module
+lifecycle must establish owner evidence, write blocking, restore replay,
+retention rules and full regression tests before targeted erasure or
+anonymization is enabled. No production/runtime activation is implied.
