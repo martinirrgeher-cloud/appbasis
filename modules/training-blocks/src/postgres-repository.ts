@@ -6,6 +6,7 @@ import {
   type TrainingBlockFavoriteDeletionResult,
   type TrainingBlockFavoriteDeletionMarker,
   type TrainingBlockFavoriteRetentionInspection,
+  type TrainingBlockFavoriteRetentionCursor,
   type TrainingBlockRepository,
   type TrainingBlockRevision,
   type TrainingBlockRevisionAppendResult,
@@ -545,10 +546,19 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
   async inspectExpiredFavoriteDeletionMarkers(
     now: Date,
     limit = 200,
+    after?: TrainingBlockFavoriteRetentionCursor,
   ): Promise<TrainingBlockFavoriteRetentionInspection> {
     const current = requiredFavoriteDeletionDate(now);
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
       throw new Error("Training block retention inspection limit is invalid.");
+    }
+    const cursor = after === undefined ? null : Object.freeze({
+      purgeAfter: requiredFavoriteDeletionDate(after.purgeAfter),
+      organizationId: normalizeTrainingBlockIdentifier(after.organizationId, "Organization id"),
+      principalId: normalizeTrainingBlockIdentifier(after.principalId, "Principal id"),
+    });
+    if (cursor !== null && cursor.purgeAfter.getTime() >= current.getTime()) {
+      throw new Error("Training block retention cursor is invalid.");
     }
     return this.#client.begin(async (transaction) => {
       await transaction.unsafe(
@@ -564,10 +574,21 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
                 ) AS has_residual_favorites
            FROM appbasis_training_block_favorite_deletion AS marker
           WHERE marker.purge_after < $1::timestamptz
+            AND (
+              $3::timestamptz IS NULL OR
+              (marker.purge_after, marker.organization_id, marker.principal_id) >
+              ($3::timestamptz, $4::text, $5::text)
+            )
           ORDER BY marker.purge_after ASC,
                    marker.organization_id ASC, marker.principal_id ASC
           LIMIT $2`,
-        [current.toISOString(), limit + 1],
+        [
+          current.toISOString(),
+          limit + 1,
+          cursor?.purgeAfter.toISOString() ?? null,
+          cursor?.organizationId ?? null,
+          cursor?.principalId ?? null,
+        ],
       );
       const candidates = rows.slice(0, limit).map((row) => {
         const marker = requiredFavoriteDeletionMarker({
@@ -587,9 +608,18 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
           hasResidualFavorites: row.has_residual_favorites,
         });
       });
+      const hasMore = rows.length > limit;
+      const last = candidates.at(-1);
       return Object.freeze({
         candidates: Object.freeze(candidates),
-        hasMore: rows.length > limit,
+        hasMore,
+        nextCursor: hasMore && last !== undefined
+          ? Object.freeze({
+              purgeAfter: new Date(last.marker.purgeAfter),
+              organizationId: last.marker.organizationId,
+              principalId: last.marker.principalId,
+            })
+          : null,
       });
     });
   }
