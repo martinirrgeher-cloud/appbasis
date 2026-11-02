@@ -28,7 +28,11 @@ Abgeschlossener Teilstand: **read-only Retention-Preflight** für abgelaufene Tr
 
 Abgeschlossener Teilstand: **privilegierte, serverseitig autorisierte Favoritenlöschung beim Benutzer-Lifecycle** (PR #491, ohne Aktivierung).
 
-Unmittelbarer Folgeslice: **read-only Training-Blocks Usage-Ownership-Bestandsprüfung**. Usage-Ereignisse enthalten `source_kind`, optionale Plan-/Element-Referenz und Freitext, aber keine kanonische Identitäts- oder Subject-Zuordnung. Eine organisationsgebundene, nur aggregierte Prüfung zählt riskante Referenz- und Freitextfälle, ohne persönliche Werte auszugeben oder Löschungen auszuführen. Erst ein nachgewiesener Owner-Vertrag darf eine spätere Usage-Lösch-/Anonymisierungspolitik erlauben.
+Abgeschlossener Teilstand: **read-only Training-Blocks Usage-Ownership-Bestandsprüfung** (PR #492). Das mandantengetrennte, ausschließlich aggregierte Inventar weist fehlende Referenzen und Freitextrisiken aus.
+
+Unmittelbarer Folgeslice: **kanonischer, nur lesender Nachweis für die Zuordnung eines Trainingsblock-Usage-Ereignisses zum Athleten**. Für ein aktuelles Trainingsplan-Ereignis müssen Event-ID (bestehender SHA-256-Mechanismus), eindeutige Plan-/Element-Referenz, Organisation, Block und Planrevision exakt mit der autoritativen Trainingsplanung übereinstimmen. Die Athleten-ID wird ausschließlich aus dem gültigen Trainingsplan übernommen, nie aus Freitext oder ID-Teilstrings erraten. Ungültige, ältere, inzwischen gelöschte oder widersprüchliche Quellen bleiben ungeklärt. Kein User-Write, keine historische Backfill, keine Löschung.
+
+Folge-Gate: Für **dauerhafte** personenbezogene Usage-Zuordnung ist eine separat freizugebende, modul-eigene, persistente Attribution beim Schreibvorgang samt Subject-Löschmarker, Backup/Restore-Replay und Berechtigungsprüfung nötig. Der aktuelle Plan-Nachweis allein reicht ausdrücklich nicht zur Aktivierung der Löschfunktion.
 
 - Keine Produktions- oder Preview-Migration, kein Deploy und kein Provider-Write
   ohne ausdrückliche Betreiberfreigabe.
