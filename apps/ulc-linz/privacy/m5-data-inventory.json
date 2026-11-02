@@ -575,6 +575,22 @@
       "retentionEvidence": "fail-closed-pending-lifecycle"
     },
     {
+      "id": "appbasis_training_block_usage_subject",
+      "owner": "training-blocks",
+      "privacyClass": "personal-training-plan-subject-attribution",
+      "retentionPolicy": "pending-verified-subject-and-restore-lifecycle",
+      "deletionEvidence": "repository-verified-app-integration-pending",
+      "retentionEvidence": "fail-closed-retention-not-activated"
+    },
+    {
+      "id": "appbasis_training_block_usage_subject_deletion",
+      "owner": "training-blocks",
+      "privacyClass": "minimal-delete-reconciliation-state",
+      "retentionPolicy": "35-days-after-subject-deletion",
+      "deletionEvidence": "repository-verified-marker-write-activation-pending",
+      "retentionEvidence": "fail-closed-purge-not-implemented"
+    },
+    {
       "id": "appbasis_training_block_favorite_deletion",
       "owner": "training-blocks",
       "privacyClass": "minimal-delete-reconciliation-state",
