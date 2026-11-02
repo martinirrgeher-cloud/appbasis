@@ -75,7 +75,8 @@ describe("ULC explicit verified training-plan usage adapter", () => {
     });
     expect(h.findCurrent).toHaveBeenCalledTimes(2);
     expect(h.findCurrent).toHaveBeenCalledWith(ORG, PLAN);
-    expect(h.write).toHaveBeenCalledExactlyOnceWith({
+    expect(h.write).toHaveBeenCalledTimes(1);
+    expect(h.write).toHaveBeenCalledWith({
       event: persisted,
       subjectId: SUBJECT,
       sourcePlanId: PLAN,
@@ -119,10 +120,11 @@ describe("ULC explicit verified training-plan usage adapter", () => {
     const h = harness(original);
     await expect(h.service.book(ORG, snapshot(), "other-item"))
       .rejects.toThrow(/block source/);
+    const block = original.revision.items[0];
+    if (block?.kind !== "block") throw new Error("Invalid test fixture.");
     await expect(h.service.book(ORG, snapshot({
       revision: { ...original.revision, items: [{
-        ...original.revision.items[0]!,
-        kind: "block",
+        ...block,
         sourceBlockId: "block-other",
       }] },
     }), ITEM)).rejects.toThrow(/block source/);
