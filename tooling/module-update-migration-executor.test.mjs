@@ -716,7 +716,7 @@ test("FC6-B loads the real training-blocks schema with same-owner foreign keys",
   );
 
   assert.equal(plan.moduleId, "training-blocks");
-  assert.equal(plan.targetOwner.schemaVersion, 4);
+  assert.equal(plan.targetOwner.schemaVersion, 5);
   assert.equal(
     plan.targetCatalogContract.filter(
       (marker) =>
@@ -738,6 +738,7 @@ test("FC6-B loads the real training-blocks schema with same-owner foreign keys",
   for (const table of [
     "appbasis_training_block_favorite",
     "appbasis_training_block_usage",
+    "appbasis_training_block_favorite_deletion",
   ]) {
     assert.equal(
       plan.targetCatalogContract.some(
