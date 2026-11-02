@@ -49,8 +49,8 @@ function snapshot(changes: Partial<TrainingPlanSnapshot> = {}): TrainingPlanSnap
   };
 }
 
-function harness(plan: TrainingPlanSnapshot | undefined = snapshot()) {
-  const findCurrent = vi.fn(async (_org: string, _planId: string) => plan);
+function harness(plan: TrainingPlanSnapshot | null = snapshot()) {
+  const findCurrent = vi.fn(async (_org: string, _planId: string) => plan ?? undefined);
   const write = vi.fn(async (input: TrainingBlockVerifiedSubjectUsage):
     Promise<TrainingBlockUsageEvent | undefined> => input.event);
   const service = createUlcTrainingPlanVerifiedUsageBooking({
@@ -102,7 +102,7 @@ describe("ULC explicit verified training-plan usage adapter", () => {
 
   it("rejects missing plan, stale revision, stale updatedAt or wrong subject", async () => {
     const h = harness();
-    const absent = harness(undefined);
+    const absent = harness(null);
     await expect(absent.service.book(ORG, snapshot(), ITEM)).rejects.toThrow(/stale/);
     expect(absent.write).not.toHaveBeenCalled();
     for (const saved of [
