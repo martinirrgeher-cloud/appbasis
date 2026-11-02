@@ -11,7 +11,7 @@ training sessions, attendance and later athlete/day planning.
 - Package: `@appbasis/training-blocks`
 - Capabilities: `training-blocks:view`, `training-blocks:edit`
 - Database owner: this module only
-- Current schema version: 4
+- Current schema version: 5
 
 The foundation is revision-ready from the first schema:
 
@@ -54,3 +54,19 @@ yet. Concurrent or later preference writes can recreate rows. These remain
 required before activating deletion workflows or lifting the module's
 `blocked` production contract. Never infer ownership of usage events from
 opaque source references or free-text notes.
+
+## Tombstone-protected subject favorite deletion (schema 5)
+
+Authorized lifecycle callers should use
+`TrainingBlockFavoriteDeletionService.deletePrincipalFavorites(org, principal)`.
+It atomically creates a 35-day deletion marker and deletes the principal's
+favorites. Every PostgreSQL favorite write obtains the same transaction-scoped
+principal lock, checks for the marker and fails closed if present. In-memory
+behavior is equivalent for unit testing. Repeated deletion is idempotent.
+
+**Important:** markers intentionally remain effective until an explicitly
+reviewed purge removes them (including after their stated expiration).
+The prior cleanup primitive still exists for compatible internal cleanup but
+is not suitable as a subject-deletion workflow. There is still no
+restore-reconciliation, usage-event subject ownership contract or application
+authorization/retention integration. Production lifecycle remains blocked.

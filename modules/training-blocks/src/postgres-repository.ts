@@ -3,6 +3,7 @@ import {
   compareTrainingBlockSnapshots,
   type TrainingBlockDeactivateResult,
   type TrainingBlockDeleteUnusedResult,
+  type TrainingBlockFavoriteDeletionResult,
   type TrainingBlockRepository,
   type TrainingBlockRevision,
   type TrainingBlockRevisionAppendResult,
@@ -346,31 +347,44 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
     blockId: string,
     favorite: boolean,
   ): Promise<void> {
-    if (favorite) {
-      await this.#client.unsafe(
-        `INSERT INTO appbasis_training_block_favorite (
-           organization_id, principal_id, block_id
-         )
-         SELECT $1, $2, $3
-         WHERE EXISTS (
-           SELECT 1
-           FROM appbasis_training_block
-           WHERE organization_id = $1
-             AND id = $3
-         )
-         ON CONFLICT (organization_id, principal_id, block_id)
-         DO NOTHING`,
+    await this.#client.begin(async (transaction) => {
+      // Serialize every favorite write with the matching privacy tombstone,
+      // including writes that started before the deletion transaction.
+      await lockFavoritePrincipal(transaction, organizationId, principalId);
+      if (favorite) {
+        const markers = await transaction.unsafe(
+          `SELECT 1 AS present
+           FROM appbasis_training_block_favorite_deletion
+           WHERE organization_id = $1 AND principal_id = $2`,
+          [organizationId, principalId],
+        );
+        if (markers.length > 1) {
+          throw new Error("Training block favorite deletion marker is invalid.");
+        }
+        if (markers.length !== 0) {
+          throw new Error("Training block favorite is blocked by a subject deletion marker.");
+        }
+        await transaction.unsafe(
+          `INSERT INTO appbasis_training_block_favorite (
+             organization_id, principal_id, block_id
+           )
+           SELECT $1, $2, $3
+           WHERE EXISTS (
+             SELECT 1 FROM appbasis_training_block
+             WHERE organization_id = $1 AND id = $3
+           )
+           ON CONFLICT (organization_id, principal_id, block_id)
+           DO NOTHING`,
+          [organizationId, principalId, blockId],
+        );
+        return;
+      }
+      await transaction.unsafe(
+        `DELETE FROM appbasis_training_block_favorite
+         WHERE organization_id = $1 AND principal_id = $2 AND block_id = $3`,
         [organizationId, principalId, blockId],
       );
-      return;
-    }
-    await this.#client.unsafe(
-      `DELETE FROM appbasis_training_block_favorite
-       WHERE organization_id = $1
-         AND principal_id = $2
-         AND block_id = $3`,
-      [organizationId, principalId, blockId],
-    );
+    });
   }
 
   async deletePrincipalFavorites(
@@ -385,6 +399,39 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
       [organizationId, principalId],
     );
     return rows.length;
+  }
+
+  async markPrincipalDeletedAndDeleteFavorites(
+    organizationId: string,
+    principalId: string,
+    completedAt: Date,
+  ): Promise<TrainingBlockFavoriteDeletionResult> {
+    if (!(completedAt instanceof Date) || !Number.isFinite(completedAt.getTime())) {
+      throw new Error("Training block deletion timestamp is invalid.");
+    }
+    return this.#client.begin(async (transaction) => {
+      await lockFavoritePrincipal(transaction, organizationId, principalId);
+      const inserted = await transaction.unsafe(
+        `INSERT INTO appbasis_training_block_favorite_deletion (
+           organization_id, principal_id, completed_at, purge_after
+         )
+         VALUES ($1, $2, $3::timestamptz, $3::timestamptz + interval '840 hours')
+         ON CONFLICT (organization_id, principal_id) DO NOTHING
+         RETURNING principal_id`,
+        [organizationId, principalId, completedAt.toISOString()],
+      );
+      if (inserted.length > 1) throw new Error("Training block deletion marker insert is invalid.");
+      const deleted = await transaction.unsafe(
+        `DELETE FROM appbasis_training_block_favorite
+         WHERE organization_id = $1 AND principal_id = $2
+         RETURNING block_id`,
+        [organizationId, principalId],
+      );
+      return Object.freeze({
+        markerInserted: inserted.length === 1,
+        deletedFavorites: deleted.length,
+      });
+    });
   }
 
   async listUsageSummaries(
@@ -951,3 +998,19 @@ function usageFromRow(
     note: optionalString(row.note, "usage note"),
   });
 }
+
+async function lockFavoritePrincipal(
+  transaction: TrainingBlockPostgresQueryClient,
+  organizationId: string,
+  principalId: string,
+): Promise<void> {
+  // JSON encoding makes (organization,principal) tuples unambiguous.
+  // A hash collision can only cause extra serialization, not a scope escape.
+  await transaction.unsafe(
+    `SELECT pg_advisory_xact_lock(
+       hashtextextended(jsonb_build_array($1::text, $2::text)::text, 0)
+     )`,
+    [organizationId, principalId],
+  );
+}
+

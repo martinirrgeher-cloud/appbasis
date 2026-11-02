@@ -3,10 +3,82 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryTrainingBlockRepository,
   TrainingBlockLifecycleService,
+  TrainingBlockFavoriteDeletionService,
   TrainingBlockService,
 } from "../src/index";
 
 describe("training-block personal preference lifecycle primitive", () => {
+
+  it("atomically marks personal favorites deleted and rejects future favorites for the subject only", async () => {
+    const repo = new InMemoryTrainingBlockRepository();
+    const service = new TrainingBlockService({
+      repository: repo,
+      createId: (() => {
+        const ids = ["block-a", "block-b"];
+        return () => ids.shift() ?? "invalid";
+      })(),
+    });
+    const deletion = new TrainingBlockFavoriteDeletionService({
+      repository: repo,
+      now: () => new Date("2026-11-02T19:30:00.000Z"),
+    });
+    await service.create("org-a", { name: "A" });
+    await service.create("org-b", { name: "B" });
+    await service.setFavorite("org-a", "person-1", "block-a", true);
+    await service.setFavorite("org-a", "person-2", "block-a", true);
+    await service.setFavorite("org-b", "person-1", "block-b", true);
+
+    await expect(deletion.deletePrincipalFavorites("org-a", "person-1"))
+      .resolves.toEqual({ markerInserted: true, deletedFavorites: 1 });
+    await expect(deletion.deletePrincipalFavorites("org-a", "person-1"))
+      .resolves.toEqual({ markerInserted: false, deletedFavorites: 0 });
+    await expect(service.setFavorite("org-a", "person-1", "block-a", true))
+      .rejects.toThrow(/deletion marker/);
+    await expect(service.setFavorite("org-a", "person-1", "block-a", false))
+      .resolves.toBe(true);
+    await expect(repo.listFavoriteBlockIds("org-a", "person-2"))
+      .resolves.toEqual(["block-a"]);
+    await expect(repo.listFavoriteBlockIds("org-b", "person-1"))
+      .resolves.toEqual(["block-b"]);
+    await expect(service.listRevisions("org-a", "block-a")).resolves.toHaveLength(1);
+  });
+
+  it("fails closed on invalid identifiers, clocks and repository results", async () => {
+    let calls = 0;
+    const deletion = new TrainingBlockFavoriteDeletionService({
+      repository: {
+        async markPrincipalDeletedAndDeleteFavorites() {
+          calls++;
+          return { markerInserted: true, deletedFavorites: 1 };
+        },
+      },
+    });
+    await expect(deletion.deletePrincipalFavorites("", "person")).rejects.toThrow();
+    await expect(deletion.deletePrincipalFavorites("org", "")).rejects.toThrow();
+    expect(calls).toBe(0);
+    expect(() => new TrainingBlockFavoriteDeletionService({ repository: {} as never }))
+      .toThrow(/invalid/);
+    const badClock = new TrainingBlockFavoriteDeletionService({
+      repository: {
+        async markPrincipalDeletedAndDeleteFavorites() {
+          calls++;
+          return { markerInserted: true, deletedFavorites: 0 };
+        },
+      },
+      now: () => new Date(NaN),
+    });
+    await expect(badClock.deletePrincipalFavorites("org", "person")).rejects.toThrow(/clock/);
+    expect(calls).toBe(0);
+    const badResult = new TrainingBlockFavoriteDeletionService({
+      repository: {
+        async markPrincipalDeletedAndDeleteFavorites() {
+          return { markerInserted: true, deletedFavorites: -1 };
+        },
+      },
+    });
+    await expect(badResult.deletePrincipalFavorites("org", "person")).rejects.toThrow(/invalid result/);
+  });
+
   it("removes only the intended principal's favorites in the intended organization, idempotently", async () => {
     const repository = new InMemoryTrainingBlockRepository();
     const blocks = new TrainingBlockService({

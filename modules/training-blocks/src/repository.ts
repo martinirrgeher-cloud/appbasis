@@ -79,6 +79,23 @@ export interface TrainingBlockPersonalDataLifecycleRepository {
   ): Promise<number>;
 }
 
+export interface TrainingBlockFavoriteDeletionResult {
+  readonly markerInserted: boolean;
+  readonly deletedFavorites: number;
+}
+
+/**
+ * Restricted tombstone boundary. The application must authorize the subject and
+ * stop using the legacy cleanup primitive for privacy deletion.
+ */
+export interface TrainingBlockFavoriteDeletionRepository {
+  markPrincipalDeletedAndDeleteFavorites(
+    organizationId: string,
+    principalId: string,
+    completedAt: Date,
+  ): Promise<TrainingBlockFavoriteDeletionResult>;
+}
+
 export interface TrainingBlockRepository {
   listCurrent(organizationId: string): Promise<readonly TrainingBlockSnapshot[]>;
   findCurrent(
