@@ -20,6 +20,7 @@ import {
   TrainingBlockFavoriteDeletionService,
   TrainingBlockService,
   type TrainingBlockPostgresClient,
+  type TrainingBlockPostgresQueryClient,
 } from "@appbasis/training-blocks";
 
 import {
@@ -751,7 +752,7 @@ function trainingBlockPostgresClient(
     unsafe(query, parameters) {
       return client.unsafe(query, parameters);
     },
-    begin<T>(callback: (transaction: Parameters<TrainingBlockPostgresClient["begin"]>[0] extends (tx: infer Q) => Promise<unknown> ? Q : never) => Promise<T>): Promise<T> {
+    begin<T>(callback: (transaction: TrainingBlockPostgresQueryClient) => Promise<T>): Promise<T> {
       // postgres-js models transaction callback values using UnwrapPromiseArray<T>.
       // The module contract promises the callback result T unchanged; its
       // existing runtime semantics already satisfy that, but the generic
