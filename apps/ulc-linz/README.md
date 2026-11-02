@@ -72,3 +72,30 @@ admin/subject authorization, serialize cross-owner deletion with subject
 writes, reconcile restored subject markers and ensure no unverified legacy
 writer reintroduces attributed personal data. No deployment or public
 endpoint is enabled by the repository changes alone.
+
+## Opt-in verified training-plan usage booking adapter
+
+The application now has a deliberately **unwired** adapter
+`createUlcTrainingPlanVerifiedUsageBooking` for schema-v6 usage ownership.
+It reads the current canonical training plan from the plan repository,
+compares its organization, subject, version, timestamp and exact block
+item with the just-saved snapshot, verifies the canonical SHA-256 event
+identity via `verifyUlcTrainingBlockUsageOwner`, and calls the restricted
+`recordVerifiedSubjectUsageOnce` repository method. It never derives
+subject IDs from `sourceRef` or user notes. Errors and unconfirmed writes
+fail closed.
+
+`createUlcTrainingPlanService` accepts an optional
+`verifiedUsageBooking` injection. If provided, only this path is used
+for newly added saved source-block elements, with **no** silent fallback
+to the legacy writer. The existing worker composition in
+`worker/postgres.ts` does **not** supply this injection: ordinary users
+retain existing behavior until an explicit operational cutover.
+
+The saved-plan read and training-block insert cross separate owners and
+are **not yet covered by one atomic subject-deletion transaction**.
+A concurrent subject delete or plan edit must be coordinated and tested
+with a closed legacy-writer boundary, marker replay after restore and
+approved backup/retention before the optional path can be enabled.
+This slice does not authorize migrations, deployment, API endpoints or
+subject deletion.
