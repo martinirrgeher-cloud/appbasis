@@ -126,12 +126,13 @@ describe("ULC training-block usage subject ownership evidence", () => {
     )).resolves.toEqual({ status: "unresolved", reason: "plan-not-found" });
 
     const changed = snapshot();
+    const currentItem = changed.revision.items[0];
+    if (currentItem?.kind !== "block") throw new Error("Expected a block fixture.");
     await expect(verifyUlcTrainingBlockUsageOwner(
       ORGANIZATION_ID, event,
       source(snapshot({ revision: {
         ...changed.revision, items: [{
-          ...changed.revision.items[0]!,
-          kind: "block", sourceBlockId: "another-block",
+          ...currentItem, sourceBlockId: "another-block",
         }],
       } })).reader,
     )).resolves.toEqual({ status: "unresolved", reason: "source-block-mismatch" });
