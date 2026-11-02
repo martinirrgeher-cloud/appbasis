@@ -12,11 +12,20 @@ import {
   PostgresPrincipalAccessAdministration,
   PostgresPrincipalLifecycleAdministration,
   principalId,
+  roleId,
 } from "@appbasis/permissions";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
+import {
+  PostgresTrainingBlockRepository,
+  TrainingBlockFavoriteDeletionService,
+  TrainingBlockService,
+  type TrainingBlockPostgresClient,
+  type TrainingBlockPostgresQueryClient,
+} from "@appbasis/training-blocks";
 
 import {
   deleteUlcLinzIdentityWithCanonicalAuthorization,
+  deleteUlcLinzIdentityWithCanonicalFavoriteDeletion,
   setUlcLinzRetentionExceptionWithCanonicalAuthorization,
 } from "../worker/lifecycle-service";
 import {
@@ -199,26 +208,137 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         ),
       ).rejects.toMatchObject({ code: "UNKNOWN_PERMISSION_STATE" });
 
+      // Build a real favorite against the target IDENTITY. The athlete's
+      // subject/person ID is deliberately different and is not the key.
+      const trainingBlockRepository = new PostgresTrainingBlockRepository(
+        trainingBlockPostgresClient(source.client),
+      );
+      const trainingBlocks = new TrainingBlockService({
+        repository: trainingBlockRepository,
+        createId: () => "ulc-lifecycle-training-block-test",
+        now: () => fixedNow,
+      });
+      const favoriteBlock = await trainingBlocks.create(organizationId, {
+        name: "Delete principal favorites",
+        exercises: [],
+      });
+      await trainingBlocks.setFavorite(
+        organizationId, seeded.manualTarget.identityId, favoriteBlock.id, true,
+      );
+      await trainingBlocks.setFavorite(
+        organizationId, seeded.actor.identityId, favoriteBlock.id, true,
+      );
+      const favoriteDeletion = new TrainingBlockFavoriteDeletionService({
+        repository: trainingBlockRepository,
+        now: () => fixedNow,
+      });
+      const canonicalDependencies = {
+        identity: sourceRuntime.service,
+        identityDeletion: sourceIdentityDeletion,
+        permissions: sourcePermissions,
+        accessAdministration: sourceAccess,
+        principalLifecycle: sourcePrincipalLifecycle,
+        scopes: sourceScopes,
+        favorites: favoriteDeletion,
+      };
+
+      // The same restricted boundary rejects cross-organization requests
+      // before ANY module-owned or Identity write is attempted.
       await expect(
-        deleteUlcLinzIdentityWithCanonicalAuthorization(
+        deleteUlcLinzIdentityWithCanonicalFavoriteDeletion(
+          actorCurrent, canonicalDependencies,
+          { organizationId: "other-organization", targetIdentityId: seeded.manualTarget.identityId },
+        ),
+      ).rejects.toMatchObject({ code: "UNKNOWN_PERMISSION_STATE" });
+      await expect(trainingBlockRepository.listFavoriteBlockIds(
+        organizationId, seeded.manualTarget.identityId,
+      )).resolves.toEqual([favoriteBlock.id]);
+      await expect(trainingBlockRepository.listCurrentDeletionMarkers(fixedNow))
+        .resolves.toEqual([]);
+
+      // Deny a stale target with an administrative permission role even when
+      // the app membership still says "trainer". No favorite is removed.
+      const mismatchedPermissions = {
+        findPrincipal: async (id: ReturnType<typeof principalId>) => {
+          const persisted = await sourcePermissions.findPrincipal(id);
+          if (String(id) !== seeded.manualTarget.identityId || persisted === null) {
+            return persisted;
+          }
+          return { ...persisted, roleIds: [roleId("ulc-linz:admin")] };
+        },
+        findRole: sourcePermissions.findRole.bind(sourcePermissions),
+        isKnownCapability: sourcePermissions.isKnownCapability.bind(sourcePermissions),
+      };
+      await expect(
+        deleteUlcLinzIdentityWithCanonicalFavoriteDeletion(
+          actorCurrent,
+          { ...canonicalDependencies, permissions: mismatchedPermissions },
+          { organizationId, targetIdentityId: seeded.manualTarget.identityId },
+        ),
+      ).rejects.toMatchObject({ code: "UNKNOWN_PERMISSION_STATE" });
+      await expect(trainingBlockRepository.listFavoriteBlockIds(
+        organizationId, seeded.manualTarget.identityId,
+      )).resolves.toEqual([favoriteBlock.id]);
+
+      // An unmigrated/failed module lifecycle operation cannot advance the
+      // Identity owner; the actual module requires schema v5 for this write.
+      await expect(
+        deleteUlcLinzIdentityWithCanonicalFavoriteDeletion(
           actorCurrent,
           {
-            identity: sourceRuntime.service,
-            identityDeletion: sourceIdentityDeletion,
-            permissions: sourcePermissions,
-            accessAdministration: sourceAccess,
-            principalLifecycle: sourcePrincipalLifecycle,
-            scopes: sourceScopes,
+            ...canonicalDependencies,
+            favorites: { async deletePrincipalFavorites(): Promise<never> {
+              throw new Error("training block schema-v5 migration missing");
+            } },
           },
-          {
-            organizationId,
-            targetIdentityId: seeded.manualTarget.identityId,
-          },
+          { organizationId, targetIdentityId: seeded.manualTarget.identityId },
+        ),
+      ).rejects.toThrow(/schema-v5/);
+      await expect(sourceScopes.findLifecycleTarget(seeded.manualTarget.identityId))
+        .resolves.not.toBeNull();
+      await expect(trainingBlockRepository.listCurrentDeletionMarkers(fixedNow))
+        .resolves.toEqual([]);
+
+      await expect(
+        deleteUlcLinzIdentityWithCanonicalFavoriteDeletion(
+          actorCurrent, canonicalDependencies,
+          { organizationId, targetIdentityId: seeded.manualTarget.identityId },
         ),
       ).resolves.toMatchObject({
         identityId: seeded.manualTarget.identityId,
         identityDeleted: true,
         permissionPrincipalDeleted: true,
+        favoriteMarkerInserted: true,
+        deletedTrainingBlockFavorites: 1,
+      });
+      await expect(trainingBlockRepository.listFavoriteBlockIds(
+        organizationId, seeded.manualTarget.identityId,
+      )).resolves.toEqual([]);
+      await expect(trainingBlockRepository.listFavoriteBlockIds(
+        organizationId, seeded.actor.identityId,
+      )).resolves.toEqual([favoriteBlock.id]);
+      await expect(trainingBlocks.setFavorite(
+        organizationId, seeded.manualTarget.identityId, favoriteBlock.id, true,
+      )).rejects.toThrow(/deletion marker/);
+      await expect(trainingBlockRepository.listCurrentDeletionMarkers(fixedNow))
+        .resolves.toEqual([{
+          organizationId,
+          principalId: seeded.manualTarget.identityId,
+          completedAt: fixedNow,
+          purgeAfter: new Date(fixedNow.getTime() + 35 * 24 * 60 * 60 * 1000),
+        }]);
+
+      // The completed deletion may be replayed after a partial owner failure.
+      await expect(
+        deleteUlcLinzIdentityWithCanonicalFavoriteDeletion(
+          actorCurrent, canonicalDependencies,
+          { organizationId, targetIdentityId: seeded.manualTarget.identityId },
+        ),
+      ).resolves.toMatchObject({
+        identityId: seeded.manualTarget.identityId,
+        alreadyDeleted: true,
+        favoriteMarkerInserted: false,
+        deletedTrainingBlockFavorites: 0,
       });
 
       const retentionResult = await runUlcLinzRetention({
@@ -623,6 +743,29 @@ async function insertMembership(
       input.endedAt,
     ],
   );
+}
+
+function trainingBlockPostgresClient(
+  client: ReturnType<typeof createPostgresDatabase>["client"],
+): TrainingBlockPostgresClient {
+  return {
+    unsafe(query, parameters) {
+      return client.unsafe(query, parameters);
+    },
+    begin<T>(callback: (transaction: TrainingBlockPostgresQueryClient) => Promise<T>): Promise<T> {
+      // postgres-js models transaction callback values using UnwrapPromiseArray<T>.
+      // The module contract promises the callback result T unchanged; its
+      // existing runtime semantics already satisfy that, but the generic
+      // adapter needs an explicit type boundary.
+      return client.begin(async (transaction) =>
+        callback({
+          unsafe(query, parameters) {
+            return transaction.unsafe(query, parameters);
+          },
+        }),
+      ) as unknown as Promise<T>;
+    },
+  };
 }
 
 async function applyManifestMigrations(

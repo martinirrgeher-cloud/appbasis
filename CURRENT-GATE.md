@@ -24,7 +24,9 @@ atomarem Replay in einen nicht erreichbaren Restore-Kandidaten, exaktem
 Zeitstempelkonfliktschutz, idempotenten Wiederholungen, Mandantentrennung
 und echten PostgreSQL-Regressionstests.
 
-Unmittelbarer Folgeslice: **read-only Retention-Preflight** für abgelaufene Trainingsblock-Favoriten-Löschmarker. Marker bleiben so lange geschützt, bis App-/Backup-/Restore- und Zugriffs-Policies einen getrennt freigegebenen Purge erlauben. Abgelaufene Marker mit zurückgebliebenen Favoriten werden ausdrücklich erkannt; kein automatischer Delete.
+Abgeschlossener Teilstand: **read-only Retention-Preflight** für abgelaufene Trainingsblock-Favoriten-Löschmarker (PR #490). Die Ablaufprüfung erkennt verbliebene Favoriten und paginiert, ohne Marker oder Daten zu löschen.
+
+Unmittelbarer Folgeslice: **privilegierte, serverseitig autorisierte Favoritenlöschung beim Benutzer-Lifecycle**. Ein separater, nicht an öffentliche HTTP-Routen gebundener ULC-App-Vertrag prüft aktiven Administrator, Organisation, tatsächliche Berechtigungsrolle, exakte Benutzer-Identität und Zielrolle vor der atomaren v5-Favoritenlöschung. Anschließend nutzt er den bestehenden Identitäts-Löschpfad; PostgreSQL-E2E muss verweigerte und erlaubte Anfragen und Wiederholungen belegen. Kein Runtime-Cutover, solange v5-Deployment/Restore-Evidence offen sind.
 
 - Keine Produktions- oder Preview-Migration, kein Deploy und kein Provider-Write
   ohne ausdrückliche Betreiberfreigabe.

@@ -1,5 +1,8 @@
 import { assertIdentityActionAllowed } from "@appbasis/identity/access";
 import { principalId, roleId, type PermissionStore } from "@appbasis/permissions";
+import type {
+  TrainingBlockFavoriteDeletionResult,
+} from "@appbasis/training-blocks";
 
 import type { UlcLinzCurrentIdentity } from "./authorization";
 import {
@@ -17,6 +20,7 @@ import type {
 
 const ADMIN_ROLE_ID = roleId(roleDataScope.runtimeRoleIds.admin);
 const MANUAL_DELETION_AUDIT_REASON = "manual-identity-deletion";
+const ULC_PERMISSION_PREFIX = roleDataScope.principalPermissionMapping.capabilityNamespace + ":";
 
 type CanonicalAdminScopes = Pick<
   PostgresUlcLinzScopePersistence,
@@ -59,18 +63,103 @@ export interface UlcLinzCanonicalRetentionExceptionRequest {
  * authenticated identity and both actor/target organization scope are resolved
  * from the real app-owned PostgreSQL membership store before owner writes.
  */
+type AuthorizedDeletionTarget = Readonly<{
+  organizationId: string;
+  targetIdentityId: string;
+  actorPrincipalId: ReturnType<typeof principalId>;
+  targetSourceRole: UlcLinzDeletableSourceRole;
+  hadCompletedAppMarker: boolean;
+}>;
+
+/**
+ * Separate privileged app-owned composition, intentionally NOT installed as an
+ * HTTP endpoint or as an automatic ULC deletion/retention/restore caller.
+ * Only activate once the module-owned schema-v5 migration, backup restore
+ * policy, and other application subject lifecycles are independently verified.
+ */
+export interface UlcLinzCanonicalFavoriteDeletionDependencies
+  extends UlcLinzCanonicalDeletionDependencies {
+  readonly favorites: Readonly<{
+    deletePrincipalFavorites(
+      organizationId: string,
+      principalIdentityId: string,
+    ): Promise<TrainingBlockFavoriteDeletionResult>;
+  }>;
+}
+
+export interface UlcLinzCanonicalFavoriteDeletionResult
+  extends UlcLinzDeletionResult {
+  readonly favoriteMarkerInserted: boolean;
+  readonly deletedTrainingBlockFavorites: number;
+}
+
+/**
+ * A principal's favorite key is the IDENTITY id, not the athlete/subject id.
+ * All canonical admin/organization/target checks happen before the first
+ * module-owned write. The module's schema-v5 protected transaction happens
+ * before destructive Identity writes; on failure Identity stays untouched.
+ * Retries of a later Identity failure are intentionally idempotent.
+ */
+export async function deleteUlcLinzIdentityWithCanonicalFavoriteDeletion(
+  current: UlcLinzCurrentIdentity,
+  dependencies: UlcLinzCanonicalFavoriteDeletionDependencies,
+  request: UlcLinzCanonicalDeletionRequest,
+): Promise<UlcLinzCanonicalFavoriteDeletionResult> {
+  if (
+    !dependencies || !dependencies.favorites ||
+    typeof dependencies.favorites.deletePrincipalFavorites !== "function"
+  ) {
+    blocked();
+  }
+  const authorized = await authorizeCanonicalDeletionTarget(
+    current, dependencies, request,
+  );
+  // The underlying Identity owner independently validates this when it
+  // performs its own write. Inspect the target principal *before* a module
+  // deletion so a stale admin role or foreign grants cannot cause partial
+  // cross-owner erasure.
+  await assertFavoriteDeletionTargetPermissionState(dependencies, authorized);
+  const favoriteResult = await dependencies.favorites.deletePrincipalFavorites(
+    authorized.organizationId,
+    authorized.targetIdentityId,
+  );
+  if (
+    !favoriteResult ||
+    typeof favoriteResult.markerInserted !== "boolean" ||
+    !Number.isSafeInteger(favoriteResult.deletedFavorites) ||
+    favoriteResult.deletedFavorites < 0
+  ) {
+    blocked();
+  }
+  const identityResult = await executeCanonicalDeletion(dependencies, authorized);
+  return Object.freeze({
+    ...identityResult,
+    favoriteMarkerInserted: favoriteResult.markerInserted,
+    deletedTrainingBlockFavorites: favoriteResult.deletedFavorites,
+  });
+}
+
+/** Existing canonical M5-C flow stays behaviorally unchanged. */
 export async function deleteUlcLinzIdentityWithCanonicalAuthorization(
   current: UlcLinzCurrentIdentity,
   dependencies: UlcLinzCanonicalDeletionDependencies,
   request: UlcLinzCanonicalDeletionRequest,
 ): Promise<UlcLinzDeletionResult> {
+  const authorized = await authorizeCanonicalDeletionTarget(
+    current, dependencies, request,
+  );
+  return executeCanonicalDeletion(dependencies, authorized);
+}
+
+async function authorizeCanonicalDeletionTarget(
+  current: UlcLinzCurrentIdentity,
+  dependencies: UlcLinzCanonicalDeletionDependencies,
+  request: UlcLinzCanonicalDeletionRequest,
+): Promise<AuthorizedDeletionTarget> {
   const organizationId = requiredIdentifier(request.organizationId);
   const targetIdentityId = requiredIdentifier(request.targetIdentityId);
   const { actorIdentityId, actorPrincipalId } = await assertCanonicalLifecycleAdmin(
-    current,
-    dependencies.permissions,
-    dependencies.scopes,
-    organizationId,
+    current, dependencies.permissions, dependencies.scopes, organizationId,
   );
   if (actorIdentityId === targetIdentityId) blocked();
 
@@ -90,7 +179,50 @@ export async function deleteUlcLinzIdentityWithCanonicalAuthorization(
   } else {
     blocked();
   }
+  return Object.freeze({
+    organizationId, targetIdentityId, actorPrincipalId, targetSourceRole,
+    hadCompletedAppMarker: marker !== null,
+  });
+}
 
+async function assertFavoriteDeletionTargetPermissionState(
+  dependencies: UlcLinzCanonicalFavoriteDeletionDependencies,
+  target: AuthorizedDeletionTarget,
+): Promise<void> {
+  const targetPrincipalId = principalId(target.targetIdentityId);
+  const principal = await dependencies.permissions.findPrincipal(targetPrincipalId);
+  if (principal === null) {
+    // A retry after physical Identity deletion may legitimately have no
+    // permission principal, but a still-live target may not skip its role check.
+    if (!await dependencies.identityDeletion.isDeletionCompleted(target.targetIdentityId)) {
+      blocked();
+    }
+    return;
+  }
+  const expectedRole = roleId(roleDataScope.runtimeRoleIds[target.targetSourceRole]);
+  if (
+    principal.principalId !== targetPrincipalId ||
+    principal.roleIds.length > 1 ||
+    (principal.roleIds.length === 1 && principal.roleIds[0] !== expectedRole) ||
+    ![...principal.grants, ...principal.revokes].every((value) =>
+      String(value).startsWith(ULC_PERMISSION_PREFIX)
+    ) ||
+    (target.hadCompletedAppMarker &&
+      (principal.roleIds.length > 0 ||
+        principal.grants.length > 0 ||
+        principal.revokes.length > 0))
+  ) {
+    blocked();
+  }
+}
+
+async function executeCanonicalDeletion(
+  dependencies: UlcLinzCanonicalDeletionDependencies,
+  authorized: AuthorizedDeletionTarget,
+): Promise<UlcLinzDeletionResult> {
+  const {
+    organizationId, targetIdentityId, actorPrincipalId, targetSourceRole,
+  } = authorized;
   const result = await deleteUlcLinzIdentity(
     {
       identity: dependencies.identity,
