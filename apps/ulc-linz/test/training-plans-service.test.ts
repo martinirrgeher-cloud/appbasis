@@ -1027,12 +1027,14 @@ describe("ULC training plan block usage booking", () => {
         {
           kind: "block", sourceBlockId: block.id,
           sourceBlockRevision: block.currentRevision,
-          name: "A", exercises: [],
+          name: "Sprintblock", durationMinutes: 25,
+          note: "Blocknotiz", exercises: [],
         },
         {
           kind: "block", sourceBlockId: block.id,
           sourceBlockRevision: block.currentRevision,
-          name: "B", exercises: [],
+          name: "Sprintblock", durationMinutes: 25,
+          note: "Blocknotiz", exercises: [],
         },
       ],
     });
@@ -1063,7 +1065,8 @@ describe("ULC training plan block usage booking", () => {
         planDate: "2026-10-12",
         items: [{
           kind: "block", sourceBlockId: "block-1",
-          sourceBlockRevision: 3, name: "Block", exercises: [],
+          sourceBlockRevision: 3, name: "Sprintblock",
+          durationMinutes: 25, note: "Blocknotiz", exercises: [],
         }],
       });
       expect(saved.id).toBe("denied-plan");
