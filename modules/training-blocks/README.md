@@ -92,3 +92,20 @@ reconciled. An empty source list is not evidence that replay is unnecessary.
 No automated application caller, promotion, marker purge or production access
 is enabled. Schema v5 must exist on both endpoints. Module and app production
 lifecycle contracts remain blocked.
+
+## Expired favorite marker retention preflight (read-only)
+
+`PostgresTrainingBlockRepository.inspectExpiredFavoriteDeletionMarkers(now, limit)`
+returns a deterministic, at-most-200-item review page of **expired**
+35-day markers. `hasMore` signals that additional markers exist.
+Each item reports whether residual favorites exist in the same organization
+and principal scope, indicating a data-integrity failure. The query runs in a
+read-only repeatable-read transaction and never deletes markers or favorites.
+
+**Expired is not authorized to purge.** Before a separate module-owned deletion
+primitive may be wired into a retention job, the ULC app must prove that the
+backup and restore window has closed, no older backup can be promoted without
+full reconciliation, the principal can no longer write, and other owners have
+completed their deletion lifecycle. This preflight alone never qualifies as
+a production retention, restore, or authorization gate. No purge or runtime
+caller is activated. Both production contracts remain blocked.
