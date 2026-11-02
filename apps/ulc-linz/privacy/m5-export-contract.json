@@ -301,6 +301,11 @@
       "privacyClass": "training-block-training-usage-metadata"
     },
     {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_favorite_deletion",
+      "privacyClass": "minimal-delete-reconciliation-state"
+    },
+    {
       "owner": "training-documentation",
       "table": "appbasis_training_documentation",
       "privacyClass": "training-documentation-data"
