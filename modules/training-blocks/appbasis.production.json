@@ -40,8 +40,12 @@
         "gitBlobSha": "6216c999ae447063cb4641d758310f0f93351333"
       },
       {
+        "path": "modules/training-blocks/migrations/0005_appbasis_training_block_usage_subject.sql",
+        "gitBlobSha": "629697a68e9959fedecba7e68e1fa7939c636b49"
+      },
+      {
         "path": "modules/training-blocks/test/postgres-repository.postgres.e2e.ts",
-        "gitBlobSha": "e4f0185cb67ce5bb3d719ffd6f6944ff4cb7245c"
+        "gitBlobSha": "984074a51daaf8a6a3173f4ad90775947372b0b3"
       }
     ],
     "lifecycle": []
