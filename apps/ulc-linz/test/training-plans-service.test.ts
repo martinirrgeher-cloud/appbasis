@@ -22,6 +22,8 @@ import {
   UlcTrainingPlanReferenceError,
 } from "../worker/training-plans-service";
 import type { UlcTrainingAttendanceSummary } from "../worker/training-session-postgres";
+import type { UlcTrainingPlanVerifiedUsageBooking } from "../worker/training-plan-verified-usage-booking";
+import { trainingPlanUsageEventId } from "../worker/training-plans-service";
 
 const ACTIVE_ATHLETE: Athlete = Object.freeze({
   id: "athlete-active",
@@ -182,6 +184,7 @@ function createService(input: {
   blocks?: readonly TrainingBlockSnapshot[];
   usageFailureCount?: number;
   usageDelayMs?: number;
+  verifiedUsageBooking?: UlcTrainingPlanVerifiedUsageBooking;
   overviewSummaries?: readonly Readonly<{
     subjectId: string;
     planDate: string;
@@ -256,6 +259,9 @@ function createService(input: {
     },
     service: createUlcTrainingPlanService({
       plans,
+      ...(input.verifiedUsageBooking === undefined
+        ? {}
+        : { verifiedUsageBooking: input.verifiedUsageBooking }),
       masterdata: {
         async readOrganizationSnapshot() {
           return snapshot;
@@ -986,6 +992,94 @@ describe("ULC training plan block template adoption", () => {
 });
 
 describe("ULC training plan block usage booking", () => {
+  it("opt-in verified booking uses saved canonical plan metadata and never calls the legacy writer", async () => {
+    const block = blockSnapshot();
+    const book = vi.fn(async (
+      organizationId: string,
+      saved: import("@appbasis/training-plans").TrainingPlanSnapshot,
+      itemId: string,
+    ) => {
+      const found = saved.revision.items.find(
+        (item) => item.kind === "block" && item.itemId === itemId,
+      );
+      if (found?.kind !== "block" || found.sourceBlockId === null) {
+        throw new Error("Missing verified block fixture.");
+      }
+      return {
+        id: await trainingPlanUsageEventId(organizationId, saved.id, itemId),
+        organizationId,
+        blockId: found.sourceBlockId,
+        occurredAt: saved.updatedAt,
+        sourceKind: "training_plan",
+        sourceRef: saved.id + ":" + itemId,
+        note: null,
+      };
+    });
+    const base = createService({
+      blocks: [block],
+      ids: ["verified-plan", "verified-item-a", "verified-item-b"],
+      verifiedUsageBooking: { book },
+    });
+    const saved = await base.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-12",
+      items: [
+        {
+          kind: "block", sourceBlockId: block.id,
+          sourceBlockRevision: block.currentRevision,
+          name: "Sprintblock", durationMinutes: 25,
+          note: "Blocknotiz", exercises: [],
+        },
+        {
+          kind: "block", sourceBlockId: block.id,
+          sourceBlockRevision: block.currentRevision,
+          name: "Sprintblock", durationMinutes: 25,
+          note: "Blocknotiz", exercises: [],
+        },
+      ],
+    });
+    expect(saved.id).toBe("verified-plan");
+    expect(book).toHaveBeenCalledTimes(2);
+    expect(book.mock.calls.map((args) => args[2]).sort())
+      .toEqual(["verified-item-a", "verified-item-b"]);
+    expect(book.mock.calls.every(([org, plan]) =>
+      org === "org-1" && plan.subjectId === ACTIVE_ATHLETE.id &&
+      plan.id === saved.id && plan.currentRevision === 1
+    )).toBe(true);
+    expect(base.getUsageAttempts()).toEqual([]);
+  });
+
+  it("a failed verified booking never silently falls back to unattributed legacy usage", async () => {
+    const book = vi.fn(async () => {
+      throw new Error("subject deletion marker blocks writes");
+    });
+    const base = createService({
+      blocks: [blockSnapshot()],
+      verifiedUsageBooking: { book },
+      ids: ["denied-plan", "denied-item"],
+    });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const saved = await base.service.create("org-1", {
+        subjectId: ACTIVE_ATHLETE.id,
+        planDate: "2026-10-12",
+        items: [{
+          kind: "block", sourceBlockId: "block-1",
+          sourceBlockRevision: 3, name: "Sprintblock",
+          durationMinutes: 25, note: "Blocknotiz", exercises: [],
+        }],
+      });
+      expect(saved.id).toBe("denied-plan");
+      expect(book).toHaveBeenCalledTimes(2);
+      expect(base.getUsageAttempts()).toEqual([]);
+      expect(log).toHaveBeenCalledWith(
+        "[ulc-linz] one or more training block usage bookings failed",
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("books every newly persisted sourced block exactly once with server-derived metadata", async () => {
     const block = blockSnapshot();
     const base = createService({

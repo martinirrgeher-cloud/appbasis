@@ -27,6 +27,7 @@ import {
   type UpdateTrainingPlanItemInput,
 } from "@appbasis/training-plans";
 import type { UlcTrainingAttendanceSummary } from "./training-session-postgres";
+import type { UlcTrainingPlanVerifiedUsageBooking } from "./training-plan-verified-usage-booking";
 
 export interface UlcTrainingPlanSubject {
   readonly id: string;
@@ -321,6 +322,7 @@ export function createUlcTrainingPlanService({
   attendance,
   blocks,
   overview,
+  verifiedUsageBooking,
 }: {
   plans: TrainingPlanService;
   masterdata: UlcTrainingPlanMasterdataReader;
@@ -328,6 +330,8 @@ export function createUlcTrainingPlanService({
   attendance: UlcTrainingPlanAttendanceReader;
   blocks: UlcTrainingPlanBlockReader;
   overview?: UlcTrainingPlanOverviewReader;
+  /** Deliberately absent from the current runtime until schema v6 and lifecycle gates pass. */
+  verifiedUsageBooking?: UlcTrainingPlanVerifiedUsageBooking;
 }): UlcTrainingPlanService {
   async function listSubjects(
     organizationId: string,
@@ -842,20 +846,39 @@ export function createUlcTrainingPlanService({
         let booked = false;
         for (let attempt = 0; attempt < 2 && !booked; attempt += 1) {
           try {
-            const recorded = await blocks.recordUsageOnce(
-              organizationId,
-              item.sourceBlockId,
-              eventId,
-              {
-                occurredAt: saved.updatedAt,
-                sourceKind: "training_plan",
-                sourceRef,
-              },
-            );
-            if (recorded === undefined) {
-              throw new Error(
-                "Training block usage target disappeared.",
+            if (verifiedUsageBooking !== undefined) {
+              // Strict opt-in: do not fall back to a legacy, unattributed
+              // write after an ownership or subject-tombstone failure.
+              const recorded = await verifiedUsageBooking.book(
+                organizationId,
+                saved,
+                item.itemId,
               );
+              if (
+                recorded.id !== eventId ||
+                recorded.organizationId !== organizationId ||
+                recorded.blockId !== item.sourceBlockId ||
+                recorded.sourceRef !== sourceRef
+              ) {
+                throw new Error("Verified block usage returned an inconsistent event.");
+              }
+            } else {
+              // Existing live writer is unchanged until the controlled cutover.
+              const recorded = await blocks.recordUsageOnce(
+                organizationId,
+                item.sourceBlockId,
+                eventId,
+                {
+                  occurredAt: saved.updatedAt,
+                  sourceKind: "training_plan",
+                  sourceRef,
+                },
+              );
+              if (recorded === undefined) {
+                throw new Error(
+                  "Training block usage target disappeared.",
+                );
+              }
             }
             booked = true;
           } catch {
