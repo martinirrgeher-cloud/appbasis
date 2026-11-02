@@ -18,7 +18,7 @@ const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 test("ULC production composition still fails closed on unreviewed training-block evidence", async () => {
   await assert.rejects(
     () => evaluateAppProductionComposition(repositoryRoot, "ulc-linz"),
-    /Production evidence drifted: modules\\/training-blocks\\//,
+    new RegExp("Production evidence drifted: modules/training-blocks/"),
   );
 });
 
