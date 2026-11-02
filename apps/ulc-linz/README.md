@@ -60,3 +60,15 @@ module owner must persist verified subject attribution at write time,
 prevent post-delete writes, implement coordinated restore/retention
 semantics, and prove authorization with real PostgreSQL tests.
 Existing plan usage recording is intentionally unchanged.
+
+## Deferred schema-v6 usage attribution integration
+
+Training-blocks now exposes an opt-in transactional subject-usage insert
+and deletion-marker boundary, independently of the current ULC plan writer.
+Only the canonical app-plan proof from PR #493 may supply the subject,
+source plan and item for a future caller. The existing plan booking path
+does not change. Before activating schema v6, ULC must enforce same-org
+admin/subject authorization, serialize cross-owner deletion with subject
+writes, reconcile restored subject markers and ensure no unverified legacy
+writer reintroduces attributed personal data. No deployment or public
+endpoint is enabled by the repository changes alone.
