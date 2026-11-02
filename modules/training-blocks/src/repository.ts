@@ -96,6 +96,26 @@ export interface TrainingBlockFavoriteDeletionRepository {
   ): Promise<TrainingBlockFavoriteDeletionResult>;
 }
 
+/** Minimal module-owned marker copied from a newer authoritative recovery point. */
+export interface TrainingBlockFavoriteDeletionMarker {
+  readonly organizationId: string;
+  readonly principalId: string;
+  readonly completedAt: Date;
+  readonly purgeAfter: Date;
+}
+
+/**
+ * Privileged restore-only contract. The caller must keep the target offline,
+ * verify that the source is newer and authoritative, and complete reconciliation
+ * before any restored database is promoted.
+ */
+export interface TrainingBlockFavoriteReconciliationRepository {
+  listCurrentDeletionMarkers(now: Date): Promise<readonly TrainingBlockFavoriteDeletionMarker[]>;
+  reconcileDeletionMarker(
+    marker: TrainingBlockFavoriteDeletionMarker,
+  ): Promise<TrainingBlockFavoriteDeletionResult>;
+}
+
 export interface TrainingBlockRepository {
   listCurrent(organizationId: string): Promise<readonly TrainingBlockSnapshot[]>;
   findCurrent(
