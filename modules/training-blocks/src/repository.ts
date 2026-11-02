@@ -116,6 +116,26 @@ export interface TrainingBlockFavoriteReconciliationRepository {
   ): Promise<TrainingBlockFavoriteDeletionResult>;
 }
 
+/**
+ * Read-only retention preflight. Expiration means review is due, not that
+ * deletion is authorized: an app-level backup/restore and access-policy proof
+ * is required before a future, separate purge can safely remove a tombstone.
+ */
+export interface TrainingBlockFavoriteRetentionCandidate {
+  readonly marker: TrainingBlockFavoriteDeletionMarker;
+  readonly hasResidualFavorites: boolean;
+}
+export interface TrainingBlockFavoriteRetentionCursor {
+  readonly purgeAfter: Date;
+  readonly organizationId: string;
+  readonly principalId: string;
+}
+export interface TrainingBlockFavoriteRetentionInspection {
+  readonly candidates: readonly TrainingBlockFavoriteRetentionCandidate[];
+  readonly hasMore: boolean;
+  readonly nextCursor: TrainingBlockFavoriteRetentionCursor | null;
+}
+
 export interface TrainingBlockRepository {
   listCurrent(organizationId: string): Promise<readonly TrainingBlockSnapshot[]>;
   findCurrent(

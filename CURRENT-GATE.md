@@ -17,12 +17,14 @@ Trainingsblock-Favoriten-Lifecycle um organisationsgebundene Löschung,
 35-Tage-Löschmarker und Schutz vor Wiederanlage erweitert. CI ist dafür
 erfolgreich; **weder Trainingsblöcke noch ULC insgesamt sind produktionsreif**.
 
-Unmittelbarer Product-Vertical-Slice: **offline PostgreSQL-Restore-Replay
+Abgeschlossener Teilstand: **offline PostgreSQL-Restore-Replay
 der Trainingsblock-Favoriten-Löschmarker**, mit read-only Ermittlung
 gültiger Löschmarker vom nachweislich neueren autoritativen Stand,
 atomarem Replay in einen nicht erreichbaren Restore-Kandidaten, exaktem
 Zeitstempelkonfliktschutz, idempotenten Wiederholungen, Mandantentrennung
 und echten PostgreSQL-Regressionstests.
+
+Unmittelbarer Folgeslice: **read-only Retention-Preflight** für abgelaufene Trainingsblock-Favoriten-Löschmarker. Marker bleiben so lange geschützt, bis App-/Backup-/Restore- und Zugriffs-Policies einen getrennt freigegebenen Purge erlauben. Abgelaufene Marker mit zurückgebliebenen Favoriten werden ausdrücklich erkannt; kein automatischer Delete.
 
 - Keine Produktions- oder Preview-Migration, kein Deploy und kein Provider-Write
   ohne ausdrückliche Betreiberfreigabe.
