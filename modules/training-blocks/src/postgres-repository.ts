@@ -14,6 +14,8 @@ import {
   type TrainingBlockUsageEvent,
   type TrainingBlockUsagePrivacyInspection,
   type TrainingBlockUsageSummary,
+  type TrainingBlockVerifiedSubjectUsage,
+  type TrainingBlockSubjectUsageDeletionResult,
 } from "./repository";
 import { normalizeTrainingBlockIdentifier } from "./training-block";
 
@@ -719,6 +721,168 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
     );
   }
 
+  /**
+   * Opt-in schema-v6 write. The ULC application must FIRST prove the source
+   * plan and its subject via the canonical plan owner; no sourceRef guessing.
+   * Legacy recordUsage / recordUsageIfAbsent remain unchanged and unverified.
+   */
+  async recordVerifiedSubjectUsageOnce(
+    input: TrainingBlockVerifiedSubjectUsage,
+  ): Promise<TrainingBlockUsageEvent | undefined> {
+    if (input === null || typeof input !== "object" || !input.event) {
+      throw new Error("Verified training-block usage is invalid.");
+    }
+    const { event } = input;
+    const organization = normalizeTrainingBlockIdentifier(event.organizationId, "Organization id");
+    const usageId = normalizeTrainingBlockIdentifier(event.id, "Usage id");
+    const blockId = normalizeTrainingBlockIdentifier(event.blockId, "Block id");
+    const subjectId = normalizeTrainingBlockIdentifier(input.subjectId, "Subject id");
+    const planId = normalizeTrainingBlockIdentifier(input.sourcePlanId, "Plan id");
+    const itemId = normalizeTrainingBlockIdentifier(input.sourceItemId, "Item id");
+    if (
+      planId.includes(":") || itemId.includes(":") ||
+      event.sourceKind !== "training_plan" ||
+      event.sourceRef !== planId + ":" + itemId ||
+      (event.note !== null && (
+        typeof event.note !== "string" ||
+        event.note.trim() !== event.note || event.note.length < 1 ||
+        Array.from(event.note).length > 2_000
+      )) ||
+      typeof event.occurredAt !== "string" ||
+      new Date(event.occurredAt).toISOString() !== event.occurredAt
+    ) {
+      throw new Error("Verified training-block usage provenance is invalid.");
+    }
+    return this.#client.begin(async (transaction) => {
+      await lockSubjectUsage(transaction, organization, subjectId);
+      const deleted = await transaction.unsafe(
+        `SELECT 1 FROM appbasis_training_block_usage_subject_deletion
+         WHERE organization_id = $1 AND subject_id = $2`,
+        [organization, subjectId],
+      );
+      if (deleted.length !== 0) {
+        throw new Error("Training block subject usage deletion marker blocks new writes.");
+      }
+
+      const stored = await transaction.unsafe(
+        `SELECT u.id, u.organization_id, u.block_id,
+                u.occurred_at::text AS occurred_at,
+                u.source_kind, u.source_ref, u.note,
+                owner.subject_id, owner.source_plan_id, owner.source_item_id
+         FROM appbasis_training_block_usage AS u
+         LEFT JOIN appbasis_training_block_usage_subject AS owner
+           ON owner.organization_id = u.organization_id AND owner.usage_id = u.id
+         WHERE u.organization_id = $1 AND u.id = $2
+         FOR UPDATE OF u`,
+        [organization, usageId],
+      );
+      if (stored.length > 1) throw new Error("Training block usage identity is ambiguous.");
+      let row: Record<string, unknown>;
+      if (stored.length === 1) {
+        row = stored[0]!;
+        // An older event without persisted subject attribution is never
+        // retroactively claimed. Idempotency applies only to verified writes.
+        if (
+          row.subject_id !== subjectId ||
+          row.source_plan_id !== planId ||
+          row.source_item_id !== itemId
+        ) {
+          throw new Error("Training block subject usage attribution conflicts.");
+        }
+      } else {
+        const inserted = await transaction.unsafe(
+          `INSERT INTO appbasis_training_block_usage
+             (organization_id, id, block_id, occurred_at, source_kind, source_ref, note)
+           SELECT $1, $2, $3, $4::timestamptz, 'training_plan', $5, $6
+           WHERE EXISTS (
+             SELECT 1 FROM appbasis_training_block
+             WHERE organization_id = $1 AND id = $3
+           )
+           ON CONFLICT (organization_id, id) DO NOTHING
+           RETURNING id, organization_id, block_id,
+                     occurred_at::text AS occurred_at, source_kind, source_ref, note`,
+          [organization, usageId, blockId, event.occurredAt, event.sourceRef, event.note],
+        );
+        if (inserted.length === 0) {
+          const conflicting = await transaction.unsafe(
+            `SELECT id FROM appbasis_training_block_usage
+             WHERE organization_id = $1 AND id = $2`,
+            [organization, usageId],
+          );
+          if (conflicting.length !== 0) {
+            throw new Error("Training block subject usage attribution conflicts.");
+          }
+          return undefined;
+        }
+        if (inserted.length !== 1) throw new Error("Verified usage insertion is ambiguous.");
+        const linked = await transaction.unsafe(
+          `INSERT INTO appbasis_training_block_usage_subject
+             (organization_id, usage_id, subject_id, source_plan_id, source_item_id)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING usage_id`,
+          [organization, usageId, subjectId, planId, itemId],
+        );
+        if (linked.length !== 1) throw new Error("Verified usage attribution insertion failed.");
+        row = inserted[0]!;
+      }
+      const persisted = usageFromRow(row);
+      if (
+        persisted.id !== usageId ||
+        persisted.organizationId !== organization ||
+        persisted.blockId !== blockId ||
+        persisted.occurredAt !== event.occurredAt ||
+        persisted.sourceKind !== event.sourceKind ||
+        persisted.sourceRef !== event.sourceRef ||
+        persisted.note !== event.note
+      ) {
+        throw new Error("Training block usage identity represents a different event.");
+      }
+      return persisted;
+    });
+  }
+
+  /**
+   * Restricted lifecycle primitive: after canonical app subject authorization,
+   * atomically mark subject deleted and erase only EXPLICITLY attributed usage.
+   * Unattributed legacy records are preserved for separate privacy review.
+   */
+  async markSubjectDeletedAndRemoveAttributedUsage(
+    organizationId: string,
+    subjectId: string,
+    completedAt: Date,
+  ): Promise<TrainingBlockSubjectUsageDeletionResult> {
+    const organization = normalizeTrainingBlockIdentifier(organizationId, "Organization id");
+    const subject = normalizeTrainingBlockIdentifier(subjectId, "Subject id");
+    if (!(completedAt instanceof Date) || !Number.isFinite(completedAt.getTime())) {
+      throw new Error("Training block subject deletion timestamp is invalid.");
+    }
+    return this.#client.begin(async (transaction) => {
+      await lockSubjectUsage(transaction, organization, subject);
+      const inserted = await transaction.unsafe(
+        `INSERT INTO appbasis_training_block_usage_subject_deletion
+           (organization_id, subject_id, completed_at, purge_after)
+         VALUES ($1, $2, $3::timestamptz, $3::timestamptz + interval '840 hours')
+         ON CONFLICT (organization_id, subject_id) DO NOTHING
+         RETURNING subject_id`,
+        [organization, subject, completedAt.toISOString()],
+      );
+      if (inserted.length > 1) throw new Error("Training block subject marker is ambiguous.");
+      const removed = await transaction.unsafe(
+        `DELETE FROM appbasis_training_block_usage AS u
+         USING appbasis_training_block_usage_subject AS owner
+         WHERE u.organization_id = owner.organization_id
+           AND u.id = owner.usage_id
+           AND owner.organization_id = $1 AND owner.subject_id = $2
+         RETURNING u.id`,
+        [organization, subject],
+      );
+      return Object.freeze({
+        markerInserted: inserted.length === 1,
+        deletedUsageEvents: removed.length,
+      });
+    });
+  }
+
   async listUsageEvents(
     organizationId: string,
     blockId: string,
@@ -1305,6 +1469,22 @@ function requiredNonNegativeCount(value: unknown): number {
     throw new Error("Training block usage privacy count is invalid.");
   }
   return value;
+}
+
+async function lockSubjectUsage(
+  transaction: TrainingBlockPostgresQueryClient,
+  organizationId: string,
+  subjectId: string,
+): Promise<void> {
+  await transaction.unsafe(
+    `SELECT pg_advisory_xact_lock(
+       hashtextextended(
+         jsonb_build_array('training-block-usage-subject', $1::text, $2::text)::text,
+         0
+       )
+     )`,
+    [organizationId, subjectId],
+  );
 }
 
 async function lockFavoritePrincipal(

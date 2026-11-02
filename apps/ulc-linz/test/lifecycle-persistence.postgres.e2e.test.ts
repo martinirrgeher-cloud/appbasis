@@ -785,7 +785,7 @@ async function applyManifestMigrations(
     "ulc-linz-lifecycle",
   ]);
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
-  if (migrations.length !== 32 || new Set(migrations).size !== migrations.length) {
+  if (migrations.length !== 33 || new Set(migrations).size !== migrations.length) {
     throw new Error("ULC lifecycle persistence E2E requires the exact manifest-owned migration set.");
   }
   for (const migration of migrations) {

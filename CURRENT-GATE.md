@@ -30,9 +30,11 @@ Abgeschlossener Teilstand: **privilegierte, serverseitig autorisierte Favoritenl
 
 Abgeschlossener Teilstand: **read-only Training-Blocks Usage-Ownership-Bestandsprüfung** (PR #492). Das mandantengetrennte, ausschließlich aggregierte Inventar weist fehlende Referenzen und Freitextrisiken aus.
 
-Unmittelbarer Folgeslice: **kanonischer, nur lesender Nachweis für die Zuordnung eines Trainingsblock-Usage-Ereignisses zum Athleten**. Für ein aktuelles Trainingsplan-Ereignis müssen Event-ID (bestehender SHA-256-Mechanismus), eindeutige Plan-/Element-Referenz, Organisation, Block und Planrevision exakt mit der autoritativen Trainingsplanung übereinstimmen. Die Athleten-ID wird ausschließlich aus dem gültigen Trainingsplan übernommen, nie aus Freitext oder ID-Teilstrings erraten. Ungültige, ältere, inzwischen gelöschte oder widersprüchliche Quellen bleiben ungeklärt. Kein User-Write, keine historische Backfill, keine Löschung.
+Abgeschlossener Teilstand: **kanonischer, nur lesender Nachweis für Trainingsblock-Usage zu Athlet** (PR #493). Plan, Element, Organisation und Event-ID werden exakt geprüft; unsichere historische Zuordnung wird verweigert.
 
-Folge-Gate: Für **dauerhafte** personenbezogene Usage-Zuordnung ist eine separat freizugebende, modul-eigene, persistente Attribution beim Schreibvorgang samt Subject-Löschmarker, Backup/Restore-Replay und Berechtigungsprüfung nötig. Der aktuelle Plan-Nachweis allein reicht ausdrücklich nicht zur Aktivierung der Löschfunktion.
+Unmittelbarer Folgeslice: **persistente, atomare Trainingsblock-Usage-Attribution im Modul-Owner**. Schema v6 erzeugt eine separate Subject-Zuordnung pro Nutzungsereignis und einen Subject-Löschmarker. Ein neuer privilegierter Repository-Schreibpfad speichert Ereignis und nachgewiesene Subject/Plan/Item-Beziehung in derselben PostgreSQL-Transaktion; ein isolierter Löschpfad markiert das Subject und entfernt nur eindeutig zugeordnete Ereignisse. Beide Pfade sperren sich über dieselbe Subject-Advisory-Lock-Keyspace. Retry-, Konkurrenz-, Mandanten- und Legacy-Unattributed-Fälle werden durch PostgreSQL-E2E geprüft.
+
+**Aktivierungsgrenze:** Bestehende App-Buchungen bleiben im bisherigen Pfad. Vor einem Cutover sind ein kanonischer Schreibnachweis aus der App, Authorisierung und verifizierte Plan-/Athleten-Scope, vollständiger Lösch-/Restore-Replay, alle historischen Legacy-Daten und Backup-Retention abzunehmen. Nur Ablauf der Markerfrist berechtigt niemals zum Purge. Schema v6 ist als Repository-Migration veröffentlicht, **nicht** in Preview oder Produktion ausgeführt.
 
 - Keine Produktions- oder Preview-Migration, kein Deploy und kein Provider-Write
   ohne ausdrückliche Betreiberfreigabe.

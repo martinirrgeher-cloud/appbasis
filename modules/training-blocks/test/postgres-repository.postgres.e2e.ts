@@ -54,6 +54,10 @@ beforeAll(async () => {
       new URL("../migrations/0004_appbasis_training_block_favorite_deletion.sql", import.meta.url),
       "utf8",
     ),
+    readFile(
+      new URL("../migrations/0005_appbasis_training_block_usage_subject.sql", import.meta.url),
+      "utf8",
+    ),
   ]);
   for (const migration of migrations) {
     await requiredConnection().client.unsafe(migration);
@@ -63,6 +67,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   await requiredConnection().client.unsafe(
     `TRUNCATE TABLE
+       appbasis_training_block_usage_subject_deletion,
+       appbasis_training_block_usage_subject,
        appbasis_training_block_favorite_deletion,
        appbasis_training_block_usage,
        appbasis_training_block_favorite,
@@ -87,6 +93,165 @@ afterAll(async () => {
 });
 
 describe("training-blocks PostgreSQL repository", () => {
+  it("atomically persists exact verified subject ownership and only replays matching events", async () => {
+    const connection = requiredConnection();
+    const service = serviceFor(connection, ["block-verified-a", "block-verified-b", "usage-legacy"]);
+    await service.create("org-verified-a", { name: "A" });
+    await service.create("org-verified-b", { name: "B" });
+    const repo = new PostgresTrainingBlockRepository(postgresClient(connection.client));
+    const occurredAt = "2026-10-10T12:00:00.000Z";
+    const event = {
+      id: "usage-verified-1", organizationId: "org-verified-a",
+      blockId: "block-verified-a", occurredAt,
+      sourceKind: "training_plan", sourceRef: "plan-1:item-1", note: "Private data",
+    };
+    const input = {
+      event, subjectId: "athlete-a",
+      sourcePlanId: "plan-1", sourceItemId: "item-1",
+    };
+    await expect(repo.recordVerifiedSubjectUsageOnce(input)).resolves.toEqual(event);
+    await expect(repo.recordVerifiedSubjectUsageOnce(input)).resolves.toEqual(event);
+    const attributed = await connection.client.unsafe(
+      `SELECT subject_id, source_plan_id, source_item_id
+       FROM appbasis_training_block_usage_subject
+       WHERE organization_id = $1 AND usage_id = $2`,
+      ["org-verified-a", "usage-verified-1"],
+    );
+    expect(attributed).toEqual([{
+      subject_id: "athlete-a", source_plan_id: "plan-1", source_item_id: "item-1",
+    }]);
+    await expect(repo.recordVerifiedSubjectUsageOnce({
+      ...input, subjectId: "athlete-b",
+    })).rejects.toThrow(/attribution conflicts/);
+    await expect(repo.recordVerifiedSubjectUsageOnce({
+      ...input, event: { ...event, note: "Altered" },
+    })).rejects.toThrow(/different event/);
+    await expect(repo.recordVerifiedSubjectUsageOnce({
+      ...input, sourceItemId: "item-other",
+    })).rejects.toThrow(/provenance/);
+    await expect(repo.recordVerifiedSubjectUsageOnce({
+      ...input, event: { ...event, id: "usage-missing", blockId: "unknown-block" },
+    })).resolves.toBeUndefined();
+
+    await service.recordUsageOnce("org-verified-a", "block-verified-a", "usage-legacy", {
+      occurredAt, sourceKind: "training_plan", sourceRef: "plan-1:item-2",
+    });
+    await expect(repo.recordVerifiedSubjectUsageOnce({
+      ...input, event: { ...event, id: "usage-legacy", sourceRef: "plan-1:item-2", note: null },
+      sourceItemId: "item-2",
+    })).rejects.toThrow(/attribution conflicts/);
+    const legacy = await connection.client.unsafe(
+      `SELECT count(*)::int AS count
+       FROM appbasis_training_block_usage_subject
+       WHERE organization_id = $1`,
+      ["org-verified-a"],
+    );
+    expect(legacy[0]?.count).toBe(1);
+  });
+
+  it("deletes only attributed usage for the authorized subject and blocks recreation", async () => {
+    const connection = requiredConnection();
+    const service = serviceFor(connection, ["block-subject-a", "block-subject-b", "usage-legacy"]);
+    await service.create("org-subject-a", { name: "A" });
+    await service.create("org-subject-b", { name: "B" });
+    const repo = new PostgresTrainingBlockRepository(postgresClient(connection.client));
+    const createEvent = (id: string, organizationId: string, blockId: string) => ({
+      event: {
+        id, organizationId, blockId,
+        occurredAt: "2026-10-10T12:00:00.000Z",
+        sourceKind: "training_plan", sourceRef: "plan:item", note: null,
+      },
+      subjectId: "athlete-a", sourcePlanId: "plan", sourceItemId: "item",
+    });
+    const target = createEvent("usage-target", "org-subject-a", "block-subject-a");
+    const other = {
+      ...createEvent("usage-other", "org-subject-a", "block-subject-a"),
+      subjectId: "athlete-b",
+    };
+    const otherOrganization = createEvent("usage-org-b", "org-subject-b", "block-subject-b");
+    await repo.recordVerifiedSubjectUsageOnce(target);
+    await repo.recordVerifiedSubjectUsageOnce(other);
+    await repo.recordVerifiedSubjectUsageOnce(otherOrganization);
+    await service.recordUsageOnce("org-subject-a", "block-subject-a", "usage-legacy", {
+      occurredAt: "2026-10-10T12:00:00.000Z",
+      sourceKind: "manual",
+    });
+    const when = new Date("2026-11-02T12:00:00.000Z");
+    await expect(repo.markSubjectDeletedAndRemoveAttributedUsage(
+      "org-subject-a", "athlete-a", when,
+    )).resolves.toEqual({ markerInserted: true, deletedUsageEvents: 1 });
+    await expect(repo.markSubjectDeletedAndRemoveAttributedUsage(
+      "org-subject-a", "athlete-a", when,
+    )).resolves.toEqual({ markerInserted: false, deletedUsageEvents: 0 });
+    await expect(repo.recordVerifiedSubjectUsageOnce(target))
+      .rejects.toThrow(/deletion marker/);
+    const rows = await connection.client.unsafe(
+      `SELECT organization_id, id FROM appbasis_training_block_usage
+       ORDER BY organization_id, id`,
+    );
+    expect(rows).toEqual([
+      { organization_id: "org-subject-a", id: "usage-legacy" },
+      { organization_id: "org-subject-a", id: "usage-other" },
+      { organization_id: "org-subject-b", id: "usage-org-b" },
+    ]);
+    const markers = await connection.client.unsafe(
+      `SELECT purge_after::text AS purge_after
+       FROM appbasis_training_block_usage_subject_deletion
+       WHERE organization_id = $1 AND subject_id = $2`,
+      ["org-subject-a", "athlete-a"],
+    );
+    expect(new Date(String(markers[0]?.purge_after)).toISOString())
+      .toBe("2026-12-07T12:00:00.000Z");
+    // Even an expired marker remains write-blocking; purge is not activated.
+    await expect(repo.recordVerifiedSubjectUsageOnce({
+      ...target, event: { ...target.event, id: "usage-reintroduced" },
+    })).rejects.toThrow(/deletion marker/);
+  });
+
+  it("serializes a verified usage writer against subject deletion on separate connections", async () => {
+    const connection = requiredConnection();
+    const service = serviceFor(connection, ["block-race-subject"]);
+    await service.create("org-race-subject", { name: "Racing" });
+    const left = createPostgresDatabase(isolatedDatabaseUrl);
+    const right = createPostgresDatabase(isolatedDatabaseUrl);
+    try {
+      const writer = new PostgresTrainingBlockRepository(postgresClient(left.client));
+      const remover = new PostgresTrainingBlockRepository(postgresClient(right.client));
+      const input = {
+        event: {
+          organizationId: "org-race-subject", id: "event-race-subject",
+          blockId: "block-race-subject",
+          occurredAt: "2026-10-10T12:00:00.000Z",
+          sourceKind: "training_plan", sourceRef: "plan-race:item-race", note: null,
+        },
+        subjectId: "athlete-race", sourcePlanId: "plan-race", sourceItemId: "item-race",
+      };
+      const [wrote, deleted] = await Promise.allSettled([
+        writer.recordVerifiedSubjectUsageOnce(input),
+        remover.markSubjectDeletedAndRemoveAttributedUsage(
+          "org-race-subject", "athlete-race", new Date("2026-11-02T12:00:00Z"),
+        ),
+      ]);
+      expect(deleted.status).toBe("fulfilled");
+      if (wrote.status === "rejected") {
+        expect(String(wrote.reason)).toMatch(/deletion marker/);
+      } else {
+        expect(wrote.value).toEqual(input.event);
+      }
+      await expect(writer.recordVerifiedSubjectUsageOnce(input))
+        .rejects.toThrow(/deletion marker/);
+      const leftover = await connection.client.unsafe(
+        `SELECT count(*)::int AS count FROM appbasis_training_block_usage
+         WHERE organization_id = $1 AND id = $2`,
+        ["org-race-subject", "event-race-subject"],
+      );
+      expect(leftover[0]?.count).toBe(0);
+    } finally {
+      await left.client.end();
+      await right.client.end();
+    }
+  });
+
   it("reports only organization-scoped usage privacy counts without exposing personal notes", async () => {
     const service = serviceFor(requiredConnection(), [
       "block-privacy-a", "block-privacy-b",

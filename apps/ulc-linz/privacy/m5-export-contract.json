@@ -302,6 +302,16 @@
     },
     {
       "owner": "training-blocks",
+      "table": "appbasis_training_block_usage_subject",
+      "privacyClass": "personal-training-plan-subject-attribution"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_usage_subject_deletion",
+      "privacyClass": "minimal-delete-reconciliation-state"
+    },
+    {
+      "owner": "training-blocks",
       "table": "appbasis_training_block_favorite_deletion",
       "privacyClass": "minimal-delete-reconciliation-state"
     },
@@ -366,6 +376,7 @@
     "training-block-data",
     "training-block-user-preference",
     "training-block-training-usage-metadata",
+    "personal-training-plan-subject-attribution",
     "training-documentation-data",
     "training-plan-data"
   ],

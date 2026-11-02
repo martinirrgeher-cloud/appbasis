@@ -24,11 +24,11 @@ test("ULC production composition stays blocked on unfinished lifecycle even afte
   assert.ok(result.blockers.some(blocker => blocker.includes("Training documentation v1")));
 });
 
-test("ULC training-blocks contract pins the exact five database migrations and maintains blocked lifecycle", async () => {
+test("ULC training-blocks contract pins exact schema-v6 database migrations and maintains blocked lifecycle", async () => {
   const moduleRoot = join(repositoryRoot, "modules", "training-blocks");
   const definition = JSON.parse(await readFile(join(moduleRoot, "appbasis.module.json"), "utf8"));
   const contract = JSON.parse(await readFile(join(moduleRoot, "appbasis.production.json"), "utf8"));
-  assert.equal(definition.database.schemaVersion, 5);
+  assert.equal(definition.database.schemaVersion, 6);
   assert.equal(contract.status, "blocked");
   assert.equal(contract.requirements.lifecycle, "blocked");
   assert.deepEqual(contract.evidence.lifecycle, []);
