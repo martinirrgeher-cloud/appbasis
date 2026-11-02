@@ -15,13 +15,33 @@ import {
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
-test("ULC production composition fails closed after attendance changes bound production evidence", async () => {
+test("ULC production composition still fails closed on unreviewed training-block evidence", async () => {
   await assert.rejects(
     () => evaluateAppProductionComposition(repositoryRoot, "ulc-linz"),
-    /Production evidence drifted: (?:modules\/athletes\/|apps\/ulc-linz\/privacy\/m5-)/,
+    /Production evidence drifted: modules\\/training-blocks\\//,
   );
 });
 
+test("ULC athlete production pins verify reviewed source, tests and tenant-bound lifecycle", async () => {
+  const contract = JSON.parse(await readFile(
+    join(repositoryRoot, "modules", "athletes", "appbasis.production.json"), "utf8",
+  ));
+  assert.equal(contract.status, "ready");
+  assert.deepEqual(contract.requirements, {
+    authorization: "verified", database: "verified", lifecycle: "verified",
+  });
+  const entries = Object.values(contract.evidence).flat();
+  for (const entry of entries) {
+    const file = await readFile(join(repositoryRoot, entry.path));
+    assert.equal(gitBlobSha(file), entry.gitBlobSha, entry.path);
+  }
+  const source = await readFile(join(
+    repositoryRoot, "modules", "athletes", "src", "postgres-masterdata-repository.ts",
+  ), "utf8");
+  assert.ok(source.includes("async reactivateAthlete("));
+  assert.ok(source.includes("async reactivateTrainer("));
+  assert.ok(source.includes("attendance_mode = $6"));
+});
 
 test("ULC current export inventory is reviewed, pinned and still excludes sensitive training data", async () => {
   const appRoot = join(repositoryRoot, "apps", "ulc-linz");
