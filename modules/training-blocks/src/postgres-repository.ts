@@ -5,6 +5,7 @@ import {
   type TrainingBlockDeleteUnusedResult,
   type TrainingBlockFavoriteDeletionResult,
   type TrainingBlockFavoriteDeletionMarker,
+  type TrainingBlockFavoriteRetentionInspection,
   type TrainingBlockRepository,
   type TrainingBlockRevision,
   type TrainingBlockRevisionAppendResult,
@@ -532,6 +533,63 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
       );
       return Object.freeze({
         markerInserted, deletedFavorites: deleted.length,
+      });
+    });
+  }
+
+  /**
+   * Read-only audit of expired markers. This does NOT authorize purging.
+   * The app owner must prove backup-window closure, restore reconciliation,
+   * and principal access revocation separately before any future purge.
+   */
+  async inspectExpiredFavoriteDeletionMarkers(
+    now: Date,
+    limit = 200,
+  ): Promise<TrainingBlockFavoriteRetentionInspection> {
+    const current = requiredFavoriteDeletionDate(now);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+      throw new Error("Training block retention inspection limit is invalid.");
+    }
+    return this.#client.begin(async (transaction) => {
+      await transaction.unsafe(
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+      );
+      const rows = await transaction.unsafe(
+        `SELECT marker.organization_id, marker.principal_id,
+                marker.completed_at, marker.purge_after,
+                EXISTS (
+                  SELECT 1 FROM appbasis_training_block_favorite AS favorite
+                   WHERE favorite.organization_id = marker.organization_id
+                     AND favorite.principal_id = marker.principal_id
+                ) AS has_residual_favorites
+           FROM appbasis_training_block_favorite_deletion AS marker
+          WHERE marker.purge_after < $1::timestamptz
+          ORDER BY marker.purge_after ASC,
+                   marker.organization_id ASC, marker.principal_id ASC
+          LIMIT $2`,
+        [current.toISOString(), limit + 1],
+      );
+      const candidates = rows.slice(0, limit).map((row) => {
+        const marker = requiredFavoriteDeletionMarker({
+          organizationId: row.organization_id,
+          principalId: row.principal_id,
+          completedAt: storedFavoriteDeletionDate(row.completed_at),
+          purgeAfter: storedFavoriteDeletionDate(row.purge_after),
+        }, current);
+        if (marker.purgeAfter.getTime() >= current.getTime()) {
+          throw new Error("Training block retention candidate is not expired.");
+        }
+        if (typeof row.has_residual_favorites !== "boolean") {
+          throw new Error("Training block retention residual-favorites state is invalid.");
+        }
+        return Object.freeze({
+          marker,
+          hasResidualFavorites: row.has_residual_favorites,
+        });
+      });
+      return Object.freeze({
+        candidates: Object.freeze(candidates),
+        hasMore: rows.length > limit,
       });
     });
   }
