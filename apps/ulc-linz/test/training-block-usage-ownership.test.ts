@@ -84,9 +84,8 @@ describe("ULC training-block usage subject ownership evidence", () => {
       proof: "current-training-plan",
     });
     expect(JSON.stringify(result)).not.toMatch(/sensitive|person text|item-verified/);
-    expect(s.findCurrent).toHaveBeenCalledExactlyOnceWith(
-      ORGANIZATION_ID, PLAN_ID,
-    );
+    expect(s.findCurrent).toHaveBeenCalledTimes(1);
+    expect(s.findCurrent).toHaveBeenCalledWith(ORGANIZATION_ID, PLAN_ID);
   });
 
   it("does not infer an owner from a forged event id or ambiguous sourceRef", async () => {
