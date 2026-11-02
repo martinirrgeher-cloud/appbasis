@@ -12,6 +12,7 @@ import {
   TrainingBlockInUseError,
   TrainingBlockService,
   TrainingBlockFavoriteDeletionService,
+  reconcileTrainingBlockFavoritesRestoredDatabase,
   TrainingBlockValidationError,
   type TrainingBlockPostgresClient,
 } from "../src/index";
@@ -62,6 +63,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await requiredConnection().client.unsafe(
     `TRUNCATE TABLE
+       appbasis_training_block_favorite_deletion,
        appbasis_training_block_usage,
        appbasis_training_block_favorite,
        appbasis_training_block_revision_item_parameter,
@@ -85,6 +87,77 @@ afterAll(async () => {
 });
 
 describe("training-blocks PostgreSQL repository", () => {
+  it("replays authoritative favorite tombstones after an older restore without resurrecting preferences", async () => {
+    const connection = requiredConnection();
+    const repository = new PostgresTrainingBlockRepository(postgresClient(connection.client));
+    const service = serviceFor(connection, ["block-restore", "block-neighbor"]);
+    await service.create("org-restore", { name: "Vorlage" });
+    await service.create("org-neighbor", { name: "Other organization" });
+    await service.setFavorite("org-restore", "principal-a", "block-restore", true);
+    await service.setFavorite("org-restore", "principal-b", "block-restore", true);
+    await service.setFavorite("org-neighbor", "principal-a", "block-neighbor", true);
+
+    const deletion = new TrainingBlockFavoriteDeletionService({
+      repository,
+      now: () => new Date("2026-11-01T12:00:00.000Z"),
+    });
+    await expect(deletion.deletePrincipalFavorites("org-restore", "principal-a"))
+      .resolves.toEqual({ markerInserted: true, deletedFavorites: 1 });
+
+    const now = new Date("2026-11-02T12:00:00.000Z");
+    const authoritative = await repository.listCurrentDeletionMarkers(now);
+    expect(authoritative).toEqual([
+      {
+        organizationId: "org-restore",
+        principalId: "principal-a",
+        completedAt: new Date("2026-11-01T12:00:00.000Z"),
+        purgeAfter: new Date("2026-12-06T12:00:00.000Z"),
+      },
+    ]);
+
+    // Simulate restoring a backup from before the deletion; the recovered DB
+    // has no tombstone and contains the user's old favorite again.
+    await connection.client.unsafe(
+      `DELETE FROM appbasis_training_block_favorite_deletion
+       WHERE organization_id = $1 AND principal_id = $2`,
+      ["org-restore", "principal-a"],
+    );
+    await service.setFavorite("org-restore", "principal-a", "block-restore", true);
+    expect(await repository.listFavoriteBlockIds("org-restore", "principal-a"))
+      .toEqual(["block-restore"]);
+
+    const source = { async listCurrentDeletionMarkers() { return authoritative; } };
+    await expect(reconcileTrainingBlockFavoritesRestoredDatabase(source, repository, now))
+      .resolves.toEqual({
+        requiredDeletionCount: 1,
+        insertedMarkerCount: 1,
+        deletedFavorites: 1,
+      });
+    await expect(reconcileTrainingBlockFavoritesRestoredDatabase(source, repository, now))
+      .resolves.toEqual({
+        requiredDeletionCount: 1,
+        insertedMarkerCount: 0,
+        deletedFavorites: 0,
+      });
+    expect(await repository.listFavoriteBlockIds("org-restore", "principal-a")).toEqual([]);
+    expect(await repository.listFavoriteBlockIds("org-restore", "principal-b"))
+      .toEqual(["block-restore"]);
+    expect(await repository.listFavoriteBlockIds("org-neighbor", "principal-a"))
+      .toEqual(["block-neighbor"]);
+    await expect(service.setFavorite("org-restore", "principal-a", "block-restore", true))
+      .rejects.toThrow(/deletion marker/);
+    expect(await service.listRevisions("org-restore", "block-restore")).toHaveLength(1);
+
+    const conflicting = {
+      ...authoritative[0]!,
+      completedAt: new Date("2026-10-30T12:00:00.000Z"),
+      purgeAfter: new Date("2026-12-04T12:00:00.000Z"),
+    };
+    await expect(repository.reconcileDeletionMarker(conflicting))
+      .rejects.toThrow(/conflicts with authoritative state/);
+    expect(await repository.listCurrentDeletionMarkers(now)).toEqual(authoritative);
+  });
+
   it("persists schema-v4 categories as immutable PostgreSQL revision history independent of groups", async () => {
     const service = serviceFor(requiredConnection(), ["block-category"]);
     const created = await service.create("org-category", {
