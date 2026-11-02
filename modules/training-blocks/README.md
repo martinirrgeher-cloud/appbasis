@@ -74,3 +74,21 @@ The prior cleanup primitive still exists for compatible internal cleanup but
 is not suitable as a subject-deletion workflow. There is still no
 restore-reconciliation, usage-event subject ownership contract or application
 authorization/retention integration. Production lifecycle remains blocked.
+
+## Offline favorite restore reconciliation (repository evidence only)
+
+`reconcileTrainingBlockFavoritesRestoredDatabase(source, target, now)` replays
+a newer **authoritative** database's still-active subject-deletion decisions
+into an offline older restored database. The PostgreSQL replay locks the same
+(organization, principal) advisory transaction key as favorite writes and
+requires exact matching marker timestamps; it removes any resurrected favorites
+atomically and rejects conflicting older markers. A repeated replay is safe.
+
+**This is not a production restore workflow.** The operator must independently
+validate recovery-point ordering, completeness of the newer authority snapshot,
+the 35-day backup/restore window, and all other owners' deletion ledgers;
+freeze target writes and keep ingress closed until every owner has successfully
+reconciled. An empty source list is not evidence that replay is unnecessary.
+No automated application caller, promotion, marker purge or production access
+is enabled. Schema v5 must exist on both endpoints. Module and app production
+lifecycle contracts remain blocked.

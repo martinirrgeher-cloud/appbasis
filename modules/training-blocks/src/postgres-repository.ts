@@ -4,6 +4,7 @@ import {
   type TrainingBlockDeactivateResult,
   type TrainingBlockDeleteUnusedResult,
   type TrainingBlockFavoriteDeletionResult,
+  type TrainingBlockFavoriteDeletionMarker,
   type TrainingBlockRepository,
   type TrainingBlockRevision,
   type TrainingBlockRevisionAppendResult,
@@ -11,6 +12,7 @@ import {
   type TrainingBlockUsageEvent,
   type TrainingBlockUsageSummary,
 } from "./repository";
+import { normalizeTrainingBlockIdentifier } from "./training-block";
 
 export type TrainingBlockSqlParameter =
   | string
@@ -446,6 +448,90 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
       return Object.freeze({
         markerInserted: inserted.length === 1,
         deletedFavorites: deleted.length,
+      });
+    });
+  }
+
+
+  /** Read current tombstones from the newer, authoritative recovery point. */
+  async listCurrentDeletionMarkers(
+    now: Date,
+  ): Promise<readonly TrainingBlockFavoriteDeletionMarker[]> {
+    const current = requiredFavoriteDeletionDate(now);
+    return this.#client.begin(async (transaction) => {
+      await transaction.unsafe(
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+      );
+      const rows = await transaction.unsafe(
+        `SELECT organization_id, principal_id, completed_at, purge_after
+         FROM appbasis_training_block_favorite_deletion
+         WHERE purge_after >= $1::timestamptz
+         ORDER BY organization_id ASC, principal_id ASC`,
+        [current.toISOString()],
+      );
+      return Object.freeze(rows.map((row) => requiredFavoriteDeletionMarker({
+        organizationId: row.organization_id,
+        principalId: row.principal_id,
+        completedAt: storedFavoriteDeletionDate(row.completed_at),
+        purgeAfter: storedFavoriteDeletionDate(row.purge_after),
+      }, current)));
+    });
+  }
+
+  /**
+   * Apply a newer authoritative deletion into an offline restored database.
+   * The same advisory lock as favorite writes prevents concurrent resurrection.
+   */
+  async reconcileDeletionMarker(
+    marker: TrainingBlockFavoriteDeletionMarker,
+  ): Promise<TrainingBlockFavoriteDeletionResult> {
+    const decision = requiredFavoriteDeletionMarker(marker);
+    return this.#client.begin(async (transaction) => {
+      await lockFavoritePrincipal(
+        transaction, decision.organizationId, decision.principalId,
+      );
+      const existing = await transaction.unsafe(
+        `SELECT completed_at, purge_after
+         FROM appbasis_training_block_favorite_deletion
+         WHERE organization_id = $1 AND principal_id = $2
+         FOR UPDATE`,
+        [decision.organizationId, decision.principalId],
+      );
+      if (existing.length > 1) {
+        throw new Error("Training block restored marker lookup is ambiguous.");
+      }
+      let markerInserted = false;
+      if (existing.length === 0) {
+        const inserted = await transaction.unsafe(
+          `INSERT INTO appbasis_training_block_favorite_deletion
+             (organization_id, principal_id, completed_at, purge_after)
+           VALUES ($1, $2, $3::timestamptz, $4::timestamptz)
+           RETURNING principal_id`,
+          [
+            decision.organizationId, decision.principalId,
+            decision.completedAt.toISOString(), decision.purgeAfter.toISOString(),
+          ],
+        );
+        if (inserted.length !== 1) {
+          throw new Error("Training block restored marker insertion failed.");
+        }
+        markerInserted = true;
+      } else if (
+        storedFavoriteDeletionDate(existing[0]!.completed_at).getTime() !==
+          decision.completedAt.getTime() ||
+        storedFavoriteDeletionDate(existing[0]!.purge_after).getTime() !==
+          decision.purgeAfter.getTime()
+      ) {
+        throw new Error("Training block restored marker conflicts with authoritative state.");
+      }
+      const deleted = await transaction.unsafe(
+        `DELETE FROM appbasis_training_block_favorite
+         WHERE organization_id = $1 AND principal_id = $2
+         RETURNING block_id`,
+        [decision.organizationId, decision.principalId],
+      );
+      return Object.freeze({
+        markerInserted, deletedFavorites: deleted.length,
       });
     });
   }
@@ -1013,6 +1099,47 @@ function usageFromRow(
     sourceRef: optionalString(row.source_ref, "usage source reference"),
     note: optionalString(row.note, "usage note"),
   });
+}
+
+function requiredFavoriteDeletionDate(value: Date): Date {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+    throw new Error("Training block deletion marker timestamp is invalid.");
+  }
+  return new Date(value.getTime());
+}
+
+function storedFavoriteDeletionDate(value: unknown): Date {
+  if (!(value instanceof Date) && typeof value !== "string") {
+    throw new Error("Training block stored deletion timestamp is invalid.");
+  }
+  const parsed = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  return requiredFavoriteDeletionDate(parsed);
+}
+
+function requiredFavoriteDeletionMarker(
+  marker: {
+    readonly organizationId: unknown;
+    readonly principalId: unknown;
+    readonly completedAt: unknown;
+    readonly purgeAfter: unknown;
+  },
+  current?: Date,
+): TrainingBlockFavoriteDeletionMarker {
+  const organizationId = normalizeTrainingBlockIdentifier(
+    marker.organizationId as string, "Organization id",
+  );
+  const principalId = normalizeTrainingBlockIdentifier(
+    marker.principalId as string, "Principal id",
+  );
+  const completedAt = requiredFavoriteDeletionDate(marker.completedAt as Date);
+  const purgeAfter = requiredFavoriteDeletionDate(marker.purgeAfter as Date);
+  if (
+    purgeAfter.getTime() - completedAt.getTime() !== 35 * 24 * 60 * 60 * 1000 ||
+    (current !== undefined && completedAt.getTime() > current.getTime())
+  ) {
+    throw new Error("Training block deletion marker retention is invalid.");
+  }
+  return Object.freeze({ organizationId, principalId, completedAt, purgeAfter });
 }
 
 async function lockFavoritePrincipal(

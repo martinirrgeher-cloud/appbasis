@@ -30,6 +30,7 @@ export * from "./in-memory-repository";
 export * from "./postgres-repository";
 export * from "./service";
 export * from "./lifecycle";
+export * from "./favorite-restore-reconciliation";
 
 function requiredTrainingBlockCapability<const T extends string>(
   capability: T,
