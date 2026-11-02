@@ -97,7 +97,8 @@ lifecycle contracts remain blocked.
 
 `PostgresTrainingBlockRepository.inspectExpiredFavoriteDeletionMarkers(now, limit)`
 returns a deterministic, at-most-200-item review page of **expired**
-35-day markers. `hasMore` signals that additional markers exist.
+35-day markers. Use the returned `nextCursor` with the **same** `now`
+value for successive keyset pages; `hasMore` signals more records.
 Each item reports whether residual favorites exist in the same organization
 and principal scope, indicating a data-integrity failure. The query runs in a
 read-only repeatable-read transaction and never deletes markers or favorites.
