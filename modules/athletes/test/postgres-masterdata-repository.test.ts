@@ -3,6 +3,81 @@ import { describe, expect, it } from 'vitest';
 import { PostgresAthleteMasterdataRepository } from '../src/postgres-masterdata-repository';
 
 describe('PostgresAthleteMasterdataRepository', () => {
+
+  it('uses the exact organization boundary when reactivating athletes and trainers', async () => {
+    const calls: Array<{ sql: string; params: readonly unknown[] }> = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(sql, params) {
+        calls.push({ sql, params: params ?? [] });
+        return [];
+      },
+    });
+    await expect(repository.reactivateAthlete('verein-1', 'athlete-1')).resolves.toBe(false);
+    await expect(repository.reactivateTrainer('verein-1', 'trainer-1')).resolves.toBe(false);
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      expect(call.sql).toContain('WHERE id = $1');
+      expect(call.sql).toContain('AND organization_id = $2');
+      expect(call.sql).toContain('AND is_active = false');
+    }
+    expect(calls[0]?.params).toEqual(['athlete-1', 'verein-1']);
+    expect(calls[0]?.sql).not.toContain('appbasis_athlete_group_membership');
+    expect(calls[1]?.params).toEqual(['trainer-1', 'verein-1']);
+    expect(calls[1]?.sql).toContain('WHERE organization_id = $2');
+    expect(calls[1]?.sql).toContain('trainer_id IN (SELECT id FROM activated)');
+    expect(calls[1]?.sql).not.toContain('INSERT INTO appbasis_trainer_group_membership');
+  });
+
+  it('rejects missing organization and entity identity before any reactivation SQL', async () => {
+    let calls = 0;
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe() { calls += 1; return []; },
+    });
+    await expect(repository.reactivateAthlete('', 'athlete-1')).rejects.toThrow();
+    await expect(repository.reactivateAthlete('verein-1', '')).rejects.toThrow();
+    await expect(repository.reactivateTrainer('', 'trainer-1')).rejects.toThrow();
+    await expect(repository.reactivateTrainer('verein-1', '')).rejects.toThrow();
+    expect(calls).toBe(0);
+  });
+
+  it('persists the two training-group attendance modes without weakening the tenant update guard', async () => {
+    const calls: Array<{ sql: string; params: readonly unknown[] }> = [];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(sql, params) {
+        const values = params ?? [];
+        calls.push({ sql, params: values });
+        return [{
+          id: values[0],
+          organization_id: values[1],
+          name: values[2],
+          short_name: values[3],
+          description: values[4],
+          attendance_mode: values[5],
+          is_active: true,
+          sort_order: values[values.length - 1],
+        }];
+      },
+    }, () => 'group-1');
+    const created = await repository.createTrainingGroup('verein-1', { name: 'U12' });
+    expect(created.attendanceMode).toBe('trainer_roll_call');
+    const updated = await repository.updateTrainingGroup('verein-1', 'group-1', {
+      name: 'U12',
+      shortName: null,
+      description: null,
+      attendanceMode: 'self_registration',
+      sortOrder: 20,
+    });
+    expect(updated?.attendanceMode).toBe('self_registration');
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.sql).toContain('attendance_mode,');
+    expect(calls[0]?.params[1]).toBe('verein-1');
+    expect(calls[0]?.params[5]).toBe('trainer_roll_call');
+    expect(calls[1]?.sql).toContain('attendance_mode = $6');
+    expect(calls[1]?.sql).toContain('AND organization_id = $2');
+    expect(calls[1]?.sql).toContain('AND is_active = true');
+    expect(calls[1]?.params[5]).toBe('self_registration');
+  });
+
   it('reactivates only inactive athletes in the authorized tenant without reopening memberships', async () => {
     const queries: string[] = [];
     const parameters: unknown[][] = [];
