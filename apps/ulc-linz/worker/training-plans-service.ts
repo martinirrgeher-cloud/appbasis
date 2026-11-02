@@ -1073,7 +1073,7 @@ export function createUlcTrainingPlanService({
   });
 }
 
-async function trainingPlanUsageEventId(
+export async function trainingPlanUsageEventId(
   organizationId: string,
   planId: string,
   itemId: string,
