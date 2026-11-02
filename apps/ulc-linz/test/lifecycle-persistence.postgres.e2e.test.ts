@@ -12,6 +12,7 @@ import {
   PostgresPrincipalAccessAdministration,
   PostgresPrincipalLifecycleAdministration,
   principalId,
+  roleId,
 } from "@appbasis/permissions";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
 import {
@@ -251,6 +252,49 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await expect(trainingBlockRepository.listFavoriteBlockIds(
         organizationId, seeded.manualTarget.identityId,
       )).resolves.toEqual([favoriteBlock.id]);
+      await expect(trainingBlockRepository.listCurrentDeletionMarkers(fixedNow))
+        .resolves.toEqual([]);
+
+      // Deny a stale target with an administrative permission role even when
+      // the app membership still says "trainer". No favorite is removed.
+      const mismatchedPermissions = {
+        findPrincipal: async (id: ReturnType<typeof principalId>) => {
+          const persisted = await sourcePermissions.findPrincipal(id);
+          if (String(id) !== seeded.manualTarget.identityId || persisted === null) {
+            return persisted;
+          }
+          return { ...persisted, roleIds: [roleId("ulc-linz:admin")] };
+        },
+        findRole: sourcePermissions.findRole.bind(sourcePermissions),
+        isKnownCapability: sourcePermissions.isKnownCapability.bind(sourcePermissions),
+      };
+      await expect(
+        deleteUlcLinzIdentityWithCanonicalFavoriteDeletion(
+          actorCurrent,
+          { ...canonicalDependencies, permissions: mismatchedPermissions },
+          { organizationId, targetIdentityId: seeded.manualTarget.identityId },
+        ),
+      ).rejects.toMatchObject({ code: "UNKNOWN_PERMISSION_STATE" });
+      await expect(trainingBlockRepository.listFavoriteBlockIds(
+        organizationId, seeded.manualTarget.identityId,
+      )).resolves.toEqual([favoriteBlock.id]);
+
+      // An unmigrated/failed module lifecycle operation cannot advance the
+      // Identity owner; the actual module requires schema v5 for this write.
+      await expect(
+        deleteUlcLinzIdentityWithCanonicalFavoriteDeletion(
+          actorCurrent,
+          {
+            ...canonicalDependencies,
+            favorites: { async deletePrincipalFavorites(): Promise<never> {
+              throw new Error("training block schema-v5 migration missing");
+            } },
+          },
+          { organizationId, targetIdentityId: seeded.manualTarget.identityId },
+        ),
+      ).rejects.toThrow(/schema-v5/);
+      await expect(sourceScopes.findLifecycleTarget(seeded.manualTarget.identityId))
+        .resolves.not.toBeNull();
       await expect(trainingBlockRepository.listCurrentDeletionMarkers(fixedNow))
         .resolves.toEqual([]);
 
