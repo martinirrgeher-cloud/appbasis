@@ -1,6 +1,6 @@
 # AppBasis – Current Gate
 
-Stand: 2026-10-17
+Stand: 2026-11-02
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
@@ -8,6 +8,37 @@ Volatile PR-, CI-, Review- und Branch-Zustände werden ausschließlich live aus
 GitHub abgeleitet.
 
 ## Aktuelles Ziel
+
+**ULC M6 – Production-Readiness-Blocker aus Issue #483 sicher schließen.**
+
+Die ursprünglichen neun Evidence-Drifts wurden nach Fach- und Testprüfung
+in PRs #484–#486 korrigiert. PRs #487–#488 haben den persönlichen
+Trainingsblock-Favoriten-Lifecycle um organisationsgebundene Löschung,
+35-Tage-Löschmarker und Schutz vor Wiederanlage erweitert. CI ist dafür
+erfolgreich; **weder Trainingsblöcke noch ULC insgesamt sind produktionsreif**.
+
+Unmittelbarer Product-Vertical-Slice: **offline PostgreSQL-Restore-Replay
+der Trainingsblock-Favoriten-Löschmarker**, mit read-only Ermittlung
+gültiger Löschmarker vom nachweislich neueren autoritativen Stand,
+atomarem Replay in einen nicht erreichbaren Restore-Kandidaten, exaktem
+Zeitstempelkonfliktschutz, idempotenten Wiederholungen, Mandantentrennung
+und echten PostgreSQL-Regressionstests.
+
+- Keine Produktions- oder Preview-Migration, kein Deploy und kein Provider-Write
+  ohne ausdrückliche Betreiberfreigabe.
+- Keine aktivierte App-Lösch-/Restore-/Retention-Runtime und keine stille
+  Änderung der bestehenden Favoritenoberfläche.
+- Restore-Promotion und Marker-Purge bleiben blockiert, bis die
+  appübergreifende M4-/M5-Restore-, Backup- und Autorisierungspolitik belegt ist.
+- Production Contracts für `training-blocks` und `ulc-linz` bleiben
+  `blocked`; M6-Composition-Gate und Public Ingress werden nicht gestartet.
+- Normale PR-CI und echte PostgreSQL-E2E plus Exact-Head-Folgeprüfung sind
+  erforderlich; ein grüner Einzeltest ersetzt keine Production-Readiness.
+- Nach Abschluss des Slices verbleiben Subject-Scope-App-Integration,
+  Retention-Purge, sichere Usage-Ownership, Exercise-Catalog und Doku-Lifecycle
+  gemäß Issue #483.
+
+## Vorheriger Gate-Scope: ULC-E7B9
 
 **ULC-E7B9 – Trainingsplanung in der isolierten ULC-Preview abnehmen.**
 
