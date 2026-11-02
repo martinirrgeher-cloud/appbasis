@@ -1,5 +1,9 @@
 import { normalizeTrainingBlockIdentifier } from "./training-block";
-import type { TrainingBlockPersonalDataLifecycleRepository } from "./repository";
+import type {
+  TrainingBlockFavoriteDeletionRepository,
+  TrainingBlockFavoriteDeletionResult,
+  TrainingBlockPersonalDataLifecycleRepository,
+} from "./repository";
 
 export interface TrainingBlockLifecycleServiceOptions {
   readonly repository: TrainingBlockPersonalDataLifecycleRepository;
@@ -40,5 +44,61 @@ export class TrainingBlockLifecycleService {
       throw new Error("Training-block favorites cleanup returned an invalid count.");
     }
     return deleted;
+  }
+}
+
+/**
+ * Controlled, tombstone-protected deletion. This prevents subsequent favorite
+ * recreation in the same module owner. An authorized application must invoke it
+ * instead of the legacy, non-guarding deletion method.
+ *
+ * Restore reconciliation and usage subject ownership remain blocked.
+ */
+export class TrainingBlockFavoriteDeletionService {
+  readonly #repository: TrainingBlockFavoriteDeletionRepository;
+  readonly #now: () => Date;
+
+  constructor(options: {
+    readonly repository: TrainingBlockFavoriteDeletionRepository;
+    readonly now?: () => Date;
+  }) {
+    if (
+      !options ||
+      typeof options !== "object" ||
+      !options.repository ||
+      typeof options.repository.markPrincipalDeletedAndDeleteFavorites !== "function" ||
+      (options.now !== undefined && typeof options.now !== "function")
+    ) {
+      throw new Error("Training block deletion service options are invalid.");
+    }
+    this.#repository = options.repository;
+    this.#now = options.now ?? (() => new Date());
+  }
+
+  async deletePrincipalFavorites(
+    organizationId: string,
+    principalId: string,
+  ): Promise<TrainingBlockFavoriteDeletionResult> {
+    const organization = normalizeTrainingBlockIdentifier(organizationId, "Organization id");
+    const principal = normalizeTrainingBlockIdentifier(principalId, "Principal id");
+    const completedAt = this.#now();
+    if (!(completedAt instanceof Date) || !Number.isFinite(completedAt.getTime())) {
+      throw new Error("Training block deletion clock is invalid.");
+    }
+    const result = await this.#repository.markPrincipalDeletedAndDeleteFavorites(
+      organization, principal, new Date(completedAt),
+    );
+    if (
+      !result ||
+      typeof result.markerInserted !== "boolean" ||
+      !Number.isSafeInteger(result.deletedFavorites) ||
+      result.deletedFavorites < 0
+    ) {
+      throw new Error("Training block deletion repository returned an invalid result.");
+    }
+    return Object.freeze({
+      markerInserted: result.markerInserted,
+      deletedFavorites: result.deletedFavorites,
+    });
   }
 }

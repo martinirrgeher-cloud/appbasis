@@ -3,10 +3,124 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryTrainingBlockRepository,
   TrainingBlockLifecycleService,
+  TrainingBlockFavoriteDeletionService,
   TrainingBlockService,
+  PostgresTrainingBlockRepository,
 } from "../src/index";
 
 describe("training-block personal preference lifecycle primitive", () => {
+  it("keeps PostgreSQL favorite writes functional before the additive deletion schema exists", async () => {
+    const queries: string[] = [];
+    const repository = new PostgresTrainingBlockRepository({
+      async unsafe() { throw new Error("Unexpected unscoped SQL"); },
+      async begin(callback) {
+        return callback({
+          async unsafe(sql) {
+            queries.push(sql);
+            if (sql.includes("to_regclass")) return [{ marker_table: null }];
+            if (sql.includes("INSERT INTO appbasis_training_block_favorite")) return [];
+            throw new Error("Unexpected schema-v4 SQL: " + sql);
+          },
+        });
+      },
+    });
+    await expect(repository.setFavorite("org-a", "principal-a", "block-a", true))
+      .resolves.toBeUndefined();
+    expect(queries).toHaveLength(2);
+    expect(queries.some(sql => sql.includes("pg_advisory_xact_lock"))).toBe(false);
+    expect(queries.some(sql => sql.includes("FROM appbasis_training_block_favorite_deletion"))).toBe(false);
+  });
+
+  it("rejects ambiguous PostgreSQL deletion-schema state without attempting a favorite insert", async () => {
+    const queries: string[] = [];
+    const repository = new PostgresTrainingBlockRepository({
+      async unsafe() { throw new Error("Unexpected unscoped SQL"); },
+      async begin(callback) {
+        return callback({
+          async unsafe(sql) {
+            queries.push(sql);
+            return [];
+          },
+        });
+      },
+    });
+    await expect(repository.setFavorite("org-a", "principal-a", "block-a", true))
+      .rejects.toThrow(/schema state is invalid/);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toContain("to_regclass");
+  });
+
+
+  it("atomically marks personal favorites deleted and rejects future favorites for the subject only", async () => {
+    const repo = new InMemoryTrainingBlockRepository();
+    const service = new TrainingBlockService({
+      repository: repo,
+      createId: (() => {
+        const ids = ["block-a", "block-b"];
+        return () => ids.shift() ?? "invalid";
+      })(),
+    });
+    const deletion = new TrainingBlockFavoriteDeletionService({
+      repository: repo,
+      now: () => new Date("2026-11-02T19:30:00.000Z"),
+    });
+    await service.create("org-a", { name: "A" });
+    await service.create("org-b", { name: "B" });
+    await service.setFavorite("org-a", "person-1", "block-a", true);
+    await service.setFavorite("org-a", "person-2", "block-a", true);
+    await service.setFavorite("org-b", "person-1", "block-b", true);
+
+    await expect(deletion.deletePrincipalFavorites("org-a", "person-1"))
+      .resolves.toEqual({ markerInserted: true, deletedFavorites: 1 });
+    await expect(deletion.deletePrincipalFavorites("org-a", "person-1"))
+      .resolves.toEqual({ markerInserted: false, deletedFavorites: 0 });
+    await expect(service.setFavorite("org-a", "person-1", "block-a", true))
+      .rejects.toThrow(/deletion marker/);
+    await expect(service.setFavorite("org-a", "person-1", "block-a", false))
+      .resolves.toBe(true);
+    await expect(repo.listFavoriteBlockIds("org-a", "person-2"))
+      .resolves.toEqual(["block-a"]);
+    await expect(repo.listFavoriteBlockIds("org-b", "person-1"))
+      .resolves.toEqual(["block-b"]);
+    await expect(service.listRevisions("org-a", "block-a")).resolves.toHaveLength(1);
+  });
+
+  it("fails closed on invalid identifiers, clocks and repository results", async () => {
+    let calls = 0;
+    const deletion = new TrainingBlockFavoriteDeletionService({
+      repository: {
+        async markPrincipalDeletedAndDeleteFavorites() {
+          calls++;
+          return { markerInserted: true, deletedFavorites: 1 };
+        },
+      },
+    });
+    await expect(deletion.deletePrincipalFavorites("", "person")).rejects.toThrow();
+    await expect(deletion.deletePrincipalFavorites("org", "")).rejects.toThrow();
+    expect(calls).toBe(0);
+    expect(() => new TrainingBlockFavoriteDeletionService({ repository: {} as never }))
+      .toThrow(/invalid/);
+    const badClock = new TrainingBlockFavoriteDeletionService({
+      repository: {
+        async markPrincipalDeletedAndDeleteFavorites() {
+          calls++;
+          return { markerInserted: true, deletedFavorites: 0 };
+        },
+      },
+      now: () => new Date(NaN),
+    });
+    await expect(badClock.deletePrincipalFavorites("org", "person")).rejects.toThrow(/clock/);
+    expect(calls).toBe(0);
+    const badResult = new TrainingBlockFavoriteDeletionService({
+      repository: {
+        async markPrincipalDeletedAndDeleteFavorites() {
+          return { markerInserted: true, deletedFavorites: -1 };
+        },
+      },
+    });
+    await expect(badResult.deletePrincipalFavorites("org", "person")).rejects.toThrow(/invalid result/);
+  });
+
   it("removes only the intended principal's favorites in the intended organization, idempotently", async () => {
     const repository = new InMemoryTrainingBlockRepository();
     const blocks = new TrainingBlockService({

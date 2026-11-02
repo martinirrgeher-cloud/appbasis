@@ -36,8 +36,12 @@
         "gitBlobSha": "a9210fb12296dcba9178c3742e1cfc7976335516"
       },
       {
+        "path": "modules/training-blocks/migrations/0004_appbasis_training_block_favorite_deletion.sql",
+        "gitBlobSha": "6216c999ae447063cb4641d758310f0f93351333"
+      },
+      {
         "path": "modules/training-blocks/test/postgres-repository.postgres.e2e.ts",
-        "gitBlobSha": "4773289b82bd13b50362e0d6839fe4a634ba397b"
+        "gitBlobSha": "b98d30215f7d660aed11cff690aa0c0a9f821313"
       }
     ],
     "lifecycle": []

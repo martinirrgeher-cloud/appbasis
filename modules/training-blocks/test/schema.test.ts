@@ -30,7 +30,21 @@ const categoryMigration = readFileSync(
   "utf8",
 );
 
+const deletionMigration = readFileSync(
+  new URL("../migrations/0004_appbasis_training_block_favorite_deletion.sql", import.meta.url),
+  "utf8",
+);
+
 describe("training-blocks schema", () => {
+  it("owns a bounded 35-day favorite deletion marker without cross-owner foreign keys", () => {
+    expect(deletionMigration).toContain("CREATE TABLE appbasis_training_block_favorite_deletion");
+    expect(deletionMigration).toContain("PRIMARY KEY (organization_id, principal_id)");
+    expect(deletionMigration).toContain("interval '840 hours'");
+    expect(deletionMigration).not.toContain("REFERENCES appbasis_person");
+    expect(deletionMigration).not.toContain("DROP TABLE");
+    expect(deletionMigration).not.toContain("CREATE TRIGGER");
+    expect(deletionMigration).not.toContain("DROP TABLE");
+  });
   it("adds an optional, safely bounded category separate from audience assignments", () => {
     expect(categoryMigration).toContain("ADD COLUMN category text");
     expect(categoryMigration).toContain("appbasis_training_block_revision_category_length_check");

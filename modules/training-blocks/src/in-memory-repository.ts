@@ -3,6 +3,7 @@ import {
   compareTrainingBlockSnapshots,
   type TrainingBlockDeactivateResult,
   type TrainingBlockDeleteUnusedResult,
+  type TrainingBlockFavoriteDeletionResult,
   type TrainingBlockRepository,
   type TrainingBlockRevision,
   type TrainingBlockRevisionAppendResult,
@@ -16,6 +17,7 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
   readonly #blockIds = new Set<string>();
   readonly #revisions = new Map<string, Map<number, TrainingBlockRevision>>();
   readonly #favorites = new Set<string>();
+  readonly #favoriteDeletionMarkers = new Map<string, string>();
   readonly #usageEvents: TrainingBlockUsageEvent[] = [];
 
   constructor(initialBlocks: readonly TrainingBlockSnapshot[] = []) {
@@ -189,6 +191,9 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
       this.#favorites.delete(key);
       return;
     }
+    if (favorite && this.#favoriteDeletionMarkers.has(favoritePrefix(organizationId, principalId))) {
+      throw new Error("Training block favorite is blocked by a subject deletion marker.");
+    }
     if (favorite) this.#favorites.add(key);
     else this.#favorites.delete(key);
   }
@@ -205,6 +210,21 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
       deleted += 1;
     }
     return deleted;
+  }
+
+  async markPrincipalDeletedAndDeleteFavorites(
+    organizationId: string,
+    principalId: string,
+    completedAt: Date,
+  ): Promise<TrainingBlockFavoriteDeletionResult> {
+    if (!(completedAt instanceof Date) || !Number.isFinite(completedAt.getTime())) {
+      throw new Error("Training block deletion timestamp is invalid.");
+    }
+    const key = favoritePrefix(organizationId, principalId);
+    const markerInserted = !this.#favoriteDeletionMarkers.has(key);
+    if (markerInserted) this.#favoriteDeletionMarkers.set(key, completedAt.toISOString());
+    const deletedFavorites = await this.deletePrincipalFavorites(organizationId, principalId);
+    return Object.freeze({ markerInserted, deletedFavorites });
   }
 
   async listUsageSummaries(

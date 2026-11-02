@@ -151,12 +151,13 @@ test("pins the checked module inventory and database-owning contracts", async ()
     },
     capabilities: ["training-blocks:edit", "training-blocks:view"],
     database: {
-      schemaVersion: 4,
+      schemaVersion: 5,
       migrations: [
         "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql",
         "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql",
         "modules/training-blocks/migrations/0002_appbasis_training_block_multi_audience.sql",
         "modules/training-blocks/migrations/0003_appbasis_training_block_category.sql",
+        "modules/training-blocks/migrations/0004_appbasis_training_block_favorite_deletion.sql",
       ],
     },
   });

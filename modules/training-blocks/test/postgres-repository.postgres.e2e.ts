@@ -11,6 +11,7 @@ import {
   TrainingBlockInactiveError,
   TrainingBlockInUseError,
   TrainingBlockService,
+  TrainingBlockFavoriteDeletionService,
   TrainingBlockValidationError,
   type TrainingBlockPostgresClient,
 } from "../src/index";
@@ -46,6 +47,10 @@ beforeAll(async () => {
     ),
     readFile(
       new URL("../migrations/0003_appbasis_training_block_category.sql", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../migrations/0004_appbasis_training_block_favorite_deletion.sql", import.meta.url),
       "utf8",
     ),
   ]);
@@ -620,6 +625,66 @@ describe("training-blocks PostgreSQL repository", () => {
     ]);
     await expect(service.listRevisions("org-a", "personal-block-a")).resolves.toHaveLength(1);
     await expect(service.listUsage("org-a", "personal-block-a")).resolves.toHaveLength(1);
+  });
+
+  it("serializes subject deletion and later concurrent favorite creation under a marker", async () => {
+    const service = serviceFor(requiredConnection(), ["favorite-lifecycle-block"]);
+    await service.create("org-delete", { name: "Lauftraining" });
+    await service.setFavorite("org-delete", "subject-a", "favorite-lifecycle-block", true);
+    await service.setFavorite("org-delete", "subject-b", "favorite-lifecycle-block", true);
+    const privacy = new TrainingBlockFavoriteDeletionService({
+      repository: new PostgresTrainingBlockRepository(postgresClient(requiredConnection().client)),
+      now: () => new Date("2026-11-02T19:30:00.000Z"),
+    });
+
+    await expect(privacy.deletePrincipalFavorites("org-delete", "subject-a"))
+      .resolves.toEqual({ markerInserted: true, deletedFavorites: 1 });
+    await expect(privacy.deletePrincipalFavorites("org-delete", "subject-a"))
+      .resolves.toEqual({ markerInserted: false, deletedFavorites: 0 });
+    await expect(service.setFavorite("org-delete", "subject-a", "favorite-lifecycle-block", true))
+      .rejects.toThrow(/deletion marker/);
+    const markers = await requiredConnection().client.unsafe(
+      `SELECT organization_id, principal_id, completed_at, purge_after
+       FROM appbasis_training_block_favorite_deletion
+       WHERE organization_id = $1 AND principal_id = $2`,
+      ["org-delete", "subject-a"],
+    );
+    expect(markers).toHaveLength(1);
+    expect(new Date(markers[0]!.purge_after as string).getTime() -
+      new Date(markers[0]!.completed_at as string).getTime())
+      .toBe(35 * 24 * 60 * 60 * 1000);
+    await expect(service.listOverview("org-delete", "subject-b"))
+      .resolves.toEqual([expect.objectContaining({ isFavorite: true })]);
+    await expect(service.listRevisions("org-delete", "favorite-lifecycle-block"))
+      .resolves.toHaveLength(1);
+
+    const left = createPostgresDatabase(isolatedDatabaseUrl);
+    const right = createPostgresDatabase(isolatedDatabaseUrl);
+    try {
+      const writer = serviceFor(left, []);
+      const deleter = new TrainingBlockFavoriteDeletionService({
+        repository: new PostgresTrainingBlockRepository(postgresClient(right.client)),
+        now: () => new Date("2026-11-02T19:31:00.000Z"),
+      });
+      await writer.setFavorite("org-delete", "subject-c", "favorite-lifecycle-block", true);
+      const [newWrite] = await Promise.allSettled([
+        writer.setFavorite("org-delete", "subject-c", "favorite-lifecycle-block", true),
+        deleter.deletePrincipalFavorites("org-delete", "subject-c"),
+      ]);
+      expect(["fulfilled", "rejected"]).toContain(newWrite.status);
+      await expect(writer.setFavorite("org-delete", "subject-c", "favorite-lifecycle-block", true))
+        .rejects.toThrow(/deletion marker/);
+      const rows = await requiredConnection().client.unsafe(
+        `SELECT principal_id
+         FROM appbasis_training_block_favorite
+         WHERE organization_id = $1 ORDER BY principal_id`,
+        ["org-delete"],
+      );
+      expect(rows).toEqual([{ principal_id: "subject-b" }]);
+    } finally {
+      await left.client.end();
+      await right.client.end();
+    }
   });
 
   it("persists principal favorites and usage summaries in the module owner", async () => {

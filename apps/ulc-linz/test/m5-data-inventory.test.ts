@@ -217,12 +217,12 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "training-blocks",
       ),
     ).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 5,
       lifecycleStatus: "training-block-data-lifecycle-pending",
       notes: expect.arrayContaining([
         "training-block-template-revision-favorite-usage-lifecycle-pending",
         "training-block-notes-may-contain-user-entered-content",
-        "ulc-preview-schema-v4-migration-and-verification-pending",
+        "ulc-preview-schema-v5-migration-and-verification-pending",
         "production-lifecycle-activation-not-authorized",
       ]),
     });
@@ -300,7 +300,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(57);
+    expect(inventory.persistentTables).toHaveLength(58);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
@@ -308,6 +308,19 @@ describe("ULC Linz M5 C/D data inventory", () => {
       expect(table.deletionEvidence).not.toBe("open");
       expect(table.retentionEvidence).not.toBe("open");
     }
+
+    expect(
+      inventory.persistentTables.find(
+        (table) =>
+          table.owner === "training-blocks" &&
+          table.id === "appbasis_training_block_favorite_deletion",
+      ),
+    ).toMatchObject({
+      privacyClass: "minimal-delete-reconciliation-state",
+      retentionPolicy: "35-days-after-subject-deletion",
+      deletionEvidence: "repository-verified-marker-write-activation-pending",
+      retentionEvidence: "fail-closed-purge-not-implemented",
+    });
 
     expect(
       inventory.persistentTables.find(
