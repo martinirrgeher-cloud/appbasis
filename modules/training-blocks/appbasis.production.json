@@ -37,7 +37,7 @@
       },
       {
         "path": "modules/training-blocks/test/postgres-repository.postgres.e2e.ts",
-        "gitBlobSha": "79668d623c6690647383118874d25ea0e8f7547c"
+        "gitBlobSha": "4773289b82bd13b50362e0d6839fe4a634ba397b"
       }
     ],
     "lifecycle": []
