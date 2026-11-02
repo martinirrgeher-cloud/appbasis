@@ -28,7 +28,7 @@ test("ULC training-blocks contract pins the exact five database migrations and m
   const moduleRoot = join(repositoryRoot, "modules", "training-blocks");
   const definition = JSON.parse(await readFile(join(moduleRoot, "appbasis.module.json"), "utf8"));
   const contract = JSON.parse(await readFile(join(moduleRoot, "appbasis.production.json"), "utf8"));
-  assert.equal(definition.database.schemaVersion, 4);
+  assert.equal(definition.database.schemaVersion, 5);
   assert.equal(contract.status, "blocked");
   assert.equal(contract.requirements.lifecycle, "blocked");
   assert.deepEqual(contract.evidence.lifecycle, []);
