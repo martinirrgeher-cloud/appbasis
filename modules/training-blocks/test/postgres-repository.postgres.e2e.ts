@@ -94,6 +94,7 @@ describe("training-blocks PostgreSQL repository", () => {
     await service.create("org-expired", { name: "Expired" });
     await service.create("org-current", { name: "Current" });
     await service.setFavorite("org-expired", "principal-old", "block-expired", true);
+    await service.setFavorite("org-expired", "principal-old-2", "block-expired", true);
     await service.setFavorite("org-current", "principal-fresh", "block-current", true);
 
     const expired = new TrainingBlockFavoriteDeletionService({
@@ -103,6 +104,7 @@ describe("training-blocks PostgreSQL repository", () => {
       repository, now: () => new Date("2026-11-01T12:00:00.000Z"),
     });
     await expired.deletePrincipalFavorites("org-expired", "principal-old");
+    await expired.deletePrincipalFavorites("org-expired", "principal-old-2");
     await fresh.deletePrincipalFavorites("org-current", "principal-fresh");
 
     // Simulate corruption outside normal repository writes: the inspector must
@@ -114,19 +116,41 @@ describe("training-blocks PostgreSQL repository", () => {
       ["org-expired", "principal-old", "block-expired"],
     );
     const now = new Date("2026-11-02T12:00:00.000Z");
-    await expect(repository.inspectExpiredFavoriteDeletionMarkers(now, 1))
-      .resolves.toEqual({
-        hasMore: false,
-        candidates: [{
-          marker: {
-            organizationId: "org-expired",
-            principalId: "principal-old",
-            completedAt: new Date("2026-09-20T12:00:00.000Z"),
-            purgeAfter: new Date("2026-10-25T12:00:00.000Z"),
-          },
-          hasResidualFavorites: true,
-        }],
-      });
+    const firstPage = await repository.inspectExpiredFavoriteDeletionMarkers(now, 1);
+    expect(firstPage).toEqual({
+      hasMore: true,
+      nextCursor: {
+        organizationId: "org-expired",
+        principalId: "principal-old",
+        purgeAfter: new Date("2026-10-25T12:00:00.000Z"),
+      },
+      candidates: [{
+        marker: {
+          organizationId: "org-expired",
+          principalId: "principal-old",
+          completedAt: new Date("2026-09-20T12:00:00.000Z"),
+          purgeAfter: new Date("2026-10-25T12:00:00.000Z"),
+        },
+        hasResidualFavorites: true,
+      }],
+    });
+    expect(firstPage.nextCursor).not.toBeNull();
+    const secondPage = await repository.inspectExpiredFavoriteDeletionMarkers(
+      now, 1, firstPage.nextCursor!,
+    );
+    expect(secondPage).toEqual({
+      hasMore: false,
+      nextCursor: null,
+      candidates: [{
+        marker: {
+          organizationId: "org-expired",
+          principalId: "principal-old-2",
+          completedAt: new Date("2026-09-20T12:00:00.000Z"),
+          purgeAfter: new Date("2026-10-25T12:00:00.000Z"),
+        },
+        hasResidualFavorites: false,
+      }],
+    });
     await expect(repository.inspectExpiredFavoriteDeletionMarkers(now, 0))
       .rejects.toThrow(/limit/);
     await expect(repository.inspectExpiredFavoriteDeletionMarkers(new Date(NaN)))
@@ -134,7 +158,7 @@ describe("training-blocks PostgreSQL repository", () => {
     const markers = await connection.client.unsafe(
       "SELECT count(*)::int AS count FROM appbasis_training_block_favorite_deletion",
     );
-    expect(markers[0]?.count).toBe(2);
+    expect(markers[0]?.count).toBe(3);
     expect(await repository.listFavoriteBlockIds("org-expired", "principal-old"))
       .toEqual(["block-expired"]);
     await expect(service.setFavorite("org-expired", "principal-old", "block-expired", true))
