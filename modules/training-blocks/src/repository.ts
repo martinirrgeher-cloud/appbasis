@@ -67,6 +67,18 @@ export type TrainingBlockDeleteUnusedResult =
   | Readonly<{ status: "in-use" }>
   | Readonly<{ status: "conflict"; currentRevision: number }>;
 
+/**
+ * Restricted personal-metadata cleanup for an already-authorized caller.
+ * This primitive does not mark a subject deleted or prevent subsequent writes.
+ * It must not be treated as a complete privacy/deletion lifecycle.
+ */
+export interface TrainingBlockPersonalDataLifecycleRepository {
+  deletePrincipalFavorites(
+    organizationId: string,
+    principalId: string,
+  ): Promise<number>;
+}
+
 export interface TrainingBlockRepository {
   listCurrent(organizationId: string): Promise<readonly TrainingBlockSnapshot[]>;
   findCurrent(

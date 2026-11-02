@@ -591,6 +591,37 @@ describe("training-blocks PostgreSQL repository", () => {
     }
   });
 
+  it("deletes only an authorized tenant/principal's favorites, never usage or revisions", async () => {
+    const service = serviceFor(requiredConnection(), ["personal-block-a", "personal-block-b"]);
+    await service.create("org-a", { name: "A" });
+    await service.create("org-b", { name: "B" });
+    await service.setFavorite("org-a", "principal-a", "personal-block-a", true);
+    await service.setFavorite("org-a", "principal-b", "personal-block-a", true);
+    await service.setFavorite("org-b", "principal-a", "personal-block-b", true);
+    await service.recordUsage("org-a", "personal-block-a", {
+      occurredAt: "2026-10-10T12:00:00.000Z",
+      sourceKind: "training_plan",
+    });
+
+    const { TrainingBlockLifecycleService } = await import("../src/index");
+    const privacy = new TrainingBlockLifecycleService({
+      repository: new PostgresTrainingBlockRepository(postgresClient(requiredConnection().client)),
+    });
+    await expect(privacy.deletePrincipalFavorites("org-a", "principal-a")).resolves.toBe(1);
+    await expect(privacy.deletePrincipalFavorites("org-a", "principal-a")).resolves.toBe(0);
+    const rows = await requiredConnection().client.unsafe(
+      `SELECT organization_id, principal_id, block_id
+         FROM appbasis_training_block_favorite
+        ORDER BY organization_id, principal_id, block_id`,
+    );
+    expect(rows).toEqual([
+      { organization_id: "org-a", principal_id: "principal-b", block_id: "personal-block-a" },
+      { organization_id: "org-b", principal_id: "principal-a", block_id: "personal-block-b" },
+    ]);
+    await expect(service.listRevisions("org-a", "personal-block-a")).resolves.toHaveLength(1);
+    await expect(service.listUsage("org-a", "personal-block-a")).resolves.toHaveLength(1);
+  });
+
   it("persists principal favorites and usage summaries in the module owner", async () => {
     const service = serviceFor(requiredConnection(), [
       "block-meta",

@@ -193,6 +193,20 @@ export class InMemoryTrainingBlockRepository implements TrainingBlockRepository 
     else this.#favorites.delete(key);
   }
 
+  async deletePrincipalFavorites(
+    organizationId: string,
+    principalId: string,
+  ): Promise<number> {
+    const prefix = favoritePrefix(organizationId, principalId);
+    let deleted = 0;
+    for (const key of [...this.#favorites]) {
+      if (!key.startsWith(prefix)) continue;
+      this.#favorites.delete(key);
+      deleted += 1;
+    }
+    return deleted;
+  }
+
   async listUsageSummaries(
     organizationId: string,
   ): Promise<readonly TrainingBlockUsageSummary[]> {
