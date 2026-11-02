@@ -20,6 +20,7 @@ import type {
 
 const ADMIN_ROLE_ID = roleId(roleDataScope.runtimeRoleIds.admin);
 const MANUAL_DELETION_AUDIT_REASON = "manual-identity-deletion";
+const ULC_PERMISSION_PREFIX = roleDataScope.principalPermissionMapping.capabilityNamespace + ":";
 
 type CanonicalAdminScopes = Pick<
   PostgresUlcLinzScopePersistence,
@@ -67,6 +68,7 @@ type AuthorizedDeletionTarget = Readonly<{
   targetIdentityId: string;
   actorPrincipalId: ReturnType<typeof principalId>;
   targetSourceRole: UlcLinzDeletableSourceRole;
+  hadCompletedAppMarker: boolean;
 }>;
 
 /**
@@ -112,6 +114,11 @@ export async function deleteUlcLinzIdentityWithCanonicalFavoriteDeletion(
   const authorized = await authorizeCanonicalDeletionTarget(
     current, dependencies, request,
   );
+  // The underlying Identity owner independently validates this when it
+  // performs its own write. Inspect the target principal *before* a module
+  // deletion so a stale admin role or foreign grants cannot cause partial
+  // cross-owner erasure.
+  await assertFavoriteDeletionTargetPermissionState(dependencies, authorized);
   const favoriteResult = await dependencies.favorites.deletePrincipalFavorites(
     authorized.organizationId,
     authorized.targetIdentityId,
@@ -174,7 +181,39 @@ async function authorizeCanonicalDeletionTarget(
   }
   return Object.freeze({
     organizationId, targetIdentityId, actorPrincipalId, targetSourceRole,
+    hadCompletedAppMarker: marker !== null,
   });
+}
+
+async function assertFavoriteDeletionTargetPermissionState(
+  dependencies: UlcLinzCanonicalFavoriteDeletionDependencies,
+  target: AuthorizedDeletionTarget,
+): Promise<void> {
+  const targetPrincipalId = principalId(target.targetIdentityId);
+  const principal = await dependencies.permissions.findPrincipal(targetPrincipalId);
+  if (principal === null) {
+    // A retry after physical Identity deletion may legitimately have no
+    // permission principal, but a still-live target may not skip its role check.
+    if (!await dependencies.identityDeletion.isDeletionCompleted(target.targetIdentityId)) {
+      blocked();
+    }
+    return;
+  }
+  const expectedRole = roleId(roleDataScope.runtimeRoleIds[target.targetSourceRole]);
+  if (
+    principal.principalId !== targetPrincipalId ||
+    principal.roleIds.length > 1 ||
+    (principal.roleIds.length === 1 && principal.roleIds[0] !== expectedRole) ||
+    ![...principal.grants, ...principal.revokes].every((value) =>
+      String(value).startsWith(ULC_PERMISSION_PREFIX)
+    ) ||
+    (target.hadCompletedAppMarker &&
+      (principal.roleIds.length > 0 ||
+        principal.grants.length > 0 ||
+        principal.revokes.length > 0))
+  ) {
+    blocked();
+  }
 }
 
 async function executeCanonicalDeletion(
