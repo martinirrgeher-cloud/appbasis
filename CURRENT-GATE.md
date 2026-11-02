@@ -26,7 +26,9 @@ und echten PostgreSQL-Regressionstests.
 
 Abgeschlossener Teilstand: **read-only Retention-Preflight** für abgelaufene Trainingsblock-Favoriten-Löschmarker (PR #490). Die Ablaufprüfung erkennt verbliebene Favoriten und paginiert, ohne Marker oder Daten zu löschen.
 
-Unmittelbarer Folgeslice: **privilegierte, serverseitig autorisierte Favoritenlöschung beim Benutzer-Lifecycle**. Ein separater, nicht an öffentliche HTTP-Routen gebundener ULC-App-Vertrag prüft aktiven Administrator, Organisation, tatsächliche Berechtigungsrolle, exakte Benutzer-Identität und Zielrolle vor der atomaren v5-Favoritenlöschung. Anschließend nutzt er den bestehenden Identitäts-Löschpfad; PostgreSQL-E2E muss verweigerte und erlaubte Anfragen und Wiederholungen belegen. Kein Runtime-Cutover, solange v5-Deployment/Restore-Evidence offen sind.
+Abgeschlossener Teilstand: **privilegierte, serverseitig autorisierte Favoritenlöschung beim Benutzer-Lifecycle** (PR #491, ohne Aktivierung).
+
+Unmittelbarer Folgeslice: **read-only Training-Blocks Usage-Ownership-Bestandsprüfung**. Usage-Ereignisse enthalten `source_kind`, optionale Plan-/Element-Referenz und Freitext, aber keine kanonische Identitäts- oder Subject-Zuordnung. Eine organisationsgebundene, nur aggregierte Prüfung zählt riskante Referenz- und Freitextfälle, ohne persönliche Werte auszugeben oder Löschungen auszuführen. Erst ein nachgewiesener Owner-Vertrag darf eine spätere Usage-Lösch-/Anonymisierungspolitik erlauben.
 
 - Keine Produktions- oder Preview-Migration, kein Deploy und kein Provider-Write
   ohne ausdrückliche Betreiberfreigabe.
