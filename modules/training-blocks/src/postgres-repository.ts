@@ -373,6 +373,20 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
     );
   }
 
+  async deletePrincipalFavorites(
+    organizationId: string,
+    principalId: string,
+  ): Promise<number> {
+    const rows = await this.#client.unsafe(
+      `DELETE FROM appbasis_training_block_favorite
+       WHERE organization_id = $1
+         AND principal_id = $2
+       RETURNING block_id`,
+      [organizationId, principalId],
+    );
+    return rows.length;
+  }
+
   async listUsageSummaries(
     organizationId: string,
   ): Promise<readonly TrainingBlockUsageSummary[]> {
