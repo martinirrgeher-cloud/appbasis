@@ -347,44 +347,31 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
     blockId: string,
     favorite: boolean,
   ): Promise<void> {
-    await this.#client.begin(async (transaction) => {
-      // Serialize every favorite write with the matching privacy tombstone,
-      // including writes that started before the deletion transaction.
-      await lockFavoritePrincipal(transaction, organizationId, principalId);
-      if (favorite) {
-        const markers = await transaction.unsafe(
-          `SELECT 1 AS present
-           FROM appbasis_training_block_favorite_deletion
-           WHERE organization_id = $1 AND principal_id = $2`,
-          [organizationId, principalId],
-        );
-        if (markers.length > 1) {
-          throw new Error("Training block favorite deletion marker is invalid.");
-        }
-        if (markers.length !== 0) {
-          throw new Error("Training block favorite is blocked by a subject deletion marker.");
-        }
-        await transaction.unsafe(
-          `INSERT INTO appbasis_training_block_favorite (
-             organization_id, principal_id, block_id
-           )
-           SELECT $1, $2, $3
-           WHERE EXISTS (
-             SELECT 1 FROM appbasis_training_block
-             WHERE organization_id = $1 AND id = $3
-           )
-           ON CONFLICT (organization_id, principal_id, block_id)
-           DO NOTHING`,
-          [organizationId, principalId, blockId],
-        );
-        return;
-      }
-      await transaction.unsafe(
-        `DELETE FROM appbasis_training_block_favorite
-         WHERE organization_id = $1 AND principal_id = $2 AND block_id = $3`,
+    if (favorite) {
+      await this.#client.unsafe(
+        `INSERT INTO appbasis_training_block_favorite (
+           organization_id, principal_id, block_id
+         )
+         SELECT $1, $2, $3
+         WHERE EXISTS (
+           SELECT 1
+           FROM appbasis_training_block
+           WHERE organization_id = $1
+             AND id = $3
+         )
+         ON CONFLICT (organization_id, principal_id, block_id)
+         DO NOTHING`,
         [organizationId, principalId, blockId],
       );
-    });
+      return;
+    }
+    await this.#client.unsafe(
+      `DELETE FROM appbasis_training_block_favorite
+       WHERE organization_id = $1
+         AND principal_id = $2
+         AND block_id = $3`,
+      [organizationId, principalId, blockId],
+    );
   }
 
   async deletePrincipalFavorites(

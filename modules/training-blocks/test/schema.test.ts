@@ -42,6 +42,9 @@ describe("training-blocks schema", () => {
     expect(deletionMigration).toContain("interval '840 hours'");
     expect(deletionMigration).not.toContain("REFERENCES appbasis_person");
     expect(deletionMigration).not.toContain("DROP TABLE");
+    expect(deletionMigration).toContain("CREATE TRIGGER appbasis_training_block_guard_deleted_favorite_trigger");
+    expect(deletionMigration).toContain("pg_advisory_xact_lock");
+    expect(deletionMigration).toContain("subject deletion marker");
   });
   it("adds an optional, safely bounded category separate from audience assignments", () => {
     expect(categoryMigration).toContain("ADD COLUMN category text");
