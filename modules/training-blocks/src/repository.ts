@@ -53,6 +53,38 @@ export interface TrainingBlockUsageEvent {
  * A separate app-owned attribution and restore/deletion policy is required
  * before any event can be purged or anonymized.
  */
+/**
+ * Privileged write input, supplied only after an application verifies that a
+ * saved training plan owns the subject and source item. The module does not
+ * infer subject ownership from opaque sourceRef strings.
+ */
+export interface TrainingBlockVerifiedSubjectUsage {
+  readonly event: TrainingBlockUsageEvent;
+  readonly subjectId: string;
+  readonly sourcePlanId: string;
+  readonly sourceItemId: string;
+}
+
+export interface TrainingBlockSubjectUsageDeletionResult {
+  readonly markerInserted: boolean;
+  readonly deletedUsageEvents: number;
+}
+
+/**
+ * Restricted schema-v6 boundary. Neither method is a public HTTP operation;
+ * the app must separately authorize the target subject and source plan.
+ */
+export interface TrainingBlockSubjectUsageLifecycleRepository {
+  recordVerifiedSubjectUsageOnce(
+    input: TrainingBlockVerifiedSubjectUsage,
+  ): Promise<TrainingBlockUsageEvent | undefined>;
+  markSubjectDeletedAndRemoveAttributedUsage(
+    organizationId: string,
+    subjectId: string,
+    completedAt: Date,
+  ): Promise<TrainingBlockSubjectUsageDeletionResult>;
+}
+
 export interface TrainingBlockUsagePrivacyInspection {
   readonly organizationId: string;
   readonly totalEvents: number;
