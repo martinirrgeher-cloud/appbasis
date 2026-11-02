@@ -80,6 +80,49 @@ afterAll(async () => {
 });
 
 describe("training-blocks PostgreSQL repository", () => {
+  it("persists schema-v4 categories as immutable PostgreSQL revision history independent of groups", async () => {
+    const service = serviceFor(requiredConnection(), ["block-category"]);
+    const created = await service.create("org-category", {
+      name: "Schnelligkeit",
+      audienceIds: ["group-a"],
+      exercises: [],
+    });
+    expect(created.revision.category).toBeNull();
+
+    const updated = await service.update("org-category", created.id, 1, {
+      name: "Schnelligkeit",
+      category: "Drills",
+      audienceIds: ["group-a"],
+      exercises: [],
+    });
+    expect(updated?.currentRevision).toBe(2);
+    expect(updated?.revision.category).toBe("Drills");
+    expect(updated?.revision.audienceIds).toEqual(["group-a"]);
+
+    await expect(service.findRevision("org-category", created.id, 1))
+      .resolves.toMatchObject({ revision: 1, category: null, audienceIds: ["group-a"] });
+    await expect(service.findRevision("org-category", created.id, 2))
+      .resolves.toMatchObject({ revision: 2, category: "Drills", audienceIds: ["group-a"] });
+    await expect(service.findCurrent("other-org", created.id)).resolves.toBeUndefined();
+
+    const rows = await requiredConnection().client.unsafe(
+      `SELECT revision, category
+         FROM appbasis_training_block_revision
+        WHERE organization_id = $1 AND block_id = $2
+        ORDER BY revision`,
+      ["org-category", created.id],
+    );
+    expect(rows.map(row => ({ revision: Number(row.revision), category: row.category })))
+      .toEqual([{ revision: 1, category: null }, { revision: 2, category: "Drills" }]);
+
+    await expect(requiredConnection().client.unsafe(
+      `UPDATE appbasis_training_block_revision
+          SET category = ' '
+        WHERE organization_id = $1 AND block_id = $2 AND revision = 2`,
+      ["org-category", created.id],
+    )).rejects.toThrow();
+  });
+
   it("persists immutable revisions, current-only reads and deactivation", async () => {
     const service = serviceFor(requiredConnection(), [
       "block-1",

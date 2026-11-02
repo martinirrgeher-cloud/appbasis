@@ -11,11 +11,11 @@
     "authorization": [
       {
         "path": "modules/training-blocks/test/service.test.ts",
-        "gitBlobSha": "a1ede2fc041b215f6537fe77b38c356307ae98ed"
+        "gitBlobSha": "348ebec1c295947981a3030f2eef2baece6a53ab"
       },
       {
         "path": "modules/training-blocks/test/training-block.test.ts",
-        "gitBlobSha": "ffee5781065269f01f7a9628aac44999f896f863"
+        "gitBlobSha": "8523c053eaddb63ce23920cbe968314e5e08723e"
       }
     ],
     "database": [
@@ -32,8 +32,12 @@
         "gitBlobSha": "02d5f59ad7af1156c1fdef22e9b19a13d68a20db"
       },
       {
+        "path": "modules/training-blocks/migrations/0003_appbasis_training_block_category.sql",
+        "gitBlobSha": "a9210fb12296dcba9178c3742e1cfc7976335516"
+      },
+      {
         "path": "modules/training-blocks/test/postgres-repository.postgres.e2e.ts",
-        "gitBlobSha": "2ffd9677d0e8707af767efe4459fed26efd2367e"
+        "gitBlobSha": "79668d623c6690647383118874d25ea0e8f7547c"
       }
     ],
     "lifecycle": []

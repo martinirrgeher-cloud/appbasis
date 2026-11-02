@@ -15,11 +15,31 @@ import {
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
-test("ULC production composition still fails closed on unreviewed training-block evidence", async () => {
-  await assert.rejects(
-    () => evaluateAppProductionComposition(repositoryRoot, "ulc-linz"),
-    new RegExp("Production evidence drifted: modules/training-blocks/"),
+test("ULC production composition stays blocked on unfinished lifecycle even after pinned evidence is current", async () => {
+  const result = await evaluateAppProductionComposition(repositoryRoot, "ulc-linz");
+  assert.equal(result.status, "blocked");
+  assert.equal(result.compositionReady, false);
+  assert.equal(result.productionReleaseAuthorized, false);
+  assert.ok(result.blockers.some(blocker => blocker.includes("Training-block revisions, favorites and usage lifecycle")));
+  assert.ok(result.blockers.some(blocker => blocker.includes("Training documentation v1")));
+});
+
+test("ULC training-blocks contract pins the exact four database migrations and maintains blocked lifecycle", async () => {
+  const moduleRoot = join(repositoryRoot, "modules", "training-blocks");
+  const definition = JSON.parse(await readFile(join(moduleRoot, "appbasis.module.json"), "utf8"));
+  const contract = JSON.parse(await readFile(join(moduleRoot, "appbasis.production.json"), "utf8"));
+  assert.equal(definition.database.schemaVersion, 4);
+  assert.equal(contract.status, "blocked");
+  assert.equal(contract.requirements.lifecycle, "blocked");
+  assert.deepEqual(contract.evidence.lifecycle, []);
+  assert.deepEqual(
+    contract.evidence.database.filter(entry => entry.path.endsWith(".sql")).map(entry => entry.path),
+    definition.database.migrations,
   );
+  for (const entry of Object.values(contract.evidence).flat()) {
+    const bytes = await readFile(join(repositoryRoot, entry.path));
+    assert.equal(gitBlobSha(bytes), entry.gitBlobSha, entry.path);
+  }
 });
 
 test("ULC athlete production pins verify reviewed source, tests and tenant-bound lifecycle", async () => {
