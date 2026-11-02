@@ -125,9 +125,15 @@ export interface TrainingBlockFavoriteRetentionCandidate {
   readonly marker: TrainingBlockFavoriteDeletionMarker;
   readonly hasResidualFavorites: boolean;
 }
+export interface TrainingBlockFavoriteRetentionCursor {
+  readonly purgeAfter: Date;
+  readonly organizationId: string;
+  readonly principalId: string;
+}
 export interface TrainingBlockFavoriteRetentionInspection {
   readonly candidates: readonly TrainingBlockFavoriteRetentionCandidate[];
   readonly hasMore: boolean;
+  readonly nextCursor: TrainingBlockFavoriteRetentionCursor | null;
 }
 
 export interface TrainingBlockRepository {
