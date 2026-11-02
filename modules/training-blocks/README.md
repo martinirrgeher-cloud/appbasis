@@ -60,10 +60,12 @@ opaque source references or free-text notes.
 Authorized lifecycle callers should use
 `TrainingBlockFavoriteDeletionService.deletePrincipalFavorites(org, principal)`.
 It atomically creates a 35-day deletion marker and deletes the principal's
-favorites. The schema-v5 database trigger serializes writes with the same
-transaction-scoped principal lock and blocks inserts after a marker exists.
-The existing PostgreSQL favorite writer remains source-compatible with the
-previous schema until the additive migration is explicitly applied. In-memory
+favorites. The PostgreSQL repository first checks whether the additive v5 tombstone
+table exists. Before migration, favorite writes continue to work as before
+and a deletion marker cannot be installed. After migration, writes obtain
+the same transaction-scoped principal lock as the deletion operation,
+rejecting new favorites for a marked principal. Deployment must finish the
+schema upgrade before enabling privacy deletion callers. In-memory
 behavior is equivalent for unit testing. Repeated deletion is idempotent.
 
 **Important:** markers intentionally remain effective until an explicitly

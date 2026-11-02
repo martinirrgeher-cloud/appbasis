@@ -347,31 +347,60 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
     blockId: string,
     favorite: boolean,
   ): Promise<void> {
-    if (favorite) {
-      await this.#client.unsafe(
-        `INSERT INTO appbasis_training_block_favorite (
-           organization_id, principal_id, block_id
-         )
-         SELECT $1, $2, $3
-         WHERE EXISTS (
-           SELECT 1
-           FROM appbasis_training_block
-           WHERE organization_id = $1
-             AND id = $3
-         )
-         ON CONFLICT (organization_id, principal_id, block_id)
-         DO NOTHING`,
+    await this.#client.begin(async (transaction) => {
+      // Support existing preview databases until the additive v5 migration is
+      // explicitly applied. A deletion marker cannot be written before it.
+      const schema = await transaction.unsafe(
+        "SELECT to_regclass('public.appbasis_training_block_favorite_deletion') AS marker_table",
+      );
+      if (
+        schema.length !== 1 ||
+        schema[0] === undefined ||
+        !Object.hasOwn(schema[0], "marker_table") ||
+        (schema[0].marker_table !== null && typeof schema[0].marker_table !== "string")
+      ) {
+        throw new Error("Training block favorite deletion schema state is invalid.");
+      }
+      const deletionSchemaInstalled = schema[0].marker_table !== null;
+      if (deletionSchemaInstalled) {
+        await lockFavoritePrincipal(transaction, organizationId, principalId);
+      }
+      if (favorite) {
+        if (deletionSchemaInstalled) {
+          const markers = await transaction.unsafe(
+            `SELECT 1 AS present
+             FROM appbasis_training_block_favorite_deletion
+             WHERE organization_id = $1 AND principal_id = $2`,
+            [organizationId, principalId],
+          );
+          if (markers.length > 1) {
+            throw new Error("Training block favorite deletion marker is invalid.");
+          }
+          if (markers.length !== 0) {
+            throw new Error("Training block favorite is blocked by a subject deletion marker.");
+          }
+        }
+        await transaction.unsafe(
+          `INSERT INTO appbasis_training_block_favorite (
+             organization_id, principal_id, block_id
+           )
+           SELECT $1, $2, $3
+           WHERE EXISTS (
+             SELECT 1 FROM appbasis_training_block
+             WHERE organization_id = $1 AND id = $3
+           )
+           ON CONFLICT (organization_id, principal_id, block_id)
+           DO NOTHING`,
+          [organizationId, principalId, blockId],
+        );
+        return;
+      }
+      await transaction.unsafe(
+        `DELETE FROM appbasis_training_block_favorite
+         WHERE organization_id = $1 AND principal_id = $2 AND block_id = $3`,
         [organizationId, principalId, blockId],
       );
-      return;
-    }
-    await this.#client.unsafe(
-      `DELETE FROM appbasis_training_block_favorite
-       WHERE organization_id = $1
-         AND principal_id = $2
-         AND block_id = $3`,
-      [organizationId, principalId, blockId],
-    );
+    });
   }
 
   async deletePrincipalFavorites(
