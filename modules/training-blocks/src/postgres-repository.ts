@@ -12,6 +12,7 @@ import {
   type TrainingBlockRevisionAppendResult,
   type TrainingBlockSnapshot,
   type TrainingBlockUsageEvent,
+  type TrainingBlockUsagePrivacyInspection,
   type TrainingBlockUsageSummary,
 } from "./repository";
 import { normalizeTrainingBlockIdentifier } from "./training-block";
@@ -624,6 +625,75 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
     });
   }
 
+  /**
+   * Review-only, organization-bound lifecycle evidence. No event ids,
+   * source refs or notes leave this boundary, and no owner linkage is inferred.
+   * An expired or referenced event is never deleted by this method.
+   */
+  async inspectUsagePrivacy(
+    organizationId: string,
+  ): Promise<TrainingBlockUsagePrivacyInspection> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId, "Organization id",
+    );
+    return this.#client.begin(async (transaction) => {
+      await transaction.unsafe(
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+      );
+      const rows = await transaction.unsafe(
+        `SELECT
+           count(*)::int AS total_events,
+           (count(*) FILTER (WHERE source_kind = 'training_plan'))::int
+              AS training_plan_events,
+           (count(*) FILTER (
+              WHERE source_kind = 'training_plan' AND source_ref IS NULL
+           ))::int AS training_plan_events_without_reference,
+           (count(*) FILTER (WHERE source_kind <> 'training_plan'))::int
+              AS other_source_events,
+           (count(*) FILTER (WHERE note IS NOT NULL))::int
+              AS events_with_free_text_note,
+           (count(*) FILTER (WHERE source_ref IS NOT NULL))::int
+              AS events_with_source_reference
+         FROM appbasis_training_block_usage
+         WHERE organization_id = $1`,
+        [organization],
+      );
+      if (rows.length !== 1) {
+        throw new Error("Training block usage privacy inspection returned invalid rows.");
+      }
+      const row = rows[0]!;
+      const totalEvents = requiredNonNegativeCount(row.total_events);
+      const trainingPlanEvents = requiredNonNegativeCount(row.training_plan_events);
+      const trainingPlanEventsWithoutReference = requiredNonNegativeCount(
+        row.training_plan_events_without_reference,
+      );
+      const otherSourceEvents = requiredNonNegativeCount(row.other_source_events);
+      const eventsWithFreeTextNote = requiredNonNegativeCount(
+        row.events_with_free_text_note,
+      );
+      const eventsWithSourceReference = requiredNonNegativeCount(
+        row.events_with_source_reference,
+      );
+      if (
+        trainingPlanEvents + otherSourceEvents !== totalEvents ||
+        trainingPlanEventsWithoutReference > trainingPlanEvents ||
+        eventsWithFreeTextNote > totalEvents ||
+        eventsWithSourceReference > totalEvents
+      ) {
+        throw new Error("Training block usage privacy inspection is inconsistent.");
+      }
+      return Object.freeze({
+        organizationId: organization,
+        totalEvents,
+        trainingPlanEvents,
+        trainingPlanEventsWithoutReference,
+        otherSourceEvents,
+        eventsWithFreeTextNote,
+        eventsWithSourceReference,
+      });
+    });
+  }
+
   async listUsageSummaries(
     organizationId: string,
   ): Promise<readonly TrainingBlockUsageSummary[]> {
@@ -1228,6 +1298,13 @@ function requiredFavoriteDeletionMarker(
     throw new Error("Training block deletion marker retention is invalid.");
   }
   return Object.freeze({ organizationId, principalId, completedAt, purgeAfter });
+}
+
+function requiredNonNegativeCount(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error("Training block usage privacy count is invalid.");
+  }
+  return value;
 }
 
 async function lockFavoritePrincipal(

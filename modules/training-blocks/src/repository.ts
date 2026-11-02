@@ -44,6 +44,25 @@ export interface TrainingBlockUsageEvent {
   readonly note: string | null;
 }
 
+/**
+ * Privileged, read-only inventory. These counts disclose neither free-text
+ * notes nor source references and are NOT proof of subject ownership.
+ *
+ * Training-plan refs are currently planId:itemId. Neither segment proves
+ * which person owns the event; other source kinds are likewise unclassified.
+ * A separate app-owned attribution and restore/deletion policy is required
+ * before any event can be purged or anonymized.
+ */
+export interface TrainingBlockUsagePrivacyInspection {
+  readonly organizationId: string;
+  readonly totalEvents: number;
+  readonly trainingPlanEvents: number;
+  readonly trainingPlanEventsWithoutReference: number;
+  readonly otherSourceEvents: number;
+  readonly eventsWithFreeTextNote: number;
+  readonly eventsWithSourceReference: number;
+}
+
 export interface TrainingBlockUsageSummary {
   readonly blockId: string;
   readonly usageCount: number;

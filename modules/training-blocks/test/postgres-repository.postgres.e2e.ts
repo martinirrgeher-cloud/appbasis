@@ -87,6 +87,80 @@ afterAll(async () => {
 });
 
 describe("training-blocks PostgreSQL repository", () => {
+  it("reports only organization-scoped usage privacy counts without exposing personal notes", async () => {
+    const service = serviceFor(requiredConnection(), [
+      "block-privacy-a", "block-privacy-b",
+      "usage-privacy-a1", "usage-privacy-a2",
+      "usage-privacy-a3", "usage-privacy-b1",
+    ]);
+    await service.create("org-privacy-a", { name: "A" });
+    await service.create("org-privacy-b", { name: "B" });
+    await service.recordUsage("org-privacy-a", "block-privacy-a", {
+      occurredAt: "2026-10-10T09:00:00.000Z",
+      sourceKind: "training_plan",
+      sourceRef: "plan-1:item-1",
+      note: "Private athlete name in free-text note",
+    });
+    await service.recordUsage("org-privacy-a", "block-privacy-a", {
+      occurredAt: "2026-10-10T10:00:00.000Z",
+      sourceKind: "training_plan",
+    });
+    await service.recordUsage("org-privacy-a", "block-privacy-a", {
+      occurredAt: "2026-10-10T11:00:00.000Z",
+      sourceKind: "manual",
+      sourceRef: "private-manual-source",
+      note: "Private trainer comment",
+    });
+    await service.recordUsage("org-privacy-b", "block-privacy-b", {
+      occurredAt: "2026-10-10T12:00:00.000Z",
+      sourceKind: "training_plan",
+      sourceRef: "plan-secret:item-secret",
+      note: "Private cross-organization name",
+    });
+
+    const repository = new PostgresTrainingBlockRepository(
+      postgresClient(requiredConnection().client),
+    );
+    const audit = await repository.inspectUsagePrivacy("org-privacy-a");
+    expect(audit).toEqual({
+      organizationId: "org-privacy-a",
+      totalEvents: 3,
+      trainingPlanEvents: 2,
+      trainingPlanEventsWithoutReference: 1,
+      otherSourceEvents: 1,
+      eventsWithFreeTextNote: 2,
+      eventsWithSourceReference: 2,
+    });
+    expect(JSON.stringify(audit)).not.toMatch(/Private|plan-1|manual-source|secret/);
+    await expect(repository.inspectUsagePrivacy("org-privacy-b"))
+      .resolves.toEqual({
+        organizationId: "org-privacy-b",
+        totalEvents: 1,
+        trainingPlanEvents: 1,
+        trainingPlanEventsWithoutReference: 0,
+        otherSourceEvents: 0,
+        eventsWithFreeTextNote: 1,
+        eventsWithSourceReference: 1,
+      });
+    await expect(repository.inspectUsagePrivacy("org-privacy-empty"))
+      .resolves.toEqual({
+        organizationId: "org-privacy-empty",
+        totalEvents: 0,
+        trainingPlanEvents: 0,
+        trainingPlanEventsWithoutReference: 0,
+        otherSourceEvents: 0,
+        eventsWithFreeTextNote: 0,
+        eventsWithSourceReference: 0,
+      });
+    await expect(repository.inspectUsagePrivacy(" org-privacy-a"))
+      .rejects.toThrow();
+    // No reads performed through this privileged report may change the source.
+    await expect(service.listUsage("org-privacy-a", "block-privacy-a"))
+      .resolves.toHaveLength(3);
+    await expect(service.listUsage("org-privacy-b", "block-privacy-b"))
+      .resolves.toHaveLength(1);
+  });
+
   it("inspects expired tombstones read-only and identifies residual favorites without purging", async () => {
     const connection = requiredConnection();
     const repository = new PostgresTrainingBlockRepository(postgresClient(connection.client));
