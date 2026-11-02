@@ -5,9 +5,51 @@ import {
   TrainingBlockLifecycleService,
   TrainingBlockFavoriteDeletionService,
   TrainingBlockService,
+  PostgresTrainingBlockRepository,
 } from "../src/index";
 
 describe("training-block personal preference lifecycle primitive", () => {
+  it("keeps PostgreSQL favorite writes functional before the additive deletion schema exists", async () => {
+    const queries: string[] = [];
+    const repository = new PostgresTrainingBlockRepository({
+      async unsafe() { throw new Error("Unexpected unscoped SQL"); },
+      async begin(callback) {
+        return callback({
+          async unsafe(sql) {
+            queries.push(sql);
+            if (sql.includes("to_regclass")) return [{ marker_table: null }];
+            if (sql.includes("INSERT INTO appbasis_training_block_favorite")) return [];
+            throw new Error("Unexpected schema-v4 SQL: " + sql);
+          },
+        });
+      },
+    });
+    await expect(repository.setFavorite("org-a", "principal-a", "block-a", true))
+      .resolves.toBeUndefined();
+    expect(queries).toHaveLength(2);
+    expect(queries.some(sql => sql.includes("pg_advisory_xact_lock"))).toBe(false);
+    expect(queries.some(sql => sql.includes("FROM appbasis_training_block_favorite_deletion"))).toBe(false);
+  });
+
+  it("rejects ambiguous PostgreSQL deletion-schema state without attempting a favorite insert", async () => {
+    const queries: string[] = [];
+    const repository = new PostgresTrainingBlockRepository({
+      async unsafe() { throw new Error("Unexpected unscoped SQL"); },
+      async begin(callback) {
+        return callback({
+          async unsafe(sql) {
+            queries.push(sql);
+            return [];
+          },
+        });
+      },
+    });
+    await expect(repository.setFavorite("org-a", "principal-a", "block-a", true))
+      .rejects.toThrow(/schema state is invalid/);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]).toContain("to_regclass");
+  });
+
 
   it("atomically marks personal favorites deleted and rejects future favorites for the subject only", async () => {
     const repo = new InMemoryTrainingBlockRepository();
