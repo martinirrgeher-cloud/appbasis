@@ -873,4 +873,61 @@ describe('PostgresAthleteMasterdataRepository', () => {
     ).rejects.toThrow(/invalid shape/);
   });
 
+  it('reads only one exact, unexpired athlete deletion marker and refuses a live athlete', async () => {
+    const now = new Date('2026-11-03T05:00:00.000Z');
+    const completedAt = new Date('2026-11-01T05:00:00.000Z');
+    const purgeAfter = new Date('2026-12-06T05:00:00.000Z');
+    const calls: Array<{ query: string; parameters: readonly unknown[] | undefined }> = [];
+    let rows: readonly Record<string, unknown>[] = [{
+      entity_type: 'athlete',
+      entity_id: 'athlete-1',
+      organization_id: 'verein-1',
+      completed_at: completedAt,
+      purge_after: purgeAfter,
+      completed_not_future: true,
+      retention_window_valid: true,
+      still_live: false,
+    }];
+    const repository = new PostgresAthleteMasterdataRepository({
+      async unsafe(query, parameters) {
+        calls.push({ query, parameters });
+        return rows;
+      },
+    });
+    await expect(repository.findCurrentAthleteDeletionMarker(
+      'verein-1', 'athlete-1', now,
+    )).resolves.toEqual({
+      entityType: 'athlete', entityId: 'athlete-1', organizationId: 'verein-1',
+      completedAt, purgeAfter,
+    });
+    expect(calls[0]?.query).toContain("marker.entity_type = 'athlete'");
+    expect(calls[0]?.query).toContain('marker.organization_id = $1');
+    expect(calls[0]?.query).toContain('live.id = $2');
+    expect(calls[0]?.query).toContain('marker.purge_after >= $3');
+    expect(calls[0]?.parameters).toEqual([
+      'verein-1', 'athlete-1', now.toISOString(),
+    ]);
+    rows = [];
+    await expect(repository.findCurrentAthleteDeletionMarker(
+      'verein-1', 'athlete-1', now,
+    )).resolves.toBeNull();
+    rows = [{
+      entity_type: 'athlete',
+      entity_id: 'athlete-1',
+      organization_id: 'verein-1',
+      completed_at: completedAt,
+      purge_after: purgeAfter,
+      completed_not_future: true,
+      retention_window_valid: true,
+      still_live: true,
+    }];
+    await expect(repository.findCurrentAthleteDeletionMarker(
+      'verein-1', 'athlete-1', now,
+    )).rejects.toThrow(/live data/);
+    rows = [{ ...rows[0], still_live: false, retention_window_valid: false }];
+    await expect(repository.findCurrentAthleteDeletionMarker(
+      'verein-1', 'athlete-1', now,
+    )).rejects.toThrow(/invalid shape/);
+  });
+
 });
