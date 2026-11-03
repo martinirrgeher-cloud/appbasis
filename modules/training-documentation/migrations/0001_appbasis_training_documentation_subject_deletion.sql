@@ -42,6 +42,15 @@ $guard$;
 CREATE FUNCTION appbasis_training_documentation_guard_root_insert()
 RETURNS trigger LANGUAGE plpgsql AS $root$
 BEGIN
+  -- Ownership is immutable; a direct SQL reassignment must not evade
+  -- completed-deletion handling or the original provenance contract.
+  IF TG_OP = 'UPDATE' AND (
+    NEW.organization_id IS DISTINCT FROM OLD.organization_id OR
+    NEW.subject_id IS DISTINCT FROM OLD.subject_id
+  ) THEN
+    RAISE EXCEPTION 'Training documentation root ownership is immutable.'
+      USING ERRCODE = '23514';
+  END IF;
   PERFORM appbasis_training_documentation_guard_subject(
     NEW.organization_id, NEW.subject_id
   );
@@ -55,6 +64,13 @@ DECLARE
   owner_subject text;
   scoped_subject text;
 BEGIN
+  IF TG_OP = 'UPDATE' AND (
+    NEW.organization_id IS DISTINCT FROM OLD.organization_id OR
+    NEW.documentation_id IS DISTINCT FROM OLD.documentation_id
+  ) THEN
+    RAISE EXCEPTION 'Training documentation revision ownership is immutable.'
+      USING ERRCODE = '23514';
+  END IF;
   SELECT subject_id INTO owner_subject
   FROM appbasis_training_documentation
   WHERE organization_id = NEW.organization_id
@@ -95,12 +111,13 @@ END;
 $revision$;
 
 CREATE TRIGGER appbasis_training_documentation_guard_root
-  BEFORE INSERT OR UPDATE OF subject_id ON appbasis_training_documentation
+  BEFORE INSERT OR UPDATE OF subject_id, organization_id
+  ON appbasis_training_documentation
   FOR EACH ROW EXECUTE FUNCTION
     appbasis_training_documentation_guard_root_insert();
 
 CREATE TRIGGER appbasis_training_documentation_guard_revision
-  BEFORE INSERT OR UPDATE OF attendance_json
+  BEFORE INSERT OR UPDATE OF attendance_json, organization_id, documentation_id
   ON appbasis_training_documentation_revision
   FOR EACH ROW EXECUTE FUNCTION
     appbasis_training_documentation_guard_revision_write();
