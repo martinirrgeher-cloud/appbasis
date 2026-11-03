@@ -80,6 +80,18 @@ export interface TrainingPlanDeletionReplayResult
   readonly markerInserted: boolean;
 }
 
+/**
+ * Privileged, read-only owner inspection. Absence of a marker is NOT proof
+ * that a deletion never occurred, particularly after marker purging.
+ * Residual count covers current plan roots for the exact subject and tenant.
+ */
+export interface TrainingPlanSubjectDeletionInspection {
+  readonly organizationId: string;
+  readonly subjectId: string;
+  readonly marker: TrainingPlanSubjectDeletionMarker | null;
+  readonly remainingPlans: number;
+}
+
 export interface TrainingPlanLifecycleRepository {
   deleteSubjectData(
     organizationId: string,
