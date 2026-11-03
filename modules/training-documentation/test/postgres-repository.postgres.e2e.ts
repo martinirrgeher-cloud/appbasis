@@ -218,6 +218,20 @@ describe("training-documentation PostgreSQL repository", () => {
         { participantId: "athlete-private", displayName: "Private", status: "present" },
       ])],
     )).rejects.toThrow(/deletion marker/i);
+    // Direct SQL cannot reassign root or revision ownership to bypass the
+    // subject-scoped marker, even when ordinary service API omits that path.
+    await expect(requiredConnection().client.unsafe(
+      `UPDATE appbasis_training_documentation
+         SET subject_id = $3
+         WHERE organization_id = $1 AND id = $2`,
+      ["org-direct", saved.id, "athlete-private"],
+    )).rejects.toThrow(/ownership is immutable/i);
+    await expect(requiredConnection().client.unsafe(
+      `UPDATE appbasis_training_documentation_revision
+         SET organization_id = $3
+         WHERE organization_id = $1 AND documentation_id = $2`,
+      ["org-direct", saved.id, "other-org"],
+    )).rejects.toThrow(/ownership is immutable/i);
     await expect(service.listRevisions("org-direct", saved.id))
       .resolves.toHaveLength(1);
     await expect(repo.removeSubjectDataAfterVerifiedDeletion(
