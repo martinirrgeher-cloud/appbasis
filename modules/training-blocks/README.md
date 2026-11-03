@@ -198,3 +198,12 @@ Schema v6 must already exist on both recovery endpoints. Backup retention,
 restore promotion, marker purge and cross-owner subject-deletion integration
 remain production blockers. Neither the app nor any automatic job calls
 these recovery primitives.
+
+## Privileged subject usage deletion preflight (read-only)
+
+`PostgresTrainingBlockRepository.inspectSubjectUsageDeletion(org, subject)`
+reads the exact owner tombstone and number of surviving, explicitly
+attributed usage events in a repeatable-read, read-only transaction.
+Unattributed legacy events cannot be assigned to a person using source
+references or note text and are not counted as proof of successful erasure.
+This call is not a complete privacy-lifecycle check or public HTTP API.
