@@ -1,6 +1,12 @@
 import type { AthleteMasterdataDeletionMarker, PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
 import type { PostgresTrainingPlanRepository, TrainingPlanLifecycleRepository } from "@appbasis/training-plans";
 import type {
+  TrainingDocumentationSubjectPrivacyInspectionReader,
+} from "@appbasis/training-documentation";
+import type {
+  UlcTrainingSubjectPrivacyInspector,
+} from "./training-subject-privacy-postgres";
+import type {
   PostgresTrainingBlockRepository,
   TrainingBlockSubjectUsageLifecycleRepository,
 } from "@appbasis/training-blocks";
@@ -415,6 +421,120 @@ export async function inspectUlcLinzAthleteSubjectDeletionFollowUp(
     remainingPlans: plans.remainingPlans,
     remainingAttributedUsageEvents: usage.remainingAttributedUsageEvents,
   });
+}
+
+/**
+ * Read-only ULC subject privacy exposure across documentation and
+ * attendance/registration owners, including references in historical
+ * documentation of OTHER athletes. Canonical organization-admin only.
+ *
+ * This is an inventory, not evidence that deleting roots would erase
+ * unstructured names, source-plan references or actor identity history.
+ * No marker is required to examine an active or deactivated subject.
+ */
+export interface UlcLinzAthleteTrainingPrivacyInspectionDependencies {
+  readonly permissions: PermissionStore;
+  readonly scopes: Pick<
+    PostgresUlcLinzScopePersistence,
+    "resolveMembership" | "hasRelation"
+  >;
+  readonly documentation: TrainingDocumentationSubjectPrivacyInspectionReader;
+  readonly training: UlcTrainingSubjectPrivacyInspector;
+}
+
+export interface UlcLinzAthleteTrainingPrivacyInspection {
+  readonly organizationId: string;
+  readonly subjectId: string;
+  readonly risk: "structured-subject-rows-present" | "no-structured-subject-rows-found";
+  readonly documentation: {
+    readonly ownedDocuments: number;
+    readonly ownedRevisions: number;
+    readonly otherSubjectDocumentsWithParticipant: number;
+    readonly otherSubjectRevisionsWithParticipant: number;
+  };
+  readonly training: {
+    readonly attendanceRows: number;
+    readonly registrationRows: number;
+    readonly registrationHistoryRows: number;
+  };
+}
+
+export async function inspectUlcLinzAthleteTrainingPrivacyExposure(
+  current: UlcLinzCurrentIdentity,
+  dependencies: UlcLinzAthleteTrainingPrivacyInspectionDependencies,
+  request: UlcLinzAthleteSubjectDeletionRequest,
+): Promise<UlcLinzAthleteTrainingPrivacyInspection> {
+  if (
+    !dependencies ||
+    typeof dependencies.permissions?.findPrincipal !== "function" ||
+    typeof dependencies.scopes?.hasRelation !== "function" ||
+    typeof dependencies.documentation?.inspectSubjectPrivacy !== "function" ||
+    typeof dependencies.training?.inspectSubjectPrivacy !== "function"
+  ) blocked();
+  const organizationId = requiredIdentifier(request.organizationId);
+  const subjectId = requiredIdentifier(request.subjectId);
+  const { actorIdentityId } = await assertCanonicalLifecycleAdmin(
+    current, dependencies.permissions, dependencies.scopes, organizationId,
+  );
+  if (await dependencies.scopes.hasRelation({
+    identityId: actorIdentityId,
+    organizationId,
+    subjectId,
+    relationType: "self",
+  })) blocked();
+
+  const [documentation, training] = await Promise.all([
+    dependencies.documentation.inspectSubjectPrivacy(organizationId, subjectId),
+    dependencies.training.inspectSubjectPrivacy(organizationId, subjectId),
+  ]);
+
+  if (
+    !documentation || !training ||
+    documentation.organizationId !== organizationId ||
+    documentation.subjectId !== subjectId ||
+    training.organizationId !== organizationId ||
+    training.subjectId !== subjectId
+  ) blocked();
+  const ownedDocuments = requiredPrivacyCount(documentation.ownedDocuments);
+  const ownedRevisions = requiredPrivacyCount(documentation.ownedRevisions);
+  const otherSubjectDocumentsWithParticipant =
+    requiredPrivacyCount(documentation.otherSubjectDocumentsWithParticipant);
+  const otherSubjectRevisionsWithParticipant =
+    requiredPrivacyCount(documentation.otherSubjectRevisionsWithParticipant);
+  const attendanceRows = requiredPrivacyCount(training.attendanceRows);
+  const registrationRows = requiredPrivacyCount(training.registrationRows);
+  const registrationHistoryRows =
+    requiredPrivacyCount(training.registrationHistoryRows);
+  if (
+    ownedRevisions < ownedDocuments ||
+    otherSubjectRevisionsWithParticipant <
+      otherSubjectDocumentsWithParticipant
+  ) blocked();
+  const values = [
+    ownedDocuments, ownedRevisions,
+    otherSubjectDocumentsWithParticipant,
+    otherSubjectRevisionsWithParticipant,
+    attendanceRows, registrationRows, registrationHistoryRows,
+  ];
+  return Object.freeze({
+    organizationId, subjectId,
+    risk: values.some((value) => value > 0)
+      ? "structured-subject-rows-present" as const
+      : "no-structured-subject-rows-found" as const,
+    documentation: Object.freeze({
+      ownedDocuments, ownedRevisions,
+      otherSubjectDocumentsWithParticipant,
+      otherSubjectRevisionsWithParticipant,
+    }),
+    training: Object.freeze({
+      attendanceRows, registrationRows, registrationHistoryRows,
+    }),
+  });
+}
+
+function requiredPrivacyCount(value: unknown): number {
+  if (!validDeletionCount(value)) blocked();
+  return value;
 }
 
 /** Existing canonical M5-C flow stays behaviorally unchanged. */
