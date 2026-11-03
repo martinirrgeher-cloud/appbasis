@@ -1,6 +1,7 @@
 import type { AthleteMasterdataDeletionMarker, PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
-import type { TrainingPlanLifecycleRepository } from "@appbasis/training-plans";
+import type { PostgresTrainingPlanRepository, TrainingPlanLifecycleRepository } from "@appbasis/training-plans";
 import type {
+  PostgresTrainingBlockRepository,
   TrainingBlockSubjectUsageLifecycleRepository,
 } from "@appbasis/training-blocks";
 import { assertIdentityActionAllowed } from "@appbasis/identity/access";
@@ -300,6 +301,120 @@ function validateCanonicalAthleteDeletionMarker(
 
 function validDeletionCount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+/**
+ * Privileged read-only diagnostic. A missing athlete marker is UNVERIFIABLE,
+ * not evidence of eligibility or of successful erasure after expiry/purge.
+ * Owner markers alone are not a cross-owner atomic privacy completion proof.
+ */
+export interface UlcLinzAthleteSubjectDeletionPreflightDependencies {
+  readonly permissions: PermissionStore;
+  readonly scopes: Pick<
+    PostgresUlcLinzScopePersistence,
+    "resolveMembership" | "hasRelation"
+  >;
+  readonly athletes: Pick<
+    PostgresAthleteMasterdataRepository, "findCurrentAthleteDeletionMarker"
+  >;
+  readonly plans: Pick<PostgresTrainingPlanRepository, "inspectSubjectDeletion">;
+  readonly usage: Pick<PostgresTrainingBlockRepository, "inspectSubjectUsageDeletion">;
+  readonly now: () => Date;
+}
+
+export type UlcLinzAthleteSubjectDeletionPreflightStatus =
+  | "source-unverifiable"
+  | "follow-up-pending"
+  | "owner-marker-conflict"
+  | "owner-markers-match";
+
+export interface UlcLinzAthleteSubjectDeletionPreflight {
+  readonly organizationId: string;
+  readonly subjectId: string;
+  readonly status: UlcLinzAthleteSubjectDeletionPreflightStatus;
+  readonly completedAt: Date | null;
+  readonly planMarkerPresent: boolean | null;
+  readonly usageMarkerPresent: boolean | null;
+  readonly remainingPlans: number | null;
+  readonly remainingAttributedUsageEvents: number | null;
+}
+
+export async function inspectUlcLinzAthleteSubjectDeletionFollowUp(
+  current: UlcLinzCurrentIdentity,
+  dependencies: UlcLinzAthleteSubjectDeletionPreflightDependencies,
+  request: UlcLinzAthleteSubjectDeletionRequest,
+): Promise<UlcLinzAthleteSubjectDeletionPreflight> {
+  if (
+    !dependencies ||
+    typeof dependencies.scopes?.hasRelation !== "function" ||
+    typeof dependencies.athletes?.findCurrentAthleteDeletionMarker !== "function" ||
+    typeof dependencies.plans?.inspectSubjectDeletion !== "function" ||
+    typeof dependencies.usage?.inspectSubjectUsageDeletion !== "function" ||
+    typeof dependencies.now !== "function"
+  ) blocked();
+
+  const organizationId = requiredIdentifier(request.organizationId);
+  const subjectId = requiredIdentifier(request.subjectId);
+  const { actorIdentityId } = await assertCanonicalLifecycleAdmin(
+    current, dependencies.permissions, dependencies.scopes, organizationId,
+  );
+  if (await dependencies.scopes.hasRelation({
+    identityId: actorIdentityId, organizationId, subjectId, relationType: "self",
+  })) blocked();
+  const now = dependencies.now();
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) blocked();
+  const marker = await dependencies.athletes.findCurrentAthleteDeletionMarker(
+    organizationId, subjectId, now,
+  );
+  if (marker === null) {
+    // No privileged downstream subject probe without a valid source decision.
+    return Object.freeze({
+      organizationId, subjectId, status: "source-unverifiable" as const,
+      completedAt: null, planMarkerPresent: null, usageMarkerPresent: null,
+      remainingPlans: null, remainingAttributedUsageEvents: null,
+    });
+  }
+  const completedAt = validateCanonicalAthleteDeletionMarker(
+    marker, organizationId, subjectId, now,
+  );
+
+  const [plans, usage] = await Promise.all([
+    dependencies.plans.inspectSubjectDeletion(organizationId, subjectId),
+    dependencies.usage.inspectSubjectUsageDeletion(organizationId, subjectId),
+  ]);
+  if (
+    !plans || !usage ||
+    plans.organizationId !== organizationId || plans.subjectId !== subjectId ||
+    usage.organizationId !== organizationId || usage.subjectId !== subjectId ||
+    !validDeletionCount(plans.remainingPlans) ||
+    !validDeletionCount(usage.remainingAttributedUsageEvents)
+  ) blocked();
+
+  const matching = (candidate: { completedAt: Date; purgeAfter: Date }) =>
+    candidate.completedAt instanceof Date &&
+    Number.isFinite(candidate.completedAt.getTime()) &&
+    candidate.purgeAfter instanceof Date &&
+    Number.isFinite(candidate.purgeAfter.getTime()) &&
+    candidate.completedAt.getTime() === completedAt.getTime() &&
+    candidate.purgeAfter.getTime() === marker.purgeAfter.getTime();
+
+  const conflict =
+    (plans.marker !== null && !matching(plans.marker)) ||
+    (usage.marker !== null && !matching(usage.marker));
+  const pending =
+    plans.marker === null || usage.marker === null ||
+    plans.remainingPlans !== 0 || usage.remainingAttributedUsageEvents !== 0;
+  const status: UlcLinzAthleteSubjectDeletionPreflightStatus =
+    conflict ? "owner-marker-conflict" :
+    pending ? "follow-up-pending" : "owner-markers-match";
+
+  return Object.freeze({
+    organizationId, subjectId, status, completedAt,
+    planMarkerPresent: plans.marker !== null,
+    usageMarkerPresent: usage.marker !== null,
+    remainingPlans: plans.remainingPlans,
+    remainingAttributedUsageEvents: usage.remainingAttributedUsageEvents,
+  });
 }
 
 /** Existing canonical M5-C flow stays behaviorally unchanged. */

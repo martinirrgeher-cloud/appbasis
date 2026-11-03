@@ -17,6 +17,7 @@ import {
   type TrainingBlockVerifiedSubjectUsage,
   type TrainingBlockSubjectUsageDeletionResult,
   type TrainingBlockSubjectUsageDeletionMarker,
+  type TrainingBlockSubjectUsageDeletionInspection,
 } from "./repository";
 import { normalizeTrainingBlockIdentifier } from "./training-block";
 
@@ -880,6 +881,68 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
       return Object.freeze({
         markerInserted: inserted.length === 1,
         deletedUsageEvents: removed.length,
+      });
+    });
+  }
+
+  /**
+   * Read-only per-tenant inspection for a verified athlete deletion follow-up.
+   * Legacy events without proven subject attribution are deliberately excluded.
+   */
+  async inspectSubjectUsageDeletion(
+    organizationId: string,
+    subjectId: string,
+  ): Promise<TrainingBlockSubjectUsageDeletionInspection> {
+    const organization = normalizeTrainingBlockIdentifier(
+      organizationId, "Organization id",
+    );
+    const subject = normalizeTrainingBlockIdentifier(subjectId, "Subject id");
+    return this.#client.begin(async (transaction) => {
+      await transaction.unsafe(
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+      );
+      const markerRows = await transaction.unsafe(
+        `SELECT organization_id, subject_id, completed_at, purge_after
+         FROM appbasis_training_block_usage_subject_deletion
+         WHERE organization_id = $1 AND subject_id = $2`,
+        [organization, subject],
+      );
+      if (markerRows.length > 1) {
+        throw new Error("Training block subject inspection marker is ambiguous.");
+      }
+      const marker = markerRows[0] === undefined
+        ? null
+        : requiredSubjectUsageDeletionMarker({
+          organizationId: markerRows[0].organization_id,
+          subjectId: markerRows[0].subject_id,
+          completedAt: storedFavoriteDeletionDate(markerRows[0].completed_at),
+          purgeAfter: storedFavoriteDeletionDate(markerRows[0].purge_after),
+        });
+      if (
+        marker !== null &&
+        (marker.organizationId !== organization || marker.subjectId !== subject)
+      ) {
+        throw new Error("Training block subject inspection escaped scope.");
+      }
+      const counts = await transaction.unsafe(
+        `SELECT count(*)::int AS remaining_usage_events
+         FROM appbasis_training_block_usage_subject AS owner
+         INNER JOIN appbasis_training_block_usage AS usage
+           ON usage.organization_id = owner.organization_id
+          AND usage.id = owner.usage_id
+         WHERE owner.organization_id = $1 AND owner.subject_id = $2`,
+        [organization, subject],
+      );
+      const total = counts[0]?.remaining_usage_events;
+      if (
+        counts.length !== 1 || !Number.isSafeInteger(total) ||
+        (total as number) < 0
+      ) {
+        throw new Error("Training block subject inspection count is invalid.");
+      }
+      return Object.freeze({
+        organizationId: organization, subjectId: subject, marker,
+        remainingAttributedUsageEvents: total as number,
       });
     });
   }
