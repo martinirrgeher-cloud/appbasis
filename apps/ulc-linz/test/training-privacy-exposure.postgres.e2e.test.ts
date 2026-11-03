@@ -157,7 +157,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         [ORG, "session-main", SUBJECT],
         [ORG, "session-main", "athlete-other"],
         [OTHER_ORG, "session-other", SUBJECT],
-      ]) {
+      ] as const) {
         await client.unsafe(
           `INSERT INTO ulc_linz_training_attendance
              (organization_id, session_id, athlete_id, status)
