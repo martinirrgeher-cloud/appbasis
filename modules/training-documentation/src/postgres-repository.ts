@@ -9,6 +9,8 @@ import type {
   TrainingDocumentationRevision,
   TrainingDocumentationRevisionAppendResult,
   TrainingDocumentationSnapshot,
+  TrainingDocumentationSubjectDeletionRepository,
+  TrainingDocumentationSubjectDeletionResult,
   TrainingDocumentationSubjectPrivacyInspection,
   TrainingDocumentationSubjectPrivacyInspectionReader,
 } from "./repository";
@@ -36,7 +38,8 @@ export interface TrainingDocumentationPostgresClient
 }
 
 export class PostgresTrainingDocumentationRepository
-  implements TrainingDocumentationRepository, TrainingDocumentationSubjectPrivacyInspectionReader
+  implements TrainingDocumentationRepository, TrainingDocumentationSubjectPrivacyInspectionReader,
+    TrainingDocumentationSubjectDeletionRepository
 {
   readonly #client: TrainingDocumentationPostgresClient;
 
@@ -125,6 +128,179 @@ export class PostgresTrainingDocumentationRepository
       ownedRevisions,
       otherSubjectDocumentsWithParticipant,
       otherSubjectRevisionsWithParticipant,
+    });
+  }
+
+  /**
+   * Privileged module-owned erasure, intentionally NOT in the normal public
+   * documentation service. The app must independently verify the canonical
+   * completed athletes deletion before invoking this method.
+   *
+   * With v2 SQL triggers, the subject advisory lock serializes erasure with
+   * root inserts and all revision inserts/attendance updates, so stale editor
+   * snapshots cannot resurrect the removed participant reference.
+   *
+   * It is an explicit privacy exception to otherwise immutable revision JSON.
+   * Other athletes' exercises/notes and ordering remain unchanged.
+   */
+  async removeSubjectDataAfterVerifiedDeletion(
+    organizationId: string,
+    subjectId: string,
+    completedAt: Date,
+  ): Promise<TrainingDocumentationSubjectDeletionResult> {
+    const organization = normalizeTrainingDocumentationIdentifier(
+      organizationId, "Documentation organization",
+    );
+    const subject = normalizeTrainingDocumentationIdentifier(
+      subjectId, "Documentation subject",
+    );
+    if (!(completedAt instanceof Date) || !Number.isFinite(completedAt.getTime())) {
+      throw new Error("Training documentation deletion timestamp is invalid.");
+    }
+    const completed = new Date(completedAt.getTime());
+    const now = Date.now();
+    if (
+      completed.getTime() > now ||
+      now - completed.getTime() > 35 * 24 * 60 * 60 * 1000
+    ) {
+      throw new Error("Training documentation deletion source is expired or in the future.");
+    }
+    return this.#client.begin(async (transaction) => {
+      await transaction.unsafe(
+        `SELECT pg_advisory_xact_lock(
+           hashtextextended($1::text || chr(31) || $2::text, 0)
+         ) AS acquired`,
+        [organization, subject],
+      );
+      const inserted = await transaction.unsafe(
+        `INSERT INTO appbasis_training_documentation_subject_deletion (
+           organization_id, subject_id, completed_at, purge_after
+         ) VALUES ($1, $2, $3::timestamptz, $3::timestamptz + interval '840 hours')
+         ON CONFLICT (organization_id, subject_id) DO NOTHING
+         RETURNING organization_id`,
+        [organization, subject, completed.toISOString()],
+      );
+      if (inserted.length > 1) {
+        throw new Error("Training documentation deletion marker insert is ambiguous.");
+      }
+      const markers = await transaction.unsafe(
+        `SELECT completed_at, purge_after
+         FROM appbasis_training_documentation_subject_deletion
+         WHERE organization_id = $1 AND subject_id = $2`,
+        [organization, subject],
+      );
+      if (markers.length !== 1 || markers[0] === undefined) {
+        throw new Error("Training documentation deletion marker is missing.");
+      }
+      const row = markers[0];
+      const storedCompleted = new Date(row.completed_at as string);
+      const storedPurge = new Date(row.purge_after as string);
+      if (
+        !Number.isFinite(storedCompleted.getTime()) ||
+        !Number.isFinite(storedPurge.getTime()) ||
+        storedCompleted.getTime() !== completed.getTime() ||
+        storedPurge.getTime() - storedCompleted.getTime() !==
+          35 * 24 * 60 * 60 * 1000
+      ) {
+        throw new Error("Training documentation deletion marker conflicts.");
+      }
+
+      // This deletion order respects the v1 circular current-revision FK:
+      // root -> revision is DEFERRABLE, revision -> root is RESTRICT.
+      const deletedRevisionRows = await transaction.unsafe(
+        `WITH deleted AS (
+           DELETE FROM appbasis_training_documentation_revision AS revision
+           USING appbasis_training_documentation AS document
+           WHERE revision.organization_id = document.organization_id
+             AND revision.documentation_id = document.id
+             AND document.organization_id = $1
+             AND document.subject_id = $2
+           RETURNING revision.revision
+         ) SELECT count(*)::int AS count FROM deleted`,
+        [organization, subject],
+      );
+      const deletedRootRows = await transaction.unsafe(
+        `WITH deleted AS (
+           DELETE FROM appbasis_training_documentation
+           WHERE organization_id = $1 AND subject_id = $2
+           RETURNING id
+         ) SELECT count(*)::int AS count FROM deleted`,
+        [organization, subject],
+      );
+
+      // Every historical other-owner revision is surgically scrubbed.
+      // jsonb_agg with ORDINALITY preserves every unrelated participant
+      // in the original order, including their unrelated status and name.
+      const redactedRows = await transaction.unsafe(
+        `WITH redacted AS (
+           UPDATE appbasis_training_documentation_revision AS revision
+           SET attendance_json = (
+             SELECT COALESCE(jsonb_agg(participant.entry ORDER BY participant.position),
+                             '[]'::jsonb)
+             FROM jsonb_array_elements(revision.attendance_json)
+               WITH ORDINALITY AS participant(entry, position)
+             WHERE participant.entry->>'participantId' IS DISTINCT FROM $2
+           )
+           FROM appbasis_training_documentation AS document
+           WHERE revision.organization_id = document.organization_id
+             AND revision.documentation_id = document.id
+             AND document.organization_id = $1
+             AND document.subject_id <> $2
+             AND revision.attendance_json @>
+               jsonb_build_array(jsonb_build_object('participantId', $2::text))
+           RETURNING revision.revision
+         ) SELECT count(*)::int AS count FROM redacted`,
+        [organization, subject],
+      );
+      const counts = [
+        deletedRootRows[0]?.count, deletedRevisionRows[0]?.count,
+        redactedRows[0]?.count,
+      ];
+      if (
+        deletedRootRows.length !== 1 ||
+        deletedRevisionRows.length !== 1 ||
+        redactedRows.length !== 1 ||
+        counts.some((value) =>
+          typeof value !== "number" ||
+          !Number.isSafeInteger(value) ||
+          value < 0
+        ) ||
+        (counts[1] as number) < (counts[0] as number)
+      ) {
+        throw new Error("Training documentation subject deletion totals are invalid.");
+      }
+
+      // Never acknowledge partial success while structured subject refs remain.
+      const residual = await transaction.unsafe(
+        `SELECT (
+           SELECT count(*)::int FROM appbasis_training_documentation
+           WHERE organization_id = $1 AND subject_id = $2
+         ) AS roots,
+         (
+           SELECT count(*)::int
+           FROM appbasis_training_documentation_revision AS revision
+           JOIN appbasis_training_documentation AS document
+             ON document.organization_id = revision.organization_id
+            AND document.id = revision.documentation_id
+           WHERE document.organization_id = $1
+             AND revision.attendance_json @>
+               jsonb_build_array(jsonb_build_object('participantId', $2::text))
+         ) AS participants`,
+        [organization, subject],
+      );
+      if (
+        residual.length !== 1 ||
+        residual[0]?.roots !== 0 ||
+        residual[0]?.participants !== 0
+      ) {
+        throw new Error("Training documentation subject references still remain.");
+      }
+      return Object.freeze({
+        markerInserted: inserted.length === 1,
+        deletedDocuments: counts[0] as number,
+        deletedRevisions: counts[1] as number,
+        redactedOtherSubjectRevisions: counts[2] as number,
+      });
     });
   }
 
