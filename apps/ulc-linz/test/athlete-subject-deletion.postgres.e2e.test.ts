@@ -158,6 +158,15 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       expect(target.id).toBe(SUBJECT);
       expect(neighbor.id).toBe(OTHER_SUBJECT);
 
+      const blockRepository = new PostgresTrainingBlockRepository(
+        pgClient() as TrainingBlockPostgresClient,
+      );
+      const blocks = new TrainingBlockService({
+        repository: blockRepository,
+        createId: () => "block-data-retention",
+        now: () => new Date("2026-10-12T12:00:00.000Z"),
+      });
+      const block = await blocks.create(ORG, { name: "Workout block" });
       const plansRepository = new PostgresTrainingPlanRepository(
         pgClient() as TrainingPlanPostgresClient,
       );
@@ -169,22 +178,26 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       });
       const targetPlan = await plans.create(ORG, {
         subjectId: SUBJECT, planDate: "2026-10-12",
-        items: [{ kind: "exercise", name: "Sensitive workout", comment: "Private note" }],
+        items: [{
+          kind: "block",
+          sourceBlockId: block.id,
+          sourceBlockRevision: block.currentRevision,
+          name: block.revision.name,
+          exercises: [],
+          note: "Private training plan note",
+        }],
       });
       const keepPlan = await plans.create(ORG, {
         subjectId: OTHER_SUBJECT, planDate: "2026-10-12",
-        items: [{ kind: "exercise", name: "Unrelated workout" }],
+        items: [{
+          kind: "block",
+          sourceBlockId: block.id,
+          sourceBlockRevision: block.currentRevision,
+          name: block.revision.name,
+          exercises: [],
+        }],
       });
 
-      const blockRepository = new PostgresTrainingBlockRepository(
-        pgClient() as TrainingBlockPostgresClient,
-      );
-      const blocks = new TrainingBlockService({
-        repository: blockRepository,
-        createId: () => "block-data-retention",
-        now: () => new Date("2026-10-12T12:00:00.000Z"),
-      });
-      const block = await blocks.create(ORG, { name: "Workout block" });
       const event = (
         usageId: string, organizationId: string, subjectId: string,
         sourcePlanId: string, sourceItemId: string,
