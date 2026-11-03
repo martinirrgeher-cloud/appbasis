@@ -151,3 +151,27 @@ Post-expiry retry is NOT authorized: a missing source marker must be treated
 as unverifiable, never inferred from empty owner tables. A durable app-owned
 decision, retention/restore policy, write freeze and cross-owner evidence
 must be designed separately before any automatic follow-up is deployed.
+
+## Athlete subject deletion recovery review — not activated
+
+The pure helper `assessUlcAthleteDeletionRecovery(preflight, now)` consumes
+an already canonically authorized, read-only athlete follow-up inspection.
+It never queries or writes a database and never exposes subject identifiers
+in its output. Pending owner work is classified as urgent for manual review
+within **seven days** of expiry of the existing **35-day** athlete marker.
+Missing, expired or conflicting evidence is fail-closed, and **no** state
+authorizes automatic retry, backup promotion or post-expiry erasure.
+
+`privacy/athlete-deletion-recovery-policy.json` is a machine-readable
+**blocked** policy. The corresponding
+`privacy/athlete-deletion-recovery-design.md` identifies the unmet
+requirements for any truly durable app-owned deletion queue: an
+athletes-owner-atomic deletion decision, an approved bounded retention
+period for subject identifiers, durable owner checkpoints, immutable
+backup/restore provenance, and recovery authorization. A source marker
+captured by the app only *after* the athletes owner purges data has an
+unacceptable crash gap, so such a queue is not introduced in this slice.
+
+The review helper is intentionally **not imported by the runtime** and
+does not create a new migration, table, job, endpoint or permission.
+Production readiness remains blocked.
