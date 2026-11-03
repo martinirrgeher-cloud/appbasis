@@ -152,6 +152,24 @@ test("M5 least-privilege snapshot, pg_dump and pg_restore rehearse the canonical
       SELECT
         to_regclass('public.ulc_linz_security_event_log') IS NOT NULL AS ulc_security_log_restored,
         to_regprocedure('public.appbasis_ulc_linz_purge_expired_security_events()') IS NOT NULL AS ulc_cleanup_function_restored,
+        (
+          SELECT count(*)::int = 3
+          FROM pg_catalog.pg_proc AS procedure
+          JOIN pg_catalog.pg_namespace AS namespace
+            ON namespace.oid = procedure.pronamespace
+          WHERE namespace.nspname = 'public'
+            AND procedure.proname IN (
+              'appbasis_training_documentation_guard_subject',
+              'appbasis_training_documentation_guard_root_insert',
+              'appbasis_training_documentation_guard_revision_write'
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM pg_catalog.aclexplode(
+                COALESCE(procedure.proacl, pg_catalog.acldefault('f', procedure.proowner))
+              ) AS acl
+              WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+            )
+        ) AS documentation_guards_restored_without_public_execute,
         to_regclass('m5_runtime.snapshot_fixture_pkey') IS NOT NULL AS primary_index_restored,
         to_regclass('m5_runtime.snapshot_fixture_id_seq') IS NOT NULL AS sequence_restored,
         (SELECT relacl IS NULL FROM pg_catalog.pg_class WHERE oid = to_regclass('m5_runtime.snapshot_fixture_pkey')) AS index_acl_is_null
@@ -159,6 +177,7 @@ test("M5 least-privilege snapshot, pg_dump and pg_restore rehearse the canonical
     assert.deepEqual(Array.from(catalogRows, (row) => ({ ...row })), [{
       ulc_security_log_restored: true,
       ulc_cleanup_function_restored: true,
+      documentation_guards_restored_without_public_execute: true,
       primary_index_restored: true,
       sequence_restored: true,
       index_acl_is_null: true,
