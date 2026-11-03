@@ -1288,8 +1288,65 @@ function assertTargetCatalogIsolation({
     }
   }
 
+  const targetFunctions = new Map(
+    targetCatalogContract
+      .filter((marker) => marker.kind === "function")
+      .map((marker) => [marker.name, marker]),
+  );
+  const targetRevocations = new Map(
+    targetCatalogContract
+      .filter((marker) => marker.kind === "function-public-execute-revoked")
+      .map((marker) => [marker.name, marker]),
+  );
+  const baselineFunctionNames = new Set(
+    baselineCatalogContract
+      .filter((marker) => marker.kind === "function")
+      .map((marker) => marker.name),
+  );
+  const isTargetFunctionName = (name) =>
+    [...targetTables].some((table) => name.startsWith(table + "_"));
+
   for (const marker of targetCatalogContract) {
     if (marker.kind === "table") continue;
+    if (marker.kind === "function") {
+      const revocation = targetRevocations.get(marker.name);
+      const signature = marker.arguments
+        .split(",").map((argument) => argument.trim().split(/\s+/).at(-1)).join(", ");
+      if (
+        !isTargetFunctionName(marker.name) ||
+        baselineFunctionNames.has(marker.name) ||
+        revocation?.arguments !== signature ||
+        revocation?.present !== true
+      ) {
+        throw new ModuleUpdateMigrationConfigurationError(
+          "FC6-B target routine must be module-scoped, new, and PUBLIC-execute revoked.",
+        );
+      }
+      continue;
+    }
+    if (marker.kind === "function-public-execute-revoked") {
+      if (
+        !isTargetFunctionName(marker.name) ||
+        !targetFunctions.has(marker.name)
+      ) {
+        throw new ModuleUpdateMigrationConfigurationError(
+          "FC6-B target routine revocation lacks an owned routine.",
+        );
+      }
+      continue;
+    }
+    if (marker.kind === "trigger") {
+      if (
+        !targetTables.has(marker.table) ||
+        baselineTables.has(marker.table) ||
+        !targetFunctions.has(marker.functionName)
+      ) {
+        throw new ModuleUpdateMigrationConfigurationError(
+          "FC6-B target trigger must be bound to an owned table and routine.",
+        );
+      }
+      continue;
+    }
     if (
       typeof marker.table !== "string" ||
       !targetTables.has(marker.table) ||
