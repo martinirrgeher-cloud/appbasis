@@ -98,6 +98,18 @@ export interface TrainingBlockSubjectUsageDeletionMarker {
  * authority ordering and snapshot completeness, keep the restored target
  * inaccessible, and reconcile all owners before promotion.
  */
+/**
+ * Privileged owner-only, scoped read-only evidence. Counts explicitly
+ * attributed live usage, never guesses a subject from legacy free text.
+ * Missing marker is indeterminate after possible marker purge/restore.
+ */
+export interface TrainingBlockSubjectUsageDeletionInspection {
+  readonly organizationId: string;
+  readonly subjectId: string;
+  readonly marker: TrainingBlockSubjectUsageDeletionMarker | null;
+  readonly remainingAttributedUsageEvents: number;
+}
+
 export interface TrainingBlockSubjectUsageReconciliationRepository {
   /** Includes expired-but-still-protective markers: they are never auto-purged. */
   listSubjectUsageDeletionMarkers(
