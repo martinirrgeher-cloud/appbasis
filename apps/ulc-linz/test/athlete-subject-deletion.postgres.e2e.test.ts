@@ -20,6 +20,7 @@ import {
 import { type UlcLinzCurrentIdentity } from "../worker/authorization";
 import {
   deleteUlcLinzAthleteSubjectDependentsAfterRetention,
+  inspectUlcLinzAthleteSubjectDeletionFollowUp,
   type UlcLinzAthleteSubjectDeletionDependencies,
 } from "../worker/lifecycle-service";
 import { trainingPlanUsageEventId } from "../worker/training-plans-service";
@@ -266,6 +267,19 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       const run = () => deleteUlcLinzAthleteSubjectDependentsAfterRetention(
         current(), dependencies, { organizationId: ORG, subjectId: SUBJECT },
       );
+      const preflight = (now = NOW) =>
+        inspectUlcLinzAthleteSubjectDeletionFollowUp(current(), {
+          permissions: dependencies.permissions,
+          scopes: dependencies.scopes,
+          athletes,
+          plans: plansRepository,
+          usage: blockRepository,
+          now: () => now,
+        }, { organizationId: ORG, subjectId: SUBJECT });
+      await expect(preflight()).resolves.toMatchObject({
+        status: "source-unverifiable", remainingPlans: null,
+        remainingAttributedUsageEvents: null,
+      });
       await expect(run()).rejects.toThrow();
       expect(calls).toEqual([]);
       await expect(athletes.deactivateAthlete(ORG, SUBJECT)).resolves.toBe(true);
@@ -284,12 +298,22 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         .toMatchObject({ entityType: "athlete", organizationId: ORG, entityId: SUBJECT });
       await expect(athletes.findCurrentAthleteDeletionMarker(OTHER_ORG, SUBJECT, NOW))
         .resolves.toBeNull();
+      await expect(preflight()).resolves.toMatchObject({
+        status: "follow-up-pending",
+        planMarkerPresent: false, usageMarkerPresent: false,
+        remainingPlans: 1, remainingAttributedUsageEvents: 1,
+      });
       // A genuine second-owner outage is NOT a successful app-wide delete.
       await expect(run()).rejects.toThrow(/temporary usage-owner outage/);
       expect(calls).toEqual(["plans", "usage"]);
       expect(await plansRepository.findCurrent(ORG, targetPlan.id)).toBeUndefined();
       expect(await plansRepository.findCurrent(ORG, keepPlan.id)).toBeDefined();
       expect(await blockRepository.listUsageEvents(ORG, block.id)).toHaveLength(3);
+      await expect(preflight()).resolves.toMatchObject({
+        status: "follow-up-pending",
+        planMarkerPresent: true, usageMarkerPresent: false,
+        remainingPlans: 0, remainingAttributedUsageEvents: 1,
+      });
 
       await expect(run()).resolves.toMatchObject({
         organizationId: ORG, subjectId: SUBJECT,
@@ -300,6 +324,18 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         deletedPlans: 0, deletedAttributedUsageEvents: 0,
         usageMarkerInserted: false,
       });
+      await expect(preflight()).resolves.toMatchObject({
+        status: "owner-markers-match",
+        planMarkerPresent: true, usageMarkerPresent: true,
+        remainingPlans: 0, remainingAttributedUsageEvents: 0,
+      });
+      // The source decision must still be authoritative; absent/expired
+      // marker never upgrades owner observations to complete deletion proof.
+      await expect(preflight(new Date("2027-01-10T05:00:00.000Z")))
+        .resolves.toMatchObject({
+          status: "source-unverifiable", remainingPlans: null,
+          remainingAttributedUsageEvents: null,
+        });
       const remaining = await blockRepository.listUsageEvents(ORG, block.id);
       expect(remaining.map((row) => row.id).sort())
         .toEqual(["legacy-unattributed", usageNeighbor.event.id].sort());
@@ -317,6 +353,18 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       expect(usageMarkers).toHaveLength(1);
       expect(new Date(String(planMarkers[0]?.completed_at)).toISOString())
         .toBe(new Date(String(usageMarkers[0]?.completed_at)).toISOString());
+      // Detect an inconsistent marker even with no residual subject rows.
+      await required().client.unsafe(
+        `UPDATE appbasis_training_plan_subject_deletion
+         SET completed_at = $3::timestamptz,
+             purge_after = $3::timestamptz + interval '840 hours'
+         WHERE organization_id = $1 AND subject_id = $2`,
+        [ORG, SUBJECT, "2026-11-02T05:00:00.000Z"],
+      );
+      await expect(preflight()).resolves.toMatchObject({
+        status: "owner-marker-conflict", remainingPlans: 0,
+        remainingAttributedUsageEvents: 0,
+      });
       await expect(deleteUlcLinzAthleteSubjectDependentsAfterRetention(
         current(), dependencies, { organizationId: OTHER_ORG, subjectId: SUBJECT },
       )).rejects.toThrow();
