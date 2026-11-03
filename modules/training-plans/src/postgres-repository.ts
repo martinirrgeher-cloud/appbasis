@@ -12,6 +12,7 @@ import {
   type TrainingPlanRevisionAppendResult,
   type TrainingPlanSnapshot,
   type TrainingPlanSubjectDeletionMarker,
+  type TrainingPlanSubjectDeletionInspection,
   type TrainingPlanSubjectDeletionResult,
 } from "./repository";
 
@@ -422,6 +423,56 @@ export class PostgresTrainingPlanRepository
         [organizationId, subjectId, completed.toISOString()],
       );
       return deleteSubjectPlans(transaction, organizationId, subjectId);
+    });
+  }
+
+  /** Read-only scoped proof of the plan owner's marker and residual plan roots. */
+  async inspectSubjectDeletion(
+    organizationId: string,
+    subjectId: string,
+  ): Promise<TrainingPlanSubjectDeletionInspection> {
+    const organization = requiredString(organizationId, "organization id");
+    const subject = requiredString(subjectId, "subject id");
+    return this.#client.begin(async (transaction) => {
+      await transaction.unsafe(
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+      );
+      const markerRows = await transaction.unsafe(
+        `SELECT organization_id, subject_id, completed_at, purge_after
+         FROM appbasis_training_plan_subject_deletion
+         WHERE organization_id = $1 AND subject_id = $2`,
+        [organization, subject],
+      );
+      if (markerRows.length > 1) {
+        throw new Error("Training plan subject deletion inspection is ambiguous.");
+      }
+      const marker = markerRows[0] === undefined
+        ? null
+        : deletionMarkerFromRow(markerRows[0]);
+      if (
+        marker !== null &&
+        (marker.organizationId !== organization || marker.subjectId !== subject)
+      ) {
+        throw new Error("Training plan subject deletion inspection escaped scope.");
+      }
+      const counts = await transaction.unsafe(
+        `SELECT count(*)::int AS remaining_plans
+         FROM appbasis_training_plan
+         WHERE organization_id = $1 AND subject_id = $2`,
+        [organization, subject],
+      );
+      const remainingPlans = counts[0]?.remaining_plans;
+      if (
+        counts.length !== 1 ||
+        !Number.isSafeInteger(remainingPlans) ||
+        (remainingPlans as number) < 0
+      ) {
+        throw new Error("Training plan subject deletion inspection count is invalid.");
+      }
+      return Object.freeze({
+        organizationId: organization, subjectId: subject, marker,
+        remainingPlans: remainingPlans as number,
+      });
     });
   }
 
