@@ -94,6 +94,67 @@ afterAll(async () => {
 });
 
 describe("training-blocks PostgreSQL repository", () => {
+
+  it("inspects scoped attributable usage, not ambiguous legacy events", async () => {
+    const connection = requiredConnection();
+    const service = serviceFor(connection, ["inspect-subject-block"]);
+    const block = await service.create("org-inspect-usage", {
+      name: "Shared inspected block",
+    });
+    const repository = new PostgresTrainingBlockRepository(
+      postgresClient(connection.client),
+    );
+    const makeUsage = (id: string, subjectId: string) => ({
+      event: {
+        id, organizationId: "org-inspect-usage", blockId: block.id,
+        occurredAt: "2026-10-12T10:00:00.000Z",
+        sourceKind: "training_plan", sourceRef: "plan:" + id, note: null,
+      },
+      subjectId, sourcePlanId: "plan", sourceItemId: id,
+    });
+    await repository.recordVerifiedSubjectUsageOnce(makeUsage("inspect-target", "subject-target"));
+    await repository.recordVerifiedSubjectUsageOnce(makeUsage("inspect-neighbor", "subject-neighbor"));
+    await service.recordUsageOnce(
+      "org-inspect-usage", block.id, "inspect-legacy",
+      { occurredAt: "2026-10-12T10:00:00.000Z",
+        sourceKind: "manual", note: "Unattributed private legacy note" },
+    );
+    await expect(repository.inspectSubjectUsageDeletion(
+      "org-inspect-usage", "subject-target",
+    )).resolves.toEqual({
+      organizationId: "org-inspect-usage", subjectId: "subject-target",
+      marker: null, remainingAttributedUsageEvents: 1,
+    });
+    await expect(repository.inspectSubjectUsageDeletion(
+      "another-org", "subject-target",
+    )).resolves.toEqual({
+      organizationId: "another-org", subjectId: "subject-target",
+      marker: null, remainingAttributedUsageEvents: 0,
+    });
+    const completedAt = new Date("2026-11-03T10:00:00.000Z");
+    await repository.markSubjectDeletedAndRemoveAttributedUsage(
+      "org-inspect-usage", "subject-target", completedAt,
+    );
+    await expect(repository.inspectSubjectUsageDeletion(
+      "org-inspect-usage", "subject-target",
+    )).resolves.toEqual({
+      organizationId: "org-inspect-usage", subjectId: "subject-target",
+      marker: {
+        organizationId: "org-inspect-usage", subjectId: "subject-target",
+        completedAt, purgeAfter: new Date("2026-12-08T10:00:00.000Z"),
+      },
+      remainingAttributedUsageEvents: 0,
+    });
+    await expect(repository.inspectSubjectUsageDeletion(
+      "org-inspect-usage", "subject-neighbor",
+    )).resolves.toMatchObject({ marker: null, remainingAttributedUsageEvents: 1 });
+    const remaining = await repository.listUsageEvents("org-inspect-usage", block.id);
+    expect(remaining.map((item) => item.id).sort()).toEqual([
+      "inspect-legacy", "inspect-neighbor",
+    ]);
+  });
+
+
   it("reconciles expired subject-usage tombstones into an older offline restore", async () => {
     const connection = requiredConnection();
     const service = serviceFor(connection, [
