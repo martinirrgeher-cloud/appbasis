@@ -899,7 +899,7 @@ function catalogMarkersFromStatement(statement) {
 
   // Only a narrowly validated PL/pgSQL shape can be checked through the
   // catalog. Pin the exact body rather than accept a matching routine name.
-  const routine = /^CREATE\s+FUNCTION\s+([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)\s+RETURNS\s+(void|trigger)\s+LANGUAGE\s+plpgsql\s+AS\s+(\$[A-Za-z_][A-Za-z0-9_]*\$)([\s\S]*?)\4\s*;?$/i.exec(normalized);
+  const routine = /^CREATE\s+FUNCTION\s+([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)\s+RETURNS\s+(void|trigger)\s+LANGUAGE\s+plpgsql(\s+SECURITY\s+DEFINER\s+SET\s+search_path\s*=\s*pg_catalog\s*,\s*pg_temp)?\s+AS\s+(\$[A-Za-z_][A-Za-z0-9_]*\$)([\s\S]*?)\5\s*;?$/i.exec(normalized);
   if (routine !== null) {
     const argumentsText = routine[2].trim().replace(/\s+/g, " ");
     const returns = routine[3].toLowerCase();
@@ -909,13 +909,14 @@ function catalogMarkersFromStatement(statement) {
       returns === "void" &&
       argumentsText === "p_organization_id text, p_subject_id text"
     );
-    if (!trustedArgs) return [];
+    if (!trustedArgs || (routine[4] !== undefined && returns !== "trigger")) return [];
     return [{
       kind: "function",
       name: routine[1].toLowerCase(),
       arguments: argumentsText,
       returnType: returns,
-      bodyHash: createHash("sha256").update(routine[5], "utf8").digest("hex"),
+      securityDefiner: routine[4] !== undefined,
+      bodyHash: createHash("sha256").update(routine[6], "utf8").digest("hex"),
       present: true,
     }];
   }
@@ -1490,7 +1491,12 @@ async function catalogMarkerExists(transaction, marker) {
     const rows = await transaction`
       SELECT pg_get_function_identity_arguments(p.oid) AS arguments,
              pg_get_function_result(p.oid) AS result_type,
-             p.prosrc AS source
+             p.prosrc AS source,
+             p.prosecdef AS security_definer,
+             COALESCE(
+               p.proconfig @> ARRAY['search_path=pg_catalog, pg_temp']::text[],
+               false
+             ) AS hardened_search_path
       FROM pg_catalog.pg_proc p
       JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
       JOIN pg_catalog.pg_language l ON l.oid = p.prolang
@@ -1504,6 +1510,8 @@ async function catalogMarkerExists(transaction, marker) {
       typeof row.arguments === "string" &&
       row.arguments.replace(/\s+/g, " ").trim() === marker.arguments &&
       row.result_type === marker.returnType &&
+      row.security_definer === marker.securityDefiner &&
+      (!marker.securityDefiner || row.hardened_search_path === true) &&
       createHash("sha256").update(row.source, "utf8").digest("hex") ===
         marker.bodyHash
     );
