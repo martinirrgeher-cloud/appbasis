@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -16,10 +17,12 @@ const EXPECTED_MIGRATION_PRINCIPAL =
   "appbasis_ulc_linz_preview_migration";
 const EXPECTED_MIGRATIONS = Object.freeze([
   "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
+  "modules/training-documentation/migrations/0001_appbasis_training_documentation_subject_deletion.sql",
 ]);
 const EXPECTED_TABLES = Object.freeze([
   "appbasis_training_documentation",
   "appbasis_training_documentation_revision",
+  "appbasis_training_documentation_subject_deletion",
 ]);
 const REQUIRED_TRAINING_PLANS_V2_TABLES = Object.freeze([
   "appbasis_training_plan",
@@ -60,7 +63,7 @@ export async function loadUlcTrainingDocumentationPreviewPlan(
     executionPlan.application !== APP_ID ||
     executionPlan.moduleId !== MODULE_ID ||
     executionPlan.repositoryState !== "published-target" ||
-    executionPlan.targetOwner?.schemaVersion !== 1 ||
+    executionPlan.targetOwner?.schemaVersion !== 2 ||
     JSON.stringify(executionPlan.targetOwner?.migrations) !==
       JSON.stringify(EXPECTED_MIGRATIONS) ||
     JSON.stringify(targetTables) !==
@@ -70,7 +73,7 @@ export async function loadUlcTrainingDocumentationPreviewPlan(
     )
   ) {
     throw new UlcTrainingDocumentationPreviewConfigurationError(
-      "E7B9 requires the canonical published training-documentation schema-v1 contract on the training-plans-v2 baseline.",
+      "E7B9 requires the canonical published training-documentation schema-v2 contract on the training-plans-v2 baseline.",
     );
   }
 
@@ -85,7 +88,7 @@ export async function loadUlcTrainingDocumentationPreviewPlan(
       migrationPrincipal: EXPECTED_MIGRATION_PRINCIPAL,
     }),
     target: Object.freeze({
-      schemaVersion: 1,
+      schemaVersion: 2,
       migrations: Object.freeze([...EXPECTED_MIGRATIONS]),
       tables: Object.freeze([...EXPECTED_TABLES]),
     }),
@@ -254,7 +257,7 @@ export async function applyUlcTrainingDocumentationPreview(
   );
   if (after.state !== "current") {
     throw new UlcTrainingDocumentationPreviewExecutionError(
-      "E7B9 preview migration completed without reaching training-documentation schema v1.",
+      "E7B9 preview migration completed without reaching training-documentation schema v2.",
     );
   }
 
@@ -275,7 +278,7 @@ export async function verifyUlcTrainingDocumentationPreview(
   const result = await inspectUlcTrainingDocumentationPreview(input, options);
   if (result.state !== "current") {
     throw new UlcTrainingDocumentationPreviewExecutionError(
-      "E7B9 preview verification requires the complete training-documentation schema v1.",
+      "E7B9 preview verification requires the complete training-documentation schema v2.",
     );
   }
   return result;
@@ -351,6 +354,93 @@ async function assertCatalogContract(client, contract, message) {
 }
 
 async function catalogMarkerMatches(client, marker) {
+  if (marker.kind === "function") {
+    const rows = await client.unsafe(
+      `SELECT
+        pg_catalog.pg_get_function_identity_arguments(proc.oid) AS arguments,
+        pg_catalog.pg_get_function_result(proc.oid) AS result_type,
+        proc.prosrc AS source
+       FROM pg_catalog.pg_proc AS proc
+       JOIN pg_catalog.pg_namespace AS namespace
+         ON namespace.oid = proc.pronamespace
+       JOIN pg_catalog.pg_language AS language
+         ON language.oid = proc.prolang
+       WHERE namespace.nspname = 'public'
+         AND proc.proname = $1
+         AND proc.prokind = 'f'
+         AND language.lanname = 'plpgsql'`,
+      [marker.name],
+    );
+    return rows.length === 1 &&
+      typeof rows[0]?.source === "string" &&
+      rows[0]?.arguments?.replace(/\s+/g, " ").trim() === marker.arguments &&
+      rows[0]?.result_type === marker.returnType &&
+      createHash("sha256").update(rows[0].source, "utf8").digest("hex") ===
+        marker.bodyHash;
+  }
+  if (marker.kind === "function-public-execute-revoked") {
+    const rows = await client.unsafe(
+      `SELECT pg_catalog.pg_get_function_identity_arguments(proc.oid) AS arguments,
+        NOT EXISTS (
+          SELECT 1
+          FROM pg_catalog.aclexplode(
+            COALESCE(proc.proacl, pg_catalog.acldefault('f', proc.proowner))
+          ) AS acl
+          WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+        ) AS public_execute_revoked
+       FROM pg_catalog.pg_proc AS proc
+       JOIN pg_catalog.pg_namespace AS namespace
+         ON namespace.oid = proc.pronamespace
+       WHERE namespace.nspname = 'public'
+         AND proc.proname = $1
+         AND proc.prokind = 'f'`,
+      [marker.name],
+    );
+    return rows.length === 1 &&
+      rows[0]?.public_execute_revoked === true &&
+      typeof rows[0]?.arguments === "string" &&
+      rows[0].arguments.split(",").map((part) =>
+        part.trim().split(/\s+/).at(-1)
+      ).join(", ") === marker.arguments;
+  }
+  if (marker.kind === "trigger") {
+    const rows = await client.unsafe(
+      `SELECT
+         tg.tgtype::int AS trigger_type,
+         tg.tgenabled AS enabled,
+         tg.tgnargs::int AS argument_count,
+         tg.tgqual IS NULL AS unconditional,
+         pg_catalog.pg_get_triggerdef(tg.oid, true) AS definition
+       FROM pg_catalog.pg_trigger AS tg
+       JOIN pg_catalog.pg_class AS relation ON relation.oid = tg.tgrelid
+       JOIN pg_catalog.pg_namespace AS namespace
+         ON namespace.oid = relation.relnamespace
+       JOIN pg_catalog.pg_proc AS routine ON routine.oid = tg.tgfoid
+       JOIN pg_catalog.pg_namespace AS routine_namespace
+         ON routine_namespace.oid = routine.pronamespace
+       WHERE namespace.nspname = 'public'
+         AND relation.relname = $1
+         AND tg.tgname = $2
+         AND NOT tg.tgisinternal
+         AND routine_namespace.nspname = 'public'
+         AND routine.proname = $3`,
+      [marker.table, marker.name, marker.functionName],
+    );
+    if (rows.length !== 1) return false;
+    const row = rows[0];
+    if (
+      row.trigger_type !== 23 ||
+      row.enabled !== "O" ||
+      row.argument_count !== 0 ||
+      row.unconditional !== true ||
+      typeof row.definition !== "string"
+    ) return false;
+    const columns = /\bUPDATE\s+OF\s+(.+?)\s+ON\s+/i.exec(row.definition)?.[1];
+    return columns !== undefined &&
+      JSON.stringify(columns.split(",").map((name) =>
+        name.trim().replaceAll('"', "").toLowerCase()
+      ).sort()) === JSON.stringify(marker.columns);
+  }
   if (marker.kind === "table") {
     const rows = await client.unsafe(
       `SELECT EXISTS (
