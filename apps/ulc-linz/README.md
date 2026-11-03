@@ -175,3 +175,22 @@ unacceptable crash gap, so such a queue is not introduced in this slice.
 The review helper is intentionally **not imported by the runtime** and
 does not create a new migration, table, job, endpoint or permission.
 Production readiness remains blocked.
+
+## Read-only training documentation and attendance privacy exposure
+
+`inspectUlcLinzAthleteTrainingPrivacyExposure` uses canonical active
+ULC-admin membership and permission checks, refuses own-subject probing,
+and delegates to two separate owners. The training-documentation owner
+reports root documents and cross-subject historical attendance JSON
+participants. The app-owned `PostgresUlcTrainingSubjectPrivacyInspector`
+reads exact `(organization, athlete)` rows in training attendance,
+current registration and registration-change history in one SQL
+statement. Only counts are returned, never athlete names or notes.
+
+`structured-subject-rows-present` requires an explicit future
+lifecycle/retention design. `no-structured-subject-rows-found` is
+strictly a structural inventory outcome, **not** an authorization,
+anonymity finding, full-deletion proof or successful purge. Session
+notes, JSON exercise text, registration actor identities and backups
+have separate policies. This diagnostic is **not wired** into any
+runtime, HTTP route or retention executor and never writes data.
