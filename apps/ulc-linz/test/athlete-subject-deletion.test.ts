@@ -44,6 +44,13 @@ function authoritativeMarker() {
     purgeAfter: new Date(COMPLETED.getTime() + 35 * 24 * 60 * 60 * 1000),
   };
 }
+function ownerMarker() {
+  return {
+    organizationId: ORG, subjectId: SUBJECT,
+    completedAt: new Date(COMPLETED),
+    purgeAfter: new Date(COMPLETED.getTime() + 35 * 24 * 60 * 60 * 1000),
+  };
+}
 
 function harness(options: {
   sourceRole?: string;
@@ -52,8 +59,8 @@ function harness(options: {
   relation?: boolean;
   marker?: ReturnType<typeof authoritativeMarker> | null;
   now?: Date;
-  planMarker?: ReturnType<typeof authoritativeMarker> | null;
-  usageMarker?: ReturnType<typeof authoritativeMarker> | null;
+  planMarker?: ReturnType<typeof ownerMarker> | null;
+  usageMarker?: ReturnType<typeof ownerMarker> | null;
   remainingPlans?: number;
   remainingUsage?: number;
 } = {}) {
@@ -96,7 +103,7 @@ function harness(options: {
     events.push("inspect-plans");
     return {
       organizationId: ORG, subjectId: SUBJECT,
-      marker: options.planMarker === undefined ? authoritativeMarker() : options.planMarker,
+      marker: options.planMarker === undefined ? ownerMarker() : options.planMarker,
       remainingPlans: options.remainingPlans ?? 0,
     };
   });
@@ -104,7 +111,7 @@ function harness(options: {
     events.push("inspect-usage");
     return {
       organizationId: ORG, subjectId: SUBJECT,
-      marker: options.usageMarker === undefined ? authoritativeMarker() : options.usageMarker,
+      marker: options.usageMarker === undefined ? ownerMarker() : options.usageMarker,
       remainingAttributedUsageEvents: options.remainingUsage ?? 0,
     };
   });
@@ -280,7 +287,7 @@ describe("ULC canonically authorized post-retention athlete subject cleanup", ()
   });
 
   it("flags owner tombstone mismatch before declaring matching state", async () => {
-    const wrong = { ...authoritativeMarker(), completedAt: new Date(COMPLETED.getTime() - 86400000) };
+    const wrong = { ...ownerMarker(), completedAt: new Date(COMPLETED.getTime() - 86400000) };
     const h = harness({ usageMarker: wrong });
     await expect(inspectUlcLinzAthleteSubjectDeletionFollowUp(
       current(), h.preflightDependencies, request,
@@ -327,7 +334,7 @@ describe("ULC canonically authorized post-retention athlete subject cleanup", ()
     }
     const h = harness();
     h.inspectSubjectDeletion.mockResolvedValueOnce({
-      organizationId: ORG, subjectId: SUBJECT, marker: authoritativeMarker(),
+      organizationId: ORG, subjectId: SUBJECT, marker: ownerMarker(),
       remainingPlans: -1,
     });
     await expect(inspectUlcLinzAthleteSubjectDeletionFollowUp(
