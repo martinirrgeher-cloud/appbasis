@@ -72,6 +72,54 @@ afterAll(async () => {
 });
 
 describe("training-plans PostgreSQL repository", () => {
+
+  it("inspects exact subject plan deletion state without altering other athletes", async () => {
+    const repository = new PostgresTrainingPlanRepository(
+      postgresClient(requiredConnection().client),
+    );
+    const service = serviceFor(requiredConnection(), [
+      "inspect-plan-1", "inspect-item", "inspect-neighbor",
+    ]);
+    await service.create("org-inspect-plan", {
+      subjectId: "athlete-1", planDate: "2026-10-12",
+      items: [{ kind: "exercise", name: "Private exercise", comment: "Secret" }],
+    });
+    await service.create("org-inspect-plan", {
+      subjectId: "athlete-neighbor", planDate: "2026-10-12",
+    });
+    await expect(repository.inspectSubjectDeletion(
+      "org-inspect-plan", "athlete-1",
+    )).resolves.toEqual({
+      organizationId: "org-inspect-plan", subjectId: "athlete-1",
+      marker: null, remainingPlans: 1,
+    });
+    await expect(repository.inspectSubjectDeletion(
+      "org-other", "athlete-1",
+    )).resolves.toEqual({
+      organizationId: "org-other", subjectId: "athlete-1",
+      marker: null, remainingPlans: 0,
+    });
+    const completedAt = new Date("2026-11-03T10:00:00.000Z");
+    await repository.deleteSubjectData("org-inspect-plan", "athlete-1", completedAt);
+    await expect(repository.inspectSubjectDeletion(
+      "org-inspect-plan", "athlete-1",
+    )).resolves.toEqual({
+      organizationId: "org-inspect-plan", subjectId: "athlete-1",
+      marker: {
+        organizationId: "org-inspect-plan", subjectId: "athlete-1",
+        completedAt, purgeAfter: new Date("2026-12-08T10:00:00.000Z"),
+      },
+      remainingPlans: 0,
+    });
+    await expect(repository.inspectSubjectDeletion(
+      "org-inspect-plan", "athlete-neighbor",
+    )).resolves.toMatchObject({ marker: null, remainingPlans: 1 });
+    await expect(repository.inspectSubjectDeletion(
+      "org-inspect-plan", "athlete-1\u0000",
+    )).rejects.toThrow();
+  });
+
+
   it("persists revisions, date-range reads and independent plan copies", async () => {
     const service = serviceFor(requiredConnection(), [
       "source-plan",
