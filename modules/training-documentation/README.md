@@ -80,9 +80,9 @@ runtime writer is activated by this diagnostic.
 
 ## V2 privileged structured subject erasure (not activated)
 
-ULC continues to request **schema v1** until a later separately reviewed
-module update, which must also update its privacy/export inventory and
-perform all preflight gates. Schema v2 adds `appbasis_training_documentation_subject_deletion` with
+ULC's repository manifests request **schema v2**, but the migration is
+not applied to its preview/production environments and all activation
+and restore gates remain blocked. Schema v2 adds `appbasis_training_documentation_subject_deletion` with
 the existing 35-day marker interval (no automated marker purge). SQL
 triggers on document root insert/owner reassignment and revision
 insert/attendance update serialize source subjects/participants using
