@@ -136,8 +136,8 @@ export class PostgresTrainingDocumentationRepository
    * documentation service. The app must independently verify the canonical
    * completed athletes deletion before invoking this method.
    *
-   * With v2 SQL triggers, the subject advisory lock serializes erasure with
-   * root inserts and all revision inserts/attendance updates, so stale editor
+   * Organization-first plus subject locks serialize erasure with root inserts
+   * and all revision inserts/attendance updates, so stale editor
    * snapshots cannot resurrect the removed participant reference.
    *
    * It is an explicit privacy exception to otherwise immutable revision JSON.
@@ -166,6 +166,12 @@ export class PostgresTrainingDocumentationRepository
       throw new Error("Training documentation deletion source is expired or in the future.");
     }
     return this.#client.begin(async (transaction) => {
+      // Match the trigger's organization-first lock ordering before touching
+      // rows or acquiring the affected subject lock.
+      await transaction.unsafe(
+        "SELECT pg_advisory_xact_lock(202611031, hashtext($1::text)) AS acquired",
+        [organization],
+      );
       await transaction.unsafe(
         `SELECT pg_advisory_xact_lock(
            hashtextextended($1::text || chr(31) || $2::text, 0)
@@ -369,6 +375,10 @@ export class PostgresTrainingDocumentationRepository
     documentation: TrainingDocumentationSnapshot,
   ): Promise<TrainingDocumentationCreateResult> {
     return this.#client.begin(async (transaction) => {
+      await transaction.unsafe(
+        "SELECT pg_advisory_xact_lock(202611031, hashtext($1::text)) AS acquired",
+        [documentation.organizationId],
+      );
       const rows = await transaction.unsafe(
         `INSERT INTO appbasis_training_documentation (
            id, organization_id, subject_id, session_date,
@@ -449,6 +459,12 @@ export class PostgresTrainingDocumentationRepository
     revision: TrainingDocumentationRevision,
   ): Promise<TrainingDocumentationRevisionAppendResult> {
     return this.#client.begin(async (transaction) => {
+      // Acquire the organization lock BEFORE SELECT FOR UPDATE. Otherwise a
+      // subject erasure can deadlock with an editor holding the document row.
+      await transaction.unsafe(
+        "SELECT pg_advisory_xact_lock(202611031, hashtext($1::text)) AS acquired",
+        [organizationId],
+      );
       const rows = await transaction.unsafe(
         `SELECT subject_id,
                 to_char(session_date, 'YYYY-MM-DD') AS session_date,
