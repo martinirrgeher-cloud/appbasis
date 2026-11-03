@@ -197,7 +197,9 @@ runtime, HTTP route or retention executor and never writes data.
 
 ## Training-documentation v2 subject privacy erasure (not active)
 
-Standard module v2 prepares a new 35-day subject tombstone and
+ULC currently remains pinned to documentation **schema v1** in its app
+database, privacy and export manifests; no new private table is included
+in ULC's installed inventory. Standard module v2 prepares a new 35-day subject tombstone and
 database-enforced guard against stale editor writes. Its internal
 `removeSubjectDataAfterVerifiedDeletion` deletes subject-owned documentation
 and redacts the same participantId from all revisions of other athlete
