@@ -87,9 +87,18 @@ the existing 35-day marker interval (no automated marker purge). SQL
 triggers on document root insert/owner reassignment and revision
 insert/attendance update serialize source subjects/participants using
 per-organization advisory transaction locks and forbid any matching
-deletion-marked subject. The migration also explicitly revokes PostgreSQL's default PUBLIC EXECUTE grants on all three guard functions; M5 backup and restore tests verify those rights stay revoked. Even the current v1 editor path is covered once
-v2 is installed. The ordinary documentation service does **not** expose
-an erasure API.
+deletion-marked subject. The migration also explicitly revokes PostgreSQL's default PUBLIC EXECUTE grants on all three guard functions; M5 backup and restore tests verify those rights stay revoked. The two trigger functions run with the migration-owner privileges and an
+explicit `pg_catalog, pg_temp` search path; their helper remains non-executable
+by PUBLIC and requires no direct application-role grant. The repository
+acquires an organization-scoped transaction lock **before** root inserts,
+revision row locks or erasure subject locks; SQL triggers independently
+enforce that lock for direct DML. This deliberately serializes concurrent
+documentation writes within one organization to prevent cross-participant
+deadlocks. Other organizations remain independent, subject to advisory
+hash collisions that can only over-serialize.
+
+Even the current v1 editor path is covered once v2 is installed. The
+ordinary documentation service does **not** expose an erasure API.
 
 `PostgresTrainingDocumentationRepository.removeSubjectDataAfterVerifiedDeletion`
 is a **privileged, module-owned, unwired** primitive that requires the
