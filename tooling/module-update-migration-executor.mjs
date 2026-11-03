@@ -882,6 +882,43 @@ function catalogMarkersFromStatement(statement) {
 
   if (containsTopLevelCreateTableInheritance(normalized)) return [];
 
+  // Only a narrowly validated PL/pgSQL shape can be checked through the
+  // catalog. Pin the exact body rather than accept a matching routine name.
+  const routine = /^CREATE\s+FUNCTION\s+([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)\s+RETURNS\s+(void|trigger)\s+LANGUAGE\s+plpgsql\s+AS\s+(\$[A-Za-z_][A-Za-z0-9_]*\$)([\s\S]*?)\4\s*;?$/i.exec(normalized);
+  if (routine !== null) {
+    const argumentsText = routine[2].trim().replace(/\s+/g, " ");
+    const returns = routine[3].toLowerCase();
+    const trustedArgs = (
+      returns === "trigger" && argumentsText === ""
+    ) || (
+      returns === "void" &&
+      argumentsText === "p_organization_id text, p_subject_id text"
+    );
+    if (!trustedArgs) return [];
+    return [{
+      kind: "function",
+      name: routine[1].toLowerCase(),
+      arguments: argumentsText,
+      returnType: returns,
+      bodyHash: createHash("sha256").update(routine[5], "utf8").digest("hex"),
+      present: true,
+    }];
+  }
+
+  const trigger = /^CREATE\s+TRIGGER\s+([A-Za-z_][A-Za-z0-9_]*)\s+BEFORE\s+INSERT\s+OR\s+UPDATE\s+OF\s+([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s+ON\s+([A-Za-z_][A-Za-z0-9_]*)\s+FOR\s+EACH\s+ROW\s+EXECUTE\s+FUNCTION\s+([A-Za-z_][A-Za-z0-9_]*)\(\)\s*;?$/i.exec(normalized);
+  if (trigger !== null) {
+    const columns = trigger[2].split(",").map((v) => v.trim().toLowerCase()).sort();
+    if (new Set(columns).size !== columns.length) return [];
+    return [{
+      kind: "trigger",
+      name: trigger[1].toLowerCase(),
+      table: trigger[3].toLowerCase(),
+      functionName: trigger[4].toLowerCase(),
+      columns,
+      present: true,
+    }];
+  }
+
   const createTable = new RegExp(
     `^CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${IDENTIFIER_SOURCE}\\s*\\(([\\s\\S]*)\\)\\s*;?$`,
     "i",
