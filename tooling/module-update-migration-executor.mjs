@@ -1401,6 +1401,66 @@ async function anyCatalogMarkerExists(transaction, contract) {
 }
 
 async function catalogMarkerExists(transaction, marker) {
+  if (marker.kind === "function") {
+    const rows = await transaction`
+      SELECT pg_get_function_identity_arguments(p.oid) AS arguments,
+             pg_get_function_result(p.oid) AS result_type,
+             p.prosrc AS source
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      JOIN pg_catalog.pg_language l ON l.oid = p.prolang
+      WHERE n.nspname = 'public'
+        AND p.proname = ${marker.name}
+        AND p.prokind = 'f'
+        AND l.lanname = 'plpgsql'
+    `;
+    return rows.some((row) =>
+      typeof row.source === "string" &&
+      typeof row.arguments === "string" &&
+      row.arguments.replace(/\s+/g, " ").trim() === marker.arguments &&
+      row.result_type === marker.returnType &&
+      createHash("sha256").update(row.source, "utf8").digest("hex") ===
+        marker.bodyHash
+    );
+  }
+
+  if (marker.kind === "trigger") {
+    const rows = await transaction`
+      SELECT trigger.tgtype::int AS trigger_type,
+             trigger.tgenabled AS enabled,
+             trigger.tgnargs::int AS argument_count,
+             trigger.tgqual IS NULL AS unconditional,
+             pg_get_triggerdef(trigger.oid, true) AS definition
+      FROM pg_catalog.pg_trigger trigger
+      JOIN pg_catalog.pg_class relation ON relation.oid = trigger.tgrelid
+      JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+      JOIN pg_catalog.pg_proc routine ON routine.oid = trigger.tgfoid
+      JOIN pg_catalog.pg_namespace routine_namespace
+        ON routine_namespace.oid = routine.pronamespace
+      WHERE namespace.nspname = 'public'
+        AND relation.relname = ${marker.table}
+        AND trigger.tgname = ${marker.name}
+        AND trigger.tgisinternal = false
+        AND routine_namespace.nspname = 'public'
+        AND routine.proname = ${marker.functionName}
+    `;
+    if (rows.length !== 1) return false;
+    const row = rows[0];
+    // Row BEFORE INSERT | UPDATE = 1 + 2 + 4 + 16 = 23.
+    if (
+      row.trigger_type !== 23 ||
+      row.enabled !== "O" ||
+      row.argument_count !== 0 ||
+      row.unconditional !== true ||
+      typeof row.definition !== "string"
+    ) return false;
+    const columns = /\bUPDATE\s+OF\s+(.+?)\s+ON\s+/i.exec(row.definition)?.[1];
+    return columns !== undefined &&
+      JSON.stringify(columns.split(",").map((v) =>
+        v.trim().replaceAll('"', "").toLowerCase()
+      ).sort()) === JSON.stringify(marker.columns);
+  }
+
   if (marker.kind === "table") {
     const rows = await transaction`
       SELECT EXISTS (
