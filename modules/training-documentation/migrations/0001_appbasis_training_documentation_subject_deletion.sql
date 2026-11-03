@@ -110,6 +110,13 @@ BEGIN
 END;
 $revision$;
 
+-- Functions are executable by PUBLIC by default in PostgreSQL.
+-- A least-privilege backup reader must not inherit executable guard routines.
+-- DML triggers continue to execute under PostgreSQL's trigger semantics.
+REVOKE EXECUTE ON FUNCTION appbasis_training_documentation_guard_subject(text, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION appbasis_training_documentation_guard_root_insert() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION appbasis_training_documentation_guard_revision_write() FROM PUBLIC;
+
 CREATE TRIGGER appbasis_training_documentation_guard_root
   BEFORE INSERT OR UPDATE OF subject_id, organization_id
   ON appbasis_training_documentation
