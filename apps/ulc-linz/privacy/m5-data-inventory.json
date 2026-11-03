@@ -101,18 +101,15 @@
     },
     {
       "id": "training-documentation",
-      "schemaVersion": 2,
+      "schemaVersion": 1,
       "migrations": [
-        "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
-        "modules/training-documentation/migrations/0001_appbasis_training_documentation_subject_deletion.sql"
+        "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql"
       ],
       "lifecycleStatus": "training-documentation-data-lifecycle-pending",
       "notes": [
         "training-documentation-revision-and-attendance-lifecycle-pending",
         "training-documentation-notes-may-contain-user-entered-content",
-        "preview-and-production-lifecycle-activation-not-authorized",
-        "subject-deletion-atomic-redaction-writer-guard-repository-only-not-runtime-activated",
-        "historical-cross-subject-attendance-json-redaction-is-privacy-exception-to-immutable-revisions"
+        "preview-and-production-lifecycle-activation-not-authorized"
       ]
     },
     {
@@ -648,14 +645,6 @@
       "retentionPolicy": "35-days-after-subject-deletion",
       "deletionEvidence": "repository-verified-production-activation-pending",
       "retentionEvidence": "repository-verified-production-activation-pending"
-    },
-    {
-      "id": "appbasis_training_documentation_subject_deletion",
-      "owner": "training-documentation",
-      "privacyClass": "minimal-delete-reconciliation-state",
-      "retentionPolicy": "35-days-after-subject-deletion",
-      "deletionEvidence": "repository-verified-app-authorization-activation-pending",
-      "retentionEvidence": "fail-closed-purge-not-implemented"
     }
   ],
   "runtimeModules": [
