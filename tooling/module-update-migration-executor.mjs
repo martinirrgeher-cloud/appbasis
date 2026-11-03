@@ -417,6 +417,21 @@ export function createCatalogContract(plan, label = "migration", options = {}) {
           );
         }
         for (const marker of markers) {
+          if (marker.kind === "function-public-execute-revoked") {
+            const expectedRoutine = finalMarkers.get(
+              catalogMarkerKey({ kind: "function", name: marker.name }),
+            );
+            const declaredArguments = expectedRoutine?.arguments
+              ?.split(",").map((argument) => argument.trim().split(/\s+/).at(-1)).join(", ");
+            if (
+              expectedRoutine === undefined ||
+              declaredArguments !== marker.arguments
+            ) {
+              throw new ModuleUpdateMigrationConfigurationError(
+                `FC6-B ${label} cannot revoke a function without a previously verified matching owner routine.`,
+              );
+            }
+          }
           if (
             marker.kind === "constraint" &&
             marker.present === false &&
@@ -915,6 +930,19 @@ function catalogMarkersFromStatement(statement) {
       table: trigger[3].toLowerCase(),
       functionName: trigger[4].toLowerCase(),
       columns,
+      present: true,
+    }];
+  }
+
+  // Only exact REVOKE EXECUTE ... FROM PUBLIC on a function declared
+  // and catalog-proven earlier in this owner plan is supported.
+  // A generic REVOKE, GRANT, or ALTER FUNCTION stays unsupported.
+  const revoke = /^REVOKE\s+EXECUTE\s+ON\s+FUNCTION\s+([A-Za-z_][A-Za-z0-9_]*)\(\s*(text\s*,\s*text)?\s*\)\s+FROM\s+PUBLIC\s*;?$/i.exec(normalized);
+  if (revoke !== null) {
+    return [{
+      kind: "function-public-execute-revoked",
+      name: revoke[1].toLowerCase(),
+      arguments: revoke[2] === undefined ? "" : "text, text",
       present: true,
     }];
   }
@@ -1459,6 +1487,30 @@ async function catalogMarkerExists(transaction, marker) {
       JSON.stringify(columns.split(",").map((v) =>
         v.trim().replaceAll('"', "").toLowerCase()
       ).sort()) === JSON.stringify(marker.columns);
+  }
+
+  if (marker.kind === "function-public-execute-revoked") {
+    const rows = await transaction`
+      SELECT pg_catalog.pg_get_function_identity_arguments(p.oid) AS arguments,
+        NOT EXISTS (
+          SELECT 1
+          FROM pg_catalog.aclexplode(
+            COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))
+          ) AS acl
+          WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+        ) AS public_execute_revoked
+      FROM pg_catalog.pg_proc AS p
+      JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = p.pronamespace
+      WHERE namespace.nspname = 'public' AND p.proname = ${marker.name}
+        AND p.prokind = 'f'
+    `;
+    return rows.some((row) =>
+      row.public_execute_revoked === true &&
+      typeof row.arguments === "string" &&
+      row.arguments.split(",").map((part) =>
+        part.trim().split(/\s+/).at(-1)
+      ).join(", ") === marker.arguments
+    );
   }
 
   if (marker.kind === "table") {
