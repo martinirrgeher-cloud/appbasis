@@ -99,3 +99,29 @@ with a closed legacy-writer boundary, marker replay after restore and
 approved backup/retention before the optional path can be enabled.
 This slice does not authorize migrations, deployment, API endpoints or
 subject deletion.
+
+## Unwired athlete post-retention dependent lifecycle
+
+`deleteUlcLinzAthleteSubjectDependentsAfterRetention` is an internal
+application coordinator, NOT an HTTP route, scheduler or active retention
+handler. It reuses strict canonical ULC admin/permission/membership checks,
+refuses the admin's own subject relation, and asks the athletes module for
+a **current, completed, own-organization athlete deletion marker**. The
+module independently rejects an extant live athlete and invalid marker.
+Deactivating an athlete is not deletion: it must not remove saved plans.
+
+Only after authoritative retention does the coordinator ask the
+training-plans owner and then training-blocks owner to delete subject
+plans and explicitly attributed subject usage. Both owners create their
+own scoped, write-blocking subject markers and use the SAME athlete
+deletion completedAt timestamp. The coordinator validates both return
+values and does not claim success on partial failure. Retrying replays
+both owners, but there is no durable scheduler or app-wide transaction.
+
+**Never enable without a further gate:** Current athlete deletion marker
+lookup works only within its 35-day retention window; no post-expiry
+automatic cleanup is authorized. The two other owner marker timestamps
+are not cross-owner atomically committed. Existing unowned/legacy usage,
+attendance, trainer references, documentation, backups and restores
+have separate privacy policies. No runtime wiring, migration or
+production authorization is added here.

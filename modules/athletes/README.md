@@ -64,3 +64,19 @@ with the exercise-catalog exchange live in `@appbasis/xlsx`. The athletes
 consumer explicitly enables Excel date-style decoding; product file/row limits,
 domain mapping, matching, authorization, preview/apply and persistence remain
 owned by this module/application boundary.
+
+## Scoped post-retention athlete deletion marker lookup (read-only)
+
+`PostgresAthleteMasterdataRepository.findCurrentAthleteDeletionMarker(org, id, now)`
+checks an exact, organization-bound `athlete` deletion marker, its valid
+35-day retention interval and timestamp, and that the athlete ID is no
+longer present in live masterdata. A deactivated athlete does NOT qualify.
+Missing/expired/wrong-tenant markers return `null`; live-state conflicts
+or invalid marker records fail closed. This is a privileged internal
+preflight used only by an *unwired* ULC app follow-up. It never purges
+data or changes the module's existing 12-month masterdata-retention rule.
+
+Expiry is not deletion authorization. After a marker has expired or been
+purged, the app must use a separately proven backup/restore authority
+rather than infer that a follow-up is safe. This scoped check does not
+make multiple module-owner transactions atomic.

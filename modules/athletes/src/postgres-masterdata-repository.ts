@@ -811,6 +811,55 @@ export class PostgresAthleteMasterdataRepository {
     return retentionResult(singleRawRow(rows));
   }
 
+  /**
+   * Privileged, strictly scoped read for a POST-retention athlete deletion
+   * follow-up. Deactivation alone can never authorize child-data erasure.
+   * An expired/missing marker is NOT proof of a completed deletion.
+   *
+   * This is a current-state preflight, not a cross-module transaction lock.
+   */
+  async findCurrentAthleteDeletionMarker(
+    organizationId: string,
+    athleteId: string,
+    now: Date,
+  ): Promise<AthleteMasterdataDeletionMarker | null> {
+    const organization = requiredIdentifier(organizationId, 'Organization id');
+    const subject = requiredIdentifier(athleteId, 'Athlete id');
+    const current = requiredDate(now);
+    const rows = await this.#client.unsafe(
+      `SELECT marker.entity_type,
+              marker.entity_id,
+              marker.organization_id,
+              marker.completed_at,
+              marker.purge_after,
+              marker.completed_at <= $3::timestamptz AS completed_not_future,
+              marker.purge_after = marker.completed_at + interval '35 days'
+                AS retention_window_valid,
+              EXISTS (
+                SELECT 1 FROM appbasis_athlete AS live WHERE live.id = $2
+              ) AS still_live
+       FROM appbasis_athletes_deletion AS marker
+       WHERE marker.entity_type = 'athlete'
+         AND marker.entity_id = $2
+         AND marker.organization_id = $1
+         AND marker.purge_after >= $3::timestamptz`,
+      [organization, subject, current.toISOString()],
+    );
+    if (rows.length === 0) return null;
+    if (rows.length !== 1 || rows[0]?.still_live !== false) {
+      throw new Error('Athlete deletion marker conflicts with live data.');
+    }
+    const marker = deletionMarkerFromRow(rows[0]!, current);
+    if (
+      marker.entityType !== 'athlete' ||
+      marker.entityId !== subject ||
+      marker.organizationId !== organization
+    ) {
+      invalidRow();
+    }
+    return marker;
+  }
+
   async listCurrentDeletionMarkers(
     now: Date = new Date(),
   ): Promise<readonly AthleteMasterdataDeletionMarker[]> {
