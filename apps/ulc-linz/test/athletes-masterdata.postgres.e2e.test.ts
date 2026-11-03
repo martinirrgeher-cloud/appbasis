@@ -347,7 +347,7 @@ async function applyManifestMigrations(
     await readFile(new URL("../appbasis.database.json", import.meta.url), "utf8"),
   ) as DatabaseManifest;
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
-  if (migrations.length !== 33 || new Set(migrations).size !== migrations.length) {
+  if (migrations.length !== 34 || new Set(migrations).size !== migrations.length) {
     throw new Error("ULC Stammdaten E2E requires the exact manifest-owned migration set.");
   }
 
