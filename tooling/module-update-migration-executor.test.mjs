@@ -45,6 +45,14 @@ test("pins documentation v2 PL/pgSQL source and subject-guard trigger catalog ma
     functions.map((entry) => entry.name).sort());
   assert.deepEqual(revoked.map((entry) => entry.arguments).sort(),
     ["", "", "text, text"]);
+  assert.deepEqual(
+    functions.map((entry) => ({ name: entry.name, definer: entry.securityDefiner })),
+    [
+      { name: "appbasis_training_documentation_guard_subject", definer: false },
+      { name: "appbasis_training_documentation_guard_root_insert", definer: true },
+      { name: "appbasis_training_documentation_guard_revision_write", definer: true },
+    ],
+  );
   assert.ok(functions.every((entry) => /^[0-9a-f]{64}$/.test(entry.bodyHash)));
   assert.ok(triggers.every((entry) =>
     entry.columns.length > 0 && entry.functionName.startsWith("appbasis_training_documentation_guard_")
@@ -61,6 +69,7 @@ test("pins documentation v2 PL/pgSQL source and subject-guard trigger catalog ma
     "CREATE TRIGGER bad_guard AFTER DELETE ON appbasis_training_documentation FOR EACH ROW EXECUTE FUNCTION appbasis_fake();",
     "CREATE OR REPLACE FUNCTION appbasis_fake() RETURNS trigger LANGUAGE plpgsql AS $body$ BEGIN RETURN NEW; END; $body$;",
     "GRANT EXECUTE ON FUNCTION appbasis_fake() TO PUBLIC;",
+    "CREATE FUNCTION appbasis_fake() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $body$ BEGIN RETURN NEW; END; $body$;",
   ]) {
     assert.throws(
       () => createCatalogContract([
