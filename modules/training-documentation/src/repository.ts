@@ -48,6 +48,30 @@ export type TrainingDocumentationRevisionAppendResult =
   | Readonly<{ status: "not-found" }>
   | Readonly<{ status: "conflict"; currentRevision: number }>;
 
+/**
+ * Privileged, aggregate-only inventory of subject data owned by this module.
+ * Historical attendance snapshots may contain participant IDs and names for
+ * individuals who do NOT own the documentation root. Those are counted, not
+ * inferred from source plan IDs or free-text notes.
+ *
+ * Empty counts do not prove an absence of unstructured personal information.
+ */
+export interface TrainingDocumentationSubjectPrivacyInspection {
+  readonly organizationId: string;
+  readonly subjectId: string;
+  readonly ownedDocuments: number;
+  readonly ownedRevisions: number;
+  readonly otherSubjectDocumentsWithParticipant: number;
+  readonly otherSubjectRevisionsWithParticipant: number;
+}
+
+export interface TrainingDocumentationSubjectPrivacyInspectionReader {
+  inspectSubjectPrivacy(
+    organizationId: string,
+    subjectId: string,
+  ): Promise<TrainingDocumentationSubjectPrivacyInspection>;
+}
+
 export interface TrainingDocumentationRepository {
   listCurrentBySubjectDateRange(
     organizationId: string,
