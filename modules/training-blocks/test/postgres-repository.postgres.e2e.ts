@@ -13,6 +13,7 @@ import {
   TrainingBlockService,
   TrainingBlockFavoriteDeletionService,
   reconcileTrainingBlockFavoritesRestoredDatabase,
+  reconcileTrainingBlockSubjectUsageRestoredDatabase,
   TrainingBlockValidationError,
   type TrainingBlockPostgresClient,
 } from "../src/index";
@@ -93,6 +94,138 @@ afterAll(async () => {
 });
 
 describe("training-blocks PostgreSQL repository", () => {
+  it("reconciles expired subject-usage tombstones into an older offline restore", async () => {
+    const connection = requiredConnection();
+    const service = serviceFor(connection, [
+      "restore-subject-block", "restore-neighbor-block", "legacy-event",
+    ]);
+    await service.create("org-usage-restore", { name: "Restore block" });
+    await service.create("org-other-usage", { name: "Other block" });
+    const repository = new PostgresTrainingBlockRepository(
+      postgresClient(connection.client),
+    );
+    const event = (id: string, organizationId: string, blockId: string) => ({
+      event: {
+        id, organizationId, blockId,
+        occurredAt: "2026-10-10T12:00:00.000Z",
+        sourceKind: "training_plan", sourceRef: "plan:item", note: null,
+      },
+      subjectId: "athlete-deleted",
+      sourcePlanId: "plan",
+      sourceItemId: "item",
+    });
+    const target = event(
+      "target-usage", "org-usage-restore", "restore-subject-block",
+    );
+    const neighbor = {
+      ...event("neighbor-usage", "org-usage-restore", "restore-subject-block"),
+      subjectId: "athlete-neighbor",
+    };
+    const otherOrg = event(
+      "other-org-usage", "org-other-usage", "restore-neighbor-block",
+    );
+    await repository.recordVerifiedSubjectUsageOnce(target);
+    await repository.recordVerifiedSubjectUsageOnce(neighbor);
+    await repository.recordVerifiedSubjectUsageOnce(otherOrg);
+    await service.recordUsageOnce(
+      "org-usage-restore", "restore-subject-block", "legacy-event",
+      { occurredAt: target.event.occurredAt, sourceKind: "training_plan",
+        sourceRef: "plan:item", note: "Ambiguous legacy personal text" },
+    );
+
+    const completedAt = new Date("2026-11-01T12:00:00.000Z");
+    await expect(repository.markSubjectDeletedAndRemoveAttributedUsage(
+      "org-usage-restore", "athlete-deleted", completedAt,
+    )).resolves.toEqual({ markerInserted: true, deletedUsageEvents: 1 });
+
+    // The source authority must include markers older than 35 days.
+    const now = new Date("2027-01-10T12:00:00.000Z");
+    const markers = await repository.listSubjectUsageDeletionMarkers(now);
+    expect(markers).toEqual([{
+      organizationId: "org-usage-restore",
+      subjectId: "athlete-deleted",
+      completedAt,
+      purgeAfter: new Date("2026-12-06T12:00:00.000Z"),
+    }]);
+
+    // Simulate an offline restore from a point before the deletion.
+    await connection.client.unsafe(
+      `DELETE FROM appbasis_training_block_usage_subject_deletion
+       WHERE organization_id = $1 AND subject_id = $2`,
+      ["org-usage-restore", "athlete-deleted"],
+    );
+    await repository.recordVerifiedSubjectUsageOnce(target);
+    const authoritative = {
+      async listSubjectUsageDeletionMarkers() { return markers; },
+    };
+    await expect(reconcileTrainingBlockSubjectUsageRestoredDatabase(
+      authoritative, repository, now,
+    )).resolves.toEqual({
+      requiredDeletionCount: 1, insertedMarkerCount: 1, deletedUsageEvents: 1,
+    });
+    await expect(reconcileTrainingBlockSubjectUsageRestoredDatabase(
+      authoritative, repository, now,
+    )).resolves.toEqual({
+      requiredDeletionCount: 1, insertedMarkerCount: 0, deletedUsageEvents: 0,
+    });
+    await expect(repository.recordVerifiedSubjectUsageOnce(target))
+      .rejects.toThrow(/deletion marker/);
+    const remaining = await connection.client.unsafe(
+      `SELECT organization_id, id FROM appbasis_training_block_usage
+       ORDER BY organization_id, id`,
+    );
+    expect(remaining).toEqual([
+      { organization_id: "org-other-usage", id: "other-org-usage" },
+      { organization_id: "org-usage-restore", id: "legacy-event" },
+      { organization_id: "org-usage-restore", id: "neighbor-usage" },
+    ]);
+
+    // The offline target must fail closed if it contains an independently
+    // contradictory marker; never overwrite an older authorization decision.
+    await connection.client.unsafe(
+      `UPDATE appbasis_training_block_usage_subject_deletion
+       SET completed_at = $3::timestamptz,
+           purge_after = $3::timestamptz + interval '840 hours'
+       WHERE organization_id = $1 AND subject_id = $2`,
+      ["org-usage-restore", "athlete-deleted", "2026-11-02T12:00:00.000Z"],
+    );
+    await expect(repository.reconcileSubjectUsageDeletionMarker(markers[0]!))
+      .rejects.toThrow(/conflicts with authoritative/);
+    const state = await connection.client.unsafe(
+      `SELECT completed_at FROM appbasis_training_block_usage_subject_deletion
+       WHERE organization_id = $1 AND subject_id = $2`,
+      ["org-usage-restore", "athlete-deleted"],
+    );
+    expect(new Date(String(state[0]?.completed_at)).toISOString())
+      .toBe("2026-11-02T12:00:00.000Z");
+  });
+
+  it("fails closed on invalid subject usage restore authority without changing PostgreSQL", async () => {
+    const repository = new PostgresTrainingBlockRepository(
+      postgresClient(requiredConnection().client),
+    );
+    const now = new Date("2026-11-03T12:00:00.000Z");
+    await expect(repository.listSubjectUsageDeletionMarkers(new Date(NaN)))
+      .rejects.toThrow(/timestamp/);
+    const future = {
+      organizationId: "org-a",
+      subjectId: "athlete-a",
+      completedAt: new Date("2026-11-04T12:00:00.000Z"),
+      purgeAfter: new Date("2026-12-09T12:00:00.000Z"),
+    };
+    await expect(reconcileTrainingBlockSubjectUsageRestoredDatabase(
+      { async listSubjectUsageDeletionMarkers() { return [future]; } },
+      repository, now,
+    )).rejects.toThrow(/retention/);
+    await expect(repository.reconcileSubjectUsageDeletionMarker({
+      ...future, purgeAfter: new Date("2026-12-10T12:00:00.000Z"),
+    })).rejects.toThrow(/retention/);
+    const markers = await requiredConnection().client.unsafe(
+      "SELECT count(*)::int AS count FROM appbasis_training_block_usage_subject_deletion",
+    );
+    expect(markers[0]?.count).toBe(0);
+  });
+
   it("atomically persists exact verified subject ownership and only replays matching events", async () => {
     const connection = requiredConnection();
     const service = serviceFor(connection, ["block-verified-a", "block-verified-b", "usage-legacy"]);

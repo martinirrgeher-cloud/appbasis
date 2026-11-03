@@ -16,6 +16,7 @@ import {
   type TrainingBlockUsageSummary,
   type TrainingBlockVerifiedSubjectUsage,
   type TrainingBlockSubjectUsageDeletionResult,
+  type TrainingBlockSubjectUsageDeletionMarker,
 } from "./repository";
 import { normalizeTrainingBlockIdentifier } from "./training-block";
 
@@ -883,6 +884,98 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
     });
   }
 
+  /**
+   * Offline restore authority inventory, including expired but still effective
+   * markers. No pagination or time filtering is allowed: partial source
+   * inventories must not be mistaken for a complete restore decision.
+   */
+  async listSubjectUsageDeletionMarkers(
+    now: Date,
+  ): Promise<readonly TrainingBlockSubjectUsageDeletionMarker[]> {
+    const current = requiredFavoriteDeletionDate(now);
+    return this.#client.begin(async (transaction) => {
+      await transaction.unsafe(
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+      );
+      const rows = await transaction.unsafe(
+        `SELECT organization_id, subject_id, completed_at, purge_after
+         FROM appbasis_training_block_usage_subject_deletion
+         ORDER BY organization_id ASC, subject_id ASC`,
+      );
+      return Object.freeze(rows.map((row) =>
+        requiredSubjectUsageDeletionMarker({
+          organizationId: row.organization_id,
+          subjectId: row.subject_id,
+          completedAt: storedFavoriteDeletionDate(row.completed_at),
+          purgeAfter: storedFavoriteDeletionDate(row.purge_after),
+        }, current),
+      ));
+    });
+  }
+
+  /**
+   * Replay a subject tombstone on a frozen, OFFLINE restored database only.
+   * The app must independently establish that the source is complete and
+   * newer, and must never promote an unverified or partially restored target.
+   */
+  async reconcileSubjectUsageDeletionMarker(
+    marker: TrainingBlockSubjectUsageDeletionMarker,
+  ): Promise<TrainingBlockSubjectUsageDeletionResult> {
+    const authority = requiredSubjectUsageDeletionMarker(marker);
+    return this.#client.begin(async (transaction) => {
+      await lockSubjectUsage(
+        transaction, authority.organizationId, authority.subjectId,
+      );
+      const existing = await transaction.unsafe(
+        `SELECT completed_at, purge_after
+         FROM appbasis_training_block_usage_subject_deletion
+         WHERE organization_id = $1 AND subject_id = $2
+         FOR UPDATE`,
+        [authority.organizationId, authority.subjectId],
+      );
+      if (existing.length > 1) {
+        throw new Error("Restored training block subject marker lookup is ambiguous.");
+      }
+      let markerInserted = false;
+      if (existing.length === 0) {
+        const inserted = await transaction.unsafe(
+          `INSERT INTO appbasis_training_block_usage_subject_deletion
+             (organization_id, subject_id, completed_at, purge_after)
+           VALUES ($1, $2, $3::timestamptz, $4::timestamptz)
+           RETURNING subject_id`,
+          [
+            authority.organizationId, authority.subjectId,
+            authority.completedAt.toISOString(), authority.purgeAfter.toISOString(),
+          ],
+        );
+        if (inserted.length !== 1) {
+          throw new Error("Restored training block subject marker insertion failed.");
+        }
+        markerInserted = true;
+      } else if (
+        storedFavoriteDeletionDate(existing[0]!.completed_at).getTime() !==
+          authority.completedAt.getTime() ||
+        storedFavoriteDeletionDate(existing[0]!.purge_after).getTime() !==
+          authority.purgeAfter.getTime()
+      ) {
+        throw new Error("Restored training block subject marker conflicts with authoritative state.");
+      }
+      const deleted = await transaction.unsafe(
+        `DELETE FROM appbasis_training_block_usage AS usage
+         USING appbasis_training_block_usage_subject AS owner
+         WHERE usage.organization_id = owner.organization_id
+           AND usage.id = owner.usage_id
+           AND owner.organization_id = $1 AND owner.subject_id = $2
+         RETURNING usage.id`,
+        [authority.organizationId, authority.subjectId],
+      );
+      return Object.freeze({
+        markerInserted,
+        deletedUsageEvents: deleted.length,
+      });
+    });
+  }
+
   async listUsageEvents(
     organizationId: string,
     blockId: string,
@@ -1462,6 +1555,35 @@ function requiredFavoriteDeletionMarker(
     throw new Error("Training block deletion marker retention is invalid.");
   }
   return Object.freeze({ organizationId, principalId, completedAt, purgeAfter });
+}
+
+function requiredSubjectUsageDeletionMarker(
+  marker: {
+    readonly organizationId: unknown;
+    readonly subjectId: unknown;
+    readonly completedAt: unknown;
+    readonly purgeAfter: unknown;
+  },
+  now?: Date,
+): TrainingBlockSubjectUsageDeletionMarker {
+  if (marker === null || typeof marker !== "object") {
+    throw new Error("Training block subject restore marker is invalid.");
+  }
+  const organizationId = normalizeTrainingBlockIdentifier(
+    marker.organizationId as string, "Organization id",
+  );
+  const subjectId = normalizeTrainingBlockIdentifier(
+    marker.subjectId as string, "Subject id",
+  );
+  const completedAt = requiredFavoriteDeletionDate(marker.completedAt as Date);
+  const purgeAfter = requiredFavoriteDeletionDate(marker.purgeAfter as Date);
+  if (
+    purgeAfter.getTime() - completedAt.getTime() !== 35 * 24 * 60 * 60 * 1000 ||
+    (now !== undefined && completedAt.getTime() > now.getTime())
+  ) {
+    throw new Error("Training block subject restore marker retention is invalid.");
+  }
+  return Object.freeze({ organizationId, subjectId, completedAt, purgeAfter });
 }
 
 function requiredNonNegativeCount(value: unknown): number {
