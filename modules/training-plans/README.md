@@ -72,3 +72,11 @@ cross-owner foreign key and does not itself migrate Preview or Production.
 
 Attendance presentation/filtering and read-only block-template adoption are supplied by the ULC adapter. Saving a planned block back as a reusable template and preview acceptance remain later product slices.
 
+
+## Privileged subject deletion preflight (read-only)
+
+`PostgresTrainingPlanRepository.inspectSubjectDeletion(org, subject)`
+reads the exact owner tombstone and remaining plan-root count in a
+repeatable-read, read-only transaction. A missing marker is not evidence
+that the subject never existed or that a prior marker was not purged.
+No row writes, free-text contents, public ingress or automatic erasure.
