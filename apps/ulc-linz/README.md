@@ -125,3 +125,29 @@ are not cross-owner atomically committed. Existing unowned/legacy usage,
 attendance, trainer references, documentation, backups and restores
 have separate privacy policies. No runtime wiring, migration or
 production authorization is added here.
+
+## Privileged athlete dependent-deletion preflight (unwired)
+
+`inspectUlcLinzAthleteSubjectDeletionFollowUp` is a **read-only**,
+non-runtime ULC admin operation. It repeats the strict canonical app-admin
+permission/membership and self-subject checks, then checks the still-valid
+athletes-owner 35-day deletion marker. Only with that marker does it
+inspect exact organization+subject-owned status in the training-plans
+and training-blocks repositories. Each owner uses a repeatable-read
+read-only transaction to inspect its own deletion marker and remaining
+subject-bound plan roots or explicitly attributed usage events, without
+exposing source refs or free-text notes.
+
+The result distinguishes `source-unverifiable` (no current source marker,
+including possible expiry/purge), `follow-up-pending` (owner marker missing
+or residuals remain), `owner-marker-conflict` (owner completedAt/purgeAfter
+disagrees) and `owner-markers-match` (both markers match and both measured
+residual counts are zero). `owner-markers-match` is **not** full privacy
+completion or permission to promote a restore. These observations are not
+one app-wide transaction and cannot account for ambiguous legacy events,
+documentation, attendance, external backups or other lifecycle owners.
+
+Post-expiry retry is NOT authorized: a missing source marker must be treated
+as unverifiable, never inferred from empty owner tables. A durable app-owned
+decision, retention/restore policy, write freeze and cross-owner evidence
+must be designed separately before any automatic follow-up is deployed.
