@@ -166,3 +166,35 @@ disable unsafe legacy writes for subject bookings, and reconcile subject
 tombstones across restored backups. Free-text notes and unowned legacy
 events still require an independent privacy policy. `training-blocks`
 and `ulc-linz` production gates remain blocked.
+
+## Offline subject-usage restore reconciliation (schema v6, not activated)
+
+The module's privileged `listSubjectUsageDeletionMarkers(now)` returns
+the **complete** authoritative schema-v6 subject-deletion marker inventory
+in a read-only repeatable-read transaction. Crucially it also includes
+expired markers: none can be considered ineffective merely because the
+35-day retention clock has elapsed. The privileged
+`reconcileSubjectUsageDeletionMarker(marker)` atomically inserts a missing
+marker and deletes only `(organization, subject)` usage rows that were
+explicitly attributed. It uses the SAME scoped advisory transaction lock
+as verified subject writes and the original subject-deletion method.
+Conflicting timestamps abort without mutating the restored target; identical
+replay is idempotent. Unattributed legacy events and other subjects/orgs
+are never deleted by an inferred plan reference or free-text match.
+
+`reconcileTrainingBlockSubjectUsageRestoredDatabase(source, target, now)`
+checks the entire authority snapshot, rejects duplicates/invalid dates
+and retention intervals BEFORE writing any marker to an older offline
+target, then replays only validated markers. Real PostgreSQL E2E verifies
+older backup resurrection, expired marker carry-over, repeated replay,
+cross-tenant isolation, legacy row preservation, and timestamp conflicts.
+
+**This cannot authorize a restore promotion.** An operator must independently
+prove the authoritative source is newer and its deletion inventory complete,
+keep target writes and public ingress disabled, reconcile all other owners,
+and separately investigate any unattributed/legacy personal events. An
+empty marker inventory cannot prove no historical deletions occurred.
+Schema v6 must already exist on both recovery endpoints. Backup retention,
+restore promotion, marker purge and cross-owner subject-deletion integration
+remain production blockers. Neither the app nor any automatic job calls
+these recovery primitives.
