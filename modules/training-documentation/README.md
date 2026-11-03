@@ -51,3 +51,29 @@ not widened.
 
 V1 is a preview/product slice. Production lifecycle deletion/recovery evidence
 must be completed before this module can be declared production-ready.
+
+## Read-only, subject-scoped privacy exposure inspection (not activated)
+
+`PostgresTrainingDocumentationRepository.inspectSubjectPrivacy(org, subject)`
+returns aggregate counts for subject-owned documentation roots and **all**
+their immutable historical revisions. It also counts historical revisions
+where `attendance_json` contains a matching structured `participantId`
+inside a *different* athlete's documentation in the same organization.
+The number of distinct other-owner documentation roots is reported
+separately from the number of affected historical revisions.
+
+This distinction is critical: removing only documents with a matching
+`subject_id` cannot erase a person's `participantId` and `displayName`
+copied into other subjects' attendance snapshots. The inventory reads
+one SQL statement snapshot, returns no names, notes, JSON or document
+identifiers, and does not change stored data. Free-text identity mentions
+in notes, exercise contents or display names with incorrect/missing IDs
+cannot be safely attributed from this query. A zero count is NOT a
+complete erasure certificate.
+
+Future data lifecycle policy must separately decide how immutable
+revision history should be redacted or deleted when a participant
+rather than the root subject is erased, and must coordinate backup
+and restore with the app's documented 35-day source-marker limit.
+The module remains production `blocked`; no new migration or
+runtime writer is activated by this diagnostic.
