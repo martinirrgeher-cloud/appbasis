@@ -87,7 +87,7 @@ the existing 35-day marker interval (no automated marker purge). SQL
 triggers on document root insert/owner reassignment and revision
 insert/attendance update serialize source subjects/participants using
 per-organization advisory transaction locks and forbid any matching
-deletion-marked subject. Even the current v1 editor path is covered once
+deletion-marked subject. The migration also explicitly revokes PostgreSQL's default PUBLIC EXECUTE grants on all three guard functions; M5 backup and restore tests verify those rights stay revoked. Even the current v1 editor path is covered once
 v2 is installed. The ordinary documentation service does **not** expose
 an erasure API.
 
