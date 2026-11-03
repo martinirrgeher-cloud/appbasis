@@ -15,6 +15,7 @@ import {
   type TrainingPlanSubjectDeletionInspection,
   type TrainingPlanSubjectDeletionResult,
 } from "./repository";
+import { normalizeTrainingPlanIdentifier } from "./training-plan";
 
 export type TrainingPlanSqlParameter =
   | string
@@ -431,8 +432,8 @@ export class PostgresTrainingPlanRepository
     organizationId: string,
     subjectId: string,
   ): Promise<TrainingPlanSubjectDeletionInspection> {
-    const organization = requiredString(organizationId, "organization id");
-    const subject = requiredString(subjectId, "subject id");
+    const organization = normalizeTrainingPlanIdentifier(organizationId, "Organization id");
+    const subject = normalizeTrainingPlanIdentifier(subjectId, "Subject id");
     return this.#client.begin(async (transaction) => {
       await transaction.unsafe(
         "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
