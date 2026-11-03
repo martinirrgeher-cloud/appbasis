@@ -95,7 +95,7 @@ END;
 $revision$;
 
 CREATE TRIGGER appbasis_training_documentation_guard_root
-  BEFORE INSERT ON appbasis_training_documentation
+  BEFORE INSERT OR UPDATE OF subject_id ON appbasis_training_documentation
   FOR EACH ROW EXECUTE FUNCTION
     appbasis_training_documentation_guard_root_insert();
 
