@@ -1426,21 +1426,21 @@ async function catalogMarkerExists(transaction, marker) {
 
   if (marker.kind === "trigger") {
     const rows = await transaction`
-      SELECT trigger.tgtype::int AS trigger_type,
-             trigger.tgenabled AS enabled,
-             trigger.tgnargs::int AS argument_count,
-             trigger.tgqual IS NULL AS unconditional,
-             pg_get_triggerdef(trigger.oid, true) AS definition
-      FROM pg_catalog.pg_trigger trigger
-      JOIN pg_catalog.pg_class relation ON relation.oid = trigger.tgrelid
+      SELECT tg.tgtype::int AS trigger_type,
+             tg.tgenabled AS enabled,
+             tg.tgnargs::int AS argument_count,
+             tg.tgqual IS NULL AS unconditional,
+             pg_get_triggerdef(tg.oid, true) AS definition
+      FROM pg_catalog.pg_trigger tg
+      JOIN pg_catalog.pg_class relation ON relation.oid = tg.tgrelid
       JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
-      JOIN pg_catalog.pg_proc routine ON routine.oid = trigger.tgfoid
+      JOIN pg_catalog.pg_proc routine ON routine.oid = tg.tgfoid
       JOIN pg_catalog.pg_namespace routine_namespace
         ON routine_namespace.oid = routine.pronamespace
       WHERE namespace.nspname = 'public'
         AND relation.relname = ${marker.table}
-        AND trigger.tgname = ${marker.name}
-        AND trigger.tgisinternal = false
+        AND tg.tgname = ${marker.name}
+        AND tg.tgisinternal = false
         AND routine_namespace.nspname = 'public'
         AND routine.proname = ${marker.functionName}
     `;
