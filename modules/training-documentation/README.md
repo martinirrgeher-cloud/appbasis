@@ -15,7 +15,7 @@ cross-module foreign keys.
 - Capabilities: `training-documentation:view`,
   `training-documentation:edit`
 - Database owner: this module only
-- Current schema version: 1
+- Current schema version: 2 (migration available, not deployed)
 
 A documentation belongs to one opaque subject and one calendar day. At most
 one current documentation exists for that target. Creation records the exact
@@ -77,3 +77,42 @@ rather than the root subject is erased, and must coordinate backup
 and restore with the app's documented 35-day source-marker limit.
 The module remains production `blocked`; no new migration or
 runtime writer is activated by this diagnostic.
+
+## V2 privileged structured subject erasure (not activated)
+
+ULC's repository manifests request **schema v2**, but the migration is
+not applied to its preview/production environments and all activation
+and restore gates remain blocked. Schema v2 adds `appbasis_training_documentation_subject_deletion` with
+the existing 35-day marker interval (no automated marker purge). SQL
+triggers on document root insert/owner reassignment and revision
+insert/attendance update serialize source subjects/participants using
+per-organization advisory transaction locks and forbid any matching
+deletion-marked subject. The migration also explicitly revokes PostgreSQL's default PUBLIC EXECUTE grants on all three guard functions; M5 backup and restore tests verify those rights stay revoked. Even the current v1 editor path is covered once
+v2 is installed. The ordinary documentation service does **not** expose
+an erasure API.
+
+`PostgresTrainingDocumentationRepository.removeSubjectDataAfterVerifiedDeletion`
+is a **privileged, module-owned, unwired** primitive that requires the
+application to independently verify the original athletes-owner completed
+deletion marker. Within the same module-owned SQL transaction it creates
+or validates the identical `(org,subject,completedAt,purgeAfter)` marker,
+deletes the root subject's documents **and all their revisions**, and
+removes the exact structured participant entry from every historical
+revision of other athletes' documents. It preserves other participants,
+their order, documentation notes, exercises, and source-plan metadata.
+The operation validates zero structured residual references before commit,
+fails on conflicting markers and can be repeated idempotently.
+
+Historical revision JSON is normally immutable; **privacy erasure is an
+explicit narrowly scoped exception**. No synthetic anonymized participant
+or guess from display names is inserted. The deliberate removal of an
+attendance element from another athlete's historic record must be covered
+by a separately approved data-retention policy before activation.
+
+**Remaining blockers:** Writer/read-only diagnostics do not prove removal
+of embedded personal names in free text, missing/incorrect participant
+IDs, backup copies or externally held records. There is no public caller,
+canonical app authorization binding, source-marker capture/restore replay,
+marker purge job or approved production migration. The 35-day source
+authority expires; after that the app must fail closed. `status=blocked`
+remains mandatory for this module and ULC until those gates are resolved.

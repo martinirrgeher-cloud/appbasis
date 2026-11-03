@@ -344,6 +344,11 @@
       "owner": "training-plans",
       "table": "appbasis_training_plan_subject_deletion",
       "privacyClass": "minimal-delete-reconciliation-state"
+    },
+    {
+      "owner": "training-documentation",
+      "table": "appbasis_training_documentation_subject_deletion",
+      "privacyClass": "minimal-delete-reconciliation-state"
     }
   ],
   "excludedPrivacyClasses": [

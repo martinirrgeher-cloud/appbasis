@@ -194,3 +194,24 @@ anonymity finding, full-deletion proof or successful purge. Session
 notes, JSON exercise text, registration actor identities and backups
 have separate policies. This diagnostic is **not wired** into any
 runtime, HTTP route or retention executor and never writes data.
+
+## Training-documentation v2 subject privacy erasure (not active)
+
+ULC's **repository manifest** now lists documentation **schema v2** with a
+private deletion marker classified in its privacy/export inventory. This is
+only a migration *plan*, not applied to preview/production and not a runtime
+feature. Standard module v2 prepares a new 35-day subject tombstone and
+database-enforced guard against stale editor writes. Its internal
+`removeSubjectDataAfterVerifiedDeletion` deletes subject-owned documentation
+and redacts the same participantId from all revisions of other athlete
+documents, without disturbing their other structured participants.
+The module service, ULC runtime, HTTP routes and retention executor
+**do not invoke it**. The call requires a separately verified current
+athletes-owner deletion marker, canonical authorized app caller,
+and operator-approved historical-revision privacy policy.
+
+ULC attendance, current registrations and registration history are
+separate app-owned tables and remain untouched. No free-text
+identification, app-wide deletion certificate, backup replay or
+automatic marker purge is claimed. Migration v2 is published but
+not applied to preview or production.

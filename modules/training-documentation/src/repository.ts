@@ -72,6 +72,27 @@ export interface TrainingDocumentationSubjectPrivacyInspectionReader {
   ): Promise<TrainingDocumentationSubjectPrivacyInspection>;
 }
 
+/**
+ * PRIVILEGED lifecycle primitive: original athlete owner must have committed
+ * a verified, still-current 35-day deletion marker before invoking it.
+ * The module owns only documentation roots and structured attendance JSON.
+ * Free text, backups and unrelated app attendance are NOT covered.
+ */
+export interface TrainingDocumentationSubjectDeletionResult {
+  readonly markerInserted: boolean;
+  readonly deletedDocuments: number;
+  readonly deletedRevisions: number;
+  readonly redactedOtherSubjectRevisions: number;
+}
+
+export interface TrainingDocumentationSubjectDeletionRepository {
+  removeSubjectDataAfterVerifiedDeletion(
+    organizationId: string,
+    subjectId: string,
+    completedAt: Date,
+  ): Promise<TrainingDocumentationSubjectDeletionResult>;
+}
+
 export interface TrainingDocumentationRepository {
   listCurrentBySubjectDateRange(
     organizationId: string,

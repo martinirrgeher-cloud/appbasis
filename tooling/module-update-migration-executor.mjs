@@ -417,6 +417,21 @@ export function createCatalogContract(plan, label = "migration", options = {}) {
           );
         }
         for (const marker of markers) {
+          if (marker.kind === "function-public-execute-revoked") {
+            const expectedRoutine = finalMarkers.get(
+              catalogMarkerKey({ kind: "function", name: marker.name }),
+            );
+            const declaredArguments = expectedRoutine?.arguments
+              ?.split(",").map((argument) => argument.trim().split(/\s+/).at(-1)).join(", ");
+            if (
+              expectedRoutine === undefined ||
+              declaredArguments !== marker.arguments
+            ) {
+              throw new ModuleUpdateMigrationConfigurationError(
+                `FC6-B ${label} cannot revoke a function without a previously verified matching owner routine.`,
+              );
+            }
+          }
           if (
             marker.kind === "constraint" &&
             marker.present === false &&
@@ -882,6 +897,56 @@ function catalogMarkersFromStatement(statement) {
 
   if (containsTopLevelCreateTableInheritance(normalized)) return [];
 
+  // Only a narrowly validated PL/pgSQL shape can be checked through the
+  // catalog. Pin the exact body rather than accept a matching routine name.
+  const routine = /^CREATE\s+FUNCTION\s+([A-Za-z_][A-Za-z0-9_]*)\(([^)]*)\)\s+RETURNS\s+(void|trigger)\s+LANGUAGE\s+plpgsql\s+AS\s+(\$[A-Za-z_][A-Za-z0-9_]*\$)([\s\S]*?)\4\s*;?$/i.exec(normalized);
+  if (routine !== null) {
+    const argumentsText = routine[2].trim().replace(/\s+/g, " ");
+    const returns = routine[3].toLowerCase();
+    const trustedArgs = (
+      returns === "trigger" && argumentsText === ""
+    ) || (
+      returns === "void" &&
+      argumentsText === "p_organization_id text, p_subject_id text"
+    );
+    if (!trustedArgs) return [];
+    return [{
+      kind: "function",
+      name: routine[1].toLowerCase(),
+      arguments: argumentsText,
+      returnType: returns,
+      bodyHash: createHash("sha256").update(routine[5], "utf8").digest("hex"),
+      present: true,
+    }];
+  }
+
+  const trigger = /^CREATE\s+TRIGGER\s+([A-Za-z_][A-Za-z0-9_]*)\s+BEFORE\s+INSERT\s+OR\s+UPDATE\s+OF\s+([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s+ON\s+([A-Za-z_][A-Za-z0-9_]*)\s+FOR\s+EACH\s+ROW\s+EXECUTE\s+FUNCTION\s+([A-Za-z_][A-Za-z0-9_]*)\(\)\s*;?$/i.exec(normalized);
+  if (trigger !== null) {
+    const columns = trigger[2].split(",").map((v) => v.trim().toLowerCase()).sort();
+    if (new Set(columns).size !== columns.length) return [];
+    return [{
+      kind: "trigger",
+      name: trigger[1].toLowerCase(),
+      table: trigger[3].toLowerCase(),
+      functionName: trigger[4].toLowerCase(),
+      columns,
+      present: true,
+    }];
+  }
+
+  // Only exact REVOKE EXECUTE ... FROM PUBLIC on a function declared
+  // and catalog-proven earlier in this owner plan is supported.
+  // A generic REVOKE, GRANT, or ALTER FUNCTION stays unsupported.
+  const revoke = /^REVOKE\s+EXECUTE\s+ON\s+FUNCTION\s+([A-Za-z_][A-Za-z0-9_]*)\(\s*(text\s*,\s*text)?\s*\)\s+FROM\s+PUBLIC\s*;?$/i.exec(normalized);
+  if (revoke !== null) {
+    return [{
+      kind: "function-public-execute-revoked",
+      name: revoke[1].toLowerCase(),
+      arguments: revoke[2] === undefined ? "" : "text, text",
+      present: true,
+    }];
+  }
+
   const createTable = new RegExp(
     `^CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${IDENTIFIER_SOURCE}\\s*\\(([\\s\\S]*)\\)\\s*;?$`,
     "i",
@@ -1223,8 +1288,65 @@ function assertTargetCatalogIsolation({
     }
   }
 
+  const targetFunctions = new Map(
+    targetCatalogContract
+      .filter((marker) => marker.kind === "function")
+      .map((marker) => [marker.name, marker]),
+  );
+  const targetRevocations = new Map(
+    targetCatalogContract
+      .filter((marker) => marker.kind === "function-public-execute-revoked")
+      .map((marker) => [marker.name, marker]),
+  );
+  const baselineFunctionNames = new Set(
+    baselineCatalogContract
+      .filter((marker) => marker.kind === "function")
+      .map((marker) => marker.name),
+  );
+  const isTargetFunctionName = (name) =>
+    [...targetTables].some((table) => name.startsWith(table + "_"));
+
   for (const marker of targetCatalogContract) {
     if (marker.kind === "table") continue;
+    if (marker.kind === "function") {
+      const revocation = targetRevocations.get(marker.name);
+      const signature = marker.arguments
+        .split(",").map((argument) => argument.trim().split(/\s+/).at(-1)).join(", ");
+      if (
+        !isTargetFunctionName(marker.name) ||
+        baselineFunctionNames.has(marker.name) ||
+        revocation?.arguments !== signature ||
+        revocation?.present !== true
+      ) {
+        throw new ModuleUpdateMigrationConfigurationError(
+          "FC6-B target routine must be module-scoped, new, and PUBLIC-execute revoked.",
+        );
+      }
+      continue;
+    }
+    if (marker.kind === "function-public-execute-revoked") {
+      if (
+        !isTargetFunctionName(marker.name) ||
+        !targetFunctions.has(marker.name)
+      ) {
+        throw new ModuleUpdateMigrationConfigurationError(
+          "FC6-B target routine revocation lacks an owned routine.",
+        );
+      }
+      continue;
+    }
+    if (marker.kind === "trigger") {
+      if (
+        !targetTables.has(marker.table) ||
+        baselineTables.has(marker.table) ||
+        !targetFunctions.has(marker.functionName)
+      ) {
+        throw new ModuleUpdateMigrationConfigurationError(
+          "FC6-B target trigger must be bound to an owned table and routine.",
+        );
+      }
+      continue;
+    }
     if (
       typeof marker.table !== "string" ||
       !targetTables.has(marker.table) ||
@@ -1364,6 +1486,90 @@ async function anyCatalogMarkerExists(transaction, contract) {
 }
 
 async function catalogMarkerExists(transaction, marker) {
+  if (marker.kind === "function") {
+    const rows = await transaction`
+      SELECT pg_get_function_identity_arguments(p.oid) AS arguments,
+             pg_get_function_result(p.oid) AS result_type,
+             p.prosrc AS source
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+      JOIN pg_catalog.pg_language l ON l.oid = p.prolang
+      WHERE n.nspname = 'public'
+        AND p.proname = ${marker.name}
+        AND p.prokind = 'f'
+        AND l.lanname = 'plpgsql'
+    `;
+    return rows.some((row) =>
+      typeof row.source === "string" &&
+      typeof row.arguments === "string" &&
+      row.arguments.replace(/\s+/g, " ").trim() === marker.arguments &&
+      row.result_type === marker.returnType &&
+      createHash("sha256").update(row.source, "utf8").digest("hex") ===
+        marker.bodyHash
+    );
+  }
+
+  if (marker.kind === "trigger") {
+    const rows = await transaction`
+      SELECT tg.tgtype::int AS trigger_type,
+             tg.tgenabled AS enabled,
+             tg.tgnargs::int AS argument_count,
+             tg.tgqual IS NULL AS unconditional,
+             pg_get_triggerdef(tg.oid, true) AS definition
+      FROM pg_catalog.pg_trigger tg
+      JOIN pg_catalog.pg_class relation ON relation.oid = tg.tgrelid
+      JOIN pg_catalog.pg_namespace namespace ON namespace.oid = relation.relnamespace
+      JOIN pg_catalog.pg_proc routine ON routine.oid = tg.tgfoid
+      JOIN pg_catalog.pg_namespace routine_namespace
+        ON routine_namespace.oid = routine.pronamespace
+      WHERE namespace.nspname = 'public'
+        AND relation.relname = ${marker.table}
+        AND tg.tgname = ${marker.name}
+        AND tg.tgisinternal = false
+        AND routine_namespace.nspname = 'public'
+        AND routine.proname = ${marker.functionName}
+    `;
+    if (rows.length !== 1) return false;
+    const row = rows[0];
+    // Row BEFORE INSERT | UPDATE = 1 + 2 + 4 + 16 = 23.
+    if (
+      row.trigger_type !== 23 ||
+      row.enabled !== "O" ||
+      row.argument_count !== 0 ||
+      row.unconditional !== true ||
+      typeof row.definition !== "string"
+    ) return false;
+    const columns = /\bUPDATE\s+OF\s+(.+?)\s+ON\s+/i.exec(row.definition)?.[1];
+    return columns !== undefined &&
+      JSON.stringify(columns.split(",").map((v) =>
+        v.trim().replaceAll('"', "").toLowerCase()
+      ).sort()) === JSON.stringify(marker.columns);
+  }
+
+  if (marker.kind === "function-public-execute-revoked") {
+    const rows = await transaction`
+      SELECT pg_catalog.pg_get_function_identity_arguments(p.oid) AS arguments,
+        NOT EXISTS (
+          SELECT 1
+          FROM pg_catalog.aclexplode(
+            COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))
+          ) AS acl
+          WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+        ) AS public_execute_revoked
+      FROM pg_catalog.pg_proc AS p
+      JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = p.pronamespace
+      WHERE namespace.nspname = 'public' AND p.proname = ${marker.name}
+        AND p.prokind = 'f'
+    `;
+    return rows.some((row) =>
+      row.public_execute_revoked === true &&
+      typeof row.arguments === "string" &&
+      row.arguments.split(",").map((part) =>
+        part.trim().split(/\s+/).at(-1)
+      ).join(", ") === marker.arguments
+    );
+  }
+
   if (marker.kind === "table") {
     const rows = await transaction`
       SELECT EXISTS (

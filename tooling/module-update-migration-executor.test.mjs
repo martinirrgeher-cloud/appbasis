@@ -23,6 +23,64 @@ import { migrationStatements } from "./database-migration-executor.mjs";
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
+test("pins documentation v2 PL/pgSQL source and subject-guard trigger catalog markers", async () => {
+  const migration = "modules/training-documentation/migrations/0001_appbasis_training_documentation_subject_deletion.sql";
+  const content = await readFile(join(repositoryRoot, migration), "utf8");
+  const catalog = createCatalogContract([
+    { ownerId: "training-documentation", relativePath: migration, statements: [content] },
+  ], "baseline");
+  const functions = catalog.filter((entry) => entry.kind === "function");
+  const triggers = catalog.filter((entry) => entry.kind === "trigger");
+  const revoked = catalog.filter((entry) => entry.kind === "function-public-execute-revoked");
+  assert.deepEqual(functions.map((entry) => entry.name).sort(), [
+    "appbasis_training_documentation_guard_revision_write",
+    "appbasis_training_documentation_guard_root_insert",
+    "appbasis_training_documentation_guard_subject",
+  ]);
+  assert.deepEqual(triggers.map((entry) => entry.name).sort(), [
+    "appbasis_training_documentation_guard_revision",
+    "appbasis_training_documentation_guard_root",
+  ]);
+  assert.deepEqual(revoked.map((entry) => entry.name).sort(),
+    functions.map((entry) => entry.name).sort());
+  assert.deepEqual(revoked.map((entry) => entry.arguments).sort(),
+    ["", "", "text, text"]);
+  assert.ok(functions.every((entry) => /^[0-9a-f]{64}$/.test(entry.bodyHash)));
+  assert.ok(triggers.every((entry) =>
+    entry.columns.length > 0 && entry.functionName.startsWith("appbasis_training_documentation_guard_")
+  ));
+  const markers = catalog.filter((entry) => entry.kind === "table");
+  assert.deepEqual(markers.map((entry) => entry.name), [
+    "appbasis_training_documentation_subject_deletion",
+  ]);
+
+  // Unknown SQL-language functions or AFTER/DELETE triggers may not bypass
+  // catalog verification by borrowing the name of a known routine.
+  for (const sql of [
+    "CREATE FUNCTION appbasis_fake() RETURNS void LANGUAGE sql AS 'SELECT 1';",
+    "CREATE TRIGGER bad_guard AFTER DELETE ON appbasis_training_documentation FOR EACH ROW EXECUTE FUNCTION appbasis_fake();",
+    "CREATE OR REPLACE FUNCTION appbasis_fake() RETURNS trigger LANGUAGE plpgsql AS $body$ BEGIN RETURN NEW; END; $body$;",
+    "GRANT EXECUTE ON FUNCTION appbasis_fake() TO PUBLIC;",
+  ]) {
+    assert.throws(
+      () => createCatalogContract([
+        { ownerId: "training-documentation", relativePath: "unsafe.sql", statements: [sql] },
+      ], "baseline"),
+      /statement without a verifiable catalog marker/,
+    );
+  }
+  assert.throws(
+    () => createCatalogContract([
+      {
+        ownerId: "training-documentation",
+        relativePath: "unsafe-revoke.sql",
+        statements: ["REVOKE EXECUTE ON FUNCTION appbasis_training_documentation_guard_subject(text, text) FROM PUBLIC;"],
+      },
+    ], "baseline"),
+    /cannot revoke a function without a previously verified matching owner routine/,
+  );
+});
+
 test("ULC-E2A Stammdaten migration stays inside the FC6 target DDL contract", async () => {
   const relativePath =
     "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql";

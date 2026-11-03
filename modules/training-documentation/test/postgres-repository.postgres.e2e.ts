@@ -40,13 +40,22 @@ beforeAll(async () => {
     "utf8",
   );
   await requiredConnection().client.unsafe(migration);
+  const subjectMigration = await readFile(
+    new URL(
+      "../migrations/0001_appbasis_training_documentation_subject_deletion.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  await requiredConnection().client.unsafe(subjectMigration);
 });
 
 beforeEach(async () => {
   await requiredConnection().client.unsafe(
     `TRUNCATE TABLE
        appbasis_training_documentation_revision,
-       appbasis_training_documentation
+       appbasis_training_documentation,
+       appbasis_training_documentation_subject_deletion
        CASCADE`,
   );
 });
@@ -65,6 +74,200 @@ afterAll(async () => {
 });
 
 describe("training-documentation PostgreSQL repository", () => {
+  it("revokes PUBLIC EXECUTE for all module-owned deletion guard functions", async () => {
+    const rows = await requiredConnection().client.unsafe(
+      `SELECT p.proname,
+        NOT EXISTS (
+          SELECT 1 FROM pg_catalog.aclexplode(
+            COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))
+          ) AS acl
+          WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+        ) AS public_execute_revoked
+      FROM pg_catalog.pg_proc AS p
+      JOIN pg_catalog.pg_namespace AS namespace
+        ON namespace.oid = p.pronamespace
+      WHERE namespace.nspname = 'public'
+        AND p.proname IN (
+          'appbasis_training_documentation_guard_subject',
+          'appbasis_training_documentation_guard_root_insert',
+          'appbasis_training_documentation_guard_revision_write'
+        ) ORDER BY p.proname`,
+    );
+    expect(rows.map((row) => ({
+      name: row.proname, revoked: row.public_execute_revoked,
+    }))).toEqual([
+      { name: "appbasis_training_documentation_guard_revision_write", revoked: true },
+      { name: "appbasis_training_documentation_guard_root_insert", revoked: true },
+      { name: "appbasis_training_documentation_guard_subject", revoked: true },
+    ]);
+  });
+
+
+  it("atomically deletes owned documentation and redacts matching third-party attendance in every historical revision", async () => {
+    const organization = "org-privacy-delete";
+    const subject = "subject-privacy-target";
+    const victimName = "Sensitive Person To Remove";
+    const service = serviceFor(requiredConnection(), [
+      "doc-privacy-subject", "doc-privacy-other", "doc-privacy-foreign",
+    ]);
+    const own = await service.create(organization, {
+      subjectId: subject,
+      sessionDate: "2026-10-26",
+      sourcePlanId: "plan-owned", sourcePlanRevision: 1,
+      note: "Private owner's training note",
+      attendance: [
+        { participantId: subject, displayName: victimName, status: "present" },
+      ],
+    });
+    const other = await service.create(organization, {
+      subjectId: "different-athlete",
+      sessionDate: "2026-10-27",
+      sourcePlanId: "plan-other", sourcePlanRevision: 1,
+      note: "Keep unrelated training note",
+      attendance: [
+        { participantId: subject, displayName: victimName, status: "present" },
+        { participantId: "different-athlete", displayName: "Person Kept", status: "excused" },
+      ],
+    });
+    await service.update(organization, other.id, 1, {
+      note: "Keep newer unrelated note",
+      attendance: [
+        { participantId: "different-athlete", displayName: "Person Kept", status: "present" },
+        { participantId: subject, displayName: victimName, status: "absent" },
+      ],
+    });
+    const foreign = await service.create("other-organization", {
+      subjectId: "different-athlete",
+      sessionDate: "2026-10-27",
+      sourcePlanId: "plan-foreign", sourcePlanRevision: 1,
+      attendance: [
+        { participantId: subject, displayName: victimName, status: "present" },
+      ],
+    });
+
+    const repository = repositoryFor(requiredConnection());
+    await expect(repository.inspectSubjectPrivacy(organization, subject))
+      .resolves.toMatchObject({
+        ownedDocuments: 1, ownedRevisions: 1,
+        otherSubjectDocumentsWithParticipant: 1,
+        otherSubjectRevisionsWithParticipant: 2,
+      });
+    const completedAt = new Date(Date.now() - 3_600_000);
+    await expect(repository.removeSubjectDataAfterVerifiedDeletion(
+      organization, subject, completedAt,
+    )).resolves.toEqual({
+      markerInserted: true,
+      deletedDocuments: 1, deletedRevisions: 1,
+      redactedOtherSubjectRevisions: 2,
+    });
+    await expect(service.findCurrent(organization, own.id)).resolves.toBeUndefined();
+    await expect(repository.inspectSubjectPrivacy(organization, subject))
+      .resolves.toMatchObject({
+        ownedDocuments: 0, ownedRevisions: 0,
+        otherSubjectDocumentsWithParticipant: 0,
+        otherSubjectRevisionsWithParticipant: 0,
+      });
+    const historical = await service.listRevisions(organization, other.id);
+    expect(historical).toHaveLength(2);
+    expect(historical.every((rev) =>
+      rev.attendance.length === 1 &&
+      rev.attendance[0]?.participantId === "different-athlete" &&
+      !JSON.stringify(rev).includes(victimName)
+    )).toBe(true);
+    expect(historical.map((rev) => rev.note)).toEqual([
+      "Keep newer unrelated note", "Keep unrelated training note",
+    ]);
+    await expect(service.listRevisions("other-organization", foreign.id))
+      .resolves.toMatchObject([{
+        attendance: [{ participantId: subject, displayName: victimName }],
+      }]);
+    await expect(repository.removeSubjectDataAfterVerifiedDeletion(
+      organization, subject, completedAt,
+    )).resolves.toEqual({
+      markerInserted: false,
+      deletedDocuments: 0, deletedRevisions: 0,
+      redactedOtherSubjectRevisions: 0,
+    });
+    // The v2 triggers block the previously live editor's stale snapshot.
+    await expect(service.create(organization, {
+      subjectId: subject, sessionDate: "2026-10-28",
+      sourcePlanId: "plan-reborn", sourcePlanRevision: 1,
+    })).rejects.toThrow(/deletion marker/i);
+    await expect(service.update(organization, other.id, 2, {
+      attendance: [
+        { participantId: subject, displayName: victimName, status: "present" },
+      ],
+    })).rejects.toThrow(/deletion marker/i);
+    // An unrelated athlete can still update their documentation.
+    await expect(service.update(organization, other.id, 2, {
+      note: "Other athlete can edit",
+    })).resolves.toMatchObject({ currentRevision: 3 });
+    await expect(repository.removeSubjectDataAfterVerifiedDeletion(
+      organization, subject, new Date(completedAt.getTime() - 1_000),
+    )).rejects.toThrow(/conflicts/i);
+    await expect(repository.inspectSubjectPrivacy(organization, subject))
+      .resolves.toMatchObject({
+        ownedDocuments: 0, otherSubjectRevisionsWithParticipant: 0,
+      });
+  });
+
+  it("rejects missing provenance, expired timestamps and stale direct SQL subject resurrection", async () => {
+    const repo = repositoryFor(requiredConnection());
+    const now = new Date();
+    for (const date of [
+      new Date(NaN),
+      new Date(now.getTime() + 60_000),
+      new Date(now.getTime() - 36 * 24 * 60 * 60 * 1000),
+    ]) {
+      await expect(repo.removeSubjectDataAfterVerifiedDeletion(
+        "org-invalid", "athlete-one", date,
+      )).rejects.toThrow();
+    }
+    await expect(repo.removeSubjectDataAfterVerifiedDeletion(
+      "org-invalid", "", now,
+    )).rejects.toThrow();
+    const service = serviceFor(requiredConnection(), ["doc-writer-barrier"]);
+    const saved = await service.create("org-direct", {
+      subjectId: "other-athlete", sessionDate: "2026-10-26",
+      sourcePlanId: "plan-direct", sourcePlanRevision: 1,
+    });
+    const removedAt = new Date(Date.now() - 3_600_000);
+    await repo.removeSubjectDataAfterVerifiedDeletion(
+      "org-direct", "athlete-private", removedAt,
+    );
+    // Even a direct database revision insert outside the application service
+    // cannot reintroduce a deletion-marked participant.
+    await expect(requiredConnection().client.unsafe(
+      `INSERT INTO appbasis_training_documentation_revision (
+          organization_id, documentation_id, revision, status, note,
+          items_json, attendance_json, created_at
+        ) VALUES ($1, $2, 2, 'draft', NULL, '[]'::jsonb,
+          $3::jsonb, now())`,
+      ["org-direct", saved.id, JSON.stringify([
+        { participantId: "athlete-private", displayName: "Private", status: "present" },
+      ])],
+    )).rejects.toThrow(/deletion marker/i);
+    // Direct SQL cannot reassign root or revision ownership to bypass the
+    // subject-scoped marker, even when ordinary service API omits that path.
+    await expect(requiredConnection().client.unsafe(
+      `UPDATE appbasis_training_documentation
+         SET subject_id = $3
+         WHERE organization_id = $1 AND id = $2`,
+      ["org-direct", saved.id, "athlete-private"],
+    )).rejects.toThrow(/ownership is immutable/i);
+    await expect(requiredConnection().client.unsafe(
+      `UPDATE appbasis_training_documentation_revision
+         SET organization_id = $3
+         WHERE organization_id = $1 AND documentation_id = $2`,
+      ["org-direct", saved.id, "other-org"],
+    )).rejects.toThrow(/ownership is immutable/i);
+    await expect(service.listRevisions("org-direct", saved.id))
+      .resolves.toHaveLength(1);
+    await expect(repo.removeSubjectDataAfterVerifiedDeletion(
+      "other-org", "athlete-private", removedAt,
+    )).resolves.toMatchObject({ markerInserted: true, deletedDocuments: 0 });
+  });
+
   it("persists plan provenance, actual values and completion revisions", async () => {
     const service = serviceFor(requiredConnection(), ["documentation-1"]);
 
@@ -229,6 +432,23 @@ describe("training-documentation PostgreSQL repository", () => {
     }
   });
 });
+
+function repositoryFor(connection: ReturnType<typeof createPostgresDatabase>) {
+  return new PostgresTrainingDocumentationRepository({
+    unsafe(query, parameters) {
+      return connection.client.unsafe(query, parameters);
+    },
+    begin(callback) {
+      return connection.client.begin(async (transaction) =>
+        callback({
+          unsafe(query, parameters) {
+            return transaction.unsafe(query, parameters);
+          },
+        }),
+      );
+    },
+  });
+}
 
 function serviceFor(
   connection: ReturnType<typeof createPostgresDatabase>,
