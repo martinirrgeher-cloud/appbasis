@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "scope": "athlete-subject-dependent-deletion-follow-up",
+  "status": "blocked-pending-operator-privacy-policy",
+  "currentSourceAuthority": {
+    "owner": "athletes",
+    "markerRetentionDays": 35,
+    "acceptedOnlyBeforeExpiry": true,
+    "postExpiryRetry": "deny"
+  },
+  "urgentReview": {
+    "daysBeforeExpiry": 7,
+    "diagnosticOnly": true,
+    "automaticRetry": false
+  },
+  "futureDurableDecisionRequirements": {
+    "privacyReview": "not-approved",
+    "personalSubjectIdentifierRetention": "not-approved",
+    "sourceCaptureAtomicity": "not-proven",
+    "canonicalActorAuthorization": "requires-design",
+    "ownerCompletionCheckpoints": "requires-design",
+    "backupRestoreReplayAndRevocation": "not-proven",
+    "irreversiblePseudonymizationAfterExpiry": "requires-design",
+    "auditAndIndependentExpiryEnforcement": "requires-design"
+  },
+  "deployment": {
+    "databaseMigration": false,
+    "runtimeWiring": false,
+    "backgroundJob": false,
+    "publicIngress": false,
+    "productionGate": false
+  },
+  "forbiddenAssumptions": [
+    "a-probed-owner-marker-is-not-an-authorization-after-source-expiry",
+    "a-missing-marker-is-not-evidence-no-deletion-ever-occurred",
+    "source-marker-capture-not-atomic-with-athlete-owner-purge",
+    "snapshot-matching-owner-markers-do-not-prove-app-wide-deletion",
+    "ambiguous-legacy-usage-remains-unattributed-and-not-erased",
+    "no-subject-id-storage-beyond-35-days-without-reviewed-policy"
+  ]
+}
