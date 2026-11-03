@@ -44,12 +44,12 @@ RETURNS trigger LANGUAGE plpgsql AS $root$
 BEGIN
   -- Ownership is immutable; a direct SQL reassignment must not evade
   -- completed-deletion handling or the original provenance contract.
-  IF TG_OP = 'UPDATE' AND (
-    NEW.organization_id IS DISTINCT FROM OLD.organization_id OR
-    NEW.subject_id IS DISTINCT FROM OLD.subject_id
-  ) THEN
-    RAISE EXCEPTION 'Training documentation root ownership is immutable.'
-      USING ERRCODE = '23514';
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.organization_id IS DISTINCT FROM OLD.organization_id OR
+       NEW.subject_id IS DISTINCT FROM OLD.subject_id THEN
+      RAISE EXCEPTION 'Training documentation root ownership is immutable.'
+        USING ERRCODE = '23514';
+    END IF;
   END IF;
   PERFORM appbasis_training_documentation_guard_subject(
     NEW.organization_id, NEW.subject_id
@@ -64,12 +64,12 @@ DECLARE
   owner_subject text;
   scoped_subject text;
 BEGIN
-  IF TG_OP = 'UPDATE' AND (
-    NEW.organization_id IS DISTINCT FROM OLD.organization_id OR
-    NEW.documentation_id IS DISTINCT FROM OLD.documentation_id
-  ) THEN
-    RAISE EXCEPTION 'Training documentation revision ownership is immutable.'
-      USING ERRCODE = '23514';
+  IF TG_OP = 'UPDATE' THEN
+    IF NEW.organization_id IS DISTINCT FROM OLD.organization_id OR
+       NEW.documentation_id IS DISTINCT FROM OLD.documentation_id THEN
+      RAISE EXCEPTION 'Training documentation revision ownership is immutable.'
+        USING ERRCODE = '23514';
+    END IF;
   END IF;
   SELECT subject_id INTO owner_subject
   FROM appbasis_training_documentation
