@@ -1,3 +1,8 @@
+import type { AthleteMasterdataDeletionMarker, PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
+import type { TrainingPlanLifecycleRepository } from "@appbasis/training-plans";
+import type {
+  TrainingBlockSubjectUsageLifecycleRepository,
+} from "@appbasis/training-blocks";
 import { assertIdentityActionAllowed } from "@appbasis/identity/access";
 import { principalId, roleId, type PermissionStore } from "@appbasis/permissions";
 import type {
@@ -137,6 +142,164 @@ export async function deleteUlcLinzIdentityWithCanonicalFavoriteDeletion(
     favoriteMarkerInserted: favoriteResult.markerInserted,
     deletedTrainingBlockFavorites: favoriteResult.deletedFavorites,
   });
+}
+
+/**
+ * PRIVILEGED, UNWIRED post-retention follow-up after the ATHLETES owner has
+ * already finished and persisted its 12-month retention deletion.
+ *
+ * A merely inactive athlete is NOT eligible. The same canonical app
+ * administrator authorization as M5 identity deletion is required before
+ * reading sensitive owner state or making any module-owned write.
+ */
+export interface UlcLinzAthleteSubjectDeletionDependencies {
+  readonly permissions: PermissionStore;
+  readonly scopes: Pick<
+    PostgresUlcLinzScopePersistence,
+    "resolveMembership" | "hasRelation"
+  >;
+  readonly athletes: Pick<
+    PostgresAthleteMasterdataRepository,
+    "findCurrentAthleteDeletionMarker"
+  >;
+  readonly plans: Pick<TrainingPlanLifecycleRepository, "deleteSubjectData">;
+  readonly usage: Pick<
+    TrainingBlockSubjectUsageLifecycleRepository,
+    "markSubjectDeletedAndRemoveAttributedUsage"
+  >;
+  readonly now: () => Date;
+}
+
+export interface UlcLinzAthleteSubjectDeletionRequest {
+  readonly organizationId: string;
+  /** An athlete SUBJECT id, never an identity/principal id. */
+  readonly subjectId: string;
+}
+
+export interface UlcLinzAthleteSubjectDeletionFollowUpResult {
+  readonly organizationId: string;
+  readonly subjectId: string;
+  readonly completedAt: Date;
+  readonly deletedPlans: number;
+  readonly deletedPlanRevisions: number;
+  readonly deletedPlanItems: number;
+  readonly usageMarkerInserted: boolean;
+  readonly deletedAttributedUsageEvents: number;
+}
+
+/**
+ * Deletion marker is the only authorization to begin dependent erasure.
+ * Plans and blocks have separate owner transactions: a partial failure
+ * propagates and MUST be retried with the same source marker. This is
+ * deliberately not equivalent to one atomic app-wide delete.
+ *
+ * No HTTP/runtime/caller is installed. Marker expiry, restoration, unowned
+ * legacy events, cross-owner race/plan edits and post-delete verification
+ * remain independent blockers before any production activation.
+ */
+export async function deleteUlcLinzAthleteSubjectDependentsAfterRetention(
+  current: UlcLinzCurrentIdentity,
+  dependencies: UlcLinzAthleteSubjectDeletionDependencies,
+  request: UlcLinzAthleteSubjectDeletionRequest,
+): Promise<UlcLinzAthleteSubjectDeletionFollowUpResult> {
+  if (
+    !dependencies ||
+    !dependencies.athletes ||
+    typeof dependencies.athletes.findCurrentAthleteDeletionMarker !== "function" ||
+    !dependencies.plans ||
+    typeof dependencies.plans.deleteSubjectData !== "function" ||
+    !dependencies.usage ||
+    typeof dependencies.usage.markSubjectDeletedAndRemoveAttributedUsage !== "function" ||
+    typeof dependencies.now !== "function" ||
+    typeof dependencies.scopes?.hasRelation !== "function"
+  ) {
+    blocked();
+  }
+  const organizationId = requiredIdentifier(request.organizationId);
+  const subjectId = requiredIdentifier(request.subjectId);
+  const { actorIdentityId } = await assertCanonicalLifecycleAdmin(
+    current, dependencies.permissions, dependencies.scopes, organizationId,
+  );
+  if (await dependencies.scopes.hasRelation({
+    identityId: actorIdentityId,
+    organizationId,
+    subjectId,
+    relationType: "self",
+  })) {
+    blocked();
+  }
+  const now = dependencies.now();
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) blocked();
+  const marker = await dependencies.athletes.findCurrentAthleteDeletionMarker(
+    organizationId, subjectId, now,
+  );
+  const completedAt = validateCanonicalAthleteDeletionMarker(
+    marker, organizationId, subjectId, now,
+  );
+
+  // Idempotent module-owner steps: the first owner may have committed when
+  // the second fails. Never claim the app-wide operation succeeded then.
+  const plans = await dependencies.plans.deleteSubjectData(
+    organizationId, subjectId, completedAt,
+  );
+  if (
+    !plans ||
+    !validDeletionCount(plans.deletedPlans) ||
+    !validDeletionCount(plans.deletedRevisions) ||
+    !validDeletionCount(plans.deletedItems)
+  ) {
+    blocked();
+  }
+
+  const usage = await dependencies.usage.markSubjectDeletedAndRemoveAttributedUsage(
+    organizationId, subjectId, completedAt,
+  );
+  if (
+    !usage ||
+    typeof usage.markerInserted !== "boolean" ||
+    !validDeletionCount(usage.deletedUsageEvents)
+  ) {
+    blocked();
+  }
+  return Object.freeze({
+    organizationId,
+    subjectId,
+    completedAt: new Date(completedAt.getTime()),
+    deletedPlans: plans.deletedPlans,
+    deletedPlanRevisions: plans.deletedRevisions,
+    deletedPlanItems: plans.deletedItems,
+    usageMarkerInserted: usage.markerInserted,
+    deletedAttributedUsageEvents: usage.deletedUsageEvents,
+  });
+}
+
+function validateCanonicalAthleteDeletionMarker(
+  marker: AthleteMasterdataDeletionMarker | null,
+  organizationId: string,
+  subjectId: string,
+  now: Date,
+): Date {
+  if (
+    marker === null ||
+    marker.entityType !== "athlete" ||
+    marker.entityId !== subjectId ||
+    marker.organizationId !== organizationId ||
+    !(marker.completedAt instanceof Date) ||
+    !(marker.purgeAfter instanceof Date) ||
+    !Number.isFinite(marker.completedAt.getTime()) ||
+    !Number.isFinite(marker.purgeAfter.getTime()) ||
+    marker.completedAt.getTime() > now.getTime() ||
+    marker.purgeAfter.getTime() < now.getTime() ||
+    marker.purgeAfter.getTime() - marker.completedAt.getTime() !==
+      35 * 24 * 60 * 60 * 1000
+  ) {
+    blocked();
+  }
+  return new Date(marker.completedAt.getTime());
+}
+
+function validDeletionCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 /** Existing canonical M5-C flow stays behaviorally unchanged. */
