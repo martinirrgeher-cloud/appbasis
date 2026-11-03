@@ -48,9 +48,9 @@ test("pins documentation v2 PL/pgSQL source and subject-guard trigger catalog ma
   assert.deepEqual(
     functions.map((entry) => ({ name: entry.name, definer: entry.securityDefiner })),
     [
-      { name: "appbasis_training_documentation_guard_subject", definer: false },
-      { name: "appbasis_training_documentation_guard_root_insert", definer: true },
       { name: "appbasis_training_documentation_guard_revision_write", definer: true },
+      { name: "appbasis_training_documentation_guard_root_insert", definer: true },
+      { name: "appbasis_training_documentation_guard_subject", definer: false },
     ],
   );
   assert.ok(functions.every((entry) => /^[0-9a-f]{64}$/.test(entry.bodyHash)));
