@@ -17,6 +17,7 @@ const repositoryRoot = resolve(
 const targetTables = [
   "appbasis_training_documentation",
   "appbasis_training_documentation_revision",
+  "appbasis_training_documentation_subject_deletion",
 ];
 
 const trainingPlanTables = [
@@ -26,7 +27,7 @@ const trainingPlanTables = [
   "appbasis_training_plan_subject_deletion",
 ];
 
-test("E7B9 documentation plan pins schema v1 on the training-plans-v2 baseline", async () => {
+test("E7B9 documentation plan pins schema v2 with subject write guards on the training-plans-v2 baseline", async () => {
   const plan = await loadUlcTrainingDocumentationPreviewPlan({
     repositoryRoot,
   });
@@ -35,10 +36,17 @@ test("E7B9 documentation plan pins schema v1 on the training-plans-v2 baseline",
   assert.equal(plan.moduleId, "training-documentation");
   assert.equal(plan.preview.environment, "generated-preview-ulc-linz");
   assert.equal(plan.preview.database, "appbasis_ulc_linz_preview");
-  assert.equal(plan.target.schemaVersion, 1);
+  assert.equal(plan.target.schemaVersion, 2);
   assert.deepEqual(plan.target.migrations, [
     "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
+    "modules/training-documentation/migrations/0001_appbasis_training_documentation_subject_deletion.sql",
   ]);
+  const proof = plan.executionPlan.targetCatalogContract;
+  assert.equal(proof.filter((marker) => marker.kind === "function").length, 3);
+  assert.equal(proof.filter((marker) =>
+    marker.kind === "function-public-execute-revoked"
+  ).length, 3);
+  assert.equal(proof.filter((marker) => marker.kind === "trigger").length, 2);
   assert.deepEqual(plan.target.tables, targetTables);
   assert.deepEqual(plan.requiredTrainingPlansTables, trainingPlanTables);
   assert.equal(plan.productionChanged, false);
@@ -52,6 +60,13 @@ test("E7B9 documentation preview shape fails closed on partial schema", () => {
   assert.equal(
     classifyUlcTrainingDocumentationPreviewShape({ tables: targetTables }),
     "current",
+  );
+  // Existing v1-only preview databases may not be silently called v2-ready.
+  assert.throws(
+    () => classifyUlcTrainingDocumentationPreviewShape({
+      tables: targetTables.slice(0, 2),
+    }),
+    /partially applied or drifted/,
   );
   assert.throws(
     () =>
