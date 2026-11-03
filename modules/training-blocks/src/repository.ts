@@ -85,6 +85,29 @@ export interface TrainingBlockSubjectUsageLifecycleRepository {
   ): Promise<TrainingBlockSubjectUsageDeletionResult>;
 }
 
+/** Minimal deletion decision from a complete, NEWER authoritative recovery point. */
+export interface TrainingBlockSubjectUsageDeletionMarker {
+  readonly organizationId: string;
+  readonly subjectId: string;
+  readonly completedAt: Date;
+  readonly purgeAfter: Date;
+}
+
+/**
+ * Privileged, offline-only recovery contract. The app/operator must prove
+ * authority ordering and snapshot completeness, keep the restored target
+ * inaccessible, and reconcile all owners before promotion.
+ */
+export interface TrainingBlockSubjectUsageReconciliationRepository {
+  /** Includes expired-but-still-protective markers: they are never auto-purged. */
+  listSubjectUsageDeletionMarkers(
+    now: Date,
+  ): Promise<readonly TrainingBlockSubjectUsageDeletionMarker[]>;
+  reconcileSubjectUsageDeletionMarker(
+    marker: TrainingBlockSubjectUsageDeletionMarker,
+  ): Promise<TrainingBlockSubjectUsageDeletionResult>;
+}
+
 export interface TrainingBlockUsagePrivacyInspection {
   readonly organizationId: string;
   readonly totalEvents: number;
