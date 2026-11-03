@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { principalId, roleId, type PermissionStore } from "@appbasis/permissions";
 import {
   deleteUlcLinzAthleteSubjectDependentsAfterRetention,
+  inspectUlcLinzAthleteSubjectDeletionFollowUp,
   type UlcLinzAthleteSubjectDeletionDependencies,
+  type UlcLinzAthleteSubjectDeletionPreflightDependencies,
 } from "../worker/lifecycle-service";
 import type { UlcLinzCurrentIdentity } from "../worker/authorization";
 
@@ -50,6 +52,10 @@ function harness(options: {
   relation?: boolean;
   marker?: ReturnType<typeof authoritativeMarker> | null;
   now?: Date;
+  planMarker?: ReturnType<typeof authoritativeMarker> | null;
+  usageMarker?: ReturnType<typeof authoritativeMarker> | null;
+  remainingPlans?: number;
+  remainingUsage?: number;
 } = {}) {
   const events: string[] = [];
   const findPrincipal = vi.fn(async () => {
@@ -86,6 +92,29 @@ function harness(options: {
     events.push("usage");
     return { markerInserted: true, deletedUsageEvents: 5 };
   });
+  const inspectSubjectDeletion = vi.fn(async () => {
+    events.push("inspect-plans");
+    return {
+      organizationId: ORG, subjectId: SUBJECT,
+      marker: options.planMarker === undefined ? authoritativeMarker() : options.planMarker,
+      remainingPlans: options.remainingPlans ?? 0,
+    };
+  });
+  const inspectSubjectUsageDeletion = vi.fn(async () => {
+    events.push("inspect-usage");
+    return {
+      organizationId: ORG, subjectId: SUBJECT,
+      marker: options.usageMarker === undefined ? authoritativeMarker() : options.usageMarker,
+      remainingAttributedUsageEvents: options.remainingUsage ?? 0,
+    };
+  });
+  const preflightDependencies: UlcLinzAthleteSubjectDeletionPreflightDependencies = {
+    permissions, scopes: { resolveMembership, hasRelation },
+    athletes: { findCurrentAthleteDeletionMarker },
+    plans: { inspectSubjectDeletion },
+    usage: { inspectSubjectUsageDeletion },
+    now: () => options.now ?? new Date(NOW),
+  };
   const dependencies: UlcLinzAthleteSubjectDeletionDependencies = {
     permissions,
     scopes: { resolveMembership, hasRelation },
@@ -98,6 +127,7 @@ function harness(options: {
     dependencies, events, findPrincipal, resolveMembership,
     hasRelation, findCurrentAthleteDeletionMarker,
     deleteSubjectData, markSubjectDeletedAndRemoveAttributedUsage,
+    preflightDependencies, inspectSubjectDeletion, inspectSubjectUsageDeletion,
   };
 }
 
@@ -209,4 +239,101 @@ describe("ULC canonically authorized post-retention athlete subject cleanup", ()
     )).rejects.toThrow();
     expect(b.findCurrentAthleteDeletionMarker).not.toHaveBeenCalled();
   });
+  it("reports missing and partially completed owner steps without any writes", async () => {
+    const ready = harness({ planMarker: null, usageMarker: null, remainingPlans: 2, remainingUsage: 3 });
+    await expect(inspectUlcLinzAthleteSubjectDeletionFollowUp(
+      current(), ready.preflightDependencies, request,
+    )).resolves.toEqual({
+      organizationId: ORG, subjectId: SUBJECT,
+      status: "follow-up-pending", completedAt: COMPLETED,
+      planMarkerPresent: false, usageMarkerPresent: false,
+      remainingPlans: 2, remainingAttributedUsageEvents: 3,
+    });
+    const partial = harness({ usageMarker: null, remainingUsage: 1 });
+    await expect(inspectUlcLinzAthleteSubjectDeletionFollowUp(
+      current(), partial.preflightDependencies, request,
+    )).resolves.toMatchObject({
+      status: "follow-up-pending", planMarkerPresent: true,
+      usageMarkerPresent: false, remainingPlans: 0,
+      remainingAttributedUsageEvents: 1,
+    });
+    expect(ready.deleteSubjectData).not.toHaveBeenCalled();
+    expect(ready.markSubjectDeletedAndRemoveAttributedUsage).not.toHaveBeenCalled();
+    expect(partial.deleteSubjectData).not.toHaveBeenCalled();
+    expect(partial.markSubjectDeletedAndRemoveAttributedUsage).not.toHaveBeenCalled();
+  });
+
+  it("labels matching owner markers only as a snapshot, not a lifecycle-complete guarantee", async () => {
+    const h = harness();
+    await expect(inspectUlcLinzAthleteSubjectDeletionFollowUp(
+      current(), h.preflightDependencies, request,
+    )).resolves.toMatchObject({
+      status: "owner-markers-match", planMarkerPresent: true,
+      usageMarkerPresent: true, remainingPlans: 0,
+      remainingAttributedUsageEvents: 0,
+    });
+    expect(h.events).toEqual([
+      "membership", "principal", "relation", "marker", "inspect-plans", "inspect-usage",
+    ]);
+    expect(h.deleteSubjectData).not.toHaveBeenCalled();
+    expect(h.markSubjectDeletedAndRemoveAttributedUsage).not.toHaveBeenCalled();
+  });
+
+  it("flags owner tombstone mismatch before declaring matching state", async () => {
+    const wrong = { ...authoritativeMarker(), completedAt: new Date(COMPLETED.getTime() - 86400000) };
+    const h = harness({ usageMarker: wrong });
+    await expect(inspectUlcLinzAthleteSubjectDeletionFollowUp(
+      current(), h.preflightDependencies, request,
+    )).resolves.toMatchObject({
+      status: "owner-marker-conflict", planMarkerPresent: true,
+      usageMarkerPresent: true,
+    });
+  });
+
+  it("refuses to infer deletion from an expired, absent or foreign source marker", async () => {
+    for (const options of [
+      { marker: null },
+      { marker: null, remainingUsage: 6 },
+    ]) {
+      const h = harness(options);
+      await expect(inspectUlcLinzAthleteSubjectDeletionFollowUp(
+        current(), h.preflightDependencies, request,
+      )).resolves.toEqual({
+        organizationId: ORG, subjectId: SUBJECT,
+        status: "source-unverifiable", completedAt: null,
+        planMarkerPresent: null, usageMarkerPresent: null,
+        remainingPlans: null, remainingAttributedUsageEvents: null,
+      });
+      expect(h.inspectSubjectDeletion).not.toHaveBeenCalled();
+      expect(h.inspectSubjectUsageDeletion).not.toHaveBeenCalled();
+    }
+    const wrong = harness({ marker: { ...authoritativeMarker(), organizationId: "foreign-org" } });
+    await expect(inspectUlcLinzAthleteSubjectDeletionFollowUp(
+      current(), wrong.preflightDependencies, request,
+    )).rejects.toThrow();
+    expect(wrong.inspectSubjectDeletion).not.toHaveBeenCalled();
+  });
+
+  it("uses canonical admin authorization for inspection and rejects malformed owner evidence", async () => {
+    for (const options of [
+      { sourceRole: "trainer" }, { principalRole: "ulc-linz:trainer" },
+      { relation: true }, { principalGrants: ["unexpected"] },
+    ]) {
+      const h = harness(options);
+      await expect(inspectUlcLinzAthleteSubjectDeletionFollowUp(
+        current(), h.preflightDependencies, request,
+      )).rejects.toThrow();
+      expect(h.inspectSubjectDeletion).not.toHaveBeenCalled();
+    }
+    const h = harness();
+    h.inspectSubjectDeletion.mockResolvedValueOnce({
+      organizationId: ORG, subjectId: SUBJECT, marker: authoritativeMarker(),
+      remainingPlans: -1,
+    });
+    await expect(inspectUlcLinzAthleteSubjectDeletionFollowUp(
+      current(), h.preflightDependencies, request,
+    )).rejects.toThrow();
+    expect(h.deleteSubjectData).not.toHaveBeenCalled();
+  });
+
 });
