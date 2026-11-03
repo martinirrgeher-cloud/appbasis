@@ -187,19 +187,27 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       const block = await blocks.create(ORG, { name: "Workout block" });
       const event = (
         usageId: string, organizationId: string, subjectId: string,
+        sourcePlanId: string, sourceItemId: string,
       ) => ({
         event: {
           id: usageId, organizationId, blockId: block.id,
           occurredAt: "2026-10-12T12:00:00.000Z",
           sourceKind: "training_plan",
-          sourceRef: targetPlan.id + ":item-1", note: null,
+          sourceRef: sourcePlanId + ":" + sourceItemId, note: null,
         },
-        subjectId, sourcePlanId: targetPlan.id, sourceItemId: "item-1",
+        subjectId, sourcePlanId, sourceItemId,
       });
+      const targetItem = targetPlan.revision.items[0];
+      const neighborItem = keepPlan.revision.items[0];
+      if (!targetItem || !neighborItem) throw new Error("Expected persisted plan items.");
       const usageTarget = event(
-        await trainingPlanUsageEventId(ORG, targetPlan.id, "item-1"), ORG, SUBJECT,
+        await trainingPlanUsageEventId(ORG, targetPlan.id, targetItem.itemId),
+        ORG, SUBJECT, targetPlan.id, targetItem.itemId,
       );
-      const usageNeighbor = event("neighbor-usage", ORG, OTHER_SUBJECT);
+      const usageNeighbor = event(
+        await trainingPlanUsageEventId(ORG, keepPlan.id, neighborItem.itemId),
+        ORG, OTHER_SUBJECT, keepPlan.id, neighborItem.itemId,
+      );
       await blockRepository.recordVerifiedSubjectUsageOnce(usageTarget);
       await blockRepository.recordVerifiedSubjectUsageOnce(usageNeighbor);
       await blocks.recordUsageOnce(ORG, block.id, "legacy-unattributed", {
@@ -281,7 +289,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       });
       const remaining = await blockRepository.listUsageEvents(ORG, block.id);
       expect(remaining.map((row) => row.id).sort())
-        .toEqual(["legacy-unattributed", "neighbor-usage"]);
+        .toEqual(["legacy-unattributed", usageNeighbor.event.id].sort());
       await expect(blockRepository.recordVerifiedSubjectUsageOnce(usageTarget))
         .rejects.toThrow(/deletion marker/);
       const planMarkers = await required().client.unsafe(
