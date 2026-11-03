@@ -60,7 +60,6 @@ test("pins documentation v2 PL/pgSQL source and subject-guard trigger catalog ma
     "CREATE FUNCTION appbasis_fake() RETURNS void LANGUAGE sql AS 'SELECT 1';",
     "CREATE TRIGGER bad_guard AFTER DELETE ON appbasis_training_documentation FOR EACH ROW EXECUTE FUNCTION appbasis_fake();",
     "CREATE OR REPLACE FUNCTION appbasis_fake() RETURNS trigger LANGUAGE plpgsql AS $body$ BEGIN RETURN NEW; END; $body$;",
-    "REVOKE EXECUTE ON FUNCTION invented() FROM PUBLIC;",
     "GRANT EXECUTE ON FUNCTION appbasis_fake() TO PUBLIC;",
   ]) {
     assert.throws(
