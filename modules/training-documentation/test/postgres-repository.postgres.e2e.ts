@@ -74,6 +74,35 @@ afterAll(async () => {
 });
 
 describe("training-documentation PostgreSQL repository", () => {
+  it("revokes PUBLIC EXECUTE for all module-owned deletion guard functions", async () => {
+    const rows = await requiredConnection().client.unsafe(
+      `SELECT p.proname,
+        NOT EXISTS (
+          SELECT 1 FROM pg_catalog.aclexplode(
+            COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))
+          ) AS acl
+          WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+        ) AS public_execute_revoked
+      FROM pg_catalog.pg_proc AS p
+      JOIN pg_catalog.pg_namespace AS namespace
+        ON namespace.oid = p.pronamespace
+      WHERE namespace.nspname = 'public'
+        AND p.proname IN (
+          'appbasis_training_documentation_guard_subject',
+          'appbasis_training_documentation_guard_root_insert',
+          'appbasis_training_documentation_guard_revision_write'
+        ) ORDER BY p.proname`,
+    );
+    expect(rows.map((row) => ({
+      name: row.proname, revoked: row.public_execute_revoked,
+    }))).toEqual([
+      { name: "appbasis_training_documentation_guard_revision_write", revoked: true },
+      { name: "appbasis_training_documentation_guard_root_insert", revoked: true },
+      { name: "appbasis_training_documentation_guard_subject", revoked: true },
+    ]);
+  });
+
+
   it("atomically deletes owned documentation and redacts matching third-party attendance in every historical revision", async () => {
     const organization = "org-privacy-delete";
     const subject = "subject-privacy-target";
