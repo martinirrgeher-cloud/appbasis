@@ -1,5 +1,6 @@
 import {
   normalizeTrainingDocumentationContent,
+  normalizeTrainingDocumentationIdentifier,
   type TrainingDocumentationStatus,
 } from "./training-documentation";
 import type {
@@ -8,6 +9,8 @@ import type {
   TrainingDocumentationRevision,
   TrainingDocumentationRevisionAppendResult,
   TrainingDocumentationSnapshot,
+  TrainingDocumentationSubjectPrivacyInspection,
+  TrainingDocumentationSubjectPrivacyInspectionReader,
 } from "./repository";
 
 export type TrainingDocumentationSqlParameter =
@@ -33,12 +36,96 @@ export interface TrainingDocumentationPostgresClient
 }
 
 export class PostgresTrainingDocumentationRepository
-  implements TrainingDocumentationRepository
+  implements TrainingDocumentationRepository, TrainingDocumentationSubjectPrivacyInspectionReader
 {
   readonly #client: TrainingDocumentationPostgresClient;
 
   constructor(client: TrainingDocumentationPostgresClient) {
     this.#client = client;
+  }
+
+  /**
+   * A single PostgreSQL SELECT gives one statement-consistent inventory with
+   * no actor data, notes, names or individual documentation IDs returned.
+   * It counts participant references in ALL historical revisions, including
+   * documents owned by a different athlete in the same organization.
+   */
+  async inspectSubjectPrivacy(
+    organizationId: string,
+    subjectId: string,
+  ): Promise<TrainingDocumentationSubjectPrivacyInspection> {
+    const organization = normalizeTrainingDocumentationIdentifier(
+      organizationId, "Documentation organization",
+    );
+    const subject = normalizeTrainingDocumentationIdentifier(
+      subjectId, "Documentation subject",
+    );
+    const rows = await this.#client.unsafe(
+      `SELECT
+         (SELECT count(*)::int
+            FROM appbasis_training_documentation AS document
+           WHERE document.organization_id = $1
+             AND document.subject_id = $2) AS owned_documents,
+         (SELECT count(*)::int
+            FROM appbasis_training_documentation_revision AS revision
+            JOIN appbasis_training_documentation AS document
+              ON document.organization_id = revision.organization_id
+             AND document.id = revision.documentation_id
+           WHERE document.organization_id = $1
+             AND document.subject_id = $2) AS owned_revisions,
+         (SELECT count(DISTINCT document.id)::int
+            FROM appbasis_training_documentation_revision AS revision
+            JOIN appbasis_training_documentation AS document
+              ON document.organization_id = revision.organization_id
+             AND document.id = revision.documentation_id
+           WHERE document.organization_id = $1
+             AND document.subject_id <> $2
+             AND revision.attendance_json @>
+               jsonb_build_array(jsonb_build_object('participantId', $2::text))
+         ) AS other_subject_documents_with_participant,
+         (SELECT count(*)::int
+            FROM appbasis_training_documentation_revision AS revision
+            JOIN appbasis_training_documentation AS document
+              ON document.organization_id = revision.organization_id
+             AND document.id = revision.documentation_id
+           WHERE document.organization_id = $1
+             AND document.subject_id <> $2
+             AND revision.attendance_json @>
+               jsonb_build_array(jsonb_build_object('participantId', $2::text))
+         ) AS other_subject_revisions_with_participant`,
+      [organization, subject],
+    );
+    if (rows.length !== 1 || rows[0] === undefined) {
+      throw new Error("Training documentation privacy inventory is invalid.");
+    }
+    const row = rows[0];
+    const requiredCount = (value: unknown): number => {
+      if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+        throw new Error("Training documentation privacy count is invalid.");
+      }
+      return value;
+    };
+    const ownedDocuments = requiredCount(row.owned_documents);
+    const ownedRevisions = requiredCount(row.owned_revisions);
+    const otherSubjectDocumentsWithParticipant =
+      requiredCount(row.other_subject_documents_with_participant);
+    const otherSubjectRevisionsWithParticipant =
+      requiredCount(row.other_subject_revisions_with_participant);
+    if (
+      ownedRevisions < ownedDocuments ||
+      otherSubjectRevisionsWithParticipant <
+        otherSubjectDocumentsWithParticipant
+    ) {
+      throw new Error("Training documentation privacy totals conflict.");
+    }
+    return Object.freeze({
+      organizationId: organization,
+      subjectId: subject,
+      ownedDocuments,
+      ownedRevisions,
+      otherSubjectDocumentsWithParticipant,
+      otherSubjectRevisionsWithParticipant,
+    });
   }
 
   async listCurrentBySubjectDateRange(
