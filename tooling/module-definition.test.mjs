@@ -179,9 +179,10 @@ test("pins the checked module inventory and database-owning contracts", async ()
       "training-documentation:view",
     ],
     database: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       migrations: [
         "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
+        "modules/training-documentation/migrations/0001_appbasis_training_documentation_subject_deletion.sql",
       ],
     },
   });
