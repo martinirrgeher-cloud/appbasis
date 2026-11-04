@@ -1382,7 +1382,7 @@ async function selfRegistrationJsonBody(
     "sessionDate",
     ...(proxy ? ["targetAthleteId"] : []),
     ...("note" in body ? ["note"] : []),
-  ];
+  ].sort();
   if (
     JSON.stringify(Object.keys(body).sort()) !== JSON.stringify(expectedKeys) ||
     Object.getOwnPropertySymbols(body).length !== 0 ||
