@@ -564,6 +564,25 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             </section>
 
             <div class="registration-list" id="registration-list" aria-live="polite"></div>
+            <dialog class="registration-proxy-dialog" id="registration-proxy-dialog" aria-labelledby="registration-proxy-title">
+              <div class="registration-proxy-header">
+                <h2 id="registration-proxy-title">Für Kollegen anmelden</h2>
+                <button class="button button--secondary" id="registration-proxy-close" type="button" aria-label="Stellvertretung schließen">✕</button>
+              </div>
+              <p id="registration-proxy-context" class="settings-note"></p>
+              <p id="registration-proxy-error" class="message message--error" role="alert" hidden></p>
+              <label class="registration-proxy-athlete-label">Kollegin oder Kollege
+                <select id="registration-proxy-athlete"></select>
+              </label>
+              <p id="registration-proxy-current" class="settings-note" role="status"></p>
+              <div class="registration-actions" id="registration-proxy-actions">
+                <button class="button button--secondary registration-action" type="button" data-registration-proxy-intention="attending">Komme</button>
+                <button class="button button--secondary registration-action" type="button" data-registration-proxy-intention="maybe">Vielleicht</button>
+                <button class="button button--secondary registration-action" type="button" data-registration-proxy-intention="not_attending">Absage</button>
+                <button class="button button--secondary registration-action" type="button" data-registration-proxy-intention="unknown">Offen</button>
+              </div>
+              <small class="registration-proxy-hint">Änderungen werden dem ausführenden Benutzer zugeordnet. Nur Mitglieder derselben Gruppe können vertreten werden.</small>
+            </dialog>
           </section>
 
           <section class="app-section" data-app-section="kindertraining" id="kindertraining" hidden>
@@ -1983,6 +2002,25 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
   border-style: dashed;
 }
 .kindertraining-week-day--unavailable small { color: var(--secondary); }
+/* A02.2: compact, keyboard-accessible colleague proxy registration dialog. */
+.registration-proxy-dialog {
+  box-sizing: border-box; width: min(460px, calc(100vw - 24px));
+  max-width: 460px; max-height: calc(100dvh - 24px);
+  margin: auto; padding: 14px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--card); color: var(--text);
+  overflow-y: auto; box-shadow: 0 20px 70px rgba(15,23,42,.24);
+}
+.registration-proxy-dialog::backdrop { background: rgba(15,23,42,.55); }
+.registration-proxy-header { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.registration-proxy-header h2 { min-width: 0; margin: 0; font-size: 1.1rem; }
+.registration-proxy-header .button { width: 40px; min-width: 40px; min-height: 40px; padding: 0; }
+.registration-proxy-athlete-label { display: grid; gap: 5px; margin-top: 14px; }
+.registration-proxy-athlete-label select { width: 100%; min-width: 0; min-height: 44px; }
+#registration-proxy-actions { margin-top: 12px; }
+#registration-proxy-actions .button { min-height: 44px; }
+.registration-proxy-hint { display: block; margin-top: 12px; color: var(--secondary); line-height: 1.4; }
+.registration-proxy-open { justify-self: start; min-height: 40px; }
+
 /* A02: trainer's read-only preregistration matrix; scroll within the card,
    never widen the entire page. Preserves the accepted day-by-day roll call. */
 .kindertraining-matrix-togglebar { display: flex; min-width: 0; }
@@ -2081,6 +2119,13 @@ const elements = {
   registrationWeekLabel: document.querySelector("#registration-week-label"),
   registrationReload: document.querySelector("#registration-reload"),
   registrationList: document.querySelector("#registration-list"),
+  registrationProxyDialog: document.querySelector("#registration-proxy-dialog"),
+  registrationProxyClose: document.querySelector("#registration-proxy-close"),
+  registrationProxyContext: document.querySelector("#registration-proxy-context"),
+  registrationProxyError: document.querySelector("#registration-proxy-error"),
+  registrationProxyAthlete: document.querySelector("#registration-proxy-athlete"),
+  registrationProxyCurrent: document.querySelector("#registration-proxy-current"),
+  registrationProxyActions: document.querySelector("#registration-proxy-actions"),
   kindertrainingQuickAction: document.querySelector("#kindertraining-quick-action"),
   kindertrainingAccessLabel: document.querySelector("#kindertraining-access-label"),
   kindertrainingMessage: document.querySelector("#kindertraining-message"),
@@ -2377,6 +2422,8 @@ let selfRegistrationSavingKeys = new Set();
 let selfRegistrationConflictReloadPending = false;
 let selfRegistrationWeekStart = "";
 let selfRegistrationOptions = [];
+let selfRegistrationProxy = null;
+let selfRegistrationProxyRequestId = 0;
 let kindertrainingReady = false;
 let kindertrainingLoading = false;
 let kindertrainingGroups = [];
@@ -2558,7 +2605,24 @@ elements.registrationWeekPrev?.addEventListener("click", () => void moveSelfRegi
 elements.registrationWeekNext?.addEventListener("click", () => void moveSelfRegistrationWeek(1));
 elements.registrationWeekCurrent?.addEventListener("click", () => void moveSelfRegistrationWeek(0));
 elements.registrationList?.addEventListener("click", (event) => {
+  const proxyButton = event.target?.closest?.("[data-registration-proxy-group]");
+  if (proxyButton && elements.registrationList?.contains(proxyButton)) {
+    void openSelfRegistrationProxy(
+      proxyButton.dataset.registrationProxyGroup || "",
+      proxyButton.dataset.registrationProxyDate || "",
+    );
+    return;
+  }
   void handleSelfRegistrationClick(event);
+});
+elements.registrationProxyClose?.addEventListener("click", closeSelfRegistrationProxy);
+elements.registrationProxyDialog?.addEventListener("close", closeSelfRegistrationProxy);
+elements.registrationProxyAthlete?.addEventListener("change", renderSelfRegistrationProxy);
+elements.registrationProxyActions?.addEventListener("click", (event) => {
+  const button = event.target?.closest?.("[data-registration-proxy-intention]");
+  if (button && elements.registrationProxyActions?.contains(button)) {
+    void saveSelfRegistrationProxy(button.dataset.registrationProxyIntention || "");
+  }
 });
 elements.kindertrainingWeekPrev?.addEventListener("click", () => void moveKindertrainingWeek(-1));
 elements.kindertrainingWeekNext?.addEventListener("click", () => void moveKindertrainingWeek(1));
@@ -2734,6 +2798,7 @@ function resetAttendanceSessionState() {
   selfRegistrationConflictReloadPending = false;
   selfRegistrationWeekStart = "";
   selfRegistrationOptions = [];
+  closeSelfRegistrationProxy();
   showMessage(elements.registrationMessage, "");
   showMessage(elements.registrationSuccess, "");
   renderSelfRegistrationWeekLabel();
@@ -2943,6 +3008,7 @@ async function bootstrapSelfRegistration() {
   selfRegistrationSavingKeys = new Set();
   selfRegistrationWeekStart = localWeekStart(new Date());
   selfRegistrationOptions = [];
+  closeSelfRegistrationProxy();
   renderSelfRegistrationWeekLabel();
   renderSelfRegistration();
   refreshAppAvailability();
@@ -3196,9 +3262,187 @@ function renderSelfRegistration() {
         actions.append(button);
       }
       card.append(actions);
+      const proxy = document.createElement("button");
+      proxy.type = "button";
+      proxy.className = "button button--secondary registration-proxy-open";
+      proxy.dataset.registrationProxyGroup = option.group.id;
+      proxy.dataset.registrationProxyDate = option.sessionDate;
+      proxy.textContent = "Für Kollegen anmelden";
+      proxy.disabled = optionSaving || selfRegistrationLoading;
+      card.append(proxy);
       day.append(card);
     }
     container.append(day);
+  }
+}
+
+function closeSelfRegistrationProxy() {
+  selfRegistrationProxyRequestId += 1;
+  selfRegistrationProxy = null;
+  if (elements.registrationProxyDialog?.open) {
+    elements.registrationProxyDialog.close();
+  }
+  elements.registrationProxyAthlete?.replaceChildren();
+  showMessage(elements.registrationProxyError, "");
+}
+
+function isSelfRegistrationProxyRoster(roster, groupId, sessionDate) {
+  if (!roster || roster.group?.id !== groupId ||
+      roster.sessionDate !== sessionDate ||
+      !["scheduled", "cancelled", null].includes(roster.sessionState) ||
+      !Array.isArray(roster.options)) return false;
+  const seen = new Set();
+  for (const entry of roster.options) {
+    const athlete = entry?.athlete;
+    if (typeof athlete?.id !== "string" || !athlete.id ||
+        typeof athlete.firstName !== "string" ||
+        typeof athlete.lastName !== "string" ||
+        seen.has(athlete.id) ||
+        !["unknown", "attending", "not_attending", "maybe"].includes(entry.intention) ||
+        !(entry.revision === null ||
+          (Number.isSafeInteger(entry.revision) && entry.revision >= 1))) {
+      return false;
+    }
+    seen.add(athlete.id);
+  }
+  return true;
+}
+
+function renderSelfRegistrationProxy() {
+  const state = selfRegistrationProxy;
+  const selector = elements.registrationProxyAthlete;
+  if (!state || !selector) return;
+  const options = state.roster?.options || [];
+  const previousId = selector.value;
+  selector.replaceChildren();
+  for (const option of options) {
+    const item = document.createElement("option");
+    item.value = option.athlete.id;
+    item.textContent = option.athlete.lastName + ", " + option.athlete.firstName;
+    selector.append(item);
+  }
+  if (options.some((option) => option.athlete.id === previousId)) {
+    selector.value = previousId;
+  }
+  const selected = options.find((option) => option.athlete.id === selector.value);
+  selector.disabled = state.loading || state.saving || options.length === 0;
+  if (elements.registrationProxyContext) {
+    elements.registrationProxyContext.textContent =
+      state.groupName + " · " + germanDate(state.sessionDate);
+  }
+  if (elements.registrationProxyCurrent) {
+    elements.registrationProxyCurrent.textContent = state.loading
+      ? "Gruppenmitglieder werden geladen …"
+      : state.saving
+        ? "Anmeldung wird gespeichert …"
+        : state.roster?.sessionState === "cancelled"
+          ? "Dieses Training wurde abgesagt."
+          : selected
+            ? "Aktuell: " + selfRegistrationLabel(selected.intention)
+            : "Keine anderen berechtigten Gruppenmitglieder vorhanden.";
+  }
+  for (const button of elements.registrationProxyActions?.querySelectorAll(
+    "[data-registration-proxy-intention]",
+  ) || []) {
+    button.disabled = state.loading || state.saving || !selected ||
+      state.roster?.sessionState === "cancelled";
+    button.setAttribute("aria-pressed",
+      selected?.intention === button.dataset.registrationProxyIntention ? "true" : "false");
+  }
+}
+
+async function openSelfRegistrationProxy(groupId, sessionDate) {
+  if (!selfRegistrationReady || selfRegistrationLoading ||
+      selfRegistrationSavingKeys.size > 0) return;
+  const option = selfRegistrationOptions.find((entry) =>
+    entry.group.id === groupId && entry.sessionDate === sessionDate);
+  if (!option || option.sessionState === "cancelled") return;
+  const generation = attendanceSessionGeneration;
+  const requestId = ++selfRegistrationProxyRequestId;
+  selfRegistrationProxy = {
+    groupId, sessionDate, groupName: option.group.name,
+    roster: null, loading: true, saving: false,
+  };
+  showMessage(elements.registrationProxyError, "");
+  if (!elements.registrationProxyDialog?.open) {
+    elements.registrationProxyDialog?.showModal();
+  }
+  renderSelfRegistrationProxy();
+  try {
+    const payload = await requestJson(
+      "/api/modules/kindertraining/registration/proxy?groupId=" +
+        encodeURIComponent(groupId) + "&sessionDate=" + encodeURIComponent(sessionDate),
+    );
+    if (generation !== attendanceSessionGeneration ||
+        requestId !== selfRegistrationProxyRequestId) return;
+    if (!isSelfRegistrationProxyRoster(payload?.roster, groupId, sessionDate)) {
+      throw new Error("INVALID_PROXY_REGISTRATION_CONTRACT");
+    }
+    selfRegistrationProxy.roster = payload.roster;
+  } catch (error) {
+    if (generation !== attendanceSessionGeneration ||
+        requestId !== selfRegistrationProxyRequestId) return;
+    showMessage(elements.registrationProxyError,
+      error?.status === 403 ? "Keine Berechtigung für diese Anmeldung." :
+      "Gruppenmitglieder konnten nicht geladen werden.");
+  } finally {
+    if (generation === attendanceSessionGeneration &&
+        requestId === selfRegistrationProxyRequestId && selfRegistrationProxy) {
+      selfRegistrationProxy.loading = false;
+      renderSelfRegistrationProxy();
+    }
+  }
+}
+
+async function saveSelfRegistrationProxy(intention) {
+  const state = selfRegistrationProxy;
+  const id = elements.registrationProxyAthlete?.value || "";
+  if (!state || !state.roster || state.saving || state.loading ||
+      state.roster.sessionState === "cancelled" ||
+      !["unknown", "attending", "not_attending", "maybe"].includes(intention)) return;
+  const selected = state.roster.options.find((option) => option.athlete.id === id);
+  if (!selected || selected.intention === intention) return;
+  const generation = attendanceSessionGeneration;
+  const requestId = selfRegistrationProxyRequestId;
+  state.saving = true;
+  showMessage(elements.registrationProxyError, "");
+  renderSelfRegistrationProxy();
+  try {
+    const payload = await requestJson("/api/modules/kindertraining/registration/proxy", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: state.groupId,
+        sessionDate: state.sessionDate,
+        targetAthleteId: id,
+        intention,
+        expectedRevision: selected.revision,
+      }),
+    });
+    if (generation !== attendanceSessionGeneration ||
+        requestId !== selfRegistrationProxyRequestId) return;
+    const saved = payload?.option;
+    if (saved?.athlete?.id !== id ||
+        !["unknown", "attending", "not_attending", "maybe"].includes(saved.intention) ||
+        !Number.isSafeInteger(saved.revision) || saved.revision < 1) {
+      throw new Error("INVALID_PROXY_REGISTRATION_SAVE");
+    }
+    state.roster.options = state.roster.options.map((option) =>
+      option.athlete.id === id ? saved : option);
+  } catch (error) {
+    if (generation !== attendanceSessionGeneration ||
+        requestId !== selfRegistrationProxyRequestId) return;
+    showMessage(elements.registrationProxyError,
+      error?.status === 409
+        ? "Anmeldung zwischenzeitlich geändert oder nicht mehr möglich. Bitte schließen und erneut öffnen."
+        : error?.status === 404 || error?.status === 403
+          ? "Keine Berechtigung mehr für diese Person oder Gruppe."
+          : "Stellvertretende Anmeldung konnte nicht gespeichert werden.");
+  } finally {
+    if (generation === attendanceSessionGeneration &&
+        requestId === selfRegistrationProxyRequestId && selfRegistrationProxy === state) {
+      state.saving = false;
+      renderSelfRegistrationProxy();
+    }
   }
 }
 
