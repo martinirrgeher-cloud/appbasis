@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  catalogMarkerMatches,
   classifyUlcTrainingDocumentationPreviewShape,
   loadUlcTrainingDocumentationPreviewPlan,
   UlcTrainingDocumentationPreviewConfigurationError,
@@ -81,4 +83,34 @@ test("E7B9 documentation preview shape fails closed on partial schema", () => {
     () => classifyUlcTrainingDocumentationPreviewShape(),
     UlcTrainingDocumentationPreviewConfigurationError,
   );
+});
+
+test("E7B9 preview rejects drifts in SECURITY DEFINER and locked search_path", async () => {
+  const body = "\nBEGIN\n  RETURN NEW;\nEND;\n";
+  const marker = {
+    kind: "function",
+    name: "appbasis_training_documentation_guard_revision_write",
+    arguments: "",
+    returnType: "trigger",
+    securityDefiner: true,
+    bodyHash: createHash("sha256").update(body, "utf8").digest("hex"),
+  };
+  const fakeClient = (securityDefiner, hardenedSearchPath) => ({
+    async unsafe(sql, params) {
+      assert.match(sql, /prosecdef/);
+      assert.match(sql, /proconfig/);
+      assert.deepEqual(params, [marker.name]);
+      return [{
+        arguments: "",
+        result_type: "trigger",
+        source: body,
+        security_definer: securityDefiner,
+        hardened_search_path: hardenedSearchPath,
+      }];
+    },
+  });
+  assert.equal(await catalogMarkerMatches(fakeClient(true, true), marker), true);
+  assert.equal(await catalogMarkerMatches(fakeClient(false, true), marker), false);
+  assert.equal(await catalogMarkerMatches(fakeClient(true, false), marker), false);
+  assert.equal(await catalogMarkerMatches(fakeClient(false, false), marker), false);
 });

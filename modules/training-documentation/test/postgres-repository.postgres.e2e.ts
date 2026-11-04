@@ -25,6 +25,9 @@ const isolatedDatabaseName =
 const isolatedDatabaseUrl = databaseUrlForName(databaseUrl, isolatedDatabaseName);
 let isolatedConnection: ReturnType<typeof createPostgresDatabase> | null = null;
 let isolatedDatabaseCreated = false;
+const applicationRole = "appbasis_tdoc_app_" + randomUUID().replaceAll("-", "").slice(0, 12);
+const applicationPassword = "tdoc" + randomUUID().replaceAll("-", "");
+let applicationRoleCreated = false;
 
 beforeAll(async () => {
   await administrativeConnection.client.unsafe(
@@ -48,6 +51,24 @@ beforeAll(async () => {
     "utf8",
   );
   await requiredConnection().client.unsafe(subjectMigration);
+
+  // Separate migration-owner and normal application principals: a successful
+  // owner write must not hide a missing nested-function EXECUTE grant.
+  await administrativeConnection.client.unsafe(
+    `CREATE ROLE ${applicationRole} LOGIN PASSWORD '${applicationPassword}'`,
+  );
+  applicationRoleCreated = true;
+  await requiredConnection().client.unsafe(
+    `GRANT CONNECT ON DATABASE ${isolatedDatabaseName} TO ${applicationRole}`,
+  );
+  await requiredConnection().client.unsafe(
+    `GRANT USAGE ON SCHEMA public TO ${applicationRole}`,
+  );
+  await requiredConnection().client.unsafe(
+    `GRANT SELECT, INSERT, UPDATE, DELETE
+       ON appbasis_training_documentation, appbasis_training_documentation_revision
+       TO ${applicationRole}`,
+  );
 });
 
 beforeEach(async () => {
@@ -68,6 +89,11 @@ afterAll(async () => {
   if (isolatedDatabaseCreated) {
     await administrativeConnection.client.unsafe(
       "DROP DATABASE " + isolatedDatabaseName + " WITH (FORCE)",
+    );
+  }
+  if (applicationRoleCreated) {
+    await administrativeConnection.client.unsafe(
+      "DROP ROLE " + applicationRole,
     );
   }
   await administrativeConnection.client.end();
@@ -102,6 +128,156 @@ describe("training-documentation PostgreSQL repository", () => {
     ]);
   });
 
+
+  it("allows normal application writers without direct access to private deletion guards", async () => {
+    const url = new URL(isolatedDatabaseUrl);
+    url.username = applicationRole;
+    url.password = applicationPassword;
+    const appConnection = createPostgresDatabase(url.toString());
+    try {
+      const permissions = await appConnection.client.unsafe(
+        `SELECT current_user AS role_name,
+           has_function_privilege(
+             'public.appbasis_training_documentation_guard_subject(text,text)',
+             'EXECUTE'
+           ) AS can_execute_guard,
+           has_table_privilege(
+             'public.appbasis_training_documentation_subject_deletion',
+             'SELECT'
+           ) AS can_read_marker`,
+      );
+      expect(permissions[0]).toMatchObject({
+        role_name: applicationRole,
+        can_execute_guard: false,
+        can_read_marker: false,
+      });
+      await expect(appConnection.client.unsafe(
+        "SELECT public.appbasis_training_documentation_guard_subject($1, $2)",
+        ["org-runtime", "athlete-app"],
+      )).rejects.toThrow(/permission denied/i);
+
+      const service = serviceFor(appConnection, ["doc-normal-application"]);
+      const created = await service.create("org-runtime", {
+        subjectId: "athlete-app",
+        sessionDate: "2026-10-26",
+        sourcePlanId: "plan-runtime",
+        sourcePlanRevision: 1,
+        attendance: [
+          { participantId: "athlete-app", displayName: "Participant", status: "present" },
+        ],
+      });
+      await expect(service.update("org-runtime", created.id, 1, {
+        note: "Application role can still append revisions",
+      })).resolves.toMatchObject({ currentRevision: 2 });
+    } finally {
+      await appConnection.client.end();
+    }
+  });
+
+  it("rejects direct runtime UPDATE before the privacy erasure's organization lock can deadlock", async () => {
+    const organization = "org-direct-update-race";
+    const deletedSubject = "athlete-to-erase";
+    const saved = await serviceFor(requiredConnection(), ["doc-update-race"]).create(
+      organization, {
+        subjectId: "other-athlete",
+        sessionDate: "2026-10-26",
+        sourcePlanId: "plan-update-race",
+        sourcePlanRevision: 1,
+        attendance: [{
+          participantId: deletedSubject, displayName: "Removed", status: "present",
+        }],
+      },
+    );
+    const url = new URL(isolatedDatabaseUrl);
+    url.username = applicationRole;
+    url.password = applicationPassword;
+    const app = createPostgresDatabase(url.toString());
+    try {
+      // Simulate the org advisory lock held by an in-flight erasure. The
+      // offending direct SQL UPDATE has taken its tuple lock before its
+      // BEFORE ROW trigger; it must reject, never wait for this org lock.
+      await requiredConnection().client.begin(async (holder) => {
+        await holder.unsafe(
+          "SELECT pg_advisory_xact_lock(202611031, hashtext($1::text))",
+          [organization],
+        );
+        await expect(app.client.begin(async (writer) => {
+          await writer.unsafe("SET LOCAL lock_timeout = '750ms'");
+          // Custom GUC by itself is not privileged: the login role must
+          // also be the trigger owner, which the application role is not.
+          await writer.unsafe(
+            "SELECT set_config('appbasis.training_documentation_privileged_revision_update', 'on', true)",
+          );
+          await writer.unsafe(
+            `UPDATE appbasis_training_documentation_revision
+               SET attendance_json = '[]'::jsonb
+             WHERE organization_id = $1
+               AND documentation_id = $2
+               AND revision = 1`,
+            [organization, saved.id],
+          );
+        })).rejects.toThrow(/updates require privileged erasure/i);
+
+        await expect(app.client.begin(async (writer) => {
+          await writer.unsafe("SET LOCAL lock_timeout = '750ms'");
+          await writer.unsafe(
+            `UPDATE appbasis_training_documentation
+               SET subject_id = subject_id
+             WHERE organization_id = $1 AND id = $2`,
+            [organization, saved.id],
+          );
+        })).rejects.toThrow(/root ownership is immutable/i);
+      });
+
+      const cleared = await repositoryFor(requiredConnection())
+        .removeSubjectDataAfterVerifiedDeletion(
+          organization, deletedSubject, new Date(Date.now() - 3_600_000),
+        );
+      expect(cleared.redactedOtherSubjectRevisions).toBe(1);
+      const revisions = await serviceFor(requiredConnection(), [])
+        .listRevisions(organization, saved.id);
+      expect(revisions[0]?.attendance).toEqual([]);
+    } finally {
+      await app.client.end();
+    }
+  }, 15000);
+
+  it("serializes two overlapping cross-participant creates without deadlocking", async () => {
+    const left = createPostgresDatabase(isolatedDatabaseUrl);
+    const right = createPostgresDatabase(isolatedDatabaseUrl);
+    try {
+      const attendance = [
+        { participantId: "athlete-A", displayName: "A", status: "present" as const },
+        { participantId: "athlete-B", displayName: "B", status: "present" as const },
+      ];
+      const [a, b] = await Promise.all([
+        serviceFor(left, ["doc-deadlock-A"]).create("org-deadlock", {
+          subjectId: "athlete-A",
+          sessionDate: "2026-10-26",
+          sourcePlanId: "plan-A",
+          sourcePlanRevision: 1,
+          attendance,
+        }),
+        serviceFor(right, ["doc-deadlock-B"]).create("org-deadlock", {
+          subjectId: "athlete-B",
+          sessionDate: "2026-10-26",
+          sourcePlanId: "plan-B",
+          sourcePlanRevision: 1,
+          attendance,
+        }),
+      ]);
+      expect([a.id, b.id]).toEqual(["doc-deadlock-A", "doc-deadlock-B"]);
+      const count = await requiredConnection().client.unsafe(
+        `SELECT count(*)::int AS total
+           FROM appbasis_training_documentation
+           WHERE organization_id = 'org-deadlock'`,
+      );
+      expect(count[0]?.total).toBe(2);
+    } finally {
+      await left.client.end();
+      await right.client.end();
+    }
+  }, 15000);
 
   it("atomically deletes owned documentation and redacts matching third-party attendance in every historical revision", async () => {
     const organization = "org-privacy-delete";

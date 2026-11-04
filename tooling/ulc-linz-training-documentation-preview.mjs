@@ -353,13 +353,18 @@ async function assertCatalogContract(client, contract, message) {
   }
 }
 
-async function catalogMarkerMatches(client, marker) {
+export async function catalogMarkerMatches(client, marker) {
   if (marker.kind === "function") {
     const rows = await client.unsafe(
       `SELECT
         pg_catalog.pg_get_function_identity_arguments(proc.oid) AS arguments,
         pg_catalog.pg_get_function_result(proc.oid) AS result_type,
-        proc.prosrc AS source
+        proc.prosrc AS source,
+        proc.prosecdef AS security_definer,
+        COALESCE(
+          proc.proconfig @> ARRAY['search_path=pg_catalog, pg_temp']::text[],
+          false
+        ) AS hardened_search_path
        FROM pg_catalog.pg_proc AS proc
        JOIN pg_catalog.pg_namespace AS namespace
          ON namespace.oid = proc.pronamespace
@@ -375,6 +380,8 @@ async function catalogMarkerMatches(client, marker) {
       typeof rows[0]?.source === "string" &&
       rows[0]?.arguments?.replace(/\s+/g, " ").trim() === marker.arguments &&
       rows[0]?.result_type === marker.returnType &&
+      rows[0]?.security_definer === marker.securityDefiner &&
+      (!marker.securityDefiner || rows[0]?.hardened_search_path === true) &&
       createHash("sha256").update(rows[0].source, "utf8").digest("hex") ===
         marker.bodyHash;
   }

@@ -30,7 +30,7 @@ BEGIN
     hashtextextended(p_organization_id || chr(31) || p_subject_id, 0)
   );
   IF EXISTS (
-    SELECT 1 FROM appbasis_training_documentation_subject_deletion
+    SELECT 1 FROM public.appbasis_training_documentation_subject_deletion
     WHERE organization_id = p_organization_id AND subject_id = p_subject_id
   ) THEN
     RAISE EXCEPTION 'Training documentation subject has a deletion marker.'
@@ -40,18 +40,20 @@ END;
 $guard$;
 
 CREATE FUNCTION appbasis_training_documentation_guard_root_insert()
-RETURNS trigger LANGUAGE plpgsql AS $root$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $root$
 BEGIN
-  -- Ownership is immutable; a direct SQL reassignment must not evade
-  -- completed-deletion handling or the original provenance contract.
+  -- Even a no-op direct UPDATE locks the root tuple before a BEFORE ROW
+  -- trigger. Reject every ownership-column UPDATE *before* seeking the
+  -- organization lock, so such callers cannot deadlock with the owner writer.
   IF TG_OP = 'UPDATE' THEN
-    IF NEW.organization_id IS DISTINCT FROM OLD.organization_id OR
-       NEW.subject_id IS DISTINCT FROM OLD.subject_id THEN
-      RAISE EXCEPTION 'Training documentation root ownership is immutable.'
-        USING ERRCODE = '23514';
-    END IF;
+    RAISE EXCEPTION 'Training documentation root ownership is immutable.'
+      USING ERRCODE = '23514';
   END IF;
-  PERFORM appbasis_training_documentation_guard_subject(
+  -- Serialize allowed INSERT writers before per-subject locking.
+  -- The two-int advisory key space is distinct from subject bigint locks.
+  PERFORM pg_advisory_xact_lock(202611031, hashtext(NEW.organization_id));
+  PERFORM public.appbasis_training_documentation_guard_subject(
     NEW.organization_id, NEW.subject_id
   );
   RETURN NEW;
@@ -59,7 +61,8 @@ END;
 $root$;
 
 CREATE FUNCTION appbasis_training_documentation_guard_revision_write()
-RETURNS trigger LANGUAGE plpgsql AS $revision$
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $revision$
 DECLARE
   owner_subject text;
   scoped_subject text;
@@ -70,9 +73,20 @@ BEGIN
       RAISE EXCEPTION 'Training documentation revision ownership is immutable.'
         USING ERRCODE = '23514';
     END IF;
+    -- A direct runtime UPDATE gets its tuple lock BEFORE this row trigger.
+    -- It must fail immediately instead of waiting for the organization lock
+    -- held by concurrent privacy erasure. Only the trusted migration-owner
+    -- session carrying the transaction-local erasure flag can redact history.
+    IF session_user <> current_user OR
+       current_setting('appbasis.training_documentation_privileged_revision_update', true)
+         IS DISTINCT FROM 'on' THEN
+      RAISE EXCEPTION 'Training documentation revision updates require privileged erasure.'
+        USING ERRCODE = '42501';
+    END IF;
   END IF;
+  PERFORM pg_advisory_xact_lock(202611031, hashtext(NEW.organization_id));
   SELECT subject_id INTO owner_subject
-  FROM appbasis_training_documentation
+  FROM public.appbasis_training_documentation
   WHERE organization_id = NEW.organization_id
     AND id = NEW.documentation_id;
 
@@ -102,7 +116,7 @@ BEGIN
     ) AS keys
     ORDER BY identity_key
   LOOP
-    PERFORM appbasis_training_documentation_guard_subject(
+    PERFORM public.appbasis_training_documentation_guard_subject(
       NEW.organization_id, scoped_subject
     );
   END LOOP;
@@ -112,7 +126,11 @@ $revision$;
 
 -- Functions are executable by PUBLIC by default in PostgreSQL.
 -- A least-privilege backup reader must not inherit executable guard routines.
--- DML triggers continue to execute under PostgreSQL's trigger semantics.
+-- Trigger routines run as the migration owner with a hardened search path;
+-- application writers do not require EXECUTE on the private helper.
+-- Direct revision attendance UPDATE is explicitly unsupported for runtime
+-- principals; only the transaction-scoped module-owner erasure path may
+-- change historical attendance. Root ownership-column UPDATE is forbidden.
 REVOKE EXECUTE ON FUNCTION appbasis_training_documentation_guard_subject(text, text) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION appbasis_training_documentation_guard_root_insert() FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION appbasis_training_documentation_guard_revision_write() FROM PUBLIC;
