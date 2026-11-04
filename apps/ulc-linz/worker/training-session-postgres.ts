@@ -2,6 +2,7 @@ import {
   createUlcTrainingRegistration,
   createUlcTrainingSession,
   normalizeUlcTrainingAttendanceSet,
+  normalizeUlcRegistrationNote,
   UlcTrainingValidationError,
   type CreateUlcTrainingSessionInput,
   type UlcTrainingAttendance,
@@ -125,7 +126,8 @@ export class PostgresUlcTrainingSessionRepository {
               athlete_id,
               intention,
               revision,
-              updated_by_identity_id
+              updated_by_identity_id,
+              note
        FROM ulc_linz_training_registration
        WHERE organization_id = $1
          AND session_id = $2
@@ -396,7 +398,8 @@ export class PostgresUlcTrainingSessionRepository {
               athlete_id,
               intention,
               revision,
-              updated_by_identity_id
+              updated_by_identity_id,
+              note
        FROM ulc_linz_training_registration
        WHERE organization_id = $1
          AND session_id = $2
@@ -434,6 +437,7 @@ export class PostgresUlcTrainingSessionRepository {
     expectedRevision: number | null,
     actorIdentityId: string,
     proxyActorAthleteId?: string,
+    note?: string | null,
   ): Promise<UlcTrainingRegistration> {
     const organization = requiredInputIdentifier(
       organizationId,
@@ -454,6 +458,12 @@ export class PostgresUlcTrainingSessionRepository {
       updatedByIdentityId: actor,
     });
     const changeId = requiredGeneratedId(this.#createId());
+    // An absent note is a status-only update: preserve the existing note.
+    // Explicit null or empty text removes it, with an auditable revision.
+    const noteSupplied = note !== undefined;
+    const normalizedNote = noteSupplied
+      ? normalizeUlcRegistrationNote(note)
+      : null;
     const proxyActor = proxyActorAthleteId === undefined
       ? null
       : requiredInputIdentifier(proxyActorAthleteId, "Proxy actor athlete id");
@@ -517,6 +527,7 @@ export class PostgresUlcTrainingSessionRepository {
        updated_registration AS (
          UPDATE ulc_linz_training_registration AS registration
          SET intention = $4,
+             note = CASE WHEN $9::boolean THEN $10::text ELSE registration.note END,
              revision = registration.revision + 1,
              updated_by_identity_id = $6,
              updated_at = now()
@@ -533,7 +544,8 @@ export class PostgresUlcTrainingSessionRepository {
                    athlete_id,
                    intention,
                    revision,
-                   updated_by_identity_id
+                   updated_by_identity_id,
+                   note
        ),
        inserted_registration AS (
          INSERT INTO ulc_linz_training_registration (
@@ -542,9 +554,10 @@ export class PostgresUlcTrainingSessionRepository {
            athlete_id,
            intention,
            revision,
-           updated_by_identity_id
+           updated_by_identity_id,
+           note
          )
-         SELECT $1, session.id, $3, $4, 1, $6
+         SELECT $1, session.id, $3, $4, 1, $6, $10::text
          FROM scoped_session AS session
          WHERE $5::int IS NULL
          ON CONFLICT (session_id, athlete_id) DO NOTHING
@@ -553,7 +566,8 @@ export class PostgresUlcTrainingSessionRepository {
                    athlete_id,
                    intention,
                    revision,
-                   updated_by_identity_id
+                   updated_by_identity_id,
+                   note
        ),
        saved_registration AS MATERIALIZED (
          SELECT * FROM updated_registration
@@ -568,7 +582,8 @@ export class PostgresUlcTrainingSessionRepository {
            athlete_id,
            intention,
            revision,
-           actor_identity_id
+           actor_identity_id,
+           note
          )
          SELECT $7,
                 organization_id,
@@ -576,7 +591,8 @@ export class PostgresUlcTrainingSessionRepository {
                 athlete_id,
                 intention,
                 revision,
-                $6
+                $6,
+                note
          FROM saved_registration
          RETURNING id
        )
@@ -586,6 +602,7 @@ export class PostgresUlcTrainingSessionRepository {
               registration.intention,
               registration.revision,
               registration.updated_by_identity_id,
+              registration.note,
               (SELECT count(*)::int FROM inserted_change) AS change_count
        FROM saved_registration AS registration`,
       [
@@ -597,6 +614,8 @@ export class PostgresUlcTrainingSessionRepository {
         normalized.updatedByIdentityId,
         changeId,
         proxyActor,
+        noteSupplied,
+        normalizedNote,
       ],
     );
 
@@ -630,6 +649,10 @@ function registrationFromRow(
     intention: rowRegistrationIntention(row.intention),
     revision: rowPositiveInteger(row, "revision"),
     updatedByIdentityId: rowString(row, "updated_by_identity_id"),
+    // Compatibility with pre-v11 mocked rows; real DB reads always return note.
+    ...("note" in row
+      ? { note: normalizeUlcRegistrationNote(rowNullableString(row, "note")) }
+      : {}),
   });
   if (
     registration.organizationId !== expectedOrganizationId ||
