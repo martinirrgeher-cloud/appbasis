@@ -29,6 +29,7 @@ export interface UlcKindertrainingParticipant {
   readonly birthYear: number | null;
   readonly intention: UlcTrainingRegistrationIntention;
   readonly registrationRevision: number | null;
+  readonly registrationNote?: string | null;
   readonly status: UlcTrainingAttendanceStatus;
 }
 
@@ -324,6 +325,7 @@ function presentSnapshot(
     Readonly<{
       intention: UlcTrainingRegistrationIntention;
       revision: number;
+      note?: string | null;
     }>
   >();
   if (stored !== null) {
@@ -340,6 +342,8 @@ function presentSnapshot(
         Object.freeze({
           intention: registration.intention,
           revision: registration.revision,
+          ...(registration.note !== undefined
+            ? { note: registration.note } : {}),
         }),
       );
     }
@@ -398,6 +402,9 @@ function presentSnapshot(
           registrationRevision:
             registrationByAthlete.get(participant.athleteId)?.revision ??
             null,
+          ...(registrationByAthlete.get(participant.athleteId)?.note
+            ? { registrationNote: registrationByAthlete.get(participant.athleteId)?.note }
+            : {}),
           status: statusByAthlete.get(participant.athleteId) ?? "open",
         }),
       ),
