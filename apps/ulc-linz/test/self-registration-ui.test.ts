@@ -7,6 +7,32 @@ import {
 } from "../worker/ui";
 
 describe("ULC weekly self-registration and account switching", () => {
+  it("keeps colleague proxy selection separate from the already accepted own registration flow", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="registration-proxy-dialog"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="registration-proxy-athlete"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-registration-proxy-intention="attending"');
+    expect(ULC_LINZ_APP_CSS).toContain(".registration-proxy-dialog");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("async function openSelfRegistrationProxy(groupId, sessionDate)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("async function saveSelfRegistrationProxy(intention)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("function closeSelfRegistrationProxy()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("selfRegistrationProxyRequestId += 1;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (generation !== attendanceSessionGeneration ||");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '"/api/modules/kindertraining/registration/proxy?groupId="',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'requestJson("/api/modules/kindertraining/registration/proxy", {',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain('option.group.id === groupId');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("targetAthleteId: id,");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("expectedRevision: selected.revision");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("closeSelfRegistrationProxy();");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'requestJson("/api/modules/kindertraining/registration",',
+    );
+  });
+
+
   it("keeps sign-out directly reachable and resolves local work before revoking the session", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="app-sign-out"');
     expect(ULC_LINZ_APP_HTML).toContain('id="password-sign-out"');
