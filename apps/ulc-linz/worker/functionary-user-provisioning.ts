@@ -118,7 +118,7 @@ export function createUlcFunctionaryUserProvisioningService({
       }
       const identityId = identifier(identity.identityId);
       const subjectId = "ulc-functionary:" + identityId;
-      const rows = await sql.unsafe(
+      const inserted = await sql.unsafe(
         `INSERT INTO ulc_linz_membership
            (identity_id, organization_id, subject_id, source_role, active)
          SELECT account.id, $2, $3, 'functionary', true
@@ -128,20 +128,58 @@ export function createUlcFunctionaryUserProvisioningService({
          RETURNING identity_id, organization_id, subject_id, source_role, active`,
         [identityId, organizationId, subjectId],
       );
-      if (rows.length !== 1 || rows[0]?.identity_id !== identityId ||
-          rows[0]?.organization_id !== organizationId ||
-          rows[0]?.subject_id !== subjectId ||
-          rows[0]?.source_role !== "functionary" ||
-          rows[0]?.active !== true) {
+      if (inserted.length > 1) {
+        throw new UlcFunctionaryProvisioningError("CONFLICT");
+      }
+      let member = inserted[0];
+      if (member === undefined) {
+        // A matching audited identity request may be replayed after its
+        // membership committed but before permission provisioning finished.
+        // Re-read in a NEW statement: ON CONFLICT can see a concurrent row
+        // which is not yet visible in the INSERT statement snapshot.
+        const existing = await sql.unsafe(
+          `SELECT membership.identity_id, membership.organization_id,
+                  membership.subject_id, membership.source_role, membership.active
+           FROM ulc_linz_membership AS membership
+           JOIN "user" AS account ON account.id = membership.identity_id
+           WHERE membership.identity_id = $1
+             AND COALESCE(account.banned, false) = false`,
+          [identityId],
+        );
+        if (existing.length !== 1) {
+          throw new UlcFunctionaryProvisioningError("CONFLICT");
+        }
+        member = existing[0];
+      }
+      if (member?.identity_id !== identityId ||
+          member.organization_id !== organizationId ||
+          member.subject_id !== subjectId ||
+          member.source_role !== "functionary" ||
+          member.active !== true) {
+        // Never repurpose a membership belonging to another organization,
+        // role or subject; in particular no trainer-to-functionary conversion.
         throw new UlcFunctionaryProvisioningError("CONFLICT");
       }
 
       const principal = principalId(identityId);
       await ensurePostgresPermissionPrincipal(sql, principal);
       const previous = await permissions.findPrincipal(principal);
-      if (previous === null || previous.roleIds.length !== 0 ||
-          previous.grants.length !== 0 || previous.revokes.length !== 0) {
+      if (previous === null ||
+          !((previous.roleIds.length === 0) ||
+            (previous.roleIds.length === 1 && previous.roleIds[0] === role)) ||
+          !(previous.grants.length === 0 || sameCapabilities(previous.grants, grants)) ||
+          previous.revokes.length !== 0) {
         throw new UlcFunctionaryProvisioningError("CONFLICT");
+      }
+      const alreadyProvisioned =
+        previous.roleIds.length === 1 &&
+        previous.roleIds[0] === role &&
+        sameCapabilities(previous.grants, grants);
+      if (alreadyProvisioned) {
+        return Object.freeze({
+          identityId, username: identity.username, displayName: identity.displayName,
+          mustChangePassword: true as const,
+        });
       }
       try {
         await accessAdministration.replacePrincipalAccess(
@@ -163,6 +201,18 @@ export function createUlcFunctionaryUserProvisioningService({
             error.code === "STALE_PRINCIPAL_ROLES") ||
             (error instanceof PrincipalPermissionAdministrationError &&
             error.code === "STALE_PRINCIPAL_PERMISSIONS")) {
+          // Concurrent retries may have written exactly the intended state.
+          // Never accept a different role or an extra capability.
+          const reconciled = await permissions.findPrincipal(principal);
+          if (reconciled?.roleIds.length === 1 &&
+              reconciled.roleIds[0] === role &&
+              sameCapabilities(reconciled.grants, grants) &&
+              reconciled.revokes.length === 0) {
+            return Object.freeze({
+              identityId, username: identity.username, displayName: identity.displayName,
+              mustChangePassword: true as const,
+            });
+          }
           throw new UlcFunctionaryProvisioningError("CONFLICT");
         }
         throw error;
@@ -173,4 +223,10 @@ export function createUlcFunctionaryUserProvisioningService({
       });
     },
   });
+}
+
+function sameCapabilities(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  const expected = new Set(right);
+  return expected.size === right.length && left.every(value => expected.has(value));
 }
