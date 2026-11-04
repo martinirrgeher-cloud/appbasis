@@ -103,7 +103,7 @@ describe("ULC E6A exercise catalog schema", () => {
     expect(migration).toContain("ulc_linz_lifecycle_deletion_source_role_check");
     expect(migration).toContain("'functionary'");
     // A ULC app migration must never create/alter/seed a Permissions-owner table.
-    expect(migration).not.toMatch(/\\b(?:INSERT\\s+INTO|UPDATE|DELETE\\s+FROM|ALTER\\s+TABLE|CREATE\\s+TABLE)\\s+appbasis_permission_/i);
+    expect(migration).not.toMatch(/\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|ALTER\s+TABLE|CREATE\s+TABLE)\s+appbasis_permission_/i);
     const provisioning = await readFile(
       new URL("../../../tooling/ulc-linz-m5-permission-provisioning.mjs", import.meta.url),
       "utf8",
