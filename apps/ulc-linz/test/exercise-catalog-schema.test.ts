@@ -94,6 +94,23 @@ describe("ULC E6A exercise catalog schema", () => {
     );
   });
 
+  it("keeps functionary migration inside the app owner and delegates role provisioning", async () => {
+    const migration = await readFile(
+      new URL("../migrations/0009_ulc_linz_functionary_role.sql", import.meta.url),
+      "utf8",
+    );
+    expect(migration).toContain("ulc_linz_membership_source_role_check");
+    expect(migration).toContain("ulc_linz_lifecycle_deletion_source_role_check");
+    expect(migration).toContain("'functionary'");
+    // A ULC app migration must never create/alter/seed a Permissions-owner table.
+    expect(migration).not.toMatch(/\\b(?:INSERT\\s+INTO|UPDATE|DELETE\\s+FROM|ALTER\\s+TABLE|CREATE\\s+TABLE)\\s+appbasis_permission_/i);
+    const provisioning = await readFile(
+      new URL("../../../tooling/ulc-linz-m5-permission-provisioning.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(provisioning).toContain("runtimeRoleIds.functionary");
+  });
+
   it("keeps the catalog migration pinned at schema position 8 after later lifecycle migrations", async () => {
     const manifest = JSON.parse(await readFile(manifestUrl, "utf8"));
     const owner = manifest.owners.find(
