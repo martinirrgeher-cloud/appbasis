@@ -253,6 +253,107 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       ]);
     });
 
+    it("keeps proxy registration and actor history in one authorized group at the SQL write boundary", async () => {
+      const connection = requiredConnection();
+      const organizationId = "verein-proxy-a02";
+      const date = "2026-11-04";
+      const masterdata = new PostgresAthleteMasterdataRepository(
+        connection.client, () => randomUUID(),
+      );
+      const sessions = new PostgresUlcTrainingSessionRepository(
+        connection.client, () => randomUUID(),
+      );
+      const group = await masterdata.createTrainingGroup(organizationId, {
+        name: "A02 Leistungsgruppe",
+        attendanceMode: "self_registration",
+      });
+      const foreignGroup = await masterdata.createTrainingGroup(organizationId, {
+        name: "A02 Fremdgruppe",
+        attendanceMode: "self_registration",
+      });
+      const actor = await masterdata.createAthlete(organizationId, {
+        firstName: "Anna", lastName: "A02", birthYear: 2010,
+      });
+      const target = await masterdata.createAthlete(organizationId, {
+        firstName: "Ben", lastName: "A02", birthYear: 2010,
+      });
+      const outsider = await masterdata.createAthlete(organizationId, {
+        firstName: "Chris", lastName: "A02", birthYear: 2010,
+      });
+      for (const athleteId of [actor.id, target.id]) {
+        await masterdata.createAthleteGroupMembership(organizationId, {
+          athleteId, groupId: group.id, startedOn: "2026-11-01",
+        });
+      }
+      await masterdata.createAthleteGroupMembership(organizationId, {
+        athleteId: outsider.id, groupId: foreignGroup.id, startedOn: "2026-11-01",
+      });
+      const identityId = "identity-a02-" + randomUUID();
+      await connection.client.unsafe(
+        `INSERT INTO ulc_linz_membership
+           (identity_id, organization_id, subject_id, source_role, active)
+         VALUES ($1, $2, $3, 'athlete', true)`,
+        [identityId, organizationId, actor.id],
+      );
+      const created = await sessions.ensureScheduledSession(
+        organizationId, "kindertraining", group.id, date,
+      );
+      const saved = await sessions.saveRegistration(
+        organizationId, created.session.id, target.id, "attending",
+        null, identityId, actor.id,
+      );
+      expect(saved).toMatchObject({
+        athleteId: target.id, intention: "attending", revision: 1,
+        updatedByIdentityId: identityId,
+      });
+      const history = await connection.client.unsafe(
+        `SELECT athlete_id, actor_identity_id, intention, revision
+         FROM ulc_linz_training_registration_change
+         WHERE organization_id = $1 AND session_id = $2`,
+        [organizationId, created.session.id],
+      );
+      expect(history).toEqual([{
+        athlete_id: target.id, actor_identity_id: identityId,
+        intention: "attending", revision: 1,
+      }]);
+
+      // No self-proxy, outside group, wrong identity, or stale revision.
+      for (const [targetId, actorIdentity, actorId, revision] of [
+        [actor.id, identityId, actor.id, null],
+        [outsider.id, identityId, actor.id, null],
+        [target.id, "identity-unrelated", actor.id, 1],
+        [target.id, identityId, actor.id, null],
+      ] as const) {
+        await expect(sessions.saveRegistration(
+          organizationId, created.session.id, targetId, "maybe",
+          revision, actorIdentity, actorId,
+        )).rejects.toBeInstanceOf(UlcTrainingSessionConflictError);
+      }
+      await connection.client.unsafe(
+        `UPDATE ulc_linz_membership SET active = false
+         WHERE identity_id = $1`, [identityId],
+      );
+      await expect(sessions.saveRegistration(
+        organizationId, created.session.id, target.id, "not_attending",
+        1, identityId, actor.id,
+      )).rejects.toBeInstanceOf(UlcTrainingSessionConflictError);
+      const unchanged = await connection.client.unsafe(
+        `SELECT intention, revision, updated_by_identity_id
+         FROM ulc_linz_training_registration
+         WHERE session_id = $1 AND athlete_id = $2`,
+        [created.session.id, target.id],
+      );
+      expect(unchanged).toEqual([{
+        intention: "attending", revision: 1, updated_by_identity_id: identityId,
+      }]);
+      const count = await connection.client.unsafe(
+        `SELECT count(*)::int AS changes
+         FROM ulc_linz_training_registration_change
+         WHERE session_id = $1`, [created.session.id],
+      );
+      expect(count).toEqual([{ changes: 1 }]);
+    });
+
     it("resolves a trainer identity to only its persisted group assignments", async () => {
       const connection = requiredConnection();
       const masterdata = new PostgresAthleteMasterdataRepository(
