@@ -215,3 +215,38 @@ separate app-owned tables and remain untouched. No free-text
 identification, app-wide deletion certificate, backup replay or
 automatic marker purge is claimed. Migration v2 is published but
 not applied to preview or production.
+
+## Frozen-store ULC attendance / registration privacy erasure (not active)
+
+The app-owned `PostgresUlcTrainingSubjectFrozenHistoryRepository`
+prepares atomic, exact `(organizationId, athleteId)` removal from the
+**three distinct personal-data tables**: confirmed attendance,
+current registration and **every** registration-change revision. Shared
+sessions, session notes and other participants remain unchanged. All
+three DELETE statements and the no-residual check run in one PostgreSQL
+transaction; any failure rolls back all three deletions. Repeating a
+successful removal returns zero counts.
+
+The independent, **unwired** coordinator
+`eraseUlcLinzAthleteTrainingHistoryOnFrozenStore` requires the canonical
+active ULC administrator, correct organization and no self-subject
+relation. It validates a current, completed 35-day **athletes-owner**
+deletion marker and an explicit independent operator-provided frozen-store
+gate *before* calling this app-owned repository. Missing proof, stale,
+future or contradictory provenance and malformed results fail closed.
+The gate is a preparatory interface, **not itself proof of network
+isolation**, and no production caller injects it.
+
+**Critical remaining blocker:** The current ULC schema-v9 attendance and
+registration writers do not consult a durable subject deletion marker.
+A stale writer can therefore recreate rows after this cleanup (demonstrated
+by an isolated PostgreSQL regression). This primitive is **NOT safe for
+live deletion, a promoted restore or a production retention job**.
+Before activation, a separately reviewed app-owned schema/DB write fence,
+source-complete backup/restore replay, and cross-owner recovery policy are
+required. Actor identities in unrelated records, other modules, free-text
+and backups are not covered; a zero count is not a privacy certificate.
+
+No database migration, HTTP endpoint, runtime injection, scheduler,
+preview/prod data write, restore promotion or Production-Ready status change
+is included in this repository slice.

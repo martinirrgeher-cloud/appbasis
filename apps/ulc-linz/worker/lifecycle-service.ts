@@ -7,6 +7,9 @@ import type {
   UlcTrainingSubjectPrivacyInspector,
 } from "./training-subject-privacy-postgres";
 import type {
+  UlcTrainingSubjectFrozenHistoryDeletionRepository,
+} from "./training-subject-history-deletion-postgres";
+import type {
   PostgresTrainingBlockRepository,
   TrainingBlockSubjectUsageLifecycleRepository,
 } from "@appbasis/training-blocks";
@@ -277,6 +280,96 @@ export async function deleteUlcLinzAthleteSubjectDependentsAfterRetention(
     deletedPlanItems: plans.deletedItems,
     usageMarkerInserted: usage.markerInserted,
     deletedAttributedUsageEvents: usage.deletedUsageEvents,
+  });
+}
+
+/**
+ * UNWIRED, PRIVILEGED FROZEN-STORE ONLY follow-up for app-owned attendance,
+ * current registrations and all registration-change revisions.
+ *
+ * Unlike plans/documentation, schema v9 has no subject-deletion tombstone
+ * and the current session writer can resurrect rows. This operation may be
+ * used only on an independently frozen, isolated store; it is NOT safe to
+ * attach to current HTTP, live retention or restore promotion.
+ */
+export interface UlcLinzAthleteTrainingHistoryDeletionDependencies {
+  readonly permissions: PermissionStore;
+  readonly scopes: Pick<
+    PostgresUlcLinzScopePersistence,
+    "resolveMembership" | "hasRelation"
+  >;
+  readonly athletes: Pick<
+    PostgresAthleteMasterdataRepository,
+    "findCurrentAthleteDeletionMarker"
+  >;
+  readonly training: UlcTrainingSubjectFrozenHistoryDeletionRepository;
+  /** Operator-controlled proof boundary; NOT equivalent to a DB lock. */
+  readonly requireFrozenIsolatedStore: (
+    organizationId: string, subjectId: string,
+  ) => Promise<boolean>;
+  readonly now: () => Date;
+}
+
+export interface UlcLinzAthleteTrainingHistoryDeletionResult {
+  readonly organizationId: string;
+  readonly subjectId: string;
+  readonly completedAt: Date;
+  readonly deletedAttendanceRows: number;
+  readonly deletedRegistrationRows: number;
+  readonly deletedRegistrationHistoryRows: number;
+}
+
+export async function eraseUlcLinzAthleteTrainingHistoryOnFrozenStore(
+  current: UlcLinzCurrentIdentity,
+  dependencies: UlcLinzAthleteTrainingHistoryDeletionDependencies,
+  request: UlcLinzAthleteSubjectDeletionRequest,
+): Promise<UlcLinzAthleteTrainingHistoryDeletionResult> {
+  if (
+    !dependencies ||
+    typeof dependencies.athletes?.findCurrentAthleteDeletionMarker !== "function" ||
+    typeof dependencies.training?.eraseSubjectHistoryOnFrozenStore !== "function" ||
+    typeof dependencies.scopes?.hasRelation !== "function" ||
+    typeof dependencies.requireFrozenIsolatedStore !== "function" ||
+    typeof dependencies.now !== "function"
+  ) blocked();
+
+  const organizationId = requiredIdentifier(request.organizationId);
+  const subjectId = requiredIdentifier(request.subjectId);
+  const { actorIdentityId } = await assertCanonicalLifecycleAdmin(
+    current, dependencies.permissions, dependencies.scopes, organizationId,
+  );
+  if (await dependencies.scopes.hasRelation({
+    identityId: actorIdentityId, organizationId, subjectId,
+    relationType: "self",
+  })) blocked();
+  const now = dependencies.now();
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) blocked();
+  const marker = await dependencies.athletes.findCurrentAthleteDeletionMarker(
+    organizationId, subjectId, now,
+  );
+  const completedAt = validateCanonicalAthleteDeletionMarker(
+    marker, organizationId, subjectId, now,
+  );
+
+  // No mutation if the independent frozen-isolated-store gate is absent.
+  // Runtime and production never inject this gate.
+  if (await dependencies.requireFrozenIsolatedStore(
+    organizationId, subjectId,
+  ) !== true) blocked();
+  const result = await dependencies.training.eraseSubjectHistoryOnFrozenStore(
+    organizationId, subjectId,
+  );
+  if (
+    !result ||
+    !validDeletionCount(result.deletedAttendanceRows) ||
+    !validDeletionCount(result.deletedRegistrationRows) ||
+    !validDeletionCount(result.deletedRegistrationHistoryRows)
+  ) blocked();
+  return Object.freeze({
+    organizationId, subjectId, completedAt,
+    deletedAttendanceRows: result.deletedAttendanceRows,
+    deletedRegistrationRows: result.deletedRegistrationRows,
+    deletedRegistrationHistoryRows: result.deletedRegistrationHistoryRows,
   });
 }
 
