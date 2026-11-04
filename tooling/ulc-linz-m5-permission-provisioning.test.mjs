@@ -35,12 +35,14 @@ test("defines the complete ULC capability catalog for the existing provisioning 
       ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.trainer,
       ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.athlete,
       ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.parent,
+      ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.functionary,
     ],
   );
   assert.deepEqual(bundle.roles[0].capabilities, ULC_LINZ_M5_KNOWN_CAPABILITIES);
   assert.deepEqual(bundle.roles[1].capabilities, []);
   assert.deepEqual(bundle.roles[2].capabilities, []);
   assert.deepEqual(bundle.roles[3].capabilities, []);
+  assert.deepEqual(bundle.roles[4].capabilities, []);
   assert.deepEqual(bundle.principalRoleAssignments, []);
 });
 
@@ -54,7 +56,7 @@ test("keeps admin role-derived and non-admin module rights principal-specific", 
   assert.ok(admin.capabilities.includes("ulc-linz:module:user_management:view"));
   assert.ok(admin.capabilities.includes("ulc-linz:module:user_management:edit"));
 
-  for (const sourceRole of ["trainer", "athlete", "parent"]) {
+  for (const sourceRole of ["trainer", "athlete", "parent", "functionary"]) {
     const roleId = ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds[sourceRole];
     const runtimeRole = bundle.roles.find((role) => role.roleId === roleId);
     assert.ok(runtimeRole);

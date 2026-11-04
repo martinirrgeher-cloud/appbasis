@@ -35,6 +35,10 @@ export const ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE = Object.freeze({
       roleId: ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.parent,
       capabilities: emptyCapabilities(),
     }),
+    Object.freeze({
+      roleId: ULC_LINZ_M5_ROLE_DATA_SCOPE_POLICY.runtimeRoleIds.functionary,
+      capabilities: emptyCapabilities(),
+    }),
   ]),
   principalRoleAssignments: Object.freeze([]),
 });

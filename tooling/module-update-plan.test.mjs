@@ -603,7 +603,7 @@ async function createOwnerCollisionFixture(t) {
           {
             id: "ulc-linz-lifecycle",
             root: "apps/ulc-linz",
-            schemaVersion: 9,
+            schemaVersion: 10,
             migrations: [
               "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
               "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -614,6 +614,7 @@ async function createOwnerCollisionFixture(t) {
               "apps/ulc-linz/migrations/0006_ulc_linz_training_module_groups.sql",
               "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
               "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql",
+              "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
             ],
           },
         ],
