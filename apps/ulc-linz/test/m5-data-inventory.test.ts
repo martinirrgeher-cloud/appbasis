@@ -158,10 +158,10 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(inventory.runtimeModules).toEqual(appManifest.modules);
     expect(inventory.m5.unknownRuntimeModule).toBe("fail-closed");
 
-    // The reviewed privacy inventory describes the materialized v9 scope.
-    // Lifecycle v10 is only published in source control: its functionary
-    // migration requires a separately authorized Preview apply. Permit only
-    // that exact forward delta; all other owner contracts remain exact.
+    // The privacy inventory intentionally describes materialized v9.
+    // Published v10 functionary and v11 optional notes are not Preview-applied;
+    // only these two exact forward deltas are allowed, with all other owners
+    // required to match exactly. Registration free-text needs separate review.
     const inventoryOwners = sortedOwnerContracts(inventory.persistentOwners);
     const publishedOwners = sortedOwnerContracts(databaseManifest.owners);
     const expectedPublishedOwners = inventoryOwners.map((owner) => {
@@ -173,10 +173,11 @@ describe("ULC Linz M5 C/D data inventory", () => {
       );
       return {
         ...owner,
-        schemaVersion: 10,
+        schemaVersion: 11,
         migrations: [
           ...owner.migrations,
           "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
+          "apps/ulc-linz/migrations/0010_ulc_linz_registration_notes.sql",
         ],
       };
     });
