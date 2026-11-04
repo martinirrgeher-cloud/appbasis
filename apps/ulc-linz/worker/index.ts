@@ -1358,6 +1358,7 @@ async function selfRegistrationJsonBody(
   intention: "unknown" | "attending" | "not_attending" | "maybe";
   expectedRevision: number | null;
   targetAthleteId?: string;
+  note?: string | null;
 }> {
   let value: unknown;
   try {
@@ -1380,6 +1381,7 @@ async function selfRegistrationJsonBody(
     "intention",
     "sessionDate",
     ...(proxy ? ["targetAthleteId"] : []),
+    ...("note" in body ? ["note"] : []),
   ];
   if (
     JSON.stringify(Object.keys(body).sort()) !== JSON.stringify(expectedKeys) ||
@@ -1389,6 +1391,12 @@ async function selfRegistrationJsonBody(
       body.targetAthleteId.length === 0 ||
       body.targetAthleteId.length > 200 ||
       body.targetAthleteId.trim() !== body.targetAthleteId
+    )) ||
+    ("note" in body && !(
+      body.note === null ||
+      (typeof body.note === "string" &&
+       body.note.length <= 160 &&
+       !/[\x00-\x1f\x7f]/.test(body.note))
     )) ||
     typeof body.groupId !== "string" ||
     body.groupId.length === 0 ||
@@ -1411,6 +1419,7 @@ async function selfRegistrationJsonBody(
     groupId: body.groupId,
     sessionDate: body.sessionDate,
     ...(proxy ? { targetAthleteId: body.targetAthleteId as string } : {}),
+    ...("note" in body ? { note: body.note as string | null } : {}),
     intention: body.intention as
       | "unknown"
       | "attending"
