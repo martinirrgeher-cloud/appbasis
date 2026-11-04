@@ -2003,6 +2003,12 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
 }
 .kindertraining-week-day--unavailable small { color: var(--secondary); }
 /* A02.2: compact, keyboard-accessible colleague proxy registration dialog. */
+ .registration-note-editor { display: grid; min-width: 0; gap: 6px; margin-top: 8px; }
+.registration-note-editor label { display: grid; min-width: 0; gap: 5px; }
+.registration-note-editor input { width: 100%; min-width: 0; box-sizing: border-box; min-height: 44px; }
+.registration-note-editor .button { justify-self: start; min-height: 40px; }
+.registration-note-editor small { color: var(--secondary); font-size: .74rem; }
+
 .registration-proxy-dialog {
   box-sizing: border-box; width: min(460px, calc(100vw - 24px));
   max-width: 460px; max-height: calc(100dvh - 24px);
@@ -2422,6 +2428,7 @@ let selfRegistrationSavingKeys = new Set();
 let selfRegistrationConflictReloadPending = false;
 let selfRegistrationWeekStart = "";
 let selfRegistrationOptions = [];
+let selfRegistrationNoteDrafts = new Map();
 let selfRegistrationProxy = null;
 let selfRegistrationProxyRequestId = 0;
 let kindertrainingReady = false;
@@ -2798,6 +2805,7 @@ function resetAttendanceSessionState() {
   selfRegistrationConflictReloadPending = false;
   selfRegistrationWeekStart = "";
   selfRegistrationOptions = [];
+  selfRegistrationNoteDrafts.clear();
   closeSelfRegistrationProxy();
   showMessage(elements.registrationMessage, "");
   showMessage(elements.registrationSuccess, "");
@@ -3008,6 +3016,7 @@ async function bootstrapSelfRegistration() {
   selfRegistrationSavingKeys = new Set();
   selfRegistrationWeekStart = localWeekStart(new Date());
   selfRegistrationOptions = [];
+  selfRegistrationNoteDrafts.clear();
   closeSelfRegistrationProxy();
   renderSelfRegistrationWeekLabel();
   renderSelfRegistration();
@@ -3262,6 +3271,42 @@ function renderSelfRegistration() {
         actions.append(button);
       }
       card.append(actions);
+      const noteBox = document.createElement("div");
+      noteBox.className = "registration-note-editor";
+      const noteLabel = document.createElement("label");
+      noteLabel.textContent = "Hinweis für diesen Trainingstag (optional)";
+      const noteInput = document.createElement("input");
+      noteInput.type = "text";
+      noteInput.maxLength = 160;
+      noteInput.placeholder = "z. B. komme 15 Minuten später";
+      noteInput.dataset.registrationNoteInput = "true";
+      noteInput.value = selfRegistrationNoteDrafts.has(optionKey)
+        ? selfRegistrationNoteDrafts.get(optionKey)
+        : option.note || "";
+      noteInput.disabled = optionSaving || selfRegistrationLoading;
+      const noteSave = document.createElement("button");
+      noteSave.type = "button";
+      noteSave.className = "button button--secondary";
+      noteSave.textContent = "Hinweis speichern";
+      noteSave.dataset.registrationGroup = option.group.id;
+      noteSave.dataset.registrationDate = option.sessionDate;
+      noteSave.dataset.registrationNoteSave = "true";
+      noteSave.disabled = optionSaving ||
+        noteInput.value.trim() === (option.note || "");
+      noteInput.addEventListener("input", () => {
+        if (noteInput.value.trim() === (option.note || "")) {
+          selfRegistrationNoteDrafts.delete(optionKey);
+        } else {
+          selfRegistrationNoteDrafts.set(optionKey, noteInput.value);
+        }
+        noteSave.disabled = noteInput.disabled ||
+          !selfRegistrationNoteDrafts.has(optionKey);
+      });
+      noteLabel.append(noteInput);
+      const noteHelp = document.createElement("small");
+      noteHelp.textContent = "Max. 160 Zeichen; keine Gesundheitsdaten eingeben.";
+      noteBox.append(noteLabel, noteSave, noteHelp);
+      card.append(noteBox);
       const proxy = document.createElement("button");
       proxy.type = "button";
       proxy.className = "button button--secondary registration-proxy-open";
@@ -3562,6 +3607,11 @@ async function handleSelfRegistrationClick(event) {
 
 async function moveSelfRegistrationWeek(offset) {
   if (selfRegistrationLoading || selfRegistrationSavingKeys.size > 0) return;
+  if (selfRegistrationNoteDrafts.size > 0 &&
+      !window.confirm("Ungespeicherte Anmeldehinweise verwerfen und die Woche wechseln?")) {
+    return;
+  }
+  selfRegistrationNoteDrafts.clear();
   selfRegistrationWeekStart =
     offset === 0
       ? localWeekStart(new Date())
@@ -4064,6 +4114,12 @@ function renderKindertrainingWeek() {
         registration.textContent =
           "Voranmeldung: " + kindertrainingRegistrationLabel(participant.intention);
         identity.append(name, registration);
+        if (participant.registrationNote) {
+          const dayNote = document.createElement("small");
+          dayNote.className = "kindertraining-registration-note";
+          dayNote.textContent = "Hinweis: " + participant.registrationNote;
+          identity.append(dayNote);
+        }
 
         const statuses = document.createElement("div");
         statuses.className = "kindertraining-statuses";
