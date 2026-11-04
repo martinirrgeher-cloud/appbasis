@@ -408,6 +408,8 @@ describe("ULC training session PostgreSQL persistence", () => {
       "identity-athlete-1",
       "registration-change-1",
       null, // no proxy actor: unchanged self-registration contract
+      false, // status-only write preserves a stored note
+      null,
     ]);
   });
 
@@ -433,6 +435,7 @@ describe("ULC training session PostgreSQL persistence", () => {
     expect(statements[0]?.params).toEqual([
       "verein-1", "session-1", "target-1", "attending",
       null, "identity-actor", "change-proxy-1", "actor-athlete",
+      false, null,
     ]);
     const sql = statements[0]?.sql ?? "";
     expect(sql).toContain("actor_membership.identity_id = $6");
