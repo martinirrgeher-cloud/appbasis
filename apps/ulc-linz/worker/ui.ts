@@ -2632,7 +2632,13 @@ elements.registrationList?.addEventListener("click", (event) => {
   }
   void handleSelfRegistrationClick(event);
 });
-elements.registrationProxyClose?.addEventListener("click", closeSelfRegistrationProxy);
+elements.registrationProxyClose?.addEventListener("click", requestCloseSelfRegistrationProxy);
+elements.registrationProxyDialog?.addEventListener("cancel", (event) => {
+  if (selfRegistrationProxy?.noteDrafts?.size > 0 &&
+      !window.confirm("Ungespeicherte stellvertretende Hinweise verwerfen?")) {
+    event.preventDefault();
+  }
+});
 elements.registrationProxyDialog?.addEventListener("close", closeSelfRegistrationProxy);
 elements.registrationProxyAthlete?.addEventListener("change", renderSelfRegistrationProxy);
 elements.registrationProxyNote?.addEventListener("input", () => {
@@ -2970,6 +2976,12 @@ async function handleSignOut() {
       "Der Countdown läuft noch. Wirklich abmelden und den Countdown beenden?",
     )
   ) {
+    return;
+  }
+
+  if ((selfRegistrationNoteDrafts.size > 0 ||
+       (selfRegistrationProxy?.noteDrafts?.size || 0) > 0) &&
+      !window.confirm("Ungespeicherte Anmeldehinweise verwerfen und abmelden?")) {
     return;
   }
 
@@ -3351,6 +3363,14 @@ function renderSelfRegistration() {
     }
     container.append(day);
   }
+}
+
+function requestCloseSelfRegistrationProxy() {
+  if (selfRegistrationProxy?.noteDrafts?.size > 0 &&
+      !window.confirm("Ungespeicherte stellvertretende Hinweise verwerfen?")) {
+    return;
+  }
+  closeSelfRegistrationProxy();
 }
 
 function closeSelfRegistrationProxy() {
