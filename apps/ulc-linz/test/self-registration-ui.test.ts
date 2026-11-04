@@ -7,6 +7,27 @@ import {
 } from "../worker/ui";
 
 describe("ULC weekly self-registration and account switching", () => {
+  it("uses explicit 160-character day notes with draft recovery for own and colleague registration", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="registration-proxy-note"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="registration-proxy-note-save"');
+    expect(ULC_LINZ_APP_HTML).toContain('maxlength="160"');
+    expect(ULC_LINZ_APP_CSS).toContain(".registration-note-editor");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("let selfRegistrationNoteDrafts = new Map();");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("noteInput.maxLength = 160;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("noteSave.dataset.registrationNoteSave");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("const noteOnly = control.dataset.registrationNoteSave");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("const noteChanged = noteDraft !== undefined");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('...(noteChanged ? { note: noteDraft } : {})');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("selfRegistrationNoteDrafts.delete(optionKey)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("selfRegistrationNoteDrafts.clear()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Ungespeicherte Anmeldehinweise");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("state.noteDrafts.delete(id)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("participant.registrationNote");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('dayNote.textContent = "Hinweis: "');
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("dayNote.innerHTML");
+  });
+
+
   it("keeps colleague proxy selection separate from the already accepted own registration flow", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="registration-proxy-dialog"');
     expect(ULC_LINZ_APP_HTML).toContain('id="registration-proxy-athlete"');
