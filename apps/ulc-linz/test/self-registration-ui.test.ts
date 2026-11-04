@@ -37,7 +37,7 @@ describe("ULC weekly self-registration and account switching", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("expectedRevision: selected.revision");
     expect(ULC_LINZ_APP_SCRIPT).toContain("closeSelfRegistrationProxy();");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      'requestJson("/api/modules/kindertraining/registration",',
+      '"/api/modules/kindertraining/registration",',
     );
   });
 
