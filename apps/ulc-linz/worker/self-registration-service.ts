@@ -26,6 +26,19 @@ export interface UlcSelfRegistrationOption {
   readonly revision: number | null;
 }
 
+export interface UlcProxyRegistrationOption {
+  readonly athlete: Readonly<{ id: string; firstName: string; lastName: string }>;
+  readonly intention: UlcTrainingRegistrationIntention;
+  readonly revision: number | null;
+}
+
+export interface UlcProxyRegistrationRoster {
+  readonly group: UlcSelfRegistrationOption["group"];
+  readonly sessionDate: string;
+  readonly sessionState: "scheduled" | "cancelled" | null;
+  readonly options: readonly UlcProxyRegistrationOption[];
+}
+
 export interface UlcSelfRegistrationMasterdataReader {
   readOrganizationSnapshot(
     organizationId: string,
@@ -91,6 +104,99 @@ export function createUlcSelfRegistrationService({
         ),
       );
       return Object.freeze(options);
+    },
+
+    // Athletes may act for another currently enrolled member of the SAME
+    // self-registration group. Both memberships are checked again at write.
+    async listProxyOptions(
+      organizationId: string,
+      actorAthleteId: string,
+      groupId: string,
+      sessionDate: string,
+    ): Promise<UlcProxyRegistrationRoster> {
+      const context = await resolveContext(
+        masterdata, organizationId, actorAthleteId, sessionDate,
+      );
+      const { group, colleagues } = resolveProxyGroup(context, groupId);
+      const snapshot = await sessions.readSession(
+        context.organizationId, MODULE_ID, group.id, context.sessionDate,
+      );
+      if (snapshot !== null && (
+        snapshot.session.organizationId !== context.organizationId ||
+        snapshot.session.moduleId !== MODULE_ID ||
+        snapshot.session.groupId !== group.id ||
+        snapshot.session.sessionDate !== context.sessionDate
+      )) {
+        throw new UlcTrainingValidationError("Registration session scope is inconsistent.");
+      }
+      const options = colleagues.map((athlete) => {
+        const matching = snapshot?.registrations.filter(
+          (registration) => registration.athleteId === athlete.id,
+        ) ?? [];
+        if (matching.length > 1) {
+          throw new UlcTrainingValidationError(
+            "Training registration is inconsistent.",
+          );
+        }
+        return Object.freeze({
+          athlete: Object.freeze({
+            id: athlete.id,
+            firstName: athlete.firstName,
+            lastName: athlete.lastName,
+          }),
+          intention: matching[0]?.intention ?? "unknown",
+          revision: matching[0]?.revision ?? null,
+        });
+      });
+      return Object.freeze({
+        group: groupOption(group),
+        sessionDate: context.sessionDate,
+        sessionState: snapshot?.session.state ?? null,
+        options: Object.freeze(options),
+      });
+    },
+
+    async saveProxy(
+      organizationId: string,
+      actorAthleteId: string,
+      actorIdentityId: string,
+      input: {
+        readonly groupId: string;
+        readonly targetAthleteId: string;
+        readonly sessionDate: string;
+        readonly intention: UlcTrainingRegistrationIntention;
+        readonly expectedRevision: number | null;
+      },
+    ): Promise<UlcProxyRegistrationOption> {
+      const context = await resolveContext(
+        masterdata, organizationId, actorAthleteId, input.sessionDate,
+      );
+      const { group, colleagues } = resolveProxyGroup(context, input.groupId);
+      const targetId = requiredIdentifier(input.targetAthleteId, "Target athlete id");
+      const target = colleagues.find((athlete) => athlete.id === targetId);
+      if (target === undefined) throw new UlcSelfRegistrationNotFoundError();
+      const intention = requiredIntention(input.intention);
+      const expectedRevision = registrationRevision(input.expectedRevision);
+      const actor = requiredIdentifier(actorIdentityId, "Registration actor identity id");
+      const snapshot = await sessions.ensureScheduledSession(
+        context.organizationId, MODULE_ID, group.id, context.sessionDate,
+      );
+      const registration = await sessions.saveRegistration(
+        context.organizationId,
+        snapshot.session.id,
+        target.id,
+        intention,
+        expectedRevision,
+        actor,
+        context.athleteId, // triggers atomic DB-side proxy scope validation
+      );
+      return Object.freeze({
+        athlete: Object.freeze({
+          id: target.id, firstName: target.firstName, lastName: target.lastName,
+        }),
+        intention: registration.intention,
+        revision: registration.revision,
+      });
     },
 
     async save(
@@ -187,6 +293,36 @@ async function resolveContext(
     sessionDate: date,
     snapshot,
   });
+}
+
+function resolveProxyGroup(
+  context: ResolvedContext,
+  rawGroupId: string,
+): { group: TrainingGroup; colleagues: AthleteMasterdataSnapshot["athletes"] } {
+  const groupId = requiredIdentifier(rawGroupId, "Training group id");
+  const group = context.snapshot.trainingGroups.find(
+    (candidate) =>
+      candidate.organizationId === context.organizationId &&
+      candidate.id === groupId &&
+      candidate.isActive,
+  );
+  if (group === undefined || !hasMembership(context, group.id)) {
+    throw new UlcSelfRegistrationNotFoundError();
+  }
+  if (group.attendanceMode !== "self_registration") {
+    throw new UlcSelfRegistrationModeError();
+  }
+  const colleagues = context.snapshot.athletes.filter(
+    (athlete) => athlete.organizationId === context.organizationId &&
+      athlete.isActive === true &&
+      athlete.id !== context.athleteId &&
+      hasMembership({ ...context, athleteId: athlete.id }, group.id),
+  ).sort(
+    (a, b) => a.lastName.localeCompare(b.lastName, "de") ||
+      a.firstName.localeCompare(b.firstName, "de") ||
+      a.id.localeCompare(b.id),
+  );
+  return { group, colleagues };
 }
 
 function eligibleGroups(
