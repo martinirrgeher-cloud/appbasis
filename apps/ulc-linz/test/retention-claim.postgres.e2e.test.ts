@@ -54,6 +54,49 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         const firstScopes = new PostgresUlcLinzScopePersistence(first.client, () => fixedNow);
         const secondScopes = new PostgresUlcLinzScopePersistence(second.client, () => fixedNow);
 
+        // Functionary finalization must never leave an Identity-deleted
+        // account with a still-live membership or missing deletion marker.
+        // This is the app-owner completion step, after owner cleanup.
+        const functionary: UlcLinzLifecycleTarget = Object.freeze({
+          ...target("functionary-deletion"), sourceRole: "functionary" as const,
+        });
+        await insertDueMembership(first.client, functionary);
+        await first.client.unsafe(
+          `INSERT INTO ulc_linz_subject_scope
+             (identity_id, organization_id, subject_id, relation_type)
+           VALUES ($1, $2, $3, 'self')`,
+          [functionary.identityId, functionary.organizationId, functionary.subjectId],
+        );
+        const functionaryMarker = await firstScopes.completeIdentityDeletion({
+          identityId: functionary.identityId,
+          actor: "ulc-admin",
+          reason: "functionary-identity-owner-completed",
+        });
+        expect(functionaryMarker).toMatchObject({
+          identityId: functionary.identityId,
+          organizationId,
+          subjectId: functionary.subjectId,
+          sourceRole: "functionary",
+          completedAt: fixedNow,
+          purgeAfter: new Date(fixedNow.getTime() + 35 * 86400000),
+        });
+        await expect(firstScopes.completeIdentityDeletion({
+          identityId: functionary.identityId,
+          actor: "ulc-admin",
+          reason: "functionary-identity-owner-completed",
+        })).resolves.toEqual(functionaryMarker);
+        const afterFunctionary = await first.client.unsafe(
+          `SELECT
+             (SELECT count(*)::int FROM ulc_linz_membership WHERE identity_id = $1) AS membership,
+             (SELECT count(*)::int FROM ulc_linz_subject_scope WHERE identity_id = $1) AS relations,
+             (SELECT count(*)::int FROM ulc_linz_lifecycle_deletion WHERE identity_id = $1 AND source_role = 'functionary') AS markers,
+             (SELECT count(*)::int FROM ulc_linz_lifecycle_audit WHERE target_identity_id = $1 AND event_type = 'identity.delete.completed') AS audits`,
+          [functionary.identityId],
+        );
+        expect(afterFunctionary).toEqual([{
+          membership: 0, relations: 0, markers: 1, audits: 1,
+        }]);
+
         const claimFirst = target("claim-first");
         await insertDueMembership(first.client, claimFirst);
         await expect(firstScopes.claimDueRetentionDeletion(claimFirst)).resolves.toBeUndefined();
