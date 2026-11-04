@@ -433,6 +433,7 @@ export class PostgresUlcTrainingSessionRepository {
     intention: UlcTrainingRegistrationIntention,
     expectedRevision: number | null,
     actorIdentityId: string,
+    proxyActorAthleteId?: string,
   ): Promise<UlcTrainingRegistration> {
     const organization = requiredInputIdentifier(
       organizationId,
@@ -453,14 +454,65 @@ export class PostgresUlcTrainingSessionRepository {
       updatedByIdentityId: actor,
     });
     const changeId = requiredGeneratedId(this.#createId());
+    const proxyActor = proxyActorAthleteId === undefined
+      ? null
+      : requiredInputIdentifier(proxyActorAthleteId, "Proxy actor athlete id");
 
     const rows = await this.#sql.unsafe(
       `WITH scoped_session AS MATERIALIZED (
-         SELECT id
-         FROM ulc_linz_training_session
-         WHERE organization_id = $1
-           AND id = $2
-           AND state = 'scheduled'
+         SELECT session.id
+         FROM ulc_linz_training_session AS session
+         WHERE session.organization_id = $1
+           AND session.id = $2
+           AND session.state = 'scheduled'
+           -- Self-registration keeps its established contract. The proxy path
+           -- additionally re-checks both athlete memberships and the actor's
+           -- canonical active identity inside the exact write statement.
+           AND ($8::text IS NULL OR (
+             $8::text <> $3
+             AND EXISTS (
+               SELECT 1
+               FROM appbasis_training_group AS training_group
+               INNER JOIN appbasis_athlete AS actor_athlete
+                 ON actor_athlete.id = $8
+                AND actor_athlete.organization_id = session.organization_id
+                AND actor_athlete.is_active = true
+               INNER JOIN appbasis_athlete AS target_athlete
+                 ON target_athlete.id = $3
+                AND target_athlete.organization_id = session.organization_id
+                AND target_athlete.is_active = true
+               INNER JOIN ulc_linz_membership AS actor_membership
+                 ON actor_membership.identity_id = $6
+                AND actor_membership.organization_id = session.organization_id
+                AND actor_membership.subject_id = actor_athlete.id
+                AND actor_membership.source_role = 'athlete'
+                AND actor_membership.active = true
+               WHERE training_group.id = session.group_id
+                 AND training_group.organization_id = session.organization_id
+                 AND training_group.is_active = true
+                 AND training_group.attendance_mode = 'self_registration'
+                 AND (
+                   SELECT count(*)
+                   FROM appbasis_athlete_group_membership AS actor_group
+                   WHERE actor_group.organization_id = session.organization_id
+                     AND actor_group.athlete_id = actor_athlete.id
+                     AND actor_group.group_id = training_group.id
+                     AND actor_group.started_on <= session.session_date
+                     AND (actor_group.ended_on IS NULL OR
+                          actor_group.ended_on >= session.session_date)
+                 ) = 1
+                 AND (
+                   SELECT count(*)
+                   FROM appbasis_athlete_group_membership AS target_group
+                   WHERE target_group.organization_id = session.organization_id
+                     AND target_group.athlete_id = target_athlete.id
+                     AND target_group.group_id = training_group.id
+                     AND target_group.started_on <= session.session_date
+                     AND (target_group.ended_on IS NULL OR
+                          target_group.ended_on >= session.session_date)
+                 ) = 1
+             )
+           ))
        ),
        updated_registration AS (
          UPDATE ulc_linz_training_registration AS registration
@@ -544,6 +596,7 @@ export class PostgresUlcTrainingSessionRepository {
         expectedRevision,
         normalized.updatedByIdentityId,
         changeId,
+        proxyActor,
       ],
     );
 
