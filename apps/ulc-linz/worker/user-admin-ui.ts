@@ -506,7 +506,7 @@ function closeUserAdminPasswordReset() {
 
 function openUserAdminPasswordReset(user) {
   if (!userAdminReady || userAdminBusy || userAdminElements.resetDialog?.open) return;
-  if (!user?.active || user?.blocked || !["trainer", "athlete"].includes(user.sourceRole)) return;
+  if (!user?.active || user?.blocked || !["trainer", "athlete", "functionary"].includes(user.sourceRole)) return;
   userAdminResetIdentityId = user.identityId;
   userAdminResetUsername = user.username;
   if (userAdminElements.resetTarget) userAdminElements.resetTarget.textContent =
