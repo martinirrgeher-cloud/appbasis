@@ -11,9 +11,26 @@ import type {
   TrainingDocumentationSnapshot,
   TrainingDocumentationSubjectDeletionRepository,
   TrainingDocumentationSubjectDeletionResult,
+  TrainingDocumentationSubjectDeletionMarker,
+  TrainingDocumentationSubjectRestoreRepository,
   TrainingDocumentationSubjectPrivacyInspection,
   TrainingDocumentationSubjectPrivacyInspectionReader,
 } from "./repository";
+import {
+  requiredTrainingDocumentationDeletionMarker,
+  requiredTrainingDocumentationRestoreDate,
+  TRAINING_DOCUMENTATION_MARKER_RETENTION_MS,
+} from "./subject-restore-reconciliation";
+
+function storedSubjectDeletionDate(value: unknown): Date {
+  if (
+    !((typeof value === "string" && value.length > 0) ||
+      (value instanceof Date && Number.isFinite(value.getTime())))
+  ) {
+    throw new Error("Training documentation restore marker timestamp is invalid.");
+  }
+  return requiredTrainingDocumentationRestoreDate(new Date(value));
+}
 
 export type TrainingDocumentationSqlParameter =
   | string
@@ -39,7 +56,7 @@ export interface TrainingDocumentationPostgresClient
 
 export class PostgresTrainingDocumentationRepository
   implements TrainingDocumentationRepository, TrainingDocumentationSubjectPrivacyInspectionReader,
-    TrainingDocumentationSubjectDeletionRepository
+    TrainingDocumentationSubjectDeletionRepository, TrainingDocumentationSubjectRestoreRepository
 {
   readonly #client: TrainingDocumentationPostgresClient;
 
@@ -161,10 +178,65 @@ export class PostgresTrainingDocumentationRepository
     const now = Date.now();
     if (
       completed.getTime() > now ||
-      now - completed.getTime() > 35 * 24 * 60 * 60 * 1000
+      now - completed.getTime() > TRAINING_DOCUMENTATION_MARKER_RETENTION_MS
     ) {
       throw new Error("Training documentation deletion source is expired or in the future.");
     }
+    return this.#applySubjectDeletion(organization, subject, completed);
+  }
+
+  /**
+   * Read the entire newer authoritative marker source in one repeatable-read
+   * snapshot. Includes markers older than 35 days: no purge exists in v2.
+   * This reader alone cannot attest that an upstream source never lost markers.
+   */
+  async listSubjectDeletionMarkers(
+    now: Date,
+  ): Promise<readonly TrainingDocumentationSubjectDeletionMarker[]> {
+    const current = requiredTrainingDocumentationRestoreDate(now);
+    return this.#client.begin(async (transaction) => {
+      await transaction.unsafe(
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+      );
+      const rows = await transaction.unsafe(
+        `SELECT organization_id, subject_id, completed_at, purge_after
+         FROM appbasis_training_documentation_subject_deletion
+         ORDER BY organization_id, subject_id`,
+      );
+      if (!Array.isArray(rows)) {
+        throw new Error("Training documentation restore source inventory is invalid.");
+      }
+      return Object.freeze(rows.map((row) =>
+        requiredTrainingDocumentationDeletionMarker({
+          organizationId: row.organization_id as string,
+          subjectId: row.subject_id as string,
+          completedAt: storedSubjectDeletionDate(row.completed_at),
+          purgeAfter: storedSubjectDeletionDate(row.purge_after),
+        }, current),
+      ));
+    });
+  }
+
+  /**
+   * OFFLINE RESTORE ONLY. A verified newer authority supplies even expired
+   * marker decisions. No runtime caller, scheduler or automatic promotion.
+   * The replay intentionally shares the exact atomic erasure code with the
+   * canonical deletion method, but bypasses ONLY its fresh-source window.
+   */
+  async reconcileSubjectDeletionMarker(
+    marker: TrainingDocumentationSubjectDeletionMarker,
+  ): Promise<TrainingDocumentationSubjectDeletionResult> {
+    const authority = requiredTrainingDocumentationDeletionMarker(marker, new Date());
+    return this.#applySubjectDeletion(
+      authority.organizationId, authority.subjectId, authority.completedAt,
+    );
+  }
+
+  async #applySubjectDeletion(
+    organization: string,
+    subject: string,
+    completed: Date,
+  ): Promise<TrainingDocumentationSubjectDeletionResult> {
     return this.#client.begin(async (transaction) => {
       // Match the trigger's organization-first lock ordering before touching
       // rows or acquiring the affected subject lock.
@@ -206,7 +278,7 @@ export class PostgresTrainingDocumentationRepository
         !Number.isFinite(storedPurge.getTime()) ||
         storedCompleted.getTime() !== completed.getTime() ||
         storedPurge.getTime() - storedCompleted.getTime() !==
-          35 * 24 * 60 * 60 * 1000
+          TRAINING_DOCUMENTATION_MARKER_RETENTION_MS
       ) {
         throw new Error("Training documentation deletion marker conflicts.");
       }
