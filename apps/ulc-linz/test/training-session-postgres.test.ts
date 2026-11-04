@@ -412,7 +412,7 @@ describe("ULC training session PostgreSQL persistence", () => {
   });
 
   it("guards proxy writes with the actor identity and both active group memberships", async () => {
-    const statements: Array<{ sql: string; params?: readonly unknown[] }> = [];
+    const statements: Array<{ sql: string; params: readonly unknown[] | undefined }> = [];
     const repository = new PostgresUlcTrainingSessionRepository({
       async unsafe(sql, params) {
         statements.push({ sql, params });
