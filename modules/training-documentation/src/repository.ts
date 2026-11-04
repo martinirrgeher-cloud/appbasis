@@ -93,6 +93,33 @@ export interface TrainingDocumentationSubjectDeletionRepository {
   ): Promise<TrainingDocumentationSubjectDeletionResult>;
 }
 
+/**
+ * Minimal, module-owned decision retained after an authorized deletion.
+ * Expiration is NOT permission to forget an offline restore decision.
+ */
+export interface TrainingDocumentationSubjectDeletionMarker {
+  readonly organizationId: string;
+  readonly subjectId: string;
+  readonly completedAt: Date;
+  readonly purgeAfter: Date;
+}
+
+/**
+ * OFFLINE recovery only. Source authority must be independently proven newer,
+ * complete and immutable for the whole read. Target must remain isolated until
+ * every relevant app owner is reconciled and separately verified.
+ */
+export interface TrainingDocumentationSubjectRestoreRepository {
+  /** Full repeatable-read marker snapshot, including expired markers. */
+  listSubjectDeletionMarkers(
+    now: Date,
+  ): Promise<readonly TrainingDocumentationSubjectDeletionMarker[]>;
+  /** Atomic per-subject marker replay and structured history erasure. */
+  reconcileSubjectDeletionMarker(
+    marker: TrainingDocumentationSubjectDeletionMarker,
+  ): Promise<TrainingDocumentationSubjectDeletionResult>;
+}
+
 export interface TrainingDocumentationRepository {
   listCurrentBySubjectDateRange(
     organizationId: string,
