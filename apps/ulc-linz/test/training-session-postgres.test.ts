@@ -407,6 +407,7 @@ describe("ULC training session PostgreSQL persistence", () => {
       1,
       "identity-athlete-1",
       "registration-change-1",
+      null, // no proxy actor: unchanged self-registration contract
     ]);
   });
 
