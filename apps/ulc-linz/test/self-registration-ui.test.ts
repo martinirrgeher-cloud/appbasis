@@ -211,7 +211,7 @@ describe("ULC weekly self-registration and account switching", () => {
       "? { ...candidate, intention }",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      "sessionDate,\n        }),",
+      "sessionDate,\n          ...(noteChanged ? { note: noteDraft } : {}),\n        }),",
     );
   });
 
