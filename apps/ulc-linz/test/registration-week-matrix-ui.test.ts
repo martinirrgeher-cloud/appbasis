@@ -140,7 +140,7 @@ describe("A02 trainer registration week matrix", () => {
     expect(foot.children[0].children[1].textContent).toBe("1");
     expect(foot.children[0].children[2].textContent).toBe("Entfällt");
     expect(foot.children[0].children[4].textContent).toBe("–");
-    expect(snapshots[0].participants[0].intention).toBe("attending");
+    expect(snapshots[0]?.participants[0]?.intention).toBe("attending");
   });
 
   it("never shows previous group's snapshot after selecting a different group", () => {
@@ -168,6 +168,6 @@ describe("A02 trainer registration week matrix", () => {
     expect(toggle.attributes["aria-expanded"]).toBe("false");
     expect(panel.hidden).toBe(true);
     expect(scroll.children).toHaveLength(0);
-    expect(snapshots[0].participants).toHaveLength(2);
+    expect(snapshots[0]?.participants).toHaveLength(2);
   });
 });
