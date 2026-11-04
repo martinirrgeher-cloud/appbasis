@@ -11,14 +11,15 @@ GitHub abgeleitet.
 
 **ULC Linz – funktionale Abnahme und UX-Fertigstellung nach dem abgeschlossenen M6-Plattformentwicklungsmeilenstein (Issue #505).**
 
-Aktive Arbeit ist auf die Nutzerabläufe der bereits integrierten ULC-App fokussiert, nicht auf eine erneute Entwicklung von M6. Priorität:
-1. End-to-End Anmeldung/Anwesenheit auf dem Handy (Gruppe, Woche, Speichern, Reload).
-2. Trainingsplanung: Übungen/Blöcke, manuelles Speichern, Plan verteilen, Konflikte.
-3. Trainingsdokumentation: aus Plan starten, Anwesenheit übernehmen, ändern, abschließen und wieder öffnen.
-4. Rollen-/Benutzer- und UX-Abnahme sowie anschließend Übungskatalog und Trainingsblöcke.
-5. Reproduzierbare Fehler aus der Preview in kleinen, zusammenhängenden UI-Fixpaketen beheben.
+Aktive Arbeit konzentriert sich auf **tatsächlich noch offene funktionale Punkte**, nicht auf pauschale Wiederholungen bereits bestandener ULC-Handytests. Die bisherigen Betreiber-PASS gelten weiterhin; ein neuer Code-/CI-Head entwertet sie **nicht automatisch**. Nur direkt betroffene Pfade werden bei Änderungen gezielt erneut abgenommen.
 
-**Abnahmestatus:** Die Funktionen sind auf dem aktuellen `main` im Code vorhanden, aber ein vollständiger mobiler Preview-PASS dieser E2E-Kette ist noch nicht belegt. Automatisierte Tests gelten nicht als Ersatz für die reale UI-Abnahme. Vor Preview-Migration, Deployment, Änderungen an Testdaten oder produktiven Ressourcen ist die bisherige Freigabegrenze einzuhalten. Bereits abgenommene UI-Funktionen dürfen nicht stillschweigend überschrieben werden.
+Bereits bestätigte Teilstände: Anmeldung/Anwesenheit als Wochenansicht und separater Voranmeldung (Preview/Acceptance PASS, PR #438); verlustarmes Anwesenheits-Autosave (#460); Trainingsdokumentation v1 (#440); mobile Benutzerverwaltung und Navigation (#469/#470), Rechteprofile aller Benutzer (#477), archivierte Übungen/Kategorien (#472) und Athletenreaktivierung (#474). Mehrere mobile UI-Prüfungen wurden durch den Betreiber am 31.10.2026 mit PASS bestätigt. Die PWA steht im Code (#479), ohne dadurch eine aktuelle Installationsabnahme zu behaupten.
+
+**Aktueller nächster Funktions-Slice:** Eigenständige Funktionärsrolle über den bestehenden Arbeitsstand in **PR #478** fertigstellen. **Vor jeder Arbeit** den aktuellen PR-/Branch-/CI-/Review-Zustand live aus GitHub verifizieren und den Diff mit `main` abgleichen. Fachliche Abnahmekriterien: eine eigenständige, nichtadministrative Quellrolle statt nur einer trainerbasierten Berechtigungsvorlage; konsistenter Identity-/Lifecycle-/Deletion-Marker-Pfad; Rollen-Provisionierung ausschließlich über den Permissions-Owner-Vertrag, keine fremden Tabellenänderungen durch App-Migration. Gezielte PostgreSQL-/Security-/CI- und Review-Prüfung vor Merge; keine Live-Preview-Migration ohne Betreiberfreigabe.
+
+Danach: PR #447 (mobile Listen/Statuslabels) nur hinsichtlich *nicht bereits umgesetzter* Teile prüfen; dann echte offene Fachfunktionen wie U14, Statistiken, Leistungsgruppen-Anmeldung anhand bestehender Verträge konkretisieren. U12 hat bereits einen eigenen Backend-Service. Keine pauschale F1/F2-Wiederholungsrunde, keine unbegründete komplette UI-Regression.
+
+**Abnahmestatus:** Repo-Code und frühere PASS belegen zahlreiche geprüfte Nutzerabläufe. Das ist keine Behauptung, jeder neue Head sei live ausgeliefert oder alle neuen Funktionen seien abgenommen. Neue oder geänderte Funktionen brauchen nur risikobasierte passende Regressionen. Bestehende Preview-/Produktions-/Testdaten-Mutationsgrenzen gelten unverändert.
 
 **Eigenständiges Sicherheits-Backlog:** Issue #483 bleibt offen; `status=blocked`, alle Datenschutz-/M5-/M6-/Production-/Public-Ingress- und Restore-Promotion-Sperren bleiben unverändert. Sicherheitsrelevante neue UI-/API-Änderungen benötigen weiterhin die regulären Auth-/DB-Tests. Das Backlog #483 ist jedoch **nicht** die aktive tägliche Entwicklungsschleife, solange nicht ausdrücklich eine Produktionsfreigabe beauftragt wird.
 
