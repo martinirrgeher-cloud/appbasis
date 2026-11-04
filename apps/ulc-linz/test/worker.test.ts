@@ -5088,7 +5088,7 @@ describe("Training self-registration runtime API", () => {
     ]);
 
     for (const url of [endpoint, endpoint + "/proxy"]) {
-      for (const note of ["x".repeat(161), "Zeile 1\\nZeile 2", 99, {}, true]) {
+      for (const note of ["x".repeat(161), "Zeile 1\nZeile 2", 99, {}, true]) {
         const bad = await makePost(url, {
           ...baseBody, ...(url.endsWith("/proxy") ? { targetAthleteId: "colleague" } : {}),
           note,
