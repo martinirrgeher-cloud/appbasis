@@ -174,6 +174,74 @@ describe("training-documentation PostgreSQL repository", () => {
     }
   });
 
+  it("rejects direct runtime UPDATE before the privacy erasure's organization lock can deadlock", async () => {
+    const organization = "org-direct-update-race";
+    const deletedSubject = "athlete-to-erase";
+    const saved = await serviceFor(requiredConnection(), ["doc-update-race"]).create(
+      organization, {
+        subjectId: "other-athlete",
+        sessionDate: "2026-10-26",
+        sourcePlanId: "plan-update-race",
+        sourcePlanRevision: 1,
+        attendance: [{
+          participantId: deletedSubject, displayName: "Removed", status: "present",
+        }],
+      },
+    );
+    const url = new URL(isolatedDatabaseUrl);
+    url.username = applicationRole;
+    url.password = applicationPassword;
+    const app = createPostgresDatabase(url.toString());
+    try {
+      // Simulate the org advisory lock held by an in-flight erasure. The
+      // offending direct SQL UPDATE has taken its tuple lock before its
+      // BEFORE ROW trigger; it must reject, never wait for this org lock.
+      await requiredConnection().client.begin(async (holder) => {
+        await holder.unsafe(
+          "SELECT pg_advisory_xact_lock(202611031, hashtext($1::text))",
+          [organization],
+        );
+        await expect(app.client.begin(async (writer) => {
+          await writer.unsafe("SET LOCAL lock_timeout = '750ms'");
+          // Custom GUC by itself is not privileged: the login role must
+          // also be the trigger owner, which the application role is not.
+          await writer.unsafe(
+            "SELECT set_config('appbasis.training_documentation_privileged_revision_update', 'on', true)",
+          );
+          await writer.unsafe(
+            `UPDATE appbasis_training_documentation_revision
+               SET attendance_json = '[]'::jsonb
+             WHERE organization_id = $1
+               AND documentation_id = $2
+               AND revision = 1`,
+            [organization, saved.id],
+          );
+        })).rejects.toThrow(/updates require privileged erasure/i);
+
+        await expect(app.client.begin(async (writer) => {
+          await writer.unsafe("SET LOCAL lock_timeout = '750ms'");
+          await writer.unsafe(
+            `UPDATE appbasis_training_documentation
+               SET subject_id = subject_id
+             WHERE organization_id = $1 AND id = $2`,
+            [organization, saved.id],
+          );
+        })).rejects.toThrow(/root ownership is immutable/i);
+      });
+
+      const cleared = await repositoryFor(requiredConnection())
+        .removeSubjectDataAfterVerifiedDeletion(
+          organization, deletedSubject, new Date(Date.now() - 3_600_000),
+        );
+      expect(cleared.redactedOtherSubjectRevisions).toBe(1);
+      const revisions = await serviceFor(requiredConnection(), [])
+        .listRevisions(organization, saved.id);
+      expect(revisions[0]?.attendance).toEqual([]);
+    } finally {
+      await app.client.end();
+    }
+  }, 15000);
+
   it("serializes two overlapping cross-participant creates without deadlocking", async () => {
     const left = createPostgresDatabase(isolatedDatabaseUrl);
     const right = createPostgresDatabase(isolatedDatabaseUrl);
