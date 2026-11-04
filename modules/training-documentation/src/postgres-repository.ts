@@ -234,6 +234,14 @@ export class PostgresTrainingDocumentationRepository
         [organization, subject],
       );
 
+      // Scoped privileged revision mutation: the trigger rejects every
+      // runtime direct UPDATE before waiting on the organization lock.
+      // This marker is transaction-local and only honored for the actual
+      // migration-owner login (session_user = definer current_user).
+      await transaction.unsafe(
+        "SELECT set_config('appbasis.training_documentation_privileged_revision_update', 'on', true) AS authorized",
+      );
+
       // Every historical other-owner revision is surgically scrubbed.
       // jsonb_agg with ORDINALITY preserves every unrelated participant
       // in the original order, including their unrelated status and name.
