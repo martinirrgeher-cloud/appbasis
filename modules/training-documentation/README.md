@@ -136,3 +136,32 @@ canonical app authorization binding, source-marker capture/restore replay,
 marker purge job or approved production migration. The 35-day source
 authority expires; after that the app must fail closed. `status=blocked`
 remains mandatory for this module and ULC until those gates are resolved.
+
+## V2 offline subject-deletion restore reconciliation (not active)
+
+A database restored from an older backup can resurrect both documents owned by
+an already-deleted athlete **and** that athlete's identity inside historical
+attendance revisions owned by other athletes. The module now provides
+`listSubjectDeletionMarkers(now)` (read-only, repeatable-read, complete,
+ordered snapshot including **expired but still-effective** markers) and
+`reconcileSubjectDeletionMarker(marker)` (transactional marker replay plus the
+**same owner-and-history erasure** as the verified deletion method).
+
+`reconcileTrainingDocumentationRestoredDatabase(source, target, now)`
+normalizes and checks the **entire authoritative list before the first target
+write**, rejects duplicate organization/subject pairs, future decisions,
+malformed IDs/timestamps and retention conflicts, then replays markers in
+order. Identical markers are idempotent. Conflicting marker timestamps abort
+that subject transaction. Other organizations, subjects and unstructured text
+are not reclassified. Expiry after the documented 35-day decision interval
+does **not** disable a still-retained marker.
+
+This is a deliberately **unwired, privileged offline contract**, not a
+backup/restore operator or a runtime feature. An operator must independently
+prove that the source is newer, authoritative and complete, keep the restore
+target offline/frozen, and reconcile/verify every module owner before
+promotion. Cross-marker replay is not all-or-nothing: partial failures require
+the target to remain quarantined and to be retried safely. A successful replay
+or an empty source list never proves that all past deletions were recovered.
+No automatic retention purge, database restoration, preview/production
+migration, HTTP/API route or M6 public ingress is enabled.
