@@ -393,21 +393,16 @@ function presentSnapshot(
             note: stored.session.note,
           }),
     participants: Object.freeze(
-      context.participants.map((participant) =>
-        Object.freeze({
+      context.participants.map((participant) => {
+        const registration = registrationByAthlete.get(participant.athleteId);
+        return Object.freeze({
           ...participant,
-          intention:
-            registrationByAthlete.get(participant.athleteId)?.intention ??
-            "unknown",
-          registrationRevision:
-            registrationByAthlete.get(participant.athleteId)?.revision ??
-            null,
-          ...(registrationByAthlete.get(participant.athleteId)?.note
-            ? { registrationNote: registrationByAthlete.get(participant.athleteId)?.note }
-            : {}),
+          intention: registration?.intention ?? "unknown",
+          registrationRevision: registration?.revision ?? null,
+          ...(registration?.note ? { registrationNote: registration.note } : {}),
           status: statusByAthlete.get(participant.athleteId) ?? "open",
-        }),
-      ),
+        });
+      }),
     ),
   });
 }
