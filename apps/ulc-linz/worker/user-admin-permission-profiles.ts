@@ -16,7 +16,7 @@ export const ULC_USER_ACCESS_MODULES = Object.freeze([
   { key: "countdown", label: "Countdown" },
 ] as const);
 
-export type UlcUserSourceRole = "admin" | "trainer" | "athlete" | "parent";
+export type UlcUserSourceRole = "admin" | "trainer" | "athlete" | "parent" | "functionary";
 export type UlcUserAccessChoice = "none" | "view" | "edit";
 
 export interface UlcPermissionPreset {
@@ -34,8 +34,12 @@ const MODULE_KEYS = ULC_USER_ACCESS_MODULES.map(module => module.key);
 // subject-safe documentation module and the personal countdown as editable.
 export const ULC_PERMISSION_EDITABLE_BY_ROLE: Readonly<Record<UlcUserSourceRole, readonly string[]>> =
   Object.freeze({
-    admin: Object.freeze([...MODULE_KEYS]),
+    // The user-administration access service requires athletes:edit. Keep
+    // this single administrative capability non-revocable to prevent lockout.
+    admin: Object.freeze(MODULE_KEYS.filter(key => key !== "athletes")),
     trainer: Object.freeze([...MODULE_KEYS]),
+    functionary: Object.freeze(["athletes", "exercise_catalog", "training_blocks",
+      "training_planning", "training_documentation", "countdown"]),
     athlete: Object.freeze(["training_documentation", "countdown"]),
     parent: Object.freeze(["training_documentation", "countdown"]),
   });
@@ -70,9 +74,8 @@ export const ULC_PERMISSION_PRESETS: readonly UlcPermissionPreset[] = Object.fre
     training_blocks: "edit", training_planning: "edit",
     training_documentation: "edit", countdown: "edit",
   }),
-  preset("funktionaer", "Funktionär", "Vereinsorganisation und Einsicht – ohne Systemadministration", "trainer", {
-    kindertraining: "view", u12: "view", athletes: "view",
-    exercise_catalog: "view", training_blocks: "view",
+  preset("funktionaer", "Funktionär", "Vereinsorganisation und Einsicht – ohne Systemadministration", "functionary", {
+    athletes: "view", exercise_catalog: "view", training_blocks: "view",
     training_planning: "view", training_documentation: "view", countdown: "view",
   }),
   preset("athlet", "Athlet", "Persönliche Trainingsdokumentation und Countdown", "athlete", {

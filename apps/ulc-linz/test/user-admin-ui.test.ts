@@ -11,13 +11,28 @@ describe("ULC administration onboarding UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('section === "users" && userAdminReady');
   });
 
-  it("provisions only trainer and athlete identities through existing protected APIs", () => {
+  it("provisions trainer, athlete, and independent functionary identities through protected APIs", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('requestJson("/api/admin/users")');
     expect(ULC_LINZ_APP_SCRIPT).toContain('"/api/admin/trainer-users" : "/api/admin/athlete-users"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('role === "trainer"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('role === "athlete"');
+    expect(ULC_LINZ_APP_HTML).toContain('<option value="functionary">Funktionär</option>');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('role === "functionary" ? "/api/admin/functionary-users"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('userAdminElements.targetRow.hidden = true');
     expect(ULC_LINZ_APP_SCRIPT).toContain('requestJson("/api/modules/athletes/masterdata")');
     expect(ULC_LINZ_APP_SCRIPT).not.toContain('POST /api/admin/users');
+  });
+
+  it("allows password reset for independent functionaries without granting admin access", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '!["trainer", "athlete", "functionary"].includes(user.sourceRole)',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'role === "functionary" ? "/api/admin/functionary-users"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain(
+      '!["trainer", "athlete"].includes(user.sourceRole)',
+    );
   });
 
   it("opens a rights overview for every account and edits only allowed modules", () => {

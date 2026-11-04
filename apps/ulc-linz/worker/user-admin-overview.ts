@@ -11,13 +11,13 @@ export interface UlcLinzUserAdminEntry {
   readonly identityId: string;
   readonly username: string;
   readonly displayName: string;
-  readonly sourceRole: "admin" | "trainer" | "athlete" | "parent";
+  readonly sourceRole: "admin" | "trainer" | "athlete" | "parent" | "functionary";
   readonly active: boolean;
   readonly blocked: boolean;
   readonly subjectId: string;
 }
 
-const SOURCE_ROLES = new Set(["admin", "trainer", "athlete", "parent"]);
+const SOURCE_ROLES = new Set(["admin", "trainer", "athlete", "parent", "functionary"]);
 
 export class PostgresUlcLinzUserAdminOverview {
   constructor(private readonly sql: UlcLinzUserAdminSqlClient) {}

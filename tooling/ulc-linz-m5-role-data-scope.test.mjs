@@ -15,12 +15,13 @@ test("pins ULC source roles and individual permission mapping", () => {
     repository: "martinirrgeher-cloud/ulc-linz",
     commit: "682ed5d37e7206f7fa521e5dab40f840cc303f0b",
   });
-  assert.deepEqual(policy.sourceRoles, ["admin", "trainer", "athlete", "parent"]);
+  assert.deepEqual(policy.sourceRoles, ["admin", "trainer", "athlete", "parent", "functionary"]);
   assert.deepEqual(policy.runtimeRoleIds, {
     admin: "ulc-linz:admin",
     trainer: "ulc-linz:trainer",
     athlete: "ulc-linz:athlete",
     parent: "ulc-linz:parent",
+    functionary: "ulc-linz:functionary",
   });
   assert.deepEqual(policy.adminAuthorization, {
     sourceRole: "admin",
@@ -61,6 +62,15 @@ test("pins ULC source roles and individual permission mapping", () => {
       "athletes",
       "countdown",
     ],
+  });
+  assert.deepEqual(policy.permissionTemplates.functionary, {
+    sourceRole: "functionary",
+    semantics: "defaults-only",
+    view: [
+      "athletes", "exercise_catalog", "training_blocks", "training_planning",
+      "training_documentation", "countdown",
+    ],
+    edit: [],
   });
   assert.deepEqual(policy.permissionTemplates.athlete, {
     sourceRole: "athlete",

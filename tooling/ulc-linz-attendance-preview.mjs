@@ -17,6 +17,10 @@ const ATHLETES_TARGET_MIGRATION =
   "modules/athletes/migrations/0003_appbasis_training_group_attendance_mode.sql";
 const LIFECYCLE_TARGET_MIGRATION =
   "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql";
+// The repository is now at lifecycle v10, but the attendance-only
+// migration plan must remain pinned to v9 and never apply functionary v10.
+const LIFECYCLE_MANIFEST_TAIL_MIGRATION =
+  "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql";
 
 const REQUIRED_BASELINE_TABLES = Object.freeze([
   "appbasis_training_group",
@@ -101,10 +105,15 @@ export async function loadUlcAttendancePreviewPlan(
   );
   assertTargetOwner(
     lifecycleOwner,
-    9,
-    LIFECYCLE_TARGET_MIGRATION,
+    10,
+    LIFECYCLE_MANIFEST_TAIL_MIGRATION,
     "ULC lifecycle",
   );
+  if (lifecycleOwner.migrations.at(-2) !== LIFECYCLE_TARGET_MIGRATION) {
+    throw new UlcAttendancePreviewConfigurationError(
+      "ULC attendance migration is not the reviewed lifecycle v9 delta.",
+    );
+  }
 
   const athletesPlan = await loadOwnerMigrationPlan({
     repositoryRoot: root,
