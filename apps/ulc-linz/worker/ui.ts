@@ -579,7 +579,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <input id="registration-proxy-note" type="text" maxlength="160" placeholder="z. B. komme 15 Minuten später" />
               </label>
               <button class="button button--secondary" id="registration-proxy-note-save" type="button">Hinweis speichern</button>
-              <small class="registration-proxy-hint">Max. 160 Zeichen; keine Gesundheitsdaten eingeben.</small>
+              <small class="registration-proxy-hint">Max. 160 Zeichen. Für Gruppenmitglieder mit Stellvertretungszugang und Trainer sichtbar; keine Gesundheitsdaten eingeben.</small>
               <div class="registration-actions" id="registration-proxy-actions">
                 <button class="button button--secondary registration-action" type="button" data-registration-proxy-intention="attending">Komme</button>
                 <button class="button button--secondary registration-action" type="button" data-registration-proxy-intention="maybe">Vielleicht</button>
@@ -3348,7 +3348,7 @@ function renderSelfRegistration() {
       });
       noteLabel.append(noteInput);
       const noteHelp = document.createElement("small");
-      noteHelp.textContent = "Max. 160 Zeichen; keine Gesundheitsdaten eingeben.";
+      noteHelp.textContent = "Max. 160 Zeichen. Für Gruppenmitglieder mit Stellvertretungszugang und Trainer sichtbar; keine Gesundheitsdaten eingeben.";
       noteBox.append(noteLabel, noteSave, noteHelp);
       card.append(noteBox);
       const proxy = document.createElement("button");
