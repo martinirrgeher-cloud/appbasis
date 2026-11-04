@@ -411,6 +411,40 @@ describe("ULC training session PostgreSQL persistence", () => {
     ]);
   });
 
+  it("guards proxy writes with the actor identity and both active group memberships", async () => {
+    const statements: Array<{ sql: string; params?: readonly unknown[] }> = [];
+    const repository = new PostgresUlcTrainingSessionRepository({
+      async unsafe(sql, params) {
+        statements.push({ sql, params });
+        return [{
+          organization_id: "verein-1", session_id: "session-1",
+          athlete_id: "target-1", intention: "attending", revision: 1,
+          updated_by_identity_id: "identity-actor", change_count: 1,
+        }];
+      },
+    }, () => "change-proxy-1");
+    await expect(repository.saveRegistration(
+      "verein-1", "session-1", "target-1", "attending",
+      null, "identity-actor", "actor-athlete",
+    )).resolves.toMatchObject({
+      athleteId: "target-1", updatedByIdentityId: "identity-actor",
+    });
+    expect(statements).toHaveLength(1);
+    expect(statements[0]?.params).toEqual([
+      "verein-1", "session-1", "target-1", "attending",
+      null, "identity-actor", "change-proxy-1", "actor-athlete",
+    ]);
+    const sql = statements[0]?.sql ?? "";
+    expect(sql).toContain("actor_membership.identity_id = $6");
+    expect(sql).toContain("actor_membership.subject_id = actor_athlete.id");
+    expect(sql).toContain("actor_membership.source_role = 'athlete'");
+    expect(sql).toContain("training_group.attendance_mode = 'self_registration'");
+    expect(sql).toContain("target_group.started_on <= session.session_date");
+    expect(sql).toContain("actor_group.started_on <= session.session_date");
+    expect(sql).toContain("$8::text <> $3");
+    expect(sql).toContain("INSERT INTO ulc_linz_training_registration_change");
+  });
+
   it("fails closed when the database returns a foreign organization", async () => {
     const repository = new PostgresUlcTrainingSessionRepository(
       {
