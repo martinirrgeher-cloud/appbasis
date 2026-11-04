@@ -103,6 +103,19 @@ describe("ULC Kindertraining weekly attendance UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("discardKindertrainingWeekChanges");
     expect(ULC_LINZ_APP_SCRIPT).not.toContain("Wirklich verwerfen?");
   });
+  it("adds a permission-scoped, read-only preregistration matrix without changing trainer attendance", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-matrix-toggle"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-registration-matrix"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-registration-matrix-scroll"');
+    expect(ULC_LINZ_APP_HTML).toContain('aria-controls="kindertraining-registration-matrix"');
+    expect(ULC_LINZ_APP_CSS).toContain(".kindertraining-registration-matrix__scroll");
+    expect(ULC_LINZ_APP_CSS).toContain("overflow-x: auto");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('group?.attendanceMode === "self_registration"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("kindertrainingLoadedGroupId === groupId");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("scroll.replaceChildren(table)");
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("innerHTML");
+  });
+
   it("auto-saves after a quiet period, preserves manual retry, and flushes on navigation", () => {
     expect(ULC_LINZ_APP_HTML).toContain("💾 Jetzt speichern");
     expect(ULC_LINZ_APP_SCRIPT).toContain("kindertrainingWeekAutosaveTimer = window.setTimeout");
