@@ -329,9 +329,14 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
           revision, actorIdentity, actorId,
         )).rejects.toBeInstanceOf(UlcTrainingSessionConflictError);
       }
+      // End the actor's training-group membership using the valid date
+      // lifecycle. Directly flipping ulc_linz_membership.active would violate
+      // that owner's ended_at/check constraint and is intentionally forbidden.
       await connection.client.unsafe(
-        `UPDATE ulc_linz_membership SET active = false
-         WHERE identity_id = $1`, [identityId],
+        `UPDATE appbasis_athlete_group_membership
+         SET ended_on = '2026-11-03'::date
+         WHERE organization_id = $1 AND athlete_id = $2 AND group_id = $3`,
+        [organizationId, actor.id, group.id],
       );
       await expect(sessions.saveRegistration(
         organizationId, created.session.id, target.id, "not_attending",
