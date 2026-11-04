@@ -829,7 +829,7 @@ async function assertCanonicalAdminPrincipal(
 }
 
 function requiredDeletableSourceRole(value: string): UlcLinzDeletableSourceRole {
-  if (value !== "trainer" && value !== "athlete" && value !== "parent") blocked();
+  if (value !== "trainer" && value !== "athlete" && value !== "parent" && value !== "functionary") blocked();
   return value;
 }
 

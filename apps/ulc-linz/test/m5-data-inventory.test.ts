@@ -158,9 +158,30 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(inventory.runtimeModules).toEqual(appManifest.modules);
     expect(inventory.m5.unknownRuntimeModule).toBe("fail-closed");
 
-    expect(sortedOwnerContracts(inventory.persistentOwners)).toEqual(
-      sortedOwnerContracts(databaseManifest.owners),
-    );
+    // The reviewed privacy inventory describes the materialized v9 scope.
+    // Lifecycle v10 is only published in source control: its functionary
+    // migration requires a separately authorized Preview apply. Permit only
+    // that exact forward delta; all other owner contracts remain exact.
+    const inventoryOwners = sortedOwnerContracts(inventory.persistentOwners);
+    const publishedOwners = sortedOwnerContracts(databaseManifest.owners);
+    const expectedPublishedOwners = inventoryOwners.map((owner) => {
+      if (owner.id !== "ulc-linz-lifecycle") return owner;
+      expect(owner.schemaVersion).toBe(9);
+      expect(owner.migrations).toHaveLength(9);
+      expect(owner.migrations[8]).toBe(
+        "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql",
+      );
+      return {
+        ...owner,
+        schemaVersion: 10,
+        migrations: [
+          ...owner.migrations,
+          "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
+        ],
+      };
+    });
+    expect(inventoryOwners.filter((owner) => owner.id === "ulc-linz-lifecycle")).toHaveLength(1);
+    expect(publishedOwners).toEqual(expectedPublishedOwners);
     expect(databaseManifest.owners.map((owner) => owner.id)).toEqual([
       "identity",
       "permissions",
