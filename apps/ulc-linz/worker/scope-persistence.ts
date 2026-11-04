@@ -5,8 +5,8 @@ import type {
   UlcLinzSubjectScopeResolver,
 } from "./authorization";
 
-const SOURCE_ROLES = new Set(["admin", "trainer", "athlete", "parent"] as const);
-const DELETABLE_SOURCE_ROLES = new Set(["trainer", "athlete", "parent"] as const);
+const SOURCE_ROLES = new Set(["admin", "trainer", "athlete", "parent", "functionary"] as const);
+const DELETABLE_SOURCE_ROLES = new Set(["trainer", "athlete", "parent", "functionary"] as const);
 const DELETION_MARKER_RETENTION_DAYS = 35;
 const MAX_RETENTION_EXCEPTION_REASON_LENGTH = 1000;
 const MAX_RETENTION_EXCEPTION_REVIEW_MONTHS = 12;
@@ -20,7 +20,7 @@ export interface UlcLinzSqlClient {
   ): PromiseLike<readonly Record<string, unknown>[]>;
 }
 
-export type UlcLinzSourceRole = "admin" | "trainer" | "athlete" | "parent";
+export type UlcLinzSourceRole = "admin" | "trainer" | "athlete" | "parent" | "functionary";
 export type UlcLinzDeletableSourceRole = Exclude<UlcLinzSourceRole, "admin">;
 
 export interface UlcLinzLifecycleTarget {
@@ -186,7 +186,7 @@ export class PostgresUlcLinzScopePersistence
          WHERE identity_id = $1
            AND organization_id = $2
            AND active = false
-           AND source_role IN ('trainer', 'athlete', 'parent')
+           AND source_role IN ('trainer', 'athlete', 'parent', 'functionary')
            AND ended_at IS NOT NULL
            AND ended_at + interval '12 months' < $6::timestamptz
            AND retention_deletion_claimed_at IS NULL
@@ -351,7 +351,7 @@ export class PostgresUlcLinzScopePersistence
                 $2::timestamptz + interval '35 days'
          FROM ulc_linz_membership
          WHERE identity_id = $1
-           AND source_role IN ('trainer', 'athlete', 'parent')
+           AND source_role IN ('trainer', 'athlete', 'parent', 'functionary')
          ON CONFLICT (identity_id) DO NOTHING
          RETURNING identity_id, organization_id, subject_id, source_role, completed_at, purge_after
        ),

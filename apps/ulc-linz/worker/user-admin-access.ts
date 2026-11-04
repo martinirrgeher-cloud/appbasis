@@ -81,7 +81,8 @@ export class UlcLinzTrainerUserAccessService {
     const row = rows[0];
     const sourceRole = row.source_role;
     if (sourceRole !== "admin" && sourceRole !== "trainer" &&
-        sourceRole !== "athlete" && sourceRole !== "parent") {
+        sourceRole !== "athlete" && sourceRole !== "parent" &&
+        sourceRole !== "functionary") {
       throw new UlcUserAccessError("DENIED");
     }
     const checkedRole = sourceRole as UlcUserSourceRole;

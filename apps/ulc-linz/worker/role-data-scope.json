@@ -9,13 +9,15 @@
     "admin",
     "trainer",
     "athlete",
-    "parent"
+    "parent",
+    "functionary"
   ],
   "runtimeRoleIds": {
     "admin": "ulc-linz:admin",
     "trainer": "ulc-linz:trainer",
     "athlete": "ulc-linz:athlete",
-    "parent": "ulc-linz:parent"
+    "parent": "ulc-linz:parent",
+    "functionary": "ulc-linz:functionary"
   },
   "adminAuthorization": {
     "sourceRole": "admin",
@@ -92,6 +94,19 @@
         "kindertraining",
         "u12",
         "u14"
+      ],
+      "edit": []
+    },
+    "functionary": {
+      "sourceRole": "functionary",
+      "semantics": "defaults-only",
+      "view": [
+        "athletes",
+        "exercise_catalog",
+        "training_blocks",
+        "training_planning",
+        "training_documentation",
+        "countdown"
       ],
       "edit": []
     }
