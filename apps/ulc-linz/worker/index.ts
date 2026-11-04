@@ -232,7 +232,8 @@ export function createGeneratedWorker(
         } else if (url.pathname === "/api/modules/kindertraining/session") {
           response = await kindertrainingSessionResponse(request, runtime, url);
         } else if (
-          url.pathname === "/api/modules/kindertraining/registration"
+          url.pathname === "/api/modules/kindertraining/registration" ||
+          url.pathname === "/api/modules/kindertraining/registration/proxy"
         ) {
           response = await selfRegistrationResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/u12") {
@@ -1144,6 +1145,7 @@ async function selfRegistrationResponse(
   if (request.method !== "GET" && request.method !== "POST") {
     return methodNotAllowedFor("GET, POST", "training self-registration");
   }
+  const proxy = url.pathname === "/api/modules/kindertraining/registration/proxy";
 
   const identityHttp = createIdentityHttpHandlers({
     identity: runtime.identity,
@@ -1193,6 +1195,16 @@ async function selfRegistrationResponse(
 
   try {
     if (request.method === "GET") {
+      if (proxy) {
+        const { groupId, sessionDate } = selfRegistrationProxyQuery(url);
+        const roster = await runtime.selfRegistration.listProxyOptions(
+          access.organizationId, access.athleteId, groupId, sessionDate,
+        );
+        return Response.json(
+          { roster },
+          { headers: { "cache-control": "private, no-store" } },
+        );
+      }
       const sessionDate = selfRegistrationQuery(url);
       const options = await runtime.selfRegistration.listOptions(
         access.organizationId,
@@ -1208,13 +1220,20 @@ async function selfRegistrationResponse(
     if ([...url.searchParams.keys()].length !== 0) {
       throw new InvalidSelfRegistrationRequestError();
     }
-    const body = await selfRegistrationJsonBody(request);
-    const option = await runtime.selfRegistration.save(
-      access.organizationId,
-      access.athleteId,
-      access.actorPrincipalId,
-      body,
-    );
+    const body = await selfRegistrationJsonBody(request, proxy);
+    const option = proxy
+      ? await runtime.selfRegistration.saveProxy(
+          access.organizationId,
+          access.athleteId,
+          access.actorPrincipalId,
+          { ...body, targetAthleteId: body.targetAthleteId as string },
+        )
+      : await runtime.selfRegistration.save(
+          access.organizationId,
+          access.athleteId,
+          access.actorPrincipalId,
+          body,
+        );
     return Response.json(
       { option },
       { headers: { "cache-control": "private, no-store" } },
@@ -1303,13 +1322,42 @@ function selfRegistrationQuery(url: URL): string {
   return sessionDate;
 }
 
+function selfRegistrationProxyQuery(url: URL): {
+  groupId: string;
+  sessionDate: string;
+} {
+  const keys = [...url.searchParams.keys()].sort();
+  if (
+    JSON.stringify(keys) !== JSON.stringify(["groupId", "sessionDate"]) ||
+    url.searchParams.getAll("groupId").length !== 1 ||
+    url.searchParams.getAll("sessionDate").length !== 1
+  ) {
+    throw new InvalidSelfRegistrationRequestError();
+  }
+  const groupId = url.searchParams.get("groupId");
+  const sessionDate = url.searchParams.get("sessionDate");
+  if (
+    typeof groupId !== "string" ||
+    groupId.length === 0 ||
+    groupId.length > 200 ||
+    groupId.trim() !== groupId ||
+    typeof sessionDate !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)
+  ) {
+    throw new InvalidSelfRegistrationRequestError();
+  }
+  return { groupId, sessionDate };
+}
+
 async function selfRegistrationJsonBody(
   request: Request,
+  proxy = false,
 ): Promise<{
   groupId: string;
   sessionDate: string;
   intention: "unknown" | "attending" | "not_attending" | "maybe";
   expectedRevision: number | null;
+  targetAthleteId?: string;
 }> {
   let value: unknown;
   try {
@@ -1331,10 +1379,17 @@ async function selfRegistrationJsonBody(
     "groupId",
     "intention",
     "sessionDate",
+    ...(proxy ? ["targetAthleteId"] : []),
   ];
   if (
     JSON.stringify(Object.keys(body).sort()) !== JSON.stringify(expectedKeys) ||
     Object.getOwnPropertySymbols(body).length !== 0 ||
+    (proxy && (
+      typeof body.targetAthleteId !== "string" ||
+      body.targetAthleteId.length === 0 ||
+      body.targetAthleteId.length > 200 ||
+      body.targetAthleteId.trim() !== body.targetAthleteId
+    )) ||
     typeof body.groupId !== "string" ||
     body.groupId.length === 0 ||
     body.groupId.length > 200 ||
@@ -1355,6 +1410,7 @@ async function selfRegistrationJsonBody(
   return {
     groupId: body.groupId,
     sessionDate: body.sessionDate,
+    ...(proxy ? { targetAthleteId: body.targetAthleteId as string } : {}),
     intention: body.intention as
       | "unknown"
       | "attending"
