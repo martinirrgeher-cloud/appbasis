@@ -23,6 +23,18 @@ describe("ULC administration onboarding UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).not.toContain('POST /api/admin/users');
   });
 
+  it("allows password reset for independent functionaries without granting admin access", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      '!["trainer", "athlete", "functionary"].includes(user.sourceRole)',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'role === "functionary" ? "/api/admin/functionary-users"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain(
+      '!["trainer", "athlete"].includes(user.sourceRole)',
+    );
+  });
+
   it("opens a rights overview for every account and edits only allowed modules", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-access-editor"');
     expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-access-form"');
