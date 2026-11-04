@@ -10,7 +10,19 @@ const ORG = "ulc-linz-preview";
 const ADMIN = "identity-admin";
 const USER = "identity-functionary";
 
-function setup({ ready = true, membership = true } = {}) {
+function setup({
+  ready = true, membership = true, existingMembership = null, principalState = null,
+}: {
+  ready?: boolean;
+  membership?: boolean;
+  existingMembership?: Readonly<{
+    organization_id: string; subject_id: string;
+    source_role: string; active: boolean;
+  }> | null;
+  principalState?: Readonly<{
+    roleIds: readonly string[]; grants: readonly string[]; revokes: readonly string[];
+  }> | null;
+} = {}) {
   const sqlCalls: { sql: string; params: unknown[] | undefined }[] = [];
   const sql: UlcFunctionarySql = {
     async unsafe(query, params) {
@@ -28,6 +40,11 @@ function setup({ ready = true, membership = true } = {}) {
           active: true,
         }] : [];
       }
+      if (query.includes("FROM ulc_linz_membership AS membership")) {
+        return existingMembership === null ? [] : [{
+          identity_id: USER, ...existingMembership,
+        }];
+      }
       if (query.includes("INSERT INTO appbasis_permission_principal")) {
         return [{ principal_id: USER }];
       }
@@ -44,9 +61,9 @@ function setup({ ready = true, membership = true } = {}) {
   const permissions = {
     findPrincipal: vi.fn(async () => ({
       principalId: USER,
-      roleIds: [],
-      grants: [],
-      revokes: [],
+      roleIds: principalState?.roleIds ?? [],
+      grants: principalState?.grants ?? [],
+      revokes: principalState?.revokes ?? [],
     })),
   } as unknown as PermissionStore;
   const replacePrincipalAccess = vi.fn(async (
@@ -124,6 +141,83 @@ describe("ULC independent native functionary account", () => {
     const { svc, replacePrincipalAccess } = setup({ membership: false });
     await expect(svc.createFunctionaryUser(input)).rejects.toMatchObject({ code: "CONFLICT" });
     expect(replacePrincipalAccess).not.toHaveBeenCalled();
+  });
+
+  it("reconciles a valid existing membership after an interrupted permission write", async () => {
+    const { svc, replacePrincipalAccess, sqlCalls, createInitialUser } = setup({
+      membership: false,
+      existingMembership: {
+        organization_id: ORG, subject_id: "ulc-functionary:" + USER,
+        source_role: "functionary", active: true,
+      },
+    });
+    await expect(svc.createFunctionaryUser(input)).resolves.toMatchObject({
+      identityId: USER, mustChangePassword: true,
+    });
+    expect(createInitialUser).toHaveBeenCalledOnce();
+    expect(sqlCalls.some(x => x.sql.includes("FROM ulc_linz_membership AS membership"))).toBe(true);
+    expect(replacePrincipalAccess).toHaveBeenCalledOnce();
+  });
+
+  it("refuses existing memberships with a different organization, identity scope, role or lifecycle state", async () => {
+    const canonical = {
+      organization_id: ORG, subject_id: "ulc-functionary:" + USER,
+      source_role: "functionary", active: true,
+    };
+    for (const invalid of [
+      { ...canonical, organization_id: "other-organization" },
+      { ...canonical, subject_id: "athlete-other" },
+      { ...canonical, source_role: "trainer" },
+      { ...canonical, active: false },
+    ]) {
+      const { svc, replacePrincipalAccess } = setup({
+        membership: false, existingMembership: invalid,
+      });
+      await expect(svc.createFunctionaryUser(input)).rejects.toMatchObject({ code: "CONFLICT" });
+      expect(replacePrincipalAccess).not.toHaveBeenCalled();
+    }
+  });
+
+  it("accepts exactly provisioned role state on idempotent retry without another write", async () => {
+    const { default: roleDataScope } = await import("../worker/role-data-scope.json");
+    const expectedGrants = roleDataScope.permissionTemplates.functionary.view.map(
+      key => "ulc-linz:module:" + key + ":view",
+    );
+    const { svc, replacePrincipalAccess } = setup({
+      membership: false,
+      existingMembership: {
+        organization_id: ORG, subject_id: "ulc-functionary:" + USER,
+        source_role: "functionary", active: true,
+      },
+      principalState: {
+        roleIds: ["ulc-linz:functionary"],
+        grants: expectedGrants,
+        revokes: [],
+      },
+    });
+    await expect(svc.createFunctionaryUser(input)).resolves.toMatchObject({
+      identityId: USER,
+    });
+    expect(replacePrincipalAccess).not.toHaveBeenCalled();
+  });
+
+  it("refuses pre-existing privileged or extra module access during retry", async () => {
+    for (const principalState of [
+      { roleIds: ["ulc-linz:admin"], grants: [], revokes: [] },
+      { roleIds: ["ulc-linz:functionary"], grants: ["ulc-linz:module:user_management:edit"], revokes: [] },
+      { roleIds: ["ulc-linz:functionary"], grants: [], revokes: ["ulc-linz:module:athletes:view"] },
+    ]) {
+      const { svc, replacePrincipalAccess } = setup({
+        principalState,
+        membership: false,
+        existingMembership: {
+          organization_id: ORG, subject_id: "ulc-functionary:" + USER,
+          source_role: "functionary", active: true,
+        },
+      });
+      await expect(svc.createFunctionaryUser(input)).rejects.toMatchObject({ code: "CONFLICT" });
+      expect(replacePrincipalAccess).not.toHaveBeenCalled();
+    }
   });
 
   it("uses only source-controlled permission templates for functionaries", async () => {
