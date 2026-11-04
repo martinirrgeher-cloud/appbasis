@@ -575,6 +575,11 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <select id="registration-proxy-athlete"></select>
               </label>
               <p id="registration-proxy-current" class="settings-note" role="status"></p>
+              <label class="registration-proxy-note-label">Hinweis für diesen Trainingstag (optional)
+                <input id="registration-proxy-note" type="text" maxlength="160" placeholder="z. B. komme 15 Minuten später" />
+              </label>
+              <button class="button button--secondary" id="registration-proxy-note-save" type="button">Hinweis speichern</button>
+              <small class="registration-proxy-hint">Max. 160 Zeichen; keine Gesundheitsdaten eingeben.</small>
               <div class="registration-actions" id="registration-proxy-actions">
                 <button class="button button--secondary registration-action" type="button" data-registration-proxy-intention="attending">Komme</button>
                 <button class="button button--secondary registration-action" type="button" data-registration-proxy-intention="maybe">Vielleicht</button>
@@ -2022,6 +2027,9 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
 .registration-proxy-header .button { width: 40px; min-width: 40px; min-height: 40px; padding: 0; }
 .registration-proxy-athlete-label { display: grid; gap: 5px; margin-top: 14px; }
 .registration-proxy-athlete-label select { width: 100%; min-width: 0; min-height: 44px; }
+.registration-proxy-note-label { display: grid; gap: 5px; margin-top: 12px; }
+.registration-proxy-note-label input { width: 100%; min-width: 0; box-sizing: border-box; min-height: 44px; }
+#registration-proxy-note-save { margin-top: 7px; min-height: 40px; }
 #registration-proxy-actions { margin-top: 12px; }
 #registration-proxy-actions .button { min-height: 44px; }
 .registration-proxy-hint { display: block; margin-top: 12px; color: var(--secondary); line-height: 1.4; }
@@ -2131,6 +2139,8 @@ const elements = {
   registrationProxyError: document.querySelector("#registration-proxy-error"),
   registrationProxyAthlete: document.querySelector("#registration-proxy-athlete"),
   registrationProxyCurrent: document.querySelector("#registration-proxy-current"),
+  registrationProxyNote: document.querySelector("#registration-proxy-note"),
+  registrationProxyNoteSave: document.querySelector("#registration-proxy-note-save"),
   registrationProxyActions: document.querySelector("#registration-proxy-actions"),
   kindertrainingQuickAction: document.querySelector("#kindertraining-quick-action"),
   kindertrainingAccessLabel: document.querySelector("#kindertraining-access-label"),
@@ -2625,6 +2635,25 @@ elements.registrationList?.addEventListener("click", (event) => {
 elements.registrationProxyClose?.addEventListener("click", closeSelfRegistrationProxy);
 elements.registrationProxyDialog?.addEventListener("close", closeSelfRegistrationProxy);
 elements.registrationProxyAthlete?.addEventListener("change", renderSelfRegistrationProxy);
+elements.registrationProxyNote?.addEventListener("input", () => {
+  const state = selfRegistrationProxy;
+  const selectedId = elements.registrationProxyAthlete?.value || "";
+  const selected = state?.roster?.options.find((item) => item.athlete.id === selectedId);
+  if (!selected) return;
+  const text = elements.registrationProxyNote.value;
+  if (text.trim() === (selected.note || "")) state.noteDrafts.delete(selectedId);
+  else state.noteDrafts.set(selectedId, text);
+  if (elements.registrationProxyNoteSave) {
+    elements.registrationProxyNoteSave.disabled =
+      state.loading || state.saving || !state.noteDrafts.has(selectedId);
+  }
+});
+elements.registrationProxyNoteSave?.addEventListener("click", () => {
+  const state = selfRegistrationProxy;
+  const id = elements.registrationProxyAthlete?.value || "";
+  const selected = state?.roster?.options.find((entry) => entry.athlete.id === id);
+  if (selected) void saveSelfRegistrationProxy(selected.intention);
+});
 elements.registrationProxyActions?.addEventListener("click", (event) => {
   const button = event.target?.closest?.("[data-registration-proxy-intention]");
   if (button && elements.registrationProxyActions?.contains(button)) {
@@ -3328,6 +3357,7 @@ function closeSelfRegistrationProxy() {
     elements.registrationProxyDialog.close();
   }
   elements.registrationProxyAthlete?.replaceChildren();
+  if (elements.registrationProxyNote) elements.registrationProxyNote.value = "";
   showMessage(elements.registrationProxyError, "");
 }
 
@@ -3371,6 +3401,21 @@ function renderSelfRegistrationProxy() {
   }
   const selected = options.find((option) => option.athlete.id === selector.value);
   selector.disabled = state.loading || state.saving || options.length === 0;
+  const noteInput = elements.registrationProxyNote;
+  const noteSave = elements.registrationProxyNoteSave;
+  if (noteInput) {
+    noteInput.value = selected
+      ? (state.noteDrafts.has(selected.athlete.id)
+          ? state.noteDrafts.get(selected.athlete.id) : selected.note || "")
+      : "";
+    noteInput.disabled = state.loading || state.saving || !selected ||
+      state.roster?.sessionState === "cancelled";
+  }
+  if (noteSave) {
+    noteSave.disabled = state.loading || state.saving || !selected ||
+      state.roster?.sessionState === "cancelled" ||
+      !state.noteDrafts.has(selected?.athlete.id);
+  }
   if (elements.registrationProxyContext) {
     elements.registrationProxyContext.textContent =
       state.groupName + " · " + germanDate(state.sessionDate);
@@ -3406,7 +3451,7 @@ async function openSelfRegistrationProxy(groupId, sessionDate) {
   const requestId = ++selfRegistrationProxyRequestId;
   selfRegistrationProxy = {
     groupId, sessionDate, groupName: option.group.name,
-    roster: null, loading: true, saving: false,
+    roster: null, loading: true, saving: false, noteDrafts: new Map(),
   };
   showMessage(elements.registrationProxyError, "");
   if (!elements.registrationProxyDialog?.open) {
@@ -3446,7 +3491,11 @@ async function saveSelfRegistrationProxy(intention) {
       state.roster.sessionState === "cancelled" ||
       !["unknown", "attending", "not_attending", "maybe"].includes(intention)) return;
   const selected = state.roster.options.find((option) => option.athlete.id === id);
-  if (!selected || selected.intention === intention) return;
+  if (!selected) return;
+  const noteDraft = state.noteDrafts.get(id);
+  const noteChanged = noteDraft !== undefined &&
+    noteDraft.trim() !== (selected.note || "");
+  if (selected.intention === intention && !noteChanged) return;
   const generation = attendanceSessionGeneration;
   const requestId = selfRegistrationProxyRequestId;
   state.saving = true;
@@ -3461,6 +3510,7 @@ async function saveSelfRegistrationProxy(intention) {
         targetAthleteId: id,
         intention,
         expectedRevision: selected.revision,
+        ...(noteChanged ? { note: noteDraft } : {}),
       }),
     });
     if (generation !== attendanceSessionGeneration ||
@@ -3468,11 +3518,13 @@ async function saveSelfRegistrationProxy(intention) {
     const saved = payload?.option;
     if (saved?.athlete?.id !== id ||
         !["unknown", "attending", "not_attending", "maybe"].includes(saved.intention) ||
-        !Number.isSafeInteger(saved.revision) || saved.revision < 1) {
+        !Number.isSafeInteger(saved.revision) || saved.revision < 1 ||
+        (noteChanged && (saved.note ?? null) !== (noteDraft.trim() || null))) {
       throw new Error("INVALID_PROXY_REGISTRATION_SAVE");
     }
     state.roster.options = state.roster.options.map((option) =>
       option.athlete.id === id ? saved : option);
+    if (noteChanged) state.noteDrafts.delete(id);
   } catch (error) {
     if (generation !== attendanceSessionGeneration ||
         requestId !== selfRegistrationProxyRequestId) return;
