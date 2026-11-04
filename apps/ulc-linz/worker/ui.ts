@@ -604,6 +604,17 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--secondary" id="kindertraining-week-save" type="button" disabled>💾 Jetzt speichern</button>
               </div>
+              <div class="kindertraining-matrix-togglebar">
+                <button class="button button--secondary" id="kindertraining-matrix-toggle" type="button" aria-expanded="false" aria-controls="kindertraining-registration-matrix" hidden>Wochenmatrix anzeigen</button>
+              </div>
+              <section class="card kindertraining-registration-matrix" id="kindertraining-registration-matrix" aria-label="Wochenmatrix der Voranmeldungen" hidden>
+                <div class="kindertraining-registration-matrix__heading">
+                  <strong>Voranmeldungen – Wochenmatrix</strong>
+                  <small>Nur zur Übersicht. Die tatsächliche Anwesenheit wird weiterhin tageweise erfasst.</small>
+                </div>
+                <div class="kindertraining-registration-matrix__scroll" id="kindertraining-registration-matrix-scroll" role="region" aria-label="Horizontale Wochenmatrix" tabindex="0"></div>
+                <small class="kindertraining-registration-matrix__legend">Ja = kommt · ? = vielleicht · Nein = abgesagt · Offen = keine Anmeldung · – = nicht zugeordnet oder nicht geladen</small>
+              </section>
               <div class="kindertraining-week-days" id="kindertraining-week-days" aria-live="polite"></div>
             </section>
           </section>
@@ -1972,6 +1983,33 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
   border-style: dashed;
 }
 .kindertraining-week-day--unavailable small { color: var(--secondary); }
+/* A02: trainer's read-only preregistration matrix; scroll within the card,
+   never widen the entire page. Preserves the accepted day-by-day roll call. */
+.kindertraining-matrix-togglebar { display: flex; min-width: 0; }
+.kindertraining-matrix-togglebar .button { min-height: var(--touch); }
+.kindertraining-registration-matrix { min-width: 0; max-width: 100%; padding: 10px; overflow: hidden; }
+.kindertraining-registration-matrix__heading { display: grid; gap: 3px; margin-bottom: 10px; }
+.kindertraining-registration-matrix__heading small,
+.kindertraining-registration-matrix__legend { color: var(--secondary); font-size: .76rem; }
+.kindertraining-registration-matrix__scroll { width: 100%; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+.kindertraining-registration-matrix__scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.kindertraining-registration-matrix__table { width: 100%; min-width: 600px; border-spacing: 0; border-collapse: separate; font-size: .78rem; }
+.kindertraining-registration-matrix__table th,
+.kindertraining-registration-matrix__table td { border-bottom: 1px solid var(--border); padding: 8px 6px; text-align: center; }
+.kindertraining-registration-matrix__table th:first-child,
+.kindertraining-registration-matrix__table td:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--card);
+  min-width: 132px; max-width: 180px; text-align: left; overflow-wrap: anywhere;
+}
+.kindertraining-registration-matrix__table thead th:first-child { z-index: 2; }
+.kindertraining-registration-matrix__table td[data-intention="attending"] { color: #166534; background: #dcfce7; font-weight: 700; }
+.kindertraining-registration-matrix__table td[data-intention="maybe"] { color: #92400e; background: #fef3c7; font-weight: 700; }
+.kindertraining-registration-matrix__table td[data-intention="not_attending"] { color: #991b1b; background: #fee2e2; font-weight: 700; }
+.kindertraining-registration-matrix__table td[data-intention="unknown"] { color: var(--secondary); }
+.kindertraining-registration-matrix__table tfoot th,
+.kindertraining-registration-matrix__table tfoot td { font-weight: 700; border-top: 1px solid var(--border); }
+.kindertraining-registration-matrix__legend { display: block; margin-top: 8px; line-height: 1.4; }
+
 /* Keep functional page controls visible without repetitive hero descriptions. */
 .app-section[data-app-section]:not([data-app-section="home"]) > .hero .summary { display: none; }
 .masterdata-inactive-toggle {
@@ -2056,6 +2094,9 @@ const elements = {
   kindertrainingWeek: document.querySelector("#kindertraining-week"),
   kindertrainingWeekState: document.querySelector("#kindertraining-week-state"),
   kindertrainingWeekDays: document.querySelector("#kindertraining-week-days"),
+  kindertrainingMatrixToggle: document.querySelector("#kindertraining-matrix-toggle"),
+  kindertrainingRegistrationMatrix: document.querySelector("#kindertraining-registration-matrix"),
+  kindertrainingRegistrationMatrixScroll: document.querySelector("#kindertraining-registration-matrix-scroll"),
   kindertrainingWeekSave: document.querySelector("#kindertraining-week-save"),
   kindertrainingDate: document.querySelector("#kindertraining-date"),
   kindertrainingLoad: document.querySelector("#kindertraining-load"),
@@ -2345,6 +2386,7 @@ let kindertrainingWeekSnapshots = [];
 let kindertrainingWeekDirtyDates = new Set();
 let kindertrainingWeekExpandedDates = new Set();
 let kindertrainingWeekFailedDates = new Set();
+let kindertrainingMatrixOpen = false;
 let kindertrainingWeekSaving = false;
 let kindertrainingWeekAutosaveTimer = null;
 let kindertrainingWeekLoadId = 0;
@@ -2527,6 +2569,12 @@ elements.kindertrainingGroup?.addEventListener("change", () => void handleKinder
 elements.kindertrainingWeekDays?.addEventListener("click", handleKindertrainingWeekClick);
 elements.kindertrainingWeekDays?.addEventListener("change", handleKindertrainingWeekChange);
 elements.kindertrainingWeekDays?.addEventListener("input", handleKindertrainingWeekInput);
+elements.kindertrainingMatrixToggle?.addEventListener("click", () => {
+  if (elements.kindertrainingMatrixToggle.hidden ||
+      elements.kindertrainingMatrixToggle.disabled) return;
+  kindertrainingMatrixOpen = !kindertrainingMatrixOpen;
+  renderKindertrainingRegistrationMatrix();
+});
 for (const control of document.querySelectorAll("[data-masterdata-tab]")) {
   control.addEventListener("click", () => showMasterdataTab(control.dataset.masterdataTab || "athletes"));
 }
@@ -3350,6 +3398,7 @@ async function bootstrapKindertraining() {
   kindertrainingWeekDirtyDates = new Set();
   kindertrainingWeekExpandedDates = new Set();
   kindertrainingLoadedGroupId = "";
+  kindertrainingMatrixOpen = false;
   refreshAppAvailability();
   showMessage(elements.kindertrainingMessage, "");
   showMessage(elements.kindertrainingSuccess, "");
@@ -3462,11 +3511,132 @@ function kindertrainingWeekCounts(snapshot) {
   return { registration, attendance };
 }
 
+function renderKindertrainingRegistrationMatrix() {
+  const toggle = elements.kindertrainingMatrixToggle;
+  const panel = elements.kindertrainingRegistrationMatrix;
+  const scroll = elements.kindertrainingRegistrationMatrixScroll;
+  if (!toggle || !panel || !scroll) return;
+  const groupId = elements.kindertrainingGroup?.value || "";
+  const group = kindertrainingGroups.find((entry) => entry.id === groupId);
+  // Use only already authorized, server-filtered attendance snapshots.
+  // No separate query exposes other athletes' registration information.
+  const available = kindertrainingReady && !kindertrainingLoading &&
+    kindertrainingLoadedGroupId === groupId &&
+    group?.attendanceMode === "self_registration" &&
+    kindertrainingWeekSnapshots.length > 0;
+  toggle.hidden = !available;
+  toggle.disabled = !available || kindertrainingWeekSaving;
+  toggle.setAttribute("aria-expanded", available && kindertrainingMatrixOpen ? "true" : "false");
+  toggle.textContent = kindertrainingMatrixOpen && available
+    ? "Wochenmatrix schließen" : "Wochenmatrix anzeigen";
+  panel.hidden = !available || !kindertrainingMatrixOpen;
+  if (panel.hidden) {
+    scroll.replaceChildren();
+    return;
+  }
+
+  const dates = registrationWeekDates(kindertrainingWeekStart || localWeekStart(new Date()));
+  const snapshots = new Map(kindertrainingWeekSnapshots.map((day) => [day.sessionDate, day]));
+  const people = new Map();
+  for (const date of dates) {
+    const day = snapshots.get(date);
+    if (!day) continue;
+    for (const person of day.participants) {
+      if (!people.has(person.athleteId)) {
+        people.set(person.athleteId, {
+          id: person.athleteId,
+          name: person.lastName + ", " + person.firstName,
+        });
+      }
+    }
+  }
+  const roster = [...people.values()].sort((a, b) =>
+    a.name.localeCompare(b.name, "de") || a.id.localeCompare(b.id));
+  const table = document.createElement("table");
+  table.className = "kindertraining-registration-matrix__table";
+  const caption = document.createElement("caption");
+  caption.textContent = "Voranmeldungen vom " +
+    germanDate(dates[0]) + " bis " + germanDate(dates[6]);
+  table.append(caption);
+
+  const head = document.createElement("thead");
+  const headings = document.createElement("tr");
+  const athleteHeading = document.createElement("th");
+  athleteHeading.scope = "col";
+  athleteHeading.textContent = "Athlet";
+  headings.append(athleteHeading);
+  for (const date of dates) {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = germanWeekday(date).slice(0, 2) + " " + date.slice(-2);
+    th.title = germanWeekday(date) + ", " + germanDate(date);
+    headings.append(th);
+  }
+  head.append(headings);
+  table.append(head);
+
+  const body = document.createElement("tbody");
+  for (const person of roster) {
+    const row = document.createElement("tr");
+    const name = document.createElement("th");
+    name.scope = "row";
+    name.textContent = person.name;
+    row.append(name);
+    for (const date of dates) {
+      const cell = document.createElement("td");
+      const day = snapshots.get(date);
+      const participant = day?.participants.find((item) => item.athleteId === person.id);
+      const cancelled = day?.draftState === "cancelled";
+      const intention = participant?.intention;
+      const valid = ["attending", "maybe", "not_attending", "unknown"].includes(intention);
+      const label = !day || !participant ? "–" : cancelled ? "Entfällt" :
+        !valid ? "–" : {
+          attending: "Ja", maybe: "?", not_attending: "Nein", unknown: "Offen",
+        }[intention];
+      if (participant && !cancelled && valid) cell.dataset.intention = intention;
+      cell.textContent = label;
+      cell.title = person.name + " · " + germanDate(date) + ": " +
+        (!day ? "Nicht geladen" : !participant ? "Nicht zugeordnet" :
+          cancelled ? "Training abgesagt" : kindertrainingRegistrationLabel(intention));
+      row.append(cell);
+    }
+    body.append(row);
+  }
+  if (roster.length === 0) {
+    const row = document.createElement("tr");
+    const empty = document.createElement("td");
+    empty.colSpan = 8;
+    empty.textContent = "Für diese Woche sind keine Teilnehmer geladen.";
+    row.append(empty);
+    body.append(row);
+  }
+  table.append(body);
+
+  const foot = document.createElement("tfoot");
+  const totals = document.createElement("tr");
+  const totalLabel = document.createElement("th");
+  totalLabel.scope = "row";
+  totalLabel.textContent = "Kommen";
+  totals.append(totalLabel);
+  for (const date of dates) {
+    const cell = document.createElement("td");
+    const day = snapshots.get(date);
+    cell.textContent = !day ? "–" : day.draftState === "cancelled" ? "Entfällt" :
+      String(day.participants.filter((person) => person.intention === "attending").length);
+    cell.title = "Zahl der Zusagen am " + germanDate(date);
+    totals.append(cell);
+  }
+  foot.append(totals);
+  table.append(foot);
+  scroll.replaceChildren(table);
+}
+
 function renderKindertrainingWeek() {
   const root = elements.kindertrainingWeek;
   const container = elements.kindertrainingWeekDays;
   if (!root || !container) return;
   container.replaceChildren();
+  renderKindertrainingRegistrationMatrix();
 
   const groupId = elements.kindertrainingGroup?.value || "";
   if (!kindertrainingReady || !groupId) {
@@ -3681,6 +3851,7 @@ function renderKindertrainingWeek() {
     container.append(day);
   }
   refreshKindertrainingWeekControls();
+  renderKindertrainingRegistrationMatrix();
 }
 
 function refreshKindertrainingWeekControls() {
@@ -3877,6 +4048,7 @@ async function handleKindertrainingWeekGroupChange() {
   kindertrainingWeekExpandedDates = new Set();
   kindertrainingWeekFailedDates = new Set();
   kindertrainingLoadedGroupId = "";
+  kindertrainingMatrixOpen = false;
   renderKindertrainingWeek();
   if (nextGroupId) await loadKindertrainingWeek();
 }
