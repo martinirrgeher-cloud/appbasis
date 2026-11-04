@@ -9,6 +9,21 @@ GitHub abgeleitet.
 
 ## Aktuelles Ziel
 
+**ULC Linz – funktionale Abnahme und UX-Fertigstellung nach dem abgeschlossenen M6-Plattformentwicklungsmeilenstein (Issue #505).**
+
+Aktive Arbeit ist auf die Nutzerabläufe der bereits integrierten ULC-App fokussiert, nicht auf eine erneute Entwicklung von M6. Priorität:
+1. End-to-End Anmeldung/Anwesenheit auf dem Handy (Gruppe, Woche, Speichern, Reload).
+2. Trainingsplanung: Übungen/Blöcke, manuelles Speichern, Plan verteilen, Konflikte.
+3. Trainingsdokumentation: aus Plan starten, Anwesenheit übernehmen, ändern, abschließen und wieder öffnen.
+4. Rollen-/Benutzer- und UX-Abnahme sowie anschließend Übungskatalog und Trainingsblöcke.
+5. Reproduzierbare Fehler aus der Preview in kleinen, zusammenhängenden UI-Fixpaketen beheben.
+
+**Abnahmestatus:** Die Funktionen sind auf dem aktuellen `main` im Code vorhanden, aber ein vollständiger mobiler Preview-PASS dieser E2E-Kette ist noch nicht belegt. Automatisierte Tests gelten nicht als Ersatz für die reale UI-Abnahme. Vor Preview-Migration, Deployment, Änderungen an Testdaten oder produktiven Ressourcen ist die bisherige Freigabegrenze einzuhalten. Bereits abgenommene UI-Funktionen dürfen nicht stillschweigend überschrieben werden.
+
+**Eigenständiges Sicherheits-Backlog:** Issue #483 bleibt offen; `status=blocked`, alle Datenschutz-/M5-/M6-/Production-/Public-Ingress- und Restore-Promotion-Sperren bleiben unverändert. Sicherheitsrelevante neue UI-/API-Änderungen benötigen weiterhin die regulären Auth-/DB-Tests. Das Backlog #483 ist jedoch **nicht** die aktive tägliche Entwicklungsschleife, solange nicht ausdrücklich eine Produktionsfreigabe beauftragt wird.
+
+## Separates, derzeit zurückgestelltes ULC-Production-Readiness-Backlog (Issue #483)
+
 **ULC M6 – Production-Readiness-Blocker aus Issue #483 sicher schließen.**
 
 Die ursprünglichen neun Evidence-Drifts wurden nach Fach- und Testprüfung
