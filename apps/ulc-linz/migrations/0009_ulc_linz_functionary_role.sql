@@ -12,13 +12,8 @@ ALTER TABLE ulc_linz_lifecycle_deletion
 ALTER TABLE ulc_linz_lifecycle_deletion
   ADD CONSTRAINT ulc_linz_lifecycle_deletion_source_role_check
   CHECK (source_role IN ('trainer', 'athlete', 'parent', 'functionary'));
---> statement-breakpoint
-INSERT INTO appbasis_permission_role (role_id, display_name, description, state, kind)
-VALUES (
-  'ulc-linz:functionary',
-  'Funktionär',
-  'ULC Linz organizational functionary; no system administration rights',
-  'active',
-  'system'
-)
-ON CONFLICT (role_id) DO NOTHING;
+
+-- Permission role ulc-linz:functionary is provisioned by the permissions owner
+-- through ULC_LINZ_M5_PERMISSION_PROVISIONING_BUNDLE, not by an app migration.
+-- Operators must apply that owner provisioning separately before activating
+-- functionary account creation; its existing readiness check fails closed.
