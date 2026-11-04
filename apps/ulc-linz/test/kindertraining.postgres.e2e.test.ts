@@ -300,22 +300,51 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       );
       const saved = await sessions.saveRegistration(
         organizationId, created.session.id, target.id, "attending",
-        null, identityId, actor.id,
+        null, identityId, actor.id, "Komme 15 Minuten später",
       );
       expect(saved).toMatchObject({
         athleteId: target.id, intention: "attending", revision: 1,
-        updatedByIdentityId: identityId,
+        updatedByIdentityId: identityId, note: "Komme 15 Minuten später",
       });
       const history = await connection.client.unsafe(
-        `SELECT athlete_id, actor_identity_id, intention, revision
+        `SELECT athlete_id, actor_identity_id, intention, revision, note
          FROM ulc_linz_training_registration_change
          WHERE organization_id = $1 AND session_id = $2`,
         [organizationId, created.session.id],
       );
       expect(history).toEqual([{
         athlete_id: target.id, actor_identity_id: identityId,
-        intention: "attending", revision: 1,
+        intention: "attending", revision: 1, note: "Komme 15 Minuten später",
       }]);
+
+      // A pure status change preserves the note; an explicit null clears it.
+      // Each transition is an immutable history row by the actual actor.
+      const statusOnly = await sessions.saveRegistration(
+        organizationId, created.session.id, target.id, "maybe",
+        1, identityId, actor.id,
+      );
+      expect(statusOnly).toMatchObject({
+        intention: "maybe", revision: 2, note: "Komme 15 Minuten später",
+      });
+      const cleared = await sessions.saveRegistration(
+        organizationId, created.session.id, target.id, "maybe",
+        2, identityId, actor.id, null,
+      );
+      expect(cleared).toMatchObject({
+        intention: "maybe", revision: 3, note: null,
+      });
+      const noteHistory = await connection.client.unsafe(
+        `SELECT intention, revision, note, actor_identity_id
+         FROM ulc_linz_training_registration_change
+         WHERE session_id = $1
+         ORDER BY revision`,
+        [created.session.id],
+      );
+      expect(noteHistory).toEqual([
+        { intention: "attending", revision: 1, note: "Komme 15 Minuten später", actor_identity_id: identityId },
+        { intention: "maybe", revision: 2, note: "Komme 15 Minuten später", actor_identity_id: identityId },
+        { intention: "maybe", revision: 3, note: null, actor_identity_id: identityId },
+      ]);
 
       // No self-proxy, outside group, wrong identity, or stale revision.
       for (const [targetId, actorIdentity, actorId, revision] of [
@@ -340,23 +369,23 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       );
       await expect(sessions.saveRegistration(
         organizationId, created.session.id, target.id, "not_attending",
-        1, identityId, actor.id,
+        3, identityId, actor.id,
       )).rejects.toBeInstanceOf(UlcTrainingSessionConflictError);
       const unchanged = await connection.client.unsafe(
-        `SELECT intention, revision, updated_by_identity_id
+        `SELECT intention, revision, updated_by_identity_id, note
          FROM ulc_linz_training_registration
          WHERE session_id = $1 AND athlete_id = $2`,
         [created.session.id, target.id],
       );
       expect(unchanged).toEqual([{
-        intention: "attending", revision: 1, updated_by_identity_id: identityId,
+        intention: "maybe", revision: 3, updated_by_identity_id: identityId, note: null,
       }]);
       const count = await connection.client.unsafe(
         `SELECT count(*)::int AS changes
          FROM ulc_linz_training_registration_change
          WHERE session_id = $1`, [created.session.id],
       );
-      expect(count).toEqual([{ changes: 1 }]);
+      expect(count).toEqual([{ changes: 3 }]);
     });
 
     it("resolves a trainer identity to only its persisted group assignments", async () => {
