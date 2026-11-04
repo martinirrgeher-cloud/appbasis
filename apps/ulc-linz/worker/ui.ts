@@ -3503,11 +3503,12 @@ async function handleSelfRegistrationClick(event) {
   }
   const groupId = control.dataset.registrationGroup || "";
   const sessionDate = control.dataset.registrationDate || "";
-  const intention = control.dataset.intention || "";
+  const noteOnly = control.dataset.registrationNoteSave === "true";
+  const clickedIntention = control.dataset.intention || "";
   if (
     !groupId ||
     !sessionDate ||
-    !["unknown", "attending", "not_attending", "maybe"].includes(intention)
+    (!noteOnly && !["unknown", "attending", "not_attending", "maybe"].includes(clickedIntention))
   ) {
     return;
   }
@@ -3519,9 +3520,13 @@ async function handleSelfRegistrationClick(event) {
       candidate.group.id === groupId &&
       candidate.sessionDate === sessionDate,
   );
-  if (!option || option.sessionState === "cancelled" || option.intention === intention) {
-    return;
-  }
+  if (!option || option.sessionState === "cancelled") return;
+  const intention = noteOnly ? option.intention : clickedIntention;
+  const noteDraft = selfRegistrationNoteDrafts.get(optionKey);
+  const noteChanged = noteDraft !== undefined &&
+    noteDraft.trim() !== (option.note || "");
+  if (noteOnly && !noteChanged) return;
+  if (!noteOnly && option.intention === intention && !noteChanged) return;
 
   const previous = option;
   selfRegistrationSavingKeys.add(optionKey);
@@ -3546,12 +3551,14 @@ async function handleSelfRegistrationClick(event) {
           groupId,
           intention,
           sessionDate,
+          ...(noteChanged ? { note: noteDraft } : {}),
         }),
       },
     );
     if (generation !== attendanceSessionGeneration) return;
     const saved = payload?.option;
-    if (!isSelfRegistrationOption(saved, sessionDate)) {
+    if (!isSelfRegistrationOption(saved, sessionDate) ||
+        (noteChanged && (saved.note ?? null) !== (noteDraft.trim() || null))) {
       throw new Error("INVALID_SELF_REGISTRATION_SAVE");
     }
     selfRegistrationOptions = selfRegistrationOptions.map((candidate) =>
@@ -3560,6 +3567,7 @@ async function handleSelfRegistrationClick(event) {
         ? saved
         : candidate,
     );
+    if (noteChanged) selfRegistrationNoteDrafts.delete(optionKey);
 
   } catch (error) {
     if (generation !== attendanceSessionGeneration) return;
