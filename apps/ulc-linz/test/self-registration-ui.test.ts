@@ -23,7 +23,16 @@ describe("ULC weekly self-registration and account switching", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       'requestJson("/api/modules/kindertraining/registration/proxy", {',
     );
-    expect(ULC_LINZ_APP_SCRIPT).toContain('option.group.id === groupId');
+    const proxyStart = ULC_LINZ_APP_SCRIPT.indexOf(
+      "async function openSelfRegistrationProxy(groupId, sessionDate)",
+    );
+    const proxyEnd = ULC_LINZ_APP_SCRIPT.indexOf(
+      "\nasync function saveSelfRegistrationProxy(", proxyStart,
+    );
+    expect(proxyStart).toBeGreaterThanOrEqual(0);
+    expect(ULC_LINZ_APP_SCRIPT.slice(proxyStart, proxyEnd)).toContain(
+      "entry.group.id === groupId && entry.sessionDate === sessionDate",
+    );
     expect(ULC_LINZ_APP_SCRIPT).toContain("targetAthleteId: id,");
     expect(ULC_LINZ_APP_SCRIPT).toContain("expectedRevision: selected.revision");
     expect(ULC_LINZ_APP_SCRIPT).toContain("closeSelfRegistrationProxy();");
