@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning";
 import {
   PostgresTrainingDocumentationRepository,
+  reconcileTrainingDocumentationRestoredDatabase,
   TrainingDocumentationConflictError,
   TrainingDocumentationService,
   TrainingDocumentationTargetOccupiedError,
@@ -100,6 +101,157 @@ afterAll(async () => {
 });
 
 describe("training-documentation PostgreSQL repository", () => {
+  it("replays a newer deletion over a simulated older restore, including every foreign-owner revision", async () => {
+    const organization = "org-offline-doc-restore";
+    const removed = "athlete-restore-target";
+    const survivor = "athlete-restore-survivor";
+    const otherOrg = "org-offline-foreign";
+    const createFixtures = async () => {
+      const service = serviceFor(requiredConnection(), [
+        "doc-restore-root", "doc-restore-survivor", "doc-restore-foreign",
+      ]);
+      const root = await service.create(organization, {
+        subjectId: removed, sessionDate: "2026-10-26",
+        sourcePlanId: "plan-root", sourcePlanRevision: 1,
+        attendance: [{ participantId: removed, displayName: "Erased A", status: "present" }],
+      });
+      const other = await service.create(organization, {
+        subjectId: survivor, sessionDate: "2026-10-27",
+        sourcePlanId: "plan-other", sourcePlanRevision: 1,
+        note: "Keep my unrelated note",
+        attendance: [
+          { participantId: survivor, displayName: "Survivor", status: "present" },
+          { participantId: removed, displayName: "Erased B", status: "absent" },
+        ],
+      });
+      await service.update(organization, other.id, 1, {
+        attendance: [
+          { participantId: removed, displayName: "Erased C", status: "present" },
+          { participantId: survivor, displayName: "Survivor", status: "present" },
+        ],
+      });
+      const foreign = await service.create(otherOrg, {
+        subjectId: survivor, sessionDate: "2026-10-28",
+        sourcePlanId: "plan-foreign", sourcePlanRevision: 1,
+        attendance: [{ participantId: removed, displayName: "Foreign", status: "present" }],
+      });
+      return { root, other, foreign };
+    };
+
+    const first = await createFixtures();
+    const repository = repositoryFor(requiredConnection());
+    const completedAt = new Date(Date.now() - 3_600_000);
+    await repository.removeSubjectDataAfterVerifiedDeletion(
+      organization, removed, completedAt,
+    );
+    const now = new Date();
+    const authoritative = await repository.listSubjectDeletionMarkers(now);
+    expect(authoritative).toHaveLength(1);
+    expect(authoritative[0]).toMatchObject({
+      organizationId: organization,
+      subjectId: removed,
+      completedAt,
+    });
+
+    // Simulate an isolated restore to a point before the deletion. The
+    // authoritative marker snapshot is held separately and stays immutable.
+    await requiredConnection().client.unsafe(
+      `TRUNCATE TABLE appbasis_training_documentation_revision,
+         appbasis_training_documentation,
+         appbasis_training_documentation_subject_deletion CASCADE`,
+    );
+    const old = await createFixtures();
+    expect(old.root.id).toBe(first.root.id);
+    const source = { async listSubjectDeletionMarkers() { return authoritative; } };
+    const result = await reconcileTrainingDocumentationRestoredDatabase(
+      source, repository, now,
+    );
+    expect(result).toEqual({
+      requiredDeletionCount: 1,
+      insertedMarkerCount: 1,
+      deletedDocuments: 1,
+      deletedRevisions: 1,
+      redactedOtherSubjectRevisions: 2,
+    });
+    await expect(repository.inspectSubjectPrivacy(organization, removed))
+      .resolves.toMatchObject({
+        ownedDocuments: 0,
+        ownedRevisions: 0,
+        otherSubjectDocumentsWithParticipant: 0,
+        otherSubjectRevisionsWithParticipant: 0,
+      });
+    const service = serviceFor(requiredConnection(), []);
+    expect(await service.findCurrent(organization, old.root.id)).toBeUndefined();
+    const history = await service.listRevisions(organization, old.other.id);
+    expect(history).toHaveLength(2);
+    expect(history.every((entry) =>
+      entry.attendance.length === 1 &&
+      entry.attendance[0]?.participantId === survivor &&
+      !JSON.stringify(entry).includes("Erased")
+    )).toBe(true);
+    expect(history[1]?.note).toBe("Keep my unrelated note");
+    await expect(service.listRevisions(otherOrg, old.foreign.id))
+      .resolves.toMatchObject([{
+        attendance: [{ participantId: removed, displayName: "Foreign" }],
+      }]);
+
+    await expect(service.create(organization, {
+      subjectId: removed, sessionDate: "2026-10-29",
+      sourcePlanId: "stale-editor", sourcePlanRevision: 1,
+    })).rejects.toThrow(/deletion marker/);
+    await expect(service.update(organization, old.other.id, 2, {
+      attendance: [{ participantId: removed, displayName: "Erased again", status: "present" }],
+    })).rejects.toThrow(/deletion marker/);
+
+    await expect(reconcileTrainingDocumentationRestoredDatabase(
+      source, repository, now,
+    )).resolves.toEqual({
+      requiredDeletionCount: 1,
+      insertedMarkerCount: 0,
+      deletedDocuments: 0,
+      deletedRevisions: 0,
+      redactedOtherSubjectRevisions: 0,
+    });
+    const conflicting = {
+      ...authoritative[0]!,
+      completedAt: new Date(completedAt.getTime() - 1_000),
+      purgeAfter: new Date(completedAt.getTime() - 1_000 + 35 * 24 * 60 * 60 * 1000),
+    };
+    await expect(repository.reconcileSubjectDeletionMarker(conflicting))
+      .rejects.toThrow(/conflicts/);
+  });
+
+  it("reads and replays expired but unpurged marker decisions", async () => {
+    const repo = repositoryFor(requiredConnection());
+    const past = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+    await requiredConnection().client.unsafe(
+      `INSERT INTO appbasis_training_documentation_subject_deletion
+       (organization_id, subject_id, completed_at, purge_after)
+       VALUES ($1, $2, $3::timestamptz, $3::timestamptz + interval '840 hours')`,
+      ["org-expired-restore", "athlete-expired", past.toISOString()],
+    );
+    const source = await repo.listSubjectDeletionMarkers(new Date());
+    expect(source).toHaveLength(1);
+    expect(source[0]?.purgeAfter.getTime()).toBeLessThan(Date.now());
+    await requiredConnection().client.unsafe(
+      "DELETE FROM appbasis_training_documentation_subject_deletion",
+    );
+    const service = serviceFor(requiredConnection(), ["doc-expired-restored"]);
+    const doc = await service.create("org-expired-restore", {
+      subjectId: "athlete-expired",
+      sessionDate: "2026-10-26",
+      sourcePlanId: "plan-expired",
+      sourcePlanRevision: 1,
+    });
+    await expect(reconcileTrainingDocumentationRestoredDatabase(
+      { async listSubjectDeletionMarkers() { return source; } },
+      repo, new Date(),
+    )).resolves.toMatchObject({
+      requiredDeletionCount: 1, deletedDocuments: 1, deletedRevisions: 1,
+    });
+    expect(await service.findCurrent("org-expired-restore", doc.id)).toBeUndefined();
+  });
+
   it("revokes PUBLIC EXECUTE for all module-owned deletion guard functions", async () => {
     const rows = await requiredConnection().client.unsafe(
       `SELECT p.proname,

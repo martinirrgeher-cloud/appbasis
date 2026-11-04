@@ -22,6 +22,7 @@ export {
 export * from "./repository";
 export * from "./in-memory-repository";
 export * from "./postgres-repository";
+export * from "./subject-restore-reconciliation";
 export * from "./service";
 export type {
   CreateTrainingDocumentationDraftInput,
