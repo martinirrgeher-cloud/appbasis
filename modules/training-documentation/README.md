@@ -95,7 +95,18 @@ revision row locks or erasure subject locks; SQL triggers independently
 enforce that lock for direct DML. This deliberately serializes concurrent
 documentation writes within one organization to prevent cross-participant
 deadlocks. Other organizations remain independent, subject to advisory
-hash collisions that can only over-serialize.
+hash collisions that can only over-serialize. Direct application SQL
+`UPDATE` of revision attendance/identity is **not a supported writer path**:
+the privileged triggers reject it *before* seeking the organization lock,
+because PostgreSQL would already have acquired the row lock. Even a no-op
+direct root ownership-column UPDATE is rejected before that lock. Only
+the authenticated migration-owner transaction can use a transaction-local
+erasure marker to update historical revision attendance; the normal
+application login cannot bypass the guard by setting the marker. Direct
+migration-owner history updates outside the module erasure contract are
+unsupported. The independent preview drift verifier checks these trigger
+routines' `SECURITY DEFINER` and `search_path` attributes as well as their
+body hashes.
 
 Even the current v1 editor path is covered once v2 is installed. The
 ordinary documentation service does **not** expose an erasure API.
