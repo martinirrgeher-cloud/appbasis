@@ -358,6 +358,25 @@ function runtime(
     },
   },
   selfRegistration: GeneratedPostgresApplicationRuntime["selfRegistration"] = {
+    async listProxyOptions(_organizationId, _actorAthleteId, groupId, sessionDate) {
+      return {
+        group: { id: groupId, name: "Leistungsgruppe", shortName: "LG" },
+        sessionDate,
+        sessionState: "scheduled" as const,
+        options: [{
+          athlete: { id: "athlete-colleague", firstName: "Lisa", lastName: "Sprint" },
+          intention: "unknown" as const,
+          revision: null,
+        }],
+      };
+    },
+    async saveProxy(_organizationId, _actorAthleteId, _actorIdentityId, input) {
+      return {
+        athlete: { id: input.targetAthleteId, firstName: "Lisa", lastName: "Sprint" },
+        intention: input.intention,
+        revision: input.expectedRevision === null ? 1 : input.expectedRevision + 1,
+      };
+    },
     async listOptions(_organizationId, _athleteId, sessionDate) {
       return [
         {
@@ -4903,6 +4922,114 @@ describe("Training self-registration runtime API", () => {
     expect(rejected.status).toBe(400);
     expect(calls).toHaveLength(1);
   });
+
+  it("serves a scoped colleague roster and logs the authenticated actor on proxy save", async () => {
+    const actions: unknown[] = [];
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      selfRegistration: {
+        ...base.selfRegistration,
+        async listProxyOptions(org, actorAthlete, group, date) {
+          actions.push({ kind: "read", org, actorAthlete, group, date });
+          return base.selfRegistration.listProxyOptions(org, actorAthlete, group, date);
+        },
+        async saveProxy(org, actorAthlete, actorIdentity, input) {
+          actions.push({ kind: "write", org, actorAthlete, actorIdentity, input });
+          return base.selfRegistration.saveProxy(org, actorAthlete, actorIdentity, input);
+        },
+      },
+    }));
+    const url = "https://ulc.example.test/api/modules/kindertraining/registration/proxy";
+    const read = await worker.fetch(new Request(
+      url + "?groupId=group-self&sessionDate=2026-11-04",
+      { headers: { cookie: currentIdentity.sessionToken } },
+    ), validEnv);
+    expect(read.status).toBe(200);
+    expect(read.headers.get("cache-control")).toBe("private, no-store");
+    await expect(read.json()).resolves.toMatchObject({
+      roster: { group: { id: "group-self" },
+        options: [{ athlete: { id: "athlete-colleague" } }] },
+    });
+    const write = await worker.fetch(new Request(url, {
+      method: "POST",
+      headers: { cookie: currentIdentity.sessionToken, "content-type": "application/json" },
+      body: JSON.stringify({ groupId: "group-self", targetAthleteId: "athlete-colleague",
+        sessionDate: "2026-11-04", intention: "attending", expectedRevision: null }),
+    }), validEnv);
+    expect(write.status).toBe(200);
+    await expect(write.json()).resolves.toMatchObject({
+      option: { athlete: { id: "athlete-colleague" }, intention: "attending", revision: 1 },
+    });
+    expect(actions).toEqual([
+      { kind: "read", org: "verein-1", actorAthlete: "athlete-self",
+        group: "group-self", date: "2026-11-04" },
+      { kind: "write", org: "verein-1", actorAthlete: "athlete-self",
+        actorIdentity: currentIdentity.identity.identityId,
+        input: { groupId: "group-self", targetAthleteId: "athlete-colleague",
+          sessionDate: "2026-11-04", intention: "attending", expectedRevision: null } },
+    ]);
+  });
+
+  it("rejects injected target scope, extra query/body keys and unauthorized reads", async () => {
+    let calls = 0;
+    const base = runtime();
+    const url = "https://ulc.example.test/api/modules/kindertraining/registration/proxy";
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      selfRegistration: {
+        ...base.selfRegistration,
+        async listProxyOptions(...args) {
+          calls++;
+          return base.selfRegistration.listProxyOptions(...args);
+        },
+        async saveProxy(...args) {
+          calls++;
+          return base.selfRegistration.saveProxy(...args);
+        },
+      },
+    }));
+    for (const query of [
+      "groupId=group-self&sessionDate=2026-11-04&athleteId=other",
+      "groupId=group-self&groupId=other&sessionDate=2026-11-04",
+      "groupId=&sessionDate=2026-11-04",
+    ]) {
+      const read = await worker.fetch(new Request(url + "?" + query,
+        { headers: { cookie: currentIdentity.sessionToken } }), validEnv);
+      expect(read.status).toBe(400);
+    }
+    const normal = { groupId: "group-self", sessionDate: "2026-11-04",
+      targetAthleteId: "target", intention: "maybe", expectedRevision: null };
+    for (const body of [
+      { ...normal, organizationId: "other" },
+      { ...normal, targetAthleteId: " target " },
+      { ...normal, targetAthleteId: "" },
+      { ...normal, expectedRevision: -1 },
+    ]) {
+      const response = await worker.fetch(new Request(url, {
+        method: "POST",
+        headers: { cookie: currentIdentity.sessionToken, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }), validEnv);
+      expect(response.status).toBe(400);
+    }
+    expect(calls).toBe(0);
+    const forbidden = createGeneratedWorker(() => ({
+      ...base,
+      selfRegistrationAccess: {
+        ...base.selfRegistrationAccess,
+        async assertViewAccess() {
+          throw new UlcLinzAuthorizationDeniedError();
+        },
+      },
+    }));
+    const denied = await forbidden.fetch(new Request(
+      url + "?groupId=group-self&sessionDate=2026-11-04",
+      { headers: { cookie: currentIdentity.sessionToken } },
+    ), validEnv);
+    expect(denied.status).toBe(403);
+  });
+
 });
 
 describe("U12 runtime API", () => {
