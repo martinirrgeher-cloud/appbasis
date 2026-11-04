@@ -3173,7 +3173,10 @@ function isSelfRegistrationOption(option, sessionDate) {
       option.intention,
     ) &&
     (option.revision === null ||
-      (Number.isSafeInteger(option.revision) && option.revision >= 1))
+      (Number.isSafeInteger(option.revision) && option.revision >= 1)) &&
+    (!("note" in option) || option.note === null ||
+      (typeof option.note === "string" && option.note.length <= 160 &&
+        !/[\x00-\x1f\x7f]/.test(option.note)))
   );
 }
 
@@ -3375,7 +3378,10 @@ function isSelfRegistrationProxyRoster(roster, groupId, sessionDate) {
         seen.has(athlete.id) ||
         !["unknown", "attending", "not_attending", "maybe"].includes(entry.intention) ||
         !(entry.revision === null ||
-          (Number.isSafeInteger(entry.revision) && entry.revision >= 1))) {
+          (Number.isSafeInteger(entry.revision) && entry.revision >= 1)) ||
+        !(!("note" in entry) || entry.note === null ||
+          (typeof entry.note === "string" && entry.note.length <= 160 &&
+            !/[\x00-\x1f\x7f]/.test(entry.note)))) {
       return false;
     }
     seen.add(athlete.id);
