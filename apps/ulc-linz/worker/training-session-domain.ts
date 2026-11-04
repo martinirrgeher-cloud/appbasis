@@ -120,7 +120,7 @@ export function normalizeUlcRegistrationNote(value: unknown): string | null {
   }
   const note = value.trim();
   if (note === "") return null;
-  if (note.length > 160 || /[\\x00-\\x1f\\x7f]/.test(note)) {
+  if (note.length > 160 || /[\x00-\x1f\x7f]/.test(note)) {
     throw new UlcTrainingValidationError(
       "Registration note must contain at most 160 printable characters.",
     );
