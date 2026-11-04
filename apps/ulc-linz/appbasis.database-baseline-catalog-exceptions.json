@@ -9,7 +9,7 @@
     },
     {
       "migration": "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
-      "sha256": "e1c4be02e774e93f24b4ea147b33c97a01e31a2ef12072f769961ce2ff851e33",
+      "sha256": "16094632cbd51917be709b5507e644a8e42b13e223f350903510c026d777dfe6",
       "classification": "historical-access-control-only"
     }
   ]
