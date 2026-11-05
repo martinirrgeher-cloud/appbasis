@@ -44,7 +44,11 @@ describe("A02.4 opt-in canonical deletion/retention/restore privacy coordination
   });
 
   it("fails closed on invalid clock, incomplete result or failed database erasure", async () => {
-    const rejects = (erasure: ReturnType<typeof vi.fn>) =>
+    const rejects = (
+      erasure: NonNullable<Parameters<
+        typeof reconcileDeletedRegistrationScheduleActor
+      >[0]>["erasure"]["redactAfterCompletedIdentityDeletion"],
+    ) =>
       reconcileDeletedRegistrationScheduleActor({
         erasure: { redactAfterCompletedIdentityDeletion: erasure },
         now: () => NOW,
