@@ -56,6 +56,8 @@ describe("A02.4 mobile group schedule editor", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('requestJson("/api/modules/athletes/registration-extra-day"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("if (kindertrainingExtraDraft?.saving) event.preventDefault()");
     expect(ULC_LINZ_APP_SCRIPT).toContain("kindertrainingExtraDraft?.saving");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("closeMasterdataGroupOverlay({ force: true })");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (!force && (extraDayDraft?.saving || groupPolicyDraft?.saving))");
     expect(ULC_LINZ_APP_SCRIPT).toContain("Zuerst müssen die regulären Trainingstage");
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
   });
