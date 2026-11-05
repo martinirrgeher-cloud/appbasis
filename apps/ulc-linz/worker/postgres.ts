@@ -484,11 +484,12 @@ export async function createGeneratedPostgresApplicationRuntime(
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
     });
+    const registrationPolicies = new PostgresUlcRegistrationPolicyRepository(applicationSql);
     const selfRegistration = createUlcSelfRegistrationService({
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
+      registrationPolicies,
     });
-    const registrationPolicies = new PostgresUlcRegistrationPolicyRepository(applicationSql);
     const u12 = createUlcU12Service({
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
