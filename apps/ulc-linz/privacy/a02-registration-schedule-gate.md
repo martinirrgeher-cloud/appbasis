@@ -18,7 +18,7 @@ Historien sind **nicht** durch diese Änderung datenschutzrechtlich freigegeben.
 
 ## Bereits technisch abgesichert
 
-- Verwaltung nur über authentifizierten, organisationsgebundenen, serverseitigen `athletes:edit`-Pfad; lesender `athletes:view`-Pfad.
+- Reguläre Gruppenregeln nur über authentifizierten, organisationsgebundenen `athletes:edit`-Pfad (`athletes:view` zum Lesen). Sondertrainingstage zusätzlich über bestehende `kindertraining:view/edit`-Berechtigungen für Trainer **ausschließlich ihrer aktuell zugewiesenen Gruppen**. Die Rollenlogik wird im HTTP-Pfad und der Trainerzuordnungsstatus nochmals atomar beim DB-Schreibvorgang geprüft; ein Trainer erhält dadurch kein allgemeines `athletes:edit`.
 - Ungültige Datumsformate, fremde oder inaktive Gruppen sowie Trainingsgruppen ohne Selbstanmeldung werden abgewiesen.
 - Freigabe/Rücknahme verwenden CAS-Revision und eine atomare historische Änderung; Rücknahmen löschen keine bestehenden Anmeldungen.
 - Der PostgreSQL-Registrierungs-Trigger sperrt Änderungen auf einem nicht genehmigten Sondertrainingstag. Der eigene/stellvertretende Speichervorgang läuft in einer Transaktion, damit Ablehnungen keine leeren Sitzungen hinterlassen.
@@ -30,7 +30,7 @@ Historien sind **nicht** durch diese Änderung datenschutzrechtlich freigegeben.
 2. **Datenschutz-Inventar:** `privacy/m5-data-inventory.json` beschreibt ausdrücklich einen älteren materialisierten Stand; nicht als aktueller Beleg für die drei neuen Tabellen verwenden. Relevante Erfassungs-, Lösch- und Retention-Einträge samt Versionsgrenzen korrekt nachziehen und automatisiert prüfen.
 3. **Rechte und Subject Lifecycle:** Identitätslöschung/Deaktivierung, Bearbeiterpseudonymisierung in Tabelle und Audit, fortbestehende Gruppenänderung, Gruppenlöschung und Trainer-/Funktionärsrechte mit Daten-Scope prüfen. Ausstehende Export-/Auskunfts- und Löschpflichten nicht als erfüllt ausgeben.
 4. **Retention:** Aufbewahrungsfristen für Konfiguration vs. personenbezogene Bearbeiter-/Auditdaten festlegen, technische Löschung und Nachweis in E2E. Kein pauschales „unbegrenzt“ und keine unbegründete Zwangslöschung historischer Anmeldeabsichten.
-5. **Berechtigungsgrenzen:** Der vorliegende Editor ist für Stammdaten-Bearbeiter vorgesehen. Ob und für welche zugewiesenen Gruppen *Trainer* selbst Sondertermine freigeben dürfen, benötigt eine eigene geprüfte, gruppenbezogene Berechtigungsentscheidung. `athletes:edit` darf nicht stillschweigend auf alle Trainer erweitert werden.
+5. **Berechtigungsgrenzen / fachliche Abnahme:** Die vorläufig umgesetzte Regel erlaubt Sondertermin-Freigaben für Trainer mit `kindertraining:edit`, ausschließlich in ihren aktuell zugewiesenen Gruppen. Der gesonderte mobile Dialog befindet sich unter Anwesenheit; das allgemeine Gruppenregel-Editing bleibt auf `athletes:edit` beschränkt. Die fachliche Entscheidung und ein gezielter Handytest sind noch ausdrücklich abzunehmen; keine pauschale Rechteausweitung und keine Freigabe anderer Gruppen.
 6. **Races und Zeitumstellung:** Gleichzeitige Policy-/Ausnahme-/Registrierungs-Updates, DB-Trigger-Zeitpunkt bei DST sowie Benutzerfehlermeldungen für konkurrierende Freigaben in E2E prüfen.
 7. **Betriebliche Gates:** Preview nur mit ausdrücklicher Betreiberfreigabe, vorher Backup-/Restore-Readiness, danach gezielte Mobilabnahme; Production und Public Ingress bleiben unabhängig gesperrt (Issue #483).
 
