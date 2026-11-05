@@ -668,8 +668,28 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <div class="kindertraining-week-actions">
                 <button class="button button--secondary" id="kindertraining-week-current" type="button">Aktuelle Woche</button>
                 <button class="button button--secondary" id="kindertraining-week-reload" type="button">↻ Neu laden</button>
+                <button class="button button--secondary" id="kindertraining-extra-open" type="button" hidden>+ Sondertrainingstag</button>
               </div>
             </section>
+
+            <dialog class="kindertraining-extra-dialog" id="kindertraining-extra-dialog" aria-labelledby="kindertraining-extra-title">
+              <div class="kindertraining-extra-dialog__head">
+                <h2 id="kindertraining-extra-title">Sondertrainingstag</h2>
+                <button class="button button--secondary" id="kindertraining-extra-close" type="button" aria-label="Schließen">✕</button>
+              </div>
+              <p class="settings-note" id="kindertraining-extra-group"></p>
+              <p class="settings-note">Ein zusätzlicher Trainingstag gilt nur für diese Gruppe. Freigaben und Rücknahmen werden protokolliert.</p>
+              <label>Datum<input id="kindertraining-extra-date" type="date" required /></label>
+              <p class="settings-note" id="kindertraining-extra-status" aria-live="polite">Datum auswählen und prüfen.</p>
+              <p class="message message--error" id="kindertraining-extra-error" role="alert" hidden></p>
+              <p class="message message--success" id="kindertraining-extra-success" role="status" hidden></p>
+              <div class="masterdata-form-actions">
+                <button class="button button--secondary" id="kindertraining-extra-load" type="button">Datum prüfen</button>
+                <button class="button button--primary" id="kindertraining-extra-approve" type="button" disabled>Freigeben</button>
+                <button class="button button--secondary" id="kindertraining-extra-revoke" type="button" disabled>Freigabe zurücknehmen</button>
+              </div>
+              <small>Bereits gespeicherte Anmeldungen bleiben nach Rücknahme lesbar.</small>
+            </dialog>
 
             <section class="kindertraining-week" id="kindertraining-week" hidden>
               <div class="card kindertraining-week-savebar">
@@ -1274,6 +1294,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   white-space: pre-wrap;
 }
 .masterdata-group-actions { grid-template-columns: minmax(0, 220px); }
+.kindertraining-extra-dialog { width: min(440px, calc(100% - 24px)); max-height: 90dvh; overflow-y: auto; padding: 20px; border-radius: 16px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+.kindertraining-extra-dialog::backdrop { background: rgb(15 23 42 / 55%); }
+.kindertraining-extra-dialog__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.kindertraining-extra-dialog__head h2 { font-size: 1.1rem; margin: 0; }
+.kindertraining-extra-dialog > label { display: grid; gap: 6px; margin: 12px 0; }
+.kindertraining-extra-dialog > label input { min-height: 40px; width: 100%; box-sizing: border-box; }
 .group-policy-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 12px; }
 .group-policy-weekdays { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .group-policy-weekdays label { display: flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 8px; padding: 9px 5px; font-size: .85rem; }
@@ -2208,6 +2234,17 @@ const elements = {
   kindertrainingWeekNext: document.querySelector("#kindertraining-week-next"),
   kindertrainingWeekCurrent: document.querySelector("#kindertraining-week-current"),
   kindertrainingWeekReload: document.querySelector("#kindertraining-week-reload"),
+  kindertrainingExtraOpen: document.querySelector("#kindertraining-extra-open"),
+  kindertrainingExtraDialog: document.querySelector("#kindertraining-extra-dialog"),
+  kindertrainingExtraClose: document.querySelector("#kindertraining-extra-close"),
+  kindertrainingExtraGroup: document.querySelector("#kindertraining-extra-group"),
+  kindertrainingExtraDate: document.querySelector("#kindertraining-extra-date"),
+  kindertrainingExtraStatus: document.querySelector("#kindertraining-extra-status"),
+  kindertrainingExtraError: document.querySelector("#kindertraining-extra-error"),
+  kindertrainingExtraSuccess: document.querySelector("#kindertraining-extra-success"),
+  kindertrainingExtraLoad: document.querySelector("#kindertraining-extra-load"),
+  kindertrainingExtraApprove: document.querySelector("#kindertraining-extra-approve"),
+  kindertrainingExtraRevoke: document.querySelector("#kindertraining-extra-revoke"),
   kindertrainingWeekLabel: document.querySelector("#kindertraining-week-label"),
   kindertrainingWeek: document.querySelector("#kindertraining-week"),
   kindertrainingWeekState: document.querySelector("#kindertraining-week-state"),
@@ -2534,6 +2571,8 @@ let kindertrainingWeekSaving = false;
 let kindertrainingWeekAutosaveTimer = null;
 let kindertrainingWeekLoadId = 0;
 let kindertrainingLoadedGroupId = "";
+let kindertrainingExtraDraft = null;
+let kindertrainingExtraRequestId = 0;
 let masterdataLoading = false;
 let masterdataSessionGeneration = 0;
 let masterdataExchangeBusy = false;
@@ -2777,6 +2816,26 @@ elements.kindertrainingWeekCurrent?.addEventListener("click", () => void moveKin
 elements.kindertrainingWeekReload?.addEventListener("click", () => void reloadKindertrainingWeek());
 elements.kindertrainingWeekSave?.addEventListener("click", () => void saveKindertrainingWeek());
 elements.kindertrainingGroup?.addEventListener("change", () => void handleKindertrainingWeekGroupChange());
+elements.kindertrainingExtraOpen?.addEventListener("click", openTrainerExtraDay);
+elements.kindertrainingExtraClose?.addEventListener("click", closeTrainerExtraDay);
+elements.kindertrainingExtraDate?.addEventListener("change", () => {
+  kindertrainingExtraRequestId += 1;
+  kindertrainingExtraDraft = null;
+  if (elements.kindertrainingExtraStatus) {
+    elements.kindertrainingExtraStatus.textContent = "Datum prüfen.";
+  }
+  refreshTrainerExtraDayControls();
+});
+elements.kindertrainingExtraLoad?.addEventListener("click", () => void loadTrainerExtraDay());
+elements.kindertrainingExtraApprove?.addEventListener("click", () => void saveTrainerExtraDay(true));
+elements.kindertrainingExtraRevoke?.addEventListener("click", () => void saveTrainerExtraDay(false));
+elements.kindertrainingExtraDialog?.addEventListener("cancel", (event) => {
+  if (kindertrainingExtraDraft?.saving) event.preventDefault();
+});
+elements.kindertrainingExtraDialog?.addEventListener("close", () => {
+  kindertrainingExtraRequestId += 1;
+  kindertrainingExtraDraft = null;
+});
 elements.kindertrainingWeekDays?.addEventListener("click", handleKindertrainingWeekClick);
 elements.kindertrainingWeekDays?.addEventListener("change", handleKindertrainingWeekChange);
 elements.kindertrainingWeekDays?.addEventListener("input", handleKindertrainingWeekInput);
@@ -2965,6 +3024,9 @@ function resetAttendanceSessionState() {
   clearKindertrainingWeekAutosave();
   kindertrainingWeekLoadId += 1;
   kindertrainingLoadedGroupId = "";
+  kindertrainingExtraRequestId += 1;
+  kindertrainingExtraDraft = null;
+  elements.kindertrainingExtraDialog?.close();
   renderKindertrainingGroups();
   renderKindertrainingWeekLabel();
   renderKindertrainingWeek();
@@ -3044,7 +3106,8 @@ function resetMasterdataSessionState() {
 async function handleSignOut() {
   if (busy) return;
 
-  if (groupPolicyDraft?.saving || extraDayDraft?.saving) {
+  if (groupPolicyDraft?.saving || extraDayDraft?.saving ||
+      kindertrainingExtraDraft?.saving) {
     showMessage(elements.appSessionMessage, "Trainingstag-Einstellungen werden noch gespeichert.");
     return;
   }
@@ -4748,6 +4811,15 @@ function refreshKindertrainingWeekControls() {
     elements.kindertrainingWeekReload,
   ]) {
     if (control) control.disabled = !kindertrainingReady || !hasGroup || busyWeek;
+  }
+  const group = kindertrainingGroups.find(
+    (entry) => entry.id === elements.kindertrainingGroup?.value,
+  );
+  if (elements.kindertrainingExtraOpen) {
+    elements.kindertrainingExtraOpen.hidden =
+      !kindertrainingReady || group?.attendanceMode !== "self_registration";
+    elements.kindertrainingExtraOpen.disabled =
+      !kindertrainingReady || busyWeek;
   }
   if (elements.kindertrainingWeekSave) {
     elements.kindertrainingWeekSave.disabled =
