@@ -36,6 +36,36 @@ Das ist eine **zulässigkeitsbedürftige, nicht aktivierte
 Datenschutz-Ausnahme** zum append-only Actor-Audit und keine automatische
 gesetzliche oder technische Löschfreigabe.
 
+### Optionale Lifecycle-/Retention-/Restore-Anbindung (noch nicht aktiviert)
+
+`registration-schedule-lifecycle.ts` enthält einen streng
+markergebundenen Privacy-Hook. Er ist derzeit lediglich **optional** in
+`lifecycle-service.ts`, `retention.ts` und `restore-reconciliation.ts`
+verdrahtet; in `postgres.ts` und im aktiven Worker gibt es weiterhin
+**keine** Erasure-Injektion. Ohne Hook bleiben die bisherigen v11-Abläufe
+unverändert. Nach Freigabe eines v12-Schemas muss der Hook in allen drei
+Löschwegen als verpflichtender Teil eines **separat genehmigten**
+Datenschutz-/Backup-/Restore-Gates aktiviert werden.
+
+- **Manuelle Löschung:** Nach dem prüfbaren kanonischen App-Delete-Marker
+  erfolgt die A02.4-Bearbeiterredaktion. Fehler blockieren die
+  Abschlussmeldung; erneuter autorisierter Löschlauf darf den Marker
+  idempotent nacharbeiten.
+- **Retention:** Bei aktiviertem Hook werden zuerst alle noch gültigen
+  bestehenden Delete-Marker über eine authoritative Quelle nachgespielt.
+  Erst danach dürfen Retention-Status und Marker-Purge abgearbeitet werden.
+  Neue Retention-Löschungen rufen die Redaktionsprüfung direkt nach dem
+  App-Delete-Marker auf. Ohne Markerquelle wird der aktivierte Pfad
+  **gesperrt**, bevor Status- oder Purge-Operationen stattfinden.
+- **Restore:** Nach geprüfter Wiedereinspielung eines Delete-Markers wird
+  dessen A02.4-Redaktion erneut ausgeführt. Bei Fehlern wird die
+  Restore-Reconciliation nicht erfolgreich abgeschlossen.
+- **Bekannte Grenze:** Ein bereits abgelaufener 35-Tage-Marker kann nicht
+  nachträglich als Autorisierung verwendet werden. Vor v12-Aktivierung
+  müssen Altbestände, die Zeit bis zur erstmaligen Ausführung, ein
+  autoritativer Backup-Stand und ein prüfbarer Nachholplan geklärt werden.
+  Es ist **kein** stillschweigendes Bypass- oder Global-Purge erlaubt.
+
 ## Bereits technisch abgesichert
 
 - Reguläre Gruppenregeln nur über authentifizierten, organisationsgebundenen `athletes:edit`-Pfad (`athletes:view` zum Lesen). Sondertrainingstage zusätzlich über bestehende `kindertraining:view/edit`-Berechtigungen für Trainer **ausschließlich ihrer aktuell zugewiesenen Gruppen**. Die Rollenlogik wird im HTTP-Pfad und der Trainerzuordnungsstatus nochmals atomar beim DB-Schreibvorgang geprüft; ein Trainer erhält dadurch kein allgemeines `athletes:edit`.
@@ -48,7 +78,7 @@ gesetzliche oder technische Löschfreigabe.
 
 1. **Schema-Manifest:** Derzeit `ulc-linz-lifecycle` v11, insgesamt 36 veröffentlichte Migrationen; `0011` bleibt absichtlich außerhalb von `appbasis.database.json`. Nach Freigabe v12, Vertrags-/Driftchecks, Schemaabgleich und isolierte frische Restore-/Migrations-E2E aktualisieren. Den PR vor der Manifestaufnahme **nicht mergen**, weil die Laufzeit die neuen Tabellen abfragt.
 2. **Datenschutz-Inventar:** Das separate maschinenlesbare v12-Delta wurde ergänzt, jedoch weder als v12-Schema aktiviert noch in den export-/deletion-/retention-Verträgen des bestehenden M5-Scope verifiziert. Der alte v0.5-Nachweis wird ausdrücklich nicht als aktueller Beleg verwendet.
-3. **Rechte und Subject Lifecycle:** Der neue offline Preflight und der idempotente Erasure-Baustein benötigen noch einen **kanonisch autorisierten**, vor dem 35-Tage-Markerablauf durchgeführten App-Lifecycle-Caller, Wiederholung nach Teilausfall und Backup-/Restore-Reconciliation. Gegenwärtig wird eine Benutzerlöschung durch den bestehenden Lifecycle **nicht** um A02.4 ergänzt; insbesondere bleiben ältere Marker ohne Folgeprüfung gefährlich. Ausstehende Auskunfts-/Exportpflichten und Löschung von Gruppen-Konfiguration nicht als erfüllt ausgeben.
+3. **Rechte und Subject Lifecycle:** Die gemeinsame optionale Anbindung für manuelle Löschung, Retention-Wiederholung und Restore ist implementiert und erhält eigene Tests, **aber die aktiven Runtime-/Betreiber-Löschwege injizieren sie noch nicht**. Vor der Aktivierung sind eine verpflichtende, kanonisch autorisierte Integration, Fehler-/Retry- und Backup-Promotion-Protokoll, Umgang mit fehlenden/abgelaufenen Markern und fachliche Datenschutzfreigabe erforderlich. Auskunft/Export und Gruppen-Konfigurationslöschung sind weiterhin nicht erfüllt.
 4. **Retention:** Aufbewahrungsfristen für Konfiguration vs. personenbezogene Bearbeiter-/Auditdaten festlegen, technische Löschung und Nachweis in E2E. Kein pauschales „unbegrenzt“ und keine unbegründete Zwangslöschung historischer Anmeldeabsichten.
 5. **Berechtigungsgrenzen / fachliche Abnahme:** Die vorläufig umgesetzte Regel erlaubt Sondertermin-Freigaben für Trainer mit `kindertraining:edit`, ausschließlich in ihren aktuell zugewiesenen Gruppen. Der gesonderte mobile Dialog befindet sich unter Anwesenheit; das allgemeine Gruppenregel-Editing bleibt auf `athletes:edit` beschränkt. Die fachliche Entscheidung und ein gezielter Handytest sind noch ausdrücklich abzunehmen; keine pauschale Rechteausweitung und keine Freigabe anderer Gruppen.
 6. **Races und Zeitumstellung:** Gleichzeitige Policy-/Ausnahme-/Registrierungs-Updates, DB-Trigger-Zeitpunkt bei DST sowie Benutzerfehlermeldungen für konkurrierende Freigaben in E2E prüfen.
