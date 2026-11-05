@@ -71,6 +71,7 @@ import {
 import {
   UlcSelfRegistrationModeError,
   UlcSelfRegistrationNotFoundError,
+  UlcSelfRegistrationWindowError,
 } from "./self-registration-service";
 import {
   normalizeUlcRegistrationSchedule,
@@ -1276,6 +1277,18 @@ async function selfRegistrationResponse(
           headers: { "cache-control": "private, no-store" },
         },
       );
+    }
+    if (error instanceof UlcSelfRegistrationWindowError) {
+      return Response.json({
+        error: {
+          code: error.code,
+          reason: error.reason,
+          message: "Training registration is outside the configured time window.",
+        },
+      }, {
+        status: 409,
+        headers: { "cache-control": "private, no-store" },
+      });
     }
     if (error instanceof UlcSelfRegistrationModeError) {
       return Response.json(
