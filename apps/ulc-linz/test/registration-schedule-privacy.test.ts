@@ -24,7 +24,7 @@ type PendingPrivacyInventory = Readonly<{
   activation: string;
   tables: readonly PendingPrivacyTable[];
   blockers: readonly string[];
-  noRuntimeEndpoint: boolean;
+  noPrivacyPreflightRuntimeEndpoint: boolean;
   noPersonalDataExport: boolean;
 }>;
 
