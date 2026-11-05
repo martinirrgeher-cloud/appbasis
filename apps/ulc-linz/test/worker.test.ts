@@ -6619,3 +6619,182 @@ describe("U12 runtime API", () => {
   });
 
 });
+
+
+describe("A02.4 authenticated training-group policy HTTP contract", () => {
+  const path = "https://ulc.example.test/api/modules/athletes/registration-policy";
+  const schedule = {
+    weekdays: [1, 3, 5],
+    weeksAhead: 5,
+    deadline: { daysBefore: 1, localTime: "18:00" },
+    lateMode: "block",
+  };
+  const group = {
+    id: "group-self-policy",
+    organizationId: "verein-1",
+    name: "Leistungsgruppe",
+    shortName: "LG",
+    description: null,
+    attendanceMode: "self_registration" as const,
+    isActive: true,
+    sortOrder: 1,
+  };
+
+  function workerWithPolicy() {
+    let currentRevision: number | null = null;
+    let storedSchedule: typeof schedule | null = null;
+    let writes = 0;
+    let actor = "";
+    let organization = "";
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      athleteMasterdata: {
+        ...base.athleteMasterdata,
+        async readOrganizationSnapshot(organizationId) {
+          expect(organizationId).toBe("verein-1");
+          return {
+            trainingGroups: [group],
+            athletes: [], athleteContacts: [], trainers: [],
+            athleteGroupMemberships: [], trainerGroupMemberships: [],
+          };
+        },
+      },
+      registrationPolicies: new PostgresUlcRegistrationPolicyRepository({
+        async unsafe(query, parameters = []) {
+          if (query.includes("SELECT weekdays_mask, weeks_ahead")) {
+            if (currentRevision === null || storedSchedule === null) return [];
+            return [{
+              weekdays_mask: storedSchedule.weekdays.reduce(
+                (mask, day) => mask | (1 << (day - 1)), 0,
+              ),
+              weeks_ahead: storedSchedule.weeksAhead,
+              deadline_days_before: storedSchedule.deadline.daysBefore,
+              deadline_local_time: storedSchedule.deadline.localTime,
+              late_mode: storedSchedule.lateMode,
+              revision: currentRevision,
+            }];
+          }
+          if (query.includes("WITH eligible_group")) {
+            organization = String(parameters[0]);
+            actor = String(parameters[7]);
+            if (parameters[1] !== group.id ||
+                parameters[8] !== currentRevision) return [];
+            writes += 1;
+            currentRevision = (currentRevision ?? 0) + 1;
+            storedSchedule = {
+              weekdays: [1, 3, 5],
+              weeksAhead: Number(parameters[3]),
+              deadline: {
+                daysBefore: Number(parameters[4]),
+                localTime: String(parameters[5]),
+              },
+              lateMode: String(parameters[6]),
+            };
+            return [{
+              weekdays_mask: parameters[2],
+              weeks_ahead: parameters[3],
+              deadline_days_before: parameters[4],
+              deadline_local_time: parameters[5],
+              late_mode: parameters[6],
+              revision: currentRevision,
+            }];
+          }
+          throw new Error("Unexpected policy SQL call");
+        },
+      }),
+    }));
+    return { worker, counters: () => ({ writes, actor, organization }) };
+  }
+
+  it("uses session identity, same-org masterdata and revisions without browser-owned scope", async () => {
+    const { worker, counters } = workerWithPolicy();
+    const headers = { cookie: currentIdentity.sessionToken };
+    const get = () => worker.fetch(
+      new Request(path + "?groupId=" + group.id, { headers }), validEnv,
+    );
+    const initial = await get();
+    expect(initial.status).toBe(200);
+    expect(initial.headers.get("cache-control")).toBe("private, no-store");
+    await expect(initial.json()).resolves.toEqual({
+      groupId: group.id, schedule: null, revision: null,
+    });
+    const save = (expectedRevision: number | null, scheduleInput: unknown = schedule) =>
+      worker.fetch(new Request(path, {
+        method: "POST", headers,
+        body: JSON.stringify({
+          groupId: group.id, schedule: scheduleInput, expectedRevision,
+        }),
+      }), validEnv);
+
+    const saved = await save(null);
+    expect(saved.status).toBe(200);
+    await expect(saved.json()).resolves.toEqual({
+      groupId: group.id, schedule, revision: 1,
+    });
+    expect(counters()).toEqual({
+      writes: 1, actor: currentIdentity.identity.identityId,
+      organization: "verein-1",
+    });
+    const readBack = await get();
+    expect(readBack.status).toBe(200);
+    await expect(readBack.json()).resolves.toEqual({
+      groupId: group.id, schedule, revision: 1,
+    });
+    const stale = await save(null);
+    expect(stale.status).toBe(409);
+    expect(counters().writes).toBe(1);
+    const updated = await save(1);
+    expect(updated.status).toBe(200);
+    await expect(updated.json()).resolves.toMatchObject({ revision: 2 });
+  });
+
+  it("rejects unauthenticated, invalid or foreign-policy input before any write", async () => {
+    const { worker, counters } = workerWithPolicy();
+    const headers = { cookie: currentIdentity.sessionToken };
+    const anon = await worker.fetch(new Request(path + "?groupId=" + group.id), validEnv);
+    expect(anon.status).toBe(401);
+    const badGroup = await worker.fetch(
+      new Request(path + "?groupId=other-group", { headers }), validEnv,
+    );
+    expect(badGroup.status).toBe(404);
+    const invalid = await worker.fetch(new Request(path, {
+      method: "POST", headers,
+      body: JSON.stringify({
+        groupId: group.id, expectedRevision: null,
+        schedule: { ...schedule, weekdays: [] },
+      }),
+    }), validEnv);
+    expect(invalid.status).toBe(400);
+    const orgSpoof = await worker.fetch(new Request(path, {
+      method: "POST", headers,
+      body: JSON.stringify({
+        groupId: group.id, expectedRevision: null,
+        organizationId: "foreign-org", schedule,
+      }),
+    }), validEnv);
+    expect(orgSpoof.status).toBe(400);
+    expect(counters().writes).toBe(0);
+  });
+
+  it("denies policy administration without athletes:edit", async () => {
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      athletesAccess: {
+        async assertViewAccess() {
+          return { organizationId: "verein-1", canEdit: false };
+        },
+        async assertEditAccess() {
+          throw new UlcLinzAuthorizationDeniedError();
+        },
+      },
+    }));
+    const response = await worker.fetch(new Request(path, {
+      method: "POST",
+      headers: { cookie: currentIdentity.sessionToken },
+      body: JSON.stringify({ groupId: group.id, expectedRevision: null, schedule }),
+    }), validEnv);
+    expect(response.status).toBe(403);
+  });
+});
