@@ -24,12 +24,14 @@ export interface UlcSelfRegistrationOption {
   readonly sessionState: "scheduled" | "cancelled" | null;
   readonly intention: UlcTrainingRegistrationIntention;
   readonly revision: number | null;
+  readonly note?: string | null;
 }
 
 export interface UlcProxyRegistrationOption {
   readonly athlete: Readonly<{ id: string; firstName: string; lastName: string }>;
   readonly intention: UlcTrainingRegistrationIntention;
   readonly revision: number | null;
+  readonly note?: string | null;
 }
 
 export interface UlcProxyRegistrationRoster {
@@ -146,6 +148,7 @@ export function createUlcSelfRegistrationService({
           }),
           intention: matching[0]?.intention ?? "unknown",
           revision: matching[0]?.revision ?? null,
+          ...(matching[0]?.note !== undefined ? { note: matching[0].note } : {}),
         });
       });
       return Object.freeze({
@@ -166,6 +169,7 @@ export function createUlcSelfRegistrationService({
         readonly sessionDate: string;
         readonly intention: UlcTrainingRegistrationIntention;
         readonly expectedRevision: number | null;
+        readonly note?: string | null;
       },
     ): Promise<UlcProxyRegistrationOption> {
       const context = await resolveContext(
@@ -189,6 +193,7 @@ export function createUlcSelfRegistrationService({
         expectedRevision,
         actor,
         context.athleteId, // triggers atomic DB-side proxy scope validation
+        input.note,
       );
       return Object.freeze({
         athlete: Object.freeze({
@@ -196,6 +201,7 @@ export function createUlcSelfRegistrationService({
         }),
         intention: registration.intention,
         revision: registration.revision,
+        ...(registration.note !== undefined ? { note: registration.note } : {}),
       });
     },
 
@@ -208,6 +214,7 @@ export function createUlcSelfRegistrationService({
         readonly sessionDate: string;
         readonly intention: UlcTrainingRegistrationIntention;
         readonly expectedRevision: number | null;
+        readonly note?: string | null;
       },
     ): Promise<UlcSelfRegistrationOption> {
       const context = await resolveContext(
@@ -251,6 +258,8 @@ export function createUlcSelfRegistrationService({
         intention,
         expectedRevision,
         actor,
+        undefined,
+        input.note,
       );
       return Object.freeze({
         group: groupOption(group),
@@ -258,6 +267,7 @@ export function createUlcSelfRegistrationService({
         sessionState: "scheduled",
         intention: registration.intention,
         revision: registration.revision,
+        ...(registration.note !== undefined ? { note: registration.note } : {}),
       });
     },
   });
@@ -398,6 +408,7 @@ function optionFromSnapshot(
     sessionState: snapshot.session.state,
     intention: registration?.intention ?? "unknown",
     revision: registration?.revision ?? null,
+    ...(registration?.note !== undefined ? { note: registration.note } : {}),
   });
 }
 

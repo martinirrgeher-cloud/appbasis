@@ -1,10 +1,12 @@
 import { readFile } from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { loadRepositoryOwnerMigrationPlan } from "./database-migration-executor.mjs";
 import { validateUlcLinzD4PreviewDatabaseCredentials } from "./ulc-linz-d4-preview-hyperdrive.mjs";
+import { ULC_LINZ_LIFECYCLE_DATABASE_OWNER } from "./ulc-linz-database-contract.mjs";
 
 const APP_ID = "ulc-linz";
 const PREVIEW_ENVIRONMENT = "generated-preview-ulc-linz";
@@ -17,10 +19,9 @@ const ATHLETES_TARGET_MIGRATION =
   "modules/athletes/migrations/0003_appbasis_training_group_attendance_mode.sql";
 const LIFECYCLE_TARGET_MIGRATION =
   "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql";
-// The repository is now at lifecycle v10, but the attendance-only
-// migration plan must remain pinned to v9 and never apply functionary v10.
-const LIFECYCLE_MANIFEST_TAIL_MIGRATION =
-  "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql";
+// This historical preview workflow applies only the reviewed lifecycle-v9
+// registration migration, never later v10+ app migrations. Validate the full
+// current canonical owner before selecting the historical v9 delta.
 
 const REQUIRED_BASELINE_TABLES = Object.freeze([
   "appbasis_training_group",
@@ -103,15 +104,12 @@ export async function loadUlcAttendancePreviewPlan(
     ATHLETES_TARGET_MIGRATION,
     "Athletes",
   );
-  assertTargetOwner(
-    lifecycleOwner,
-    10,
-    LIFECYCLE_MANIFEST_TAIL_MIGRATION,
-    "ULC lifecycle",
-  );
-  if (lifecycleOwner.migrations.at(-2) !== LIFECYCLE_TARGET_MIGRATION) {
+  if (
+    !isDeepStrictEqual(lifecycleOwner, ULC_LINZ_LIFECYCLE_DATABASE_OWNER) ||
+    lifecycleOwner.migrations[8] !== LIFECYCLE_TARGET_MIGRATION
+  ) {
     throw new UlcAttendancePreviewConfigurationError(
-      "ULC attendance migration is not the reviewed lifecycle v9 delta.",
+      "ULC attendance migration is not the reviewed lifecycle v9 delta within the canonical app owner.",
     );
   }
 

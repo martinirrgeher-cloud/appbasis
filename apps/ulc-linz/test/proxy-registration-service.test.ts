@@ -129,7 +129,7 @@ describe("A02.2 athlete colleague proxy registration", () => {
       intention: "attending", revision: 4,
     });
     expect(calls).toEqual([[
-      ORG, "session-1", TARGET, "attending", 3, IDENTITY, ACTOR,
+      ORG, "session-1", TARGET, "attending", 3, IDENTITY, ACTOR, undefined,
     ]]);
   });
 

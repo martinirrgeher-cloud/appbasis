@@ -5030,6 +5030,75 @@ describe("Training self-registration runtime API", () => {
     expect(denied.status).toBe(403);
   });
 
+
+  it("accepts bounded optional day notes for both own and scoped proxy registration", async () => {
+    const received: unknown[] = [];
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      selfRegistration: {
+        ...base.selfRegistration,
+        async save(org, athleteId, actor, input) {
+          received.push({ type: "own", org, athleteId, actor, input });
+          return {
+            group: { id: input.groupId, name: "LG", shortName: "LG" },
+            sessionDate: input.sessionDate, sessionState: "scheduled" as const,
+            intention: input.intention, revision: 2,
+            ...(input.note !== undefined ? { note: input.note } : {}),
+          };
+        },
+        async saveProxy(org, athleteId, actor, input) {
+          received.push({ type: "proxy", org, athleteId, actor, input });
+          return {
+            athlete: { id: input.targetAthleteId, firstName: "Test", lastName: "Kollege" },
+            intention: input.intention, revision: 2,
+            ...(input.note !== undefined ? { note: input.note } : {}),
+          };
+        },
+      },
+    }));
+    const endpoint = "https://ulc.example.test/api/modules/kindertraining/registration";
+    const baseBody = { groupId: "lg", sessionDate: "2026-11-04",
+      intention: "attending", expectedRevision: 1 };
+    const makePost = (url: string, body: Record<string, unknown>) =>
+      worker.fetch(new Request(url, {
+        method: "POST",
+        headers: { cookie: currentIdentity.sessionToken,
+          "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }), validEnv);
+    const own = await makePost(endpoint, { ...baseBody, note: "Komme später" });
+    expect(own.status).toBe(200);
+    await expect(own.json()).resolves.toMatchObject({ option: { note: "Komme später" } });
+
+    const proxy = await makePost(endpoint + "/proxy", {
+      ...baseBody, targetAthleteId: "colleague", note: null,
+    });
+    expect(proxy.status).toBe(200);
+    await expect(proxy.json()).resolves.toMatchObject({
+      option: { athlete: { id: "colleague" }, note: null },
+    });
+    expect(received).toEqual([
+      { type: "own", org: "verein-1", athleteId: "athlete-self",
+        actor: currentIdentity.identity.identityId,
+        input: { ...baseBody, note: "Komme später" } },
+      { type: "proxy", org: "verein-1", athleteId: "athlete-self",
+        actor: currentIdentity.identity.identityId,
+        input: { ...baseBody, targetAthleteId: "colleague", note: null } },
+    ]);
+
+    for (const url of [endpoint, endpoint + "/proxy"]) {
+      for (const note of ["x".repeat(161), "Zeile 1\nZeile 2", 99, {}, true]) {
+        const bad = await makePost(url, {
+          ...baseBody, ...(url.endsWith("/proxy") ? { targetAthleteId: "colleague" } : {}),
+          note,
+        });
+        expect(bad.status).toBe(400);
+      }
+    }
+    expect(received).toHaveLength(2);
+  });
+
 });
 
 describe("U12 runtime API", () => {

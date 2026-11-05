@@ -44,6 +44,7 @@ export interface UlcTrainingRegistration {
   readonly intention: UlcTrainingRegistrationIntention;
   readonly revision: number;
   readonly updatedByIdentityId: string;
+  readonly note?: string | null;
 }
 
 export class UlcTrainingValidationError extends Error {
@@ -95,6 +96,7 @@ export function createUlcTrainingRegistration(
     readonly intention: UlcTrainingRegistrationIntention;
     readonly revision: number;
     readonly updatedByIdentityId: string;
+    readonly note?: string | null;
   },
 ): UlcTrainingRegistration {
   return Object.freeze({
@@ -107,7 +109,23 @@ export function createUlcTrainingRegistration(
       input.updatedByIdentityId,
       "Registration actor identity id",
     ),
+    ...(input.note !== undefined ? { note: normalizeUlcRegistrationNote(input.note) } : {}),
   });
+}
+
+export function normalizeUlcRegistrationNote(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string") {
+    throw new UlcTrainingValidationError("Registration note must be text or null.");
+  }
+  const note = value.trim();
+  if (note === "") return null;
+  if (note.length > 160 || /[\x00-\x1f\x7f]/.test(note)) {
+    throw new UlcTrainingValidationError(
+      "Registration note must contain at most 160 printable characters.",
+    );
+  }
+  return note;
 }
 
 export function normalizeUlcTrainingAttendanceSet(

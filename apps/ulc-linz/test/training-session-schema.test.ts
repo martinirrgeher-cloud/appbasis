@@ -15,8 +15,25 @@ const registrationMigrationPath = resolve(
   "migrations",
   "0008_ulc_linz_session_registration.sql",
 );
+const noteMigrationPath = resolve(
+  appRoot,
+  "migrations",
+  "0010_ulc_linz_registration_notes.sql",
+);
 
 describe("ULC shared training schema", () => {
+  it("adds optional bounded notes to current registration and append-only actor history", async () => {
+    const sql = await readFile(noteMigrationPath, "utf8");
+    expect(sql).toContain("ALTER TABLE ulc_linz_training_registration");
+    expect(sql).toContain("ALTER TABLE ulc_linz_training_registration_change");
+    expect((sql.match(/ADD COLUMN note text NULL/g) ?? [])).toHaveLength(2);
+    expect((sql.match(/char_length\(note\) <= 160/g) ?? [])).toHaveLength(2);
+    expect((sql.match(/note !~ '\[\[:cntrl:\]\]'/g) ?? [])).toHaveLength(2);
+    expect(sql).not.toContain("DROP TABLE");
+    expect(sql).not.toContain("CREATE TABLE");
+  });
+
+
   it("keeps Kindertraining, U12 and U14 in one app-owned persistence contract", async () => {
     const sql = await readFile(migrationPath, "utf8");
 

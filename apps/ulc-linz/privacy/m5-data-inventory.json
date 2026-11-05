@@ -161,6 +161,7 @@
         "restore-reconciliation-requires-authoritative-newer-database-or-recovery-point-before-promotion",
         "app-owned-training-session-and-attendance-lifecycle-pending",
         "app-owned-training-registration-and-change-history-lifecycle-pending",
+        "future-schema-v11-registration-note-free-text-needs-data-protection-review-before-preview-deployment",
         "trainer-identity-link-audit-is-append-only-and-atomically-written-with-membership-subject-changes",
         "trainer-identity-audit-12-month-purge-activation-pending-schema-deploy",
         "app-owned-exercise-catalog-configuration-not-personal",

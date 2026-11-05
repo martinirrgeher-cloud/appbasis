@@ -575,6 +575,11 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <select id="registration-proxy-athlete"></select>
               </label>
               <p id="registration-proxy-current" class="settings-note" role="status"></p>
+              <label class="registration-proxy-note-label">Hinweis für diesen Trainingstag (optional)
+                <input id="registration-proxy-note" type="text" maxlength="160" placeholder="z. B. komme 15 Minuten später" />
+              </label>
+              <button class="button button--secondary" id="registration-proxy-note-save" type="button">Hinweis speichern</button>
+              <small class="registration-proxy-hint">Max. 160 Zeichen. Für Gruppenmitglieder mit Stellvertretungszugang und Trainer sichtbar; keine Gesundheitsdaten eingeben.</small>
               <div class="registration-actions" id="registration-proxy-actions">
                 <button class="button button--secondary registration-action" type="button" data-registration-proxy-intention="attending">Komme</button>
                 <button class="button button--secondary registration-action" type="button" data-registration-proxy-intention="maybe">Vielleicht</button>
@@ -2003,6 +2008,12 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
 }
 .kindertraining-week-day--unavailable small { color: var(--secondary); }
 /* A02.2: compact, keyboard-accessible colleague proxy registration dialog. */
+ .registration-note-editor { display: grid; min-width: 0; gap: 6px; margin-top: 8px; }
+.registration-note-editor label { display: grid; min-width: 0; gap: 5px; }
+.registration-note-editor input { width: 100%; min-width: 0; box-sizing: border-box; min-height: 44px; }
+.registration-note-editor .button { justify-self: start; min-height: 40px; }
+.registration-note-editor small { color: var(--secondary); font-size: .74rem; }
+
 .registration-proxy-dialog {
   box-sizing: border-box; width: min(460px, calc(100vw - 24px));
   max-width: 460px; max-height: calc(100dvh - 24px);
@@ -2016,6 +2027,9 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
 .registration-proxy-header .button { width: 40px; min-width: 40px; min-height: 40px; padding: 0; }
 .registration-proxy-athlete-label { display: grid; gap: 5px; margin-top: 14px; }
 .registration-proxy-athlete-label select { width: 100%; min-width: 0; min-height: 44px; }
+.registration-proxy-note-label { display: grid; gap: 5px; margin-top: 12px; }
+.registration-proxy-note-label input { width: 100%; min-width: 0; box-sizing: border-box; min-height: 44px; }
+#registration-proxy-note-save { margin-top: 7px; min-height: 40px; }
 #registration-proxy-actions { margin-top: 12px; }
 #registration-proxy-actions .button { min-height: 44px; }
 .registration-proxy-hint { display: block; margin-top: 12px; color: var(--secondary); line-height: 1.4; }
@@ -2125,6 +2139,8 @@ const elements = {
   registrationProxyError: document.querySelector("#registration-proxy-error"),
   registrationProxyAthlete: document.querySelector("#registration-proxy-athlete"),
   registrationProxyCurrent: document.querySelector("#registration-proxy-current"),
+  registrationProxyNote: document.querySelector("#registration-proxy-note"),
+  registrationProxyNoteSave: document.querySelector("#registration-proxy-note-save"),
   registrationProxyActions: document.querySelector("#registration-proxy-actions"),
   kindertrainingQuickAction: document.querySelector("#kindertraining-quick-action"),
   kindertrainingAccessLabel: document.querySelector("#kindertraining-access-label"),
@@ -2422,6 +2438,7 @@ let selfRegistrationSavingKeys = new Set();
 let selfRegistrationConflictReloadPending = false;
 let selfRegistrationWeekStart = "";
 let selfRegistrationOptions = [];
+let selfRegistrationNoteDrafts = new Map();
 let selfRegistrationProxy = null;
 let selfRegistrationProxyRequestId = 0;
 let kindertrainingReady = false;
@@ -2615,9 +2632,40 @@ elements.registrationList?.addEventListener("click", (event) => {
   }
   void handleSelfRegistrationClick(event);
 });
-elements.registrationProxyClose?.addEventListener("click", closeSelfRegistrationProxy);
+elements.registrationProxyClose?.addEventListener("click", requestCloseSelfRegistrationProxy);
+elements.registrationProxyDialog?.addEventListener("cancel", (event) => {
+  if (selfRegistrationProxy?.saving) {
+    event.preventDefault();
+    showMessage(elements.registrationProxyError,
+      "Die stellvertretende Anmeldung wird noch gespeichert.");
+    return;
+  }
+  if (selfRegistrationProxy?.noteDrafts?.size > 0 &&
+      !window.confirm("Ungespeicherte stellvertretende Hinweise verwerfen?")) {
+    event.preventDefault();
+  }
+});
 elements.registrationProxyDialog?.addEventListener("close", closeSelfRegistrationProxy);
 elements.registrationProxyAthlete?.addEventListener("change", renderSelfRegistrationProxy);
+elements.registrationProxyNote?.addEventListener("input", () => {
+  const state = selfRegistrationProxy;
+  const selectedId = elements.registrationProxyAthlete?.value || "";
+  const selected = state?.roster?.options.find((item) => item.athlete.id === selectedId);
+  if (!selected) return;
+  const text = elements.registrationProxyNote.value;
+  if (text.trim() === (selected.note || "")) state.noteDrafts.delete(selectedId);
+  else state.noteDrafts.set(selectedId, text);
+  if (elements.registrationProxyNoteSave) {
+    elements.registrationProxyNoteSave.disabled =
+      state.loading || state.saving || !state.noteDrafts.has(selectedId);
+  }
+});
+elements.registrationProxyNoteSave?.addEventListener("click", () => {
+  const state = selfRegistrationProxy;
+  const id = elements.registrationProxyAthlete?.value || "";
+  const selected = state?.roster?.options.find((entry) => entry.athlete.id === id);
+  if (selected) void saveSelfRegistrationProxy(selected.intention);
+});
 elements.registrationProxyActions?.addEventListener("click", (event) => {
   const button = event.target?.closest?.("[data-registration-proxy-intention]");
   if (button && elements.registrationProxyActions?.contains(button)) {
@@ -2798,6 +2846,7 @@ function resetAttendanceSessionState() {
   selfRegistrationConflictReloadPending = false;
   selfRegistrationWeekStart = "";
   selfRegistrationOptions = [];
+  selfRegistrationNoteDrafts.clear();
   closeSelfRegistrationProxy();
   showMessage(elements.registrationMessage, "");
   showMessage(elements.registrationSuccess, "");
@@ -2896,6 +2945,13 @@ function resetMasterdataSessionState() {
 async function handleSignOut() {
   if (busy) return;
 
+  if (selfRegistrationSavingKeys.size > 0 || selfRegistrationProxy?.saving) {
+    showMessage(
+      elements.appSessionMessage,
+      "Eine Anmeldung oder ein Hinweis wird noch gespeichert. Bitte zuerst abschließen lassen.",
+    );
+    return;
+  }
   if (masterdataExchangeBusy || trainerIdentityLoading) {
     showMessage(
       elements.appSessionMessage,
@@ -2933,6 +2989,12 @@ async function handleSignOut() {
       "Der Countdown läuft noch. Wirklich abmelden und den Countdown beenden?",
     )
   ) {
+    return;
+  }
+
+  if ((selfRegistrationNoteDrafts.size > 0 ||
+       (selfRegistrationProxy?.noteDrafts?.size || 0) > 0) &&
+      !window.confirm("Ungespeicherte Anmeldehinweise verwerfen und abmelden?")) {
     return;
   }
 
@@ -3008,6 +3070,7 @@ async function bootstrapSelfRegistration() {
   selfRegistrationSavingKeys = new Set();
   selfRegistrationWeekStart = localWeekStart(new Date());
   selfRegistrationOptions = [];
+  selfRegistrationNoteDrafts.clear();
   closeSelfRegistrationProxy();
   renderSelfRegistrationWeekLabel();
   renderSelfRegistration();
@@ -3135,7 +3198,10 @@ function isSelfRegistrationOption(option, sessionDate) {
       option.intention,
     ) &&
     (option.revision === null ||
-      (Number.isSafeInteger(option.revision) && option.revision >= 1))
+      (Number.isSafeInteger(option.revision) && option.revision >= 1)) &&
+    (!("note" in option) || option.note === null ||
+      (typeof option.note === "string" && option.note.length <= 160 &&
+        !/[\x00-\x1f\x7f]/.test(option.note)))
   );
 }
 
@@ -3262,6 +3328,42 @@ function renderSelfRegistration() {
         actions.append(button);
       }
       card.append(actions);
+      const noteBox = document.createElement("div");
+      noteBox.className = "registration-note-editor";
+      const noteLabel = document.createElement("label");
+      noteLabel.textContent = "Hinweis für diesen Trainingstag (optional)";
+      const noteInput = document.createElement("input");
+      noteInput.type = "text";
+      noteInput.maxLength = 160;
+      noteInput.placeholder = "z. B. komme 15 Minuten später";
+      noteInput.dataset.registrationNoteInput = "true";
+      noteInput.value = selfRegistrationNoteDrafts.has(optionKey)
+        ? selfRegistrationNoteDrafts.get(optionKey)
+        : option.note || "";
+      noteInput.disabled = optionSaving || selfRegistrationLoading;
+      const noteSave = document.createElement("button");
+      noteSave.type = "button";
+      noteSave.className = "button button--secondary";
+      noteSave.textContent = "Hinweis speichern";
+      noteSave.dataset.registrationGroup = option.group.id;
+      noteSave.dataset.registrationDate = option.sessionDate;
+      noteSave.dataset.registrationNoteSave = "true";
+      noteSave.disabled = optionSaving ||
+        noteInput.value.trim() === (option.note || "");
+      noteInput.addEventListener("input", () => {
+        if (noteInput.value.trim() === (option.note || "")) {
+          selfRegistrationNoteDrafts.delete(optionKey);
+        } else {
+          selfRegistrationNoteDrafts.set(optionKey, noteInput.value);
+        }
+        noteSave.disabled = noteInput.disabled ||
+          !selfRegistrationNoteDrafts.has(optionKey);
+      });
+      noteLabel.append(noteInput);
+      const noteHelp = document.createElement("small");
+      noteHelp.textContent = "Max. 160 Zeichen. Für Gruppenmitglieder mit Stellvertretungszugang und Trainer sichtbar; keine Gesundheitsdaten eingeben.";
+      noteBox.append(noteLabel, noteSave, noteHelp);
+      card.append(noteBox);
       const proxy = document.createElement("button");
       proxy.type = "button";
       proxy.className = "button button--secondary registration-proxy-open";
@@ -3276,6 +3378,19 @@ function renderSelfRegistration() {
   }
 }
 
+function requestCloseSelfRegistrationProxy() {
+  if (selfRegistrationProxy?.saving) {
+    showMessage(elements.registrationProxyError,
+      "Die stellvertretende Anmeldung wird noch gespeichert.");
+    return;
+  }
+  if (selfRegistrationProxy?.noteDrafts?.size > 0 &&
+      !window.confirm("Ungespeicherte stellvertretende Hinweise verwerfen?")) {
+    return;
+  }
+  closeSelfRegistrationProxy();
+}
+
 function closeSelfRegistrationProxy() {
   selfRegistrationProxyRequestId += 1;
   selfRegistrationProxy = null;
@@ -3283,6 +3398,7 @@ function closeSelfRegistrationProxy() {
     elements.registrationProxyDialog.close();
   }
   elements.registrationProxyAthlete?.replaceChildren();
+  if (elements.registrationProxyNote) elements.registrationProxyNote.value = "";
   showMessage(elements.registrationProxyError, "");
 }
 
@@ -3300,7 +3416,10 @@ function isSelfRegistrationProxyRoster(roster, groupId, sessionDate) {
         seen.has(athlete.id) ||
         !["unknown", "attending", "not_attending", "maybe"].includes(entry.intention) ||
         !(entry.revision === null ||
-          (Number.isSafeInteger(entry.revision) && entry.revision >= 1))) {
+          (Number.isSafeInteger(entry.revision) && entry.revision >= 1)) ||
+        !(!("note" in entry) || entry.note === null ||
+          (typeof entry.note === "string" && entry.note.length <= 160 &&
+            !/[\x00-\x1f\x7f]/.test(entry.note)))) {
       return false;
     }
     seen.add(athlete.id);
@@ -3326,6 +3445,21 @@ function renderSelfRegistrationProxy() {
   }
   const selected = options.find((option) => option.athlete.id === selector.value);
   selector.disabled = state.loading || state.saving || options.length === 0;
+  const noteInput = elements.registrationProxyNote;
+  const noteSave = elements.registrationProxyNoteSave;
+  if (noteInput) {
+    noteInput.value = selected
+      ? (state.noteDrafts.has(selected.athlete.id)
+          ? state.noteDrafts.get(selected.athlete.id) : selected.note || "")
+      : "";
+    noteInput.disabled = state.loading || state.saving || !selected ||
+      state.roster?.sessionState === "cancelled";
+  }
+  if (noteSave) {
+    noteSave.disabled = state.loading || state.saving || !selected ||
+      state.roster?.sessionState === "cancelled" ||
+      !state.noteDrafts.has(selected?.athlete.id);
+  }
   if (elements.registrationProxyContext) {
     elements.registrationProxyContext.textContent =
       state.groupName + " · " + germanDate(state.sessionDate);
@@ -3361,7 +3495,7 @@ async function openSelfRegistrationProxy(groupId, sessionDate) {
   const requestId = ++selfRegistrationProxyRequestId;
   selfRegistrationProxy = {
     groupId, sessionDate, groupName: option.group.name,
-    roster: null, loading: true, saving: false,
+    roster: null, loading: true, saving: false, noteDrafts: new Map(),
   };
   showMessage(elements.registrationProxyError, "");
   if (!elements.registrationProxyDialog?.open) {
@@ -3401,7 +3535,11 @@ async function saveSelfRegistrationProxy(intention) {
       state.roster.sessionState === "cancelled" ||
       !["unknown", "attending", "not_attending", "maybe"].includes(intention)) return;
   const selected = state.roster.options.find((option) => option.athlete.id === id);
-  if (!selected || selected.intention === intention) return;
+  if (!selected) return;
+  const noteDraft = state.noteDrafts.get(id);
+  const noteChanged = noteDraft !== undefined &&
+    noteDraft.trim() !== (selected.note || "");
+  if (selected.intention === intention && !noteChanged) return;
   const generation = attendanceSessionGeneration;
   const requestId = selfRegistrationProxyRequestId;
   state.saving = true;
@@ -3416,6 +3554,7 @@ async function saveSelfRegistrationProxy(intention) {
         targetAthleteId: id,
         intention,
         expectedRevision: selected.revision,
+        ...(noteChanged ? { note: noteDraft } : {}),
       }),
     });
     if (generation !== attendanceSessionGeneration ||
@@ -3423,11 +3562,13 @@ async function saveSelfRegistrationProxy(intention) {
     const saved = payload?.option;
     if (saved?.athlete?.id !== id ||
         !["unknown", "attending", "not_attending", "maybe"].includes(saved.intention) ||
-        !Number.isSafeInteger(saved.revision) || saved.revision < 1) {
+        !Number.isSafeInteger(saved.revision) || saved.revision < 1 ||
+        (noteChanged && (saved.note ?? null) !== (noteDraft.trim() || null))) {
       throw new Error("INVALID_PROXY_REGISTRATION_SAVE");
     }
     state.roster.options = state.roster.options.map((option) =>
       option.athlete.id === id ? saved : option);
+    if (noteChanged) state.noteDrafts.delete(id);
   } catch (error) {
     if (generation !== attendanceSessionGeneration ||
         requestId !== selfRegistrationProxyRequestId) return;
@@ -3458,11 +3599,12 @@ async function handleSelfRegistrationClick(event) {
   }
   const groupId = control.dataset.registrationGroup || "";
   const sessionDate = control.dataset.registrationDate || "";
-  const intention = control.dataset.intention || "";
+  const noteOnly = control.dataset.registrationNoteSave === "true";
+  const clickedIntention = control.dataset.intention || "";
   if (
     !groupId ||
     !sessionDate ||
-    !["unknown", "attending", "not_attending", "maybe"].includes(intention)
+    (!noteOnly && !["unknown", "attending", "not_attending", "maybe"].includes(clickedIntention))
   ) {
     return;
   }
@@ -3474,9 +3616,13 @@ async function handleSelfRegistrationClick(event) {
       candidate.group.id === groupId &&
       candidate.sessionDate === sessionDate,
   );
-  if (!option || option.sessionState === "cancelled" || option.intention === intention) {
-    return;
-  }
+  if (!option || option.sessionState === "cancelled") return;
+  const intention = noteOnly ? option.intention : clickedIntention;
+  const noteDraft = selfRegistrationNoteDrafts.get(optionKey);
+  const noteChanged = noteDraft !== undefined &&
+    noteDraft.trim() !== (option.note || "");
+  if (noteOnly && !noteChanged) return;
+  if (!noteOnly && option.intention === intention && !noteChanged) return;
 
   const previous = option;
   selfRegistrationSavingKeys.add(optionKey);
@@ -3501,12 +3647,14 @@ async function handleSelfRegistrationClick(event) {
           groupId,
           intention,
           sessionDate,
+          ...(noteChanged ? { note: noteDraft } : {}),
         }),
       },
     );
     if (generation !== attendanceSessionGeneration) return;
     const saved = payload?.option;
-    if (!isSelfRegistrationOption(saved, sessionDate)) {
+    if (!isSelfRegistrationOption(saved, sessionDate) ||
+        (noteChanged && (saved.note ?? null) !== (noteDraft.trim() || null))) {
       throw new Error("INVALID_SELF_REGISTRATION_SAVE");
     }
     selfRegistrationOptions = selfRegistrationOptions.map((candidate) =>
@@ -3515,6 +3663,7 @@ async function handleSelfRegistrationClick(event) {
         ? saved
         : candidate,
     );
+    if (noteChanged) selfRegistrationNoteDrafts.delete(optionKey);
 
   } catch (error) {
     if (generation !== attendanceSessionGeneration) return;
@@ -3562,6 +3711,11 @@ async function handleSelfRegistrationClick(event) {
 
 async function moveSelfRegistrationWeek(offset) {
   if (selfRegistrationLoading || selfRegistrationSavingKeys.size > 0) return;
+  if (selfRegistrationNoteDrafts.size > 0 &&
+      !window.confirm("Ungespeicherte Anmeldehinweise verwerfen und die Woche wechseln?")) {
+    return;
+  }
+  selfRegistrationNoteDrafts.clear();
   selfRegistrationWeekStart =
     offset === 0
       ? localWeekStart(new Date())
@@ -4064,6 +4218,12 @@ function renderKindertrainingWeek() {
         registration.textContent =
           "Voranmeldung: " + kindertrainingRegistrationLabel(participant.intention);
         identity.append(name, registration);
+        if (participant.registrationNote) {
+          const dayNote = document.createElement("small");
+          dayNote.className = "kindertraining-registration-note";
+          dayNote.textContent = "Hinweis: " + participant.registrationNote;
+          identity.append(dayNote);
+        }
 
         const statuses = document.createElement("div");
         statuses.className = "kindertraining-statuses";
