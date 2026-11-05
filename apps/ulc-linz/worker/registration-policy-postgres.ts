@@ -33,7 +33,7 @@ export interface UlcRegistrationPolicyRecord {
   readonly revision: number;
 }
 
-function identifier(input: string, label: string): string {
+function identifier(input: string, _label: string): string {
   if (typeof input !== "string" || input.length < 1 || input.length > 200 ||
       input.trim() !== input) {
     throw new UlcRegistrationPolicyDataError();
@@ -57,7 +57,7 @@ function decodePolicy(row: Record<string, unknown>): UlcRegistrationPolicyRecord
   const mask = row.weekdays_mask;
   const rev = row.revision;
   if (typeof mask !== "number" || !Number.isInteger(mask) ||
-      mask < 1 || mask > 127 || !Number.isSafeInteger(rev) || Number(rev) < 1 ||
+      mask < 1 || mask > 127 || typeof rev !== "number" || !Number.isSafeInteger(rev) || rev < 1 ||
       typeof row.weeks_ahead !== "number" ||
       typeof row.late_mode !== "string") {
     throw new UlcRegistrationPolicyDataError();
@@ -169,7 +169,7 @@ export class PostgresUlcRegistrationPolicyRepository {
     const org = identifier(organizationId, "Organization");
     const group = identifier(groupId, "Group");
     if (typeof sessionDate !== "string" ||
-        !/^\\d{4}-\\d{2}-\\d{2}$/.test(sessionDate) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate) ||
         Number.isNaN(Date.parse(sessionDate + "T12:00:00Z")) ||
         new Date(sessionDate + "T12:00:00Z").toISOString().slice(0, 10) !== sessionDate) {
       throw new UlcRegistrationPolicyDataError();
