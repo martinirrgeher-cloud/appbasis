@@ -4401,6 +4401,173 @@ async function bootstrapKindertraining() {
   }
 }
 
+/** Trainer access uses the server-scoped kindertraining:edit permission. */
+function refreshTrainerExtraDayControls() {
+  const state = kindertrainingExtraDraft;
+  const valid = !!state?.loaded &&
+    !state.loading && !state.saving &&
+    state.groupId === elements.kindertrainingGroup?.value &&
+    state.sessionDate === elements.kindertrainingExtraDate?.value;
+  const busy = !!state?.loading || !!state?.saving;
+  if (elements.kindertrainingExtraDate) elements.kindertrainingExtraDate.disabled = busy;
+  if (elements.kindertrainingExtraLoad) elements.kindertrainingExtraLoad.disabled = busy;
+  if (elements.kindertrainingExtraClose) elements.kindertrainingExtraClose.disabled = !!state?.saving;
+  if (elements.kindertrainingExtraApprove) {
+    elements.kindertrainingExtraApprove.disabled = !valid || state.approved;
+  }
+  if (elements.kindertrainingExtraRevoke) {
+    elements.kindertrainingExtraRevoke.disabled = !valid || !state.approved;
+  }
+}
+
+function openTrainerExtraDay() {
+  const group = kindertrainingGroups.find(
+    (entry) => entry.id === elements.kindertrainingGroup?.value,
+  );
+  if (!kindertrainingReady || !group ||
+      group.attendanceMode !== "self_registration" ||
+      kindertrainingExtraDraft?.saving ||
+      elements.kindertrainingExtraDialog?.open) return;
+  kindertrainingExtraRequestId += 1;
+  kindertrainingExtraDraft = null;
+  if (elements.kindertrainingExtraGroup) {
+    elements.kindertrainingExtraGroup.textContent = group.name;
+  }
+  if (elements.kindertrainingExtraDate) elements.kindertrainingExtraDate.value = "";
+  if (elements.kindertrainingExtraStatus) {
+    elements.kindertrainingExtraStatus.textContent = "Datum auswählen und prüfen.";
+  }
+  showMessage(elements.kindertrainingExtraError, "");
+  showMessage(elements.kindertrainingExtraSuccess, "");
+  refreshTrainerExtraDayControls();
+  elements.kindertrainingExtraDialog?.showModal();
+}
+
+function closeTrainerExtraDay() {
+  if (kindertrainingExtraDraft?.saving) return;
+  kindertrainingExtraRequestId += 1;
+  kindertrainingExtraDraft = null;
+  elements.kindertrainingExtraDialog?.close();
+}
+
+async function loadTrainerExtraDay() {
+  const group = kindertrainingGroups.find(
+    (entry) => entry.id === elements.kindertrainingGroup?.value,
+  );
+  const date = elements.kindertrainingExtraDate?.value || "";
+  if (!group || group.attendanceMode !== "self_registration" ||
+      !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)) {
+    showMessage(elements.kindertrainingExtraError,
+      "Bitte einen gültigen Sondertrainingstag wählen.");
+    return;
+  }
+  const id = ++kindertrainingExtraRequestId;
+  const generation = attendanceSessionGeneration;
+  kindertrainingExtraDraft = {
+    groupId: group.id, sessionDate: date,
+    loading: true, loaded: false, saving: false,
+  };
+  refreshTrainerExtraDayControls();
+  showMessage(elements.kindertrainingExtraError, "");
+  showMessage(elements.kindertrainingExtraSuccess, "");
+  try {
+    const result = await requestJson(
+      "/api/modules/athletes/registration-extra-day?groupId=" +
+        encodeURIComponent(group.id) + "&sessionDate=" + encodeURIComponent(date),
+    );
+    if (id !== kindertrainingExtraRequestId ||
+        generation !== attendanceSessionGeneration ||
+        kindertrainingExtraDraft?.groupId !== group.id ||
+        elements.kindertrainingExtraDate?.value !== date) return;
+    if (result?.groupId !== group.id || result.sessionDate !== date ||
+        typeof result.approved !== "boolean" ||
+        !(result.revision === null ||
+          (Number.isSafeInteger(result.revision) && result.revision >= 1))) {
+      throw new Error("INVALID_TRAINER_EXTRA_RESPONSE");
+    }
+    kindertrainingExtraDraft = {
+      groupId: group.id, sessionDate: date,
+      loading: false, loaded: true, saving: false,
+      approved: result.approved, revision: result.revision,
+    };
+    if (elements.kindertrainingExtraStatus) {
+      elements.kindertrainingExtraStatus.textContent = result.approved
+        ? "Der Sondertrainingstag ist freigegeben."
+        : "Für dieses Datum besteht keine aktive Sonderfreigabe.";
+    }
+  } catch (error) {
+    if (id !== kindertrainingExtraRequestId ||
+        generation !== attendanceSessionGeneration) return;
+    kindertrainingExtraDraft = null;
+    showMessage(elements.kindertrainingExtraError,
+      error?.status === 403 ? "Du darfst für diese Gruppe keine Sondertrainingstage verwalten." :
+      error?.status === 404 ? "Die Trainingsgruppe ist nicht mehr verfügbar." :
+      "Der Sondertrainingstag konnte nicht geprüft werden.");
+  } finally {
+    if (id === kindertrainingExtraRequestId) refreshTrainerExtraDayControls();
+  }
+}
+
+async function saveTrainerExtraDay(approved) {
+  const state = kindertrainingExtraDraft;
+  if (!state?.loaded || state.loading || state.saving ||
+      state.approved === approved ||
+      elements.kindertrainingGroup?.value !== state.groupId ||
+      elements.kindertrainingExtraDate?.value !== state.sessionDate) return;
+  if (!approved && !window.confirm(
+    "Sondertrainingstag-Freigabe zurücknehmen? Vorhandene Anmeldungen bleiben lesbar, aber gesperrt."
+  )) return;
+  const id = kindertrainingExtraRequestId;
+  const generation = attendanceSessionGeneration;
+  state.saving = true;
+  refreshTrainerExtraDayControls();
+  showMessage(elements.kindertrainingExtraError, "");
+  showMessage(elements.kindertrainingExtraSuccess, "");
+  try {
+    const result = await requestJson("/api/modules/athletes/registration-extra-day", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: state.groupId, sessionDate: state.sessionDate,
+        approved, expectedRevision: state.revision,
+      }),
+    });
+    if (id !== kindertrainingExtraRequestId ||
+        generation !== attendanceSessionGeneration ||
+        kindertrainingExtraDraft !== state) return;
+    if (result?.groupId !== state.groupId ||
+        result.sessionDate !== state.sessionDate ||
+        result.approved !== approved ||
+        !Number.isSafeInteger(result.revision) || result.revision < 1) {
+      throw new Error("INVALID_TRAINER_EXTRA_SAVE");
+    }
+    state.approved = approved;
+    state.revision = result.revision;
+    if (elements.kindertrainingExtraStatus) {
+      elements.kindertrainingExtraStatus.textContent = approved
+        ? "Sondertrainingstag freigegeben." :
+          "Sondertrainingstag-Freigabe zurückgenommen.";
+    }
+    showMessage(elements.kindertrainingExtraSuccess, "Gespeichert.");
+  } catch (error) {
+    if (id !== kindertrainingExtraRequestId ||
+        generation !== attendanceSessionGeneration ||
+        kindertrainingExtraDraft !== state) return;
+    showMessage(elements.kindertrainingExtraError,
+      error?.status === 409
+        ? "Sondertrainingstag nicht möglich oder zwischenzeitlich geändert. Datum erneut prüfen."
+        : error?.status === 403 || error?.status === 404
+          ? "Keine Berechtigung für diese Trainingsgruppe."
+          : "Sondertrainingstag konnte nicht gespeichert werden.");
+  } finally {
+    if (id === kindertrainingExtraRequestId &&
+        generation === attendanceSessionGeneration &&
+        kindertrainingExtraDraft === state) {
+      state.saving = false;
+      refreshTrainerExtraDayControls();
+    }
+  }
+}
+
 function renderKindertrainingWeekLabel() {
   if (!elements.kindertrainingWeekLabel) return;
   const start = kindertrainingWeekStart || localWeekStart(new Date());
