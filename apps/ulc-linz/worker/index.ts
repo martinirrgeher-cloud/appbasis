@@ -77,7 +77,10 @@ import {
   normalizeUlcRegistrationSchedule,
   UlcRegistrationScheduleValidationError,
 } from "./registration-schedule-policy";
-import { UlcRegistrationPolicyConflictError } from "./registration-policy-postgres";
+import {
+  UlcRegistrationPolicyConflictError,
+  UlcRegistrationPolicyDataError,
+} from "./registration-policy-postgres";
 import {
   UlcTrainingBlockParameterError,
   UlcTrainingBlockReferenceError,
@@ -262,7 +265,10 @@ export function createGeneratedWorker(
           response = await functionaryUserAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-identities") {
           response = await trainerIdentityAdminResponse(request, runtime, url);
-        } else if (url.pathname === "/api/modules/athletes/registration-policy") {
+        } else if (
+          url.pathname === "/api/modules/athletes/registration-policy" ||
+          url.pathname === "/api/modules/athletes/registration-extra-day"
+        ) {
           response = await registrationPolicyHttpResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/athletes") {
           response = await athletesModuleResponse(request, runtime, url);
@@ -4285,6 +4291,11 @@ async function registrationPolicyHttpResponse(
   }
 
   try {
+    if (url.pathname === "/api/modules/athletes/registration-extra-day") {
+      return await registrationExtraDayAuthorizedResponse(
+        request, runtime, url, access.organizationId, current.identity.identityId,
+      );
+    }
     let groupId: string;
     let expectedRevision: number | null = null;
     let schedule: ReturnType<typeof normalizeUlcRegistrationSchedule> | null = null;
@@ -4354,6 +4365,97 @@ async function registrationPolicyHttpResponse(
       return Response.json({ error: {
         code: "REGISTRATION_POLICY_CONFLICT",
         message: "The training group policy changed. Reload it before saving.",
+      } }, { status: 409, headers: { "cache-control": "private, no-store" } });
+    }
+    throw error;
+  }
+}
+
+async function registrationExtraDayAuthorizedResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+  organizationId: string,
+  actorIdentityId: string,
+): Promise<Response> {
+  try {
+    let groupId: string;
+    let sessionDate: string;
+    let approved = false;
+    let expectedRevision: number | null = null;
+    if (request.method === "GET") {
+      if (url.searchParams.size !== 2 ||
+          url.searchParams.getAll("groupId").length !== 1 ||
+          url.searchParams.getAll("sessionDate").length !== 1) {
+        throw new InvalidAthletesRequestError();
+      }
+      groupId = url.searchParams.get("groupId") || "";
+      sessionDate = url.searchParams.get("sessionDate") || "";
+    } else {
+      if (url.searchParams.size !== 0) throw new InvalidAthletesRequestError();
+      const body = await athletesJsonBody(
+        request,
+        ["groupId", "sessionDate", "approved", "expectedRevision"],
+        ["groupId", "sessionDate", "approved", "expectedRevision"],
+      );
+      groupId = body.groupId as string;
+      sessionDate = body.sessionDate as string;
+      if (typeof body.approved !== "boolean" ||
+          !(body.expectedRevision === null ||
+            (Number.isSafeInteger(body.expectedRevision) &&
+             Number(body.expectedRevision) >= 1))) {
+        throw new InvalidAthletesRequestError();
+      }
+      approved = body.approved;
+      expectedRevision = body.expectedRevision as number | null;
+    }
+    if (typeof groupId !== "string" || groupId.length < 1 ||
+        groupId.length > 200 || groupId.trim() !== groupId ||
+        typeof sessionDate !== "string" ||
+        !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(sessionDate) ||
+        Number.isNaN(Date.parse(sessionDate + "T12:00:00Z")) ||
+        new Date(sessionDate + "T12:00:00Z").toISOString().slice(0, 10) !== sessionDate) {
+      throw new InvalidAthletesRequestError();
+    }
+    const snapshot = await runtime.athleteMasterdata.readOrganizationSnapshot(
+      organizationId,
+    );
+    const validGroups = snapshot.trainingGroups.filter(
+      (group) => group.id === groupId &&
+        group.organizationId === organizationId &&
+        group.isActive && group.attendanceMode === "self_registration",
+    );
+    if (validGroups.length !== 1) {
+      return Response.json({ error: {
+        code: "TRAINING_GROUP_NOT_FOUND",
+        message: "This self-registration group is unavailable.",
+      } }, { status: 404, headers: { "cache-control": "private, no-store" } });
+    }
+    const record = request.method === "GET"
+      ? await runtime.registrationPolicies.readExtraDay(
+          organizationId, groupId, sessionDate,
+        )
+      : await runtime.registrationPolicies.setExtraDay(
+          organizationId, groupId, sessionDate, actorIdentityId,
+          approved, expectedRevision,
+        );
+    return Response.json({
+      groupId, sessionDate,
+      approved: record?.approved ?? false,
+      revision: record?.revision ?? null,
+    }, { headers: { "cache-control": "private, no-store" } });
+  } catch (error) {
+    if (error instanceof InvalidAthletesRequestError ||
+        error instanceof UlcRegistrationPolicyDataError) {
+      return Response.json({ error: {
+        code: "INVALID_REGISTRATION_EXTRA_DAY",
+        message: "The exceptional training day request is invalid.",
+      } }, { status: 400, headers: { "cache-control": "private, no-store" } });
+    }
+    if (error instanceof UlcRegistrationPolicyConflictError) {
+      return Response.json({ error: {
+        code: "REGISTRATION_EXTRA_DAY_CONFLICT",
+        message: "The exceptional day changed or is unavailable. Reload before saving.",
       } }, { status: 409, headers: { "cache-control": "private, no-store" } });
     }
     throw error;
