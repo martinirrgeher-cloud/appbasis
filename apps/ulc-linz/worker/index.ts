@@ -4273,6 +4273,56 @@ async function registrationPolicyHttpResponse(
     return current;
   }
 
+  if (url.pathname === "/api/modules/athletes/registration-extra-day") {
+    // Special days may also be administered with the EXISTING
+    // kindertraining:edit/view contract. Trainer access remains restricted
+    // to the currently assigned groups; regular policy edits still require
+    // athletes:edit and remain on their separate route.
+    let extraScope: Readonly<{
+      organizationId: string;
+      trainerId: string | null;
+      groupIds: readonly string[] | null;
+    }>;
+    try {
+      const athletes = request.method === "GET"
+        ? await runtime.athletesAccess.assertViewAccess(current)
+        : await runtime.athletesAccess.assertEditAccess(current);
+      extraScope = {
+        organizationId: athletes.organizationId,
+        trainerId: null, groupIds: null,
+      };
+    } catch (error) {
+      if (isPasswordChangeRequiredError(error)) {
+        return identityHttp.identityErrorResponse(error);
+      }
+      if (!(error instanceof UlcLinzAuthorizationDeniedError)) throw error;
+      try {
+        const training = request.method === "GET"
+          ? await runtime.kindertrainingAccess.assertViewAccess(current)
+          : await runtime.kindertrainingAccess.assertEditAccess(current);
+        extraScope = training.scope === "trainer"
+          ? { organizationId: training.organizationId,
+              trainerId: training.trainerId, groupIds: training.groupIds }
+          : { organizationId: training.organizationId,
+              trainerId: null, groupIds: null };
+      } catch (trainingError) {
+        if (isPasswordChangeRequiredError(trainingError)) {
+          return identityHttp.identityErrorResponse(trainingError);
+        }
+        if (!(trainingError instanceof UlcLinzAuthorizationDeniedError)) {
+          throw trainingError;
+        }
+        return Response.json({ error: {
+          code: trainingError.code,
+          message: "Special training day access denied.",
+        } }, { status: 403, headers: { "cache-control": "private, no-store" } });
+      }
+    }
+    return registrationExtraDayAuthorizedResponse(
+      request, runtime, url, extraScope, current.identity.identityId,
+    );
+  }
+
   let access;
   try {
     access = request.method === "GET"
@@ -4291,11 +4341,6 @@ async function registrationPolicyHttpResponse(
   }
 
   try {
-    if (url.pathname === "/api/modules/athletes/registration-extra-day") {
-      return await registrationExtraDayAuthorizedResponse(
-        request, runtime, url, access.organizationId, current.identity.identityId,
-      );
-    }
     let groupId: string;
     let expectedRevision: number | null = null;
     let schedule: ReturnType<typeof normalizeUlcRegistrationSchedule> | null = null;
@@ -4375,9 +4420,14 @@ async function registrationExtraDayAuthorizedResponse(
   request: Request,
   runtime: GeneratedPostgresApplicationRuntime,
   url: URL,
-  organizationId: string,
+  scope: Readonly<{
+    organizationId: string;
+    trainerId: string | null;
+    groupIds: readonly string[] | null;
+  }>,
   actorIdentityId: string,
 ): Promise<Response> {
+  const organizationId = scope.organizationId;
   try {
     let groupId: string;
     let sessionDate: string;
@@ -4417,6 +4467,20 @@ async function registrationExtraDayAuthorizedResponse(
         new Date(sessionDate + "T12:00:00Z").toISOString().slice(0, 10) !== sessionDate) {
       throw new InvalidAthletesRequestError();
     }
+    if (scope.groupIds !== null && !scope.groupIds.includes(groupId)) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: actorIdentityId,
+        organizationId,
+        action: request.method === "GET" ? "view" : "edit",
+        targetId: "kindertraining",
+        reasonCode: "scope-denied",
+      });
+      return Response.json({ error: {
+        code: "TRAINING_GROUP_NOT_FOUND",
+        message: "This self-registration group is unavailable.",
+      } }, { status: 404, headers: { "cache-control": "private, no-store" } });
+    }
     const snapshot = await runtime.athleteMasterdata.readOrganizationSnapshot(
       organizationId,
     );
@@ -4437,7 +4501,7 @@ async function registrationExtraDayAuthorizedResponse(
         )
       : await runtime.registrationPolicies.setExtraDay(
           organizationId, groupId, sessionDate, actorIdentityId,
-          approved, expectedRevision,
+          approved, expectedRevision, scope.trainerId,
         );
     return Response.json({
       groupId, sessionDate,
