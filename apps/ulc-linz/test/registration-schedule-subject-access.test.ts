@@ -23,9 +23,11 @@ function fixture(options: {
   actor?: string;
   role?: string;
   targetOrganizationId?: string | null;
+  targetIdentityId?: string;
   authorized?: boolean;
   readError?: Error;
   auditError?: Error;
+  auditReceipt?: unknown;
 } = {}) {
   const actor = options.actor ?? ADMIN;
   const order: string[] = [];
@@ -45,6 +47,9 @@ function fixture(options: {
   const recordAccessAudit = vi.fn(async () => {
     order.push("audit");
     if (options.auditError) throw options.auditError;
+    return options.auditReceipt === undefined
+      ? { persisted: true as const, eventId: "audit:1001" }
+      : options.auditReceipt;
   });
   const scopes = {
     resolveMembership: vi.fn(async () => {
@@ -54,7 +59,7 @@ function fixture(options: {
     findLifecycleTarget: vi.fn(async () => {
       order.push("subject");
       return options.targetOrganizationId === null ? null : {
-        identityId: SUBJECT,
+        identityId: options.targetIdentityId ?? SUBJECT,
         organizationId: options.targetOrganizationId ?? ORG,
         subjectId: "trainer-subject",
         sourceRole: "trainer", active: false, endedAt: NOW,
@@ -160,6 +165,55 @@ describe("A02.4 offline subject access authorization and audit", () => {
     );
     expect(result.records).toEqual([RECORD]);
     expect(t.reader).toHaveBeenCalledOnce();
+  });
+
+  it("requires a verifiable persisted audit receipt, not an in-memory callback", async () => {
+    for (const badReceipt of [null, false, {}, { persisted: false, eventId: "audit:1" },
+      { persisted: true }, { persisted: true, eventId: "wrong event id" },
+      { persisted: true, eventId: "" }]) {
+      const t = fixture({ auditReceipt: badReceipt });
+      await expect(inspectUlcRegistrationScheduleActorData(
+        t.current, t.deps,
+        { organizationId: ORG, targetIdentityId: SUBJECT,
+          scope: "organization-admin" },
+      )).rejects.toBeInstanceOf(UlcRegistrationScheduleSubjectAccessBlockedError);
+      expect(t.reader).toHaveBeenCalledOnce();
+      expect(t.recordAccessAudit).toHaveBeenCalledOnce();
+    }
+  });
+
+  it("rejects a wrong-identity subject lookup even from the correct organization", async () => {
+    const t = fixture({ targetIdentityId: "wrong-person" });
+    await expect(inspectUlcRegistrationScheduleActorData(
+      t.current, t.deps, { organizationId: ORG,
+        targetIdentityId: SUBJECT, scope: "organization-admin" },
+    )).rejects.toBeInstanceOf(UlcRegistrationScheduleSubjectAccessBlockedError);
+    expect(t.reader).not.toHaveBeenCalled();
+  });
+
+  it("rejects deletion markers for another identity and invalid marker chronology", async () => {
+    const badMarkers = [
+      { identityId: "wrong-person", organizationId: ORG,
+        completedAt: new Date("2026-11-01T18:20:00Z"),
+        purgeAfter: new Date("2026-12-01T18:20:00Z") },
+      { identityId: SUBJECT, organizationId: ORG,
+        completedAt: new Date("2026-11-01T18:20:00Z"),
+        purgeAfter: new Date("2026-10-01T18:20:00Z") },
+      { identityId: SUBJECT, organizationId: ORG,
+        completedAt: new Date(NaN),
+        purgeAfter: new Date("2026-12-01T18:20:00Z") },
+    ];
+    for (const marker of badMarkers) {
+      const t = fixture({ targetOrganizationId: null });
+      t.scopes.findDeletionMarker.mockResolvedValueOnce(marker as never);
+      await expect(inspectUlcRegistrationScheduleActorData(
+        t.current, t.deps,
+        { organizationId: ORG, targetIdentityId: SUBJECT,
+          scope: "organization-admin" },
+      )).rejects.toBeInstanceOf(UlcRegistrationScheduleSubjectAccessBlockedError);
+      expect(t.reader).not.toHaveBeenCalled();
+      expect(t.recordAccessAudit).not.toHaveBeenCalled();
+    }
   });
 
   it("blocks incomplete audit before releasing personal records", async () => {
