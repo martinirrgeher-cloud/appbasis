@@ -50,7 +50,49 @@ export interface UlcSelfRegistrationMasterdataReader {
 export type UlcSelfRegistrationSessionStore = Pick<
   PostgresUlcTrainingSessionRepository,
   "readSession" | "ensureScheduledSession" | "saveRegistration"
->;
+> & Partial<Pick<PostgresUlcTrainingSessionRepository, "withRegistrationTransaction">>;
+
+/**
+ * Real PostgreSQL sessions must wrap session creation and registration
+ * together. Historical in-memory tests inject the legacy smaller interface;
+ * the runtime Postgres repository always provides this transaction method.
+ */
+async function registerAtomically(
+  sessions: UlcSelfRegistrationSessionStore,
+  input: {
+    organizationId: string;
+    groupId: string;
+    sessionDate: string;
+    athleteId: string;
+    intention: UlcTrainingRegistrationIntention;
+    expectedRevision: number | null;
+    actorIdentityId: string;
+    proxyActorAthleteId?: string;
+    note?: string | null;
+  },
+) {
+  const write = async (
+    store: Pick<PostgresUlcTrainingSessionRepository,
+      "ensureScheduledSession" | "saveRegistration">,
+  ) => {
+    const snapshot = await store.ensureScheduledSession(
+      input.organizationId, MODULE_ID, input.groupId, input.sessionDate,
+    );
+    return store.saveRegistration(
+      input.organizationId,
+      snapshot.session.id,
+      input.athleteId,
+      input.intention,
+      input.expectedRevision,
+      input.actorIdentityId,
+      input.proxyActorAthleteId,
+      input.note,
+    );
+  };
+  return sessions.withRegistrationTransaction
+    ? sessions.withRegistrationTransaction(write)
+    : write(sessions);
+}
 
 export class UlcSelfRegistrationNotFoundError extends Error {
   readonly code = "ULC_SELF_REGISTRATION_NOT_FOUND";
@@ -182,19 +224,17 @@ export function createUlcSelfRegistrationService({
       const intention = requiredIntention(input.intention);
       const expectedRevision = registrationRevision(input.expectedRevision);
       const actor = requiredIdentifier(actorIdentityId, "Registration actor identity id");
-      const snapshot = await sessions.ensureScheduledSession(
-        context.organizationId, MODULE_ID, group.id, context.sessionDate,
-      );
-      const registration = await sessions.saveRegistration(
-        context.organizationId,
-        snapshot.session.id,
-        target.id,
+      const registration = await registerAtomically(sessions, {
+        organizationId: context.organizationId,
+        groupId: group.id,
+        sessionDate: context.sessionDate,
+        athleteId: target.id,
         intention,
         expectedRevision,
-        actor,
-        context.athleteId, // triggers atomic DB-side proxy scope validation
-        input.note,
-      );
+        actorIdentityId: actor,
+        proxyActorAthleteId: context.athleteId,
+        note: input.note,
+      });
       return Object.freeze({
         athlete: Object.freeze({
           id: target.id, firstName: target.firstName, lastName: target.lastName,
@@ -245,22 +285,16 @@ export function createUlcSelfRegistrationService({
         "Registration actor identity id",
       );
 
-      const snapshot = await sessions.ensureScheduledSession(
-        context.organizationId,
-        MODULE_ID,
-        group.id,
-        context.sessionDate,
-      );
-      const registration = await sessions.saveRegistration(
-        context.organizationId,
-        snapshot.session.id,
-        context.athleteId,
+      const registration = await registerAtomically(sessions, {
+        organizationId: context.organizationId,
+        groupId: group.id,
+        sessionDate: context.sessionDate,
+        athleteId: context.athleteId,
         intention,
         expectedRevision,
-        actor,
-        undefined,
-        input.note,
-      );
+        actorIdentityId: actor,
+        note: input.note,
+      });
       return Object.freeze({
         group: groupOption(group),
         sessionDate: context.sessionDate,
