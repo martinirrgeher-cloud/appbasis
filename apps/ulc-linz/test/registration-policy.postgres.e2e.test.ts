@@ -133,8 +133,8 @@ if (!databaseUrl) {
       // This direct SQL is a privileged fixture, not a callable user route.
       await connection().client.unsafe(
         `INSERT INTO ulc_linz_registration_extra_day
-          (organization_id, group_id, session_date, approved_by_identity_id)
-         VALUES ($1, $2, $3::date, $4)`,
+          (organization_id, group_id, session_date, approved_by_identity_id, updated_by_identity_id)
+         VALUES ($1, $2, $3::date, $4, $4)`,
         ["verein-exception", group.id, "2026-11-07", "admin-actor"],
       );
       expect(await policy.isApprovedExtraDay("verein-exception", group.id, "2026-11-07"))
@@ -231,8 +231,8 @@ if (!databaseUrl) {
       // Only the separate privileged approval makes an exceptional day writable.
       await db.unsafe(
         `INSERT INTO ulc_linz_registration_extra_day
-           (organization_id, group_id, session_date, approved_by_identity_id)
-         VALUES ($1, $2, $3::date, $4)`,
+           (organization_id, group_id, session_date, approved_by_identity_id, updated_by_identity_id)
+         VALUES ($1, $2, $3::date, $4, $4)`,
         [organizationId, group.id, forbiddenDate, "policy-admin"],
       );
       await expect(sessions.saveRegistration(
@@ -254,6 +254,74 @@ if (!databaseUrl) {
         [allowed.session.id, athlete.id],
       );
       expect(unchanged).toEqual([{ intention: "attending", revision: 1 }]);
+    });
+
+    it("approves, revokes and reapproves extra days with atomic revision history", async () => {
+      const db = connection().client;
+      const athletes = new PostgresAthleteMasterdataRepository(db, () => randomUUID());
+      const repository = new PostgresUlcRegistrationPolicyRepository(db);
+      const group = await athletes.createTrainingGroup("verein-exception-audit", {
+        name: "Gruppe Sondertermine", attendanceMode: "self_registration",
+      });
+      const other = await athletes.createTrainingGroup("verein-exception-audit", {
+        name: "Trainergruppe", attendanceMode: "trainer_roll_call",
+      });
+      const friday = (reference: Date) => {
+        const weekday = reference.getUTCDay() || 7;
+        reference.setUTCDate(reference.getUTCDate() + ((5 - weekday + 7) % 7) + 7);
+        return reference.toISOString().slice(0, 10);
+      };
+      const date = friday(new Date());
+      const schedule = {
+        weekdays: [1, 3], weeksAhead: 10, deadline: null, lateMode: "allow",
+      };
+      await repository.save("verein-exception-audit", group.id, "owner", null, schedule);
+      expect(await repository.readExtraDay("verein-exception-audit", group.id, date))
+        .toBeNull();
+      await expect(repository.setExtraDay(
+        "verein-exception-audit", other.id, date, "actor", true, null,
+      )).rejects.toBeInstanceOf(UlcRegistrationPolicyConflictError);
+      await expect(repository.setExtraDay(
+        "other-org", group.id, date, "actor", true, null,
+      )).rejects.toBeInstanceOf(UlcRegistrationPolicyConflictError);
+      await expect(repository.setExtraDay(
+        "verein-exception-audit", group.id, date, "actor", false, null,
+      )).rejects.toBeInstanceOf(UlcRegistrationPolicyConflictError);
+      const approved = await repository.setExtraDay(
+        "verein-exception-audit", group.id, date, "admin-one", true, null,
+      );
+      expect(approved).toEqual({ approved: true, revision: 1 });
+      expect(await repository.isApprovedExtraDay("verein-exception-audit", group.id, date))
+        .toBe(true);
+      await expect(repository.setExtraDay(
+        "verein-exception-audit", group.id, date, "stale", false, null,
+      )).rejects.toBeInstanceOf(UlcRegistrationPolicyConflictError);
+      const revoked = await repository.setExtraDay(
+        "verein-exception-audit", group.id, date, "admin-two", false, 1,
+      );
+      expect(revoked).toEqual({ approved: false, revision: 2 });
+      expect(await repository.isApprovedExtraDay("verein-exception-audit", group.id, date))
+        .toBe(false);
+      await expect(repository.setExtraDay(
+        "verein-exception-audit", group.id, date, "stale", true, 1,
+      )).rejects.toBeInstanceOf(UlcRegistrationPolicyConflictError);
+      const reapproved = await repository.setExtraDay(
+        "verein-exception-audit", group.id, date, "admin-three", true, 2,
+      );
+      expect(reapproved).toEqual({ approved: true, revision: 3 });
+      const history = await db.unsafe(
+        `SELECT revision, is_approved, actor_identity_id
+         FROM ulc_linz_registration_extra_day_change
+         WHERE organization_id = $1 AND group_id = $2 AND session_date = $3::date
+         ORDER BY revision`,
+        ["verein-exception-audit", group.id, date],
+      );
+      expect(history).toEqual([
+        { revision: 1, is_approved: true, actor_identity_id: "admin-one" },
+        { revision: 2, is_approved: false, actor_identity_id: "admin-two" },
+        { revision: 3, is_approved: true, actor_identity_id: "admin-three" },
+      ]);
+      expect(await repository.readExtraDay("other-org", group.id, date)).toBeNull();
     });
 
     it("rejects malformed stored policy values with database constraints", async () => {
