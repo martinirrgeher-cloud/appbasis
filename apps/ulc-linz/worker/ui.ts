@@ -50,7 +50,6 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
         </a>
         <div class="app-header__actions">
           <button id="app-install" class="app-install" type="button" hidden>App installieren</button>
-          <span class="app-badge">AppBasis</span>
         </div>
       </header>
 
@@ -126,7 +125,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             </section>
 
             <section class="dashboard-grid" aria-label="ULC Linz Funktionen">
-              <article class="card dashboard-card dashboard-card--primary">
+              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="masterdata" hidden>
                 <div>
                   <p class="eyebrow">Organisation</p>
                   <h2>Stammdaten</h2>
@@ -136,7 +135,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <small id="masterdata-access-label">Berechtigung wird geprüft …</small>
               </article>
 
-              <article class="card dashboard-card dashboard-card--primary" id="registration-dashboard">
+              <article class="card dashboard-card dashboard-card--primary" id="registration-dashboard" data-dashboard-view="registration" hidden>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Meine Trainingsanmeldung</h2>
@@ -146,7 +145,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <small id="registration-access-label">Berechtigung wird geprüft …</small>
               </article>
 
-              <article class="card dashboard-card dashboard-card--primary" id="user-admin-dashboard" hidden>
+              <article class="card dashboard-card dashboard-card--primary" id="user-admin-dashboard" hidden data-dashboard-view="users">
                 <div>
                   <p class="eyebrow">Organisation</p>
                   <h2>Benutzerverwaltung</h2>
@@ -155,7 +154,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <button class="button button--primary dashboard-action" type="button" data-open-view="users">Benutzer öffnen</button>
               </article>
 
-              <article class="card dashboard-card dashboard-card--primary">
+              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="kindertraining" hidden>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Anwesenheit</h2>
@@ -165,7 +164,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <small id="kindertraining-access-label">Berechtigung wird geprüft …</small>
               </article>
 
-              <article class="card dashboard-card dashboard-card--primary">
+              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="training-plans" hidden>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsplanung</h2>
@@ -175,7 +174,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <small id="training-plan-access-label">Berechtigung wird geprüft …</small>
               </article>
 
-              <article class="card dashboard-card dashboard-card--primary">
+              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="training-documentation" hidden>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsdokumentation</h2>
@@ -185,7 +184,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <small id="training-documentation-access-label">Berechtigung wird geprüft …</small>
               </article>
 
-              <article class="card dashboard-card dashboard-card--primary">
+              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="exercise-catalog" hidden>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Übungskatalog</h2>
@@ -195,7 +194,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <small id="exercise-catalog-access-label">Berechtigung wird geprüft …</small>
               </article>
 
-              <article class="card dashboard-card dashboard-card--primary">
+              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="training-blocks" hidden>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsblöcke</h2>
@@ -205,7 +204,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <small id="training-block-access-label">Berechtigung wird geprüft …</small>
               </article>
 
-              <article class="card dashboard-card">
+              <article class="card dashboard-card" data-dashboard-view="countdown" hidden>
                 <div>
                   <p class="eyebrow">Nützliches</p>
                   <h2>Intervall-Countdown</h2>
@@ -215,14 +214,6 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <small id="countdown-access-label">Berechtigung wird geprüft …</small>
               </article>
 
-              <article class="card dashboard-card">
-                <div>
-                  <p class="eyebrow">Vereins-App</p>
-                  <h2>Weitere Bereiche folgen</h2>
-                  <p>Die bestehenden ULC-Funktionen werden schrittweise und kontrolliert in AppBasis übernommen.</p>
-                </div>
-                <span class="dashboard-status">Stammdaten · Anwesenheit · Trainingsplanung</span>
-              </article>
             </section>
           </section>
 
@@ -809,7 +800,6 @@ button, input, select, textarea { font: inherit; }
 .app-brand__copy { display: grid; line-height: 1.12; }
 .app-brand__copy strong { font-size: .96rem; }
 .app-brand__copy small { margin-top: 3px; color: #64748b; font-size: .68rem; }
-.app-badge { padding: 4px 8px; border-radius: 999px; background: var(--muted); color: var(--secondary); font-size: .7rem; font-weight: 750; }
 .card {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -4780,6 +4770,13 @@ function syncAppNavigationActive(section) {
 
 function refreshAppAvailability() {
   refreshAppNavigation();
+  // Home is a shortcut to the SAME server-derived module availability as
+  // navigation. Hide unavailable cards completely, not just their buttons.
+  // Initial cards are hidden until module access checks finish; no new
+  // permission or backend decision is introduced by this presentation.
+  for (const card of document.querySelectorAll("[data-dashboard-view]")) {
+    card.hidden = !isAppNavigationAvailable(card.dataset.dashboardView || "");
+  }
   for (const control of [
     elements.registrationWeekPrev,
     elements.registrationWeekNext,
@@ -4812,9 +4809,6 @@ function refreshAppAvailability() {
       ? "Für deinen Benutzer freigeschaltet."
       : "Für deinen Benutzer derzeit nicht freigeschaltet.";
   }
-  if (elements.registrationDashboard) {
-    elements.registrationDashboard.hidden = false;
-  }
   if (elements.registrationQuickAction) {
     elements.registrationQuickAction.disabled = !selfRegistrationReady;
   }
@@ -4834,7 +4828,6 @@ function refreshAppAvailability() {
   if (elements.masterdataQuickAction) {
     elements.masterdataQuickAction.disabled = !masterdataReady;
   }
-  if (elements.userAdminDashboard) elements.userAdminDashboard.hidden = !userAdminReady;
   if (elements.masterdataImportOpen) {
     elements.masterdataImportOpen.disabled =
       !masterdataReady || !masterdataCanEdit || masterdataExchangeBusy;
