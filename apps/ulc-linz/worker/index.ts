@@ -4503,10 +4503,14 @@ async function registrationExtraDayAuthorizedResponse(
           organizationId, groupId, sessionDate, actorIdentityId,
           approved, expectedRevision, scope.trainerId,
         );
+    const configured = request.method === "GET"
+      ? (await runtime.registrationPolicies.read(organizationId, groupId)) !== null
+      : true;
     return Response.json({
       groupId, sessionDate,
       approved: record?.approved ?? false,
       revision: record?.revision ?? null,
+      configured,
     }, { headers: { "cache-control": "private, no-store" } });
   } catch (error) {
     if (error instanceof InvalidAthletesRequestError ||
