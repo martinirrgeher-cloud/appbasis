@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
+import { PostgresUlcTrainingSessionRepository } from "../worker/training-session-postgres";
 import {
   PostgresUlcRegistrationPolicyRepository,
   UlcRegistrationPolicyConflictError,
@@ -144,6 +145,99 @@ if (!databaseUrl) {
         .toBe(false);
       await expect(policy.isApprovedExtraDay("verein-exception", group.id, "2026-02-30"))
         .rejects.toBeInstanceOf(UlcRegistrationPolicyDataError);
+    });
+
+    it("rejects direct DB registration outside configured days and deadlines", async () => {
+      const db = connection().client;
+      const athletes = new PostgresAthleteMasterdataRepository(db, () => randomUUID());
+      const sessions = new PostgresUlcTrainingSessionRepository(db, () => randomUUID());
+      const repository = new PostgresUlcRegistrationPolicyRepository(db);
+      const organizationId = "verein-guard";
+      const group = await athletes.createTrainingGroup(organizationId, {
+        name: "Trainingsgruppe Regeln", attendanceMode: "self_registration",
+      });
+      const athlete = await athletes.createAthlete(organizationId, {
+        firstName: "Karin", lastName: "Guard",
+      });
+      await athletes.createAthleteGroupMembership(organizationId, {
+        athleteId: athlete.id, groupId: group.id, startedOn: "2020-01-01",
+      });
+
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/Vienna",
+        year: "numeric", month: "2-digit", day: "2-digit",
+      }).formatToParts(new Date());
+      const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+      const today = part("year") + "-" + part("month") + "-" + part("day");
+      const plusDays = (date: string, days: number) => {
+        const value = new Date(date + "T12:00:00Z");
+        value.setUTCDate(value.getUTCDate() + days);
+        return value.toISOString().slice(0, 10);
+      };
+      const isoDay = (date: string) => {
+        const day = new Date(date + "T12:00:00Z").getUTCDay();
+        return day === 0 ? 7 : day;
+      };
+      const permittedDate = Array.from({ length: 7 }, (_, i) => plusDays(today, i + 1))
+        .find((day) => isoDay(day) === 3);
+      if (!permittedDate) throw new Error("Unable to find next Wednesday");
+      const forbiddenDate = plusDays(permittedDate, 1);
+      const schedule = {
+        weekdays: [3], weeksAhead: 26, deadline: null, lateMode: "block",
+      };
+      const policy = await repository.save(
+        organizationId, group.id, "policy-actor", null, schedule,
+      );
+
+      const allowed = await sessions.ensureScheduledSession(
+        organizationId, "kindertraining", group.id, permittedDate,
+      );
+      const registered = await sessions.saveRegistration(
+        organizationId, allowed.session.id, athlete.id, "attending", null, "actor-identity",
+      );
+      expect(registered.revision).toBe(1);
+
+      // The old ensureScheduledSession path can create an ad-hoc session,
+      // but its presence alone no longer grants an editable registration.
+      const adHoc = await sessions.ensureScheduledSession(
+        organizationId, "kindertraining", group.id, forbiddenDate,
+      );
+      await expect(sessions.saveRegistration(
+        organizationId, adHoc.session.id, athlete.id, "attending", null, "actor-identity",
+      )).rejects.toThrow();
+      const deniedCount = await db.unsafe(
+        `SELECT count(*)::int AS total
+         FROM ulc_linz_training_registration WHERE session_id = $1`,
+        [adHoc.session.id],
+      );
+      expect(deniedCount).toEqual([{ total: 0 }]);
+
+      // Only the separate privileged approval makes an exceptional day writable.
+      await db.unsafe(
+        `INSERT INTO ulc_linz_registration_extra_day
+           (organization_id, group_id, session_date, approved_by_identity_id)
+         VALUES ($1, $2, $3::date, $4)`,
+        [organizationId, group.id, forbiddenDate, "policy-admin"],
+      );
+      await expect(sessions.saveRegistration(
+        organizationId, adHoc.session.id, athlete.id, "attending", null, "actor-identity",
+      )).resolves.toMatchObject({ revision: 1 });
+
+      // The deadline changes atomically via CAS. An existing registration
+      // does not let a direct UPDATE bypass the new closed window.
+      await repository.save(organizationId, group.id, "policy-actor",
+        policy.revision, {
+          ...schedule, deadline: { daysBefore: 14, localTime: "00:00" },
+        });
+      await expect(sessions.saveRegistration(
+        organizationId, allowed.session.id, athlete.id, "maybe", 1, "actor-identity",
+      )).rejects.toThrow();
+      const unchanged = await db.unsafe(
+        `SELECT intention, revision FROM ulc_linz_training_registration
+         WHERE session_id = $1 AND athlete_id = $2`,
+        [allowed.session.id, athlete.id],
+      );
+      expect(unchanged).toEqual([{ intention: "attending", revision: 1 }]);
     });
 
     it("rejects malformed stored policy values with database constraints", async () => {
