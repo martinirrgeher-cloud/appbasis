@@ -9,7 +9,7 @@
     "organizationAdmin": "active-same-organization-admin-exact-role-no-custom-grants-or-revokes",
     "parentOrDelegated": "denied",
     "targetIdentity": "own-identity-or-verified-same-organization-active-or-retained-member-or-current-deletion-marker",
-    "audit": "mandatory-before-returning-data",
+    "audit": "mandatory-durable-receipt-before-returning-data",
     "noHttpRoute": true
   },
   "personalReferenceFields": [
@@ -51,7 +51,7 @@
   "excludedFromCanonicalExportUntilPrivacySignoff": true,
   "blockers": [
     "legal-audit-disclosure-review",
-    "canonical-export-integration-and-authorized-audit-store",
+    "canonical-export-integration-and-persisted-audit-receipt-writer",
     "retention-duration-unapproved",
     "v12-not-published"
   ]
