@@ -81,6 +81,31 @@ describe("A02.4 registration day and deadline policy (not runtime activated)", (
       .toMatchObject({ isLate: true });
   });
 
+  it("never reopens registration during the repeated Vienna autumn hour", () => {
+    const schedule = policy({
+      weekdays: [1], weeksAhead: 26,
+      deadline: { daysBefore: 1, localTime: "02:30" },
+    });
+    const values = (at: string) => eligibility("2026-10-26", {
+      schedule, serverNow: new Date(at),
+    });
+    expect(values("2026-10-25T00:29:00Z")).toMatchObject({ isLate: false });
+    expect(values("2026-10-25T00:31:00Z")).toMatchObject({ isLate: true });
+    expect(values("2026-10-25T01:15:00Z")).toMatchObject({ isLate: true });
+  });
+
+  it("closes nonexistent spring-forward times at the first valid clock minute", () => {
+    const schedule = policy({
+      weekdays: [1], weeksAhead: 26,
+      deadline: { daysBefore: 1, localTime: "02:30" },
+    });
+    const values = (at: string) => eligibility("2026-03-30", {
+      schedule, serverNow: new Date(at),
+    });
+    expect(values("2026-03-29T00:59:00Z")).toMatchObject({ isLate: false });
+    expect(values("2026-03-29T01:01:00Z")).toMatchObject({ isLate: true });
+  });
+
   it("can permit late registration while still returning the late marker", () => {
     expect(eligibility("2026-11-06", {
       schedule: policy({ lateMode: "allow" }),
