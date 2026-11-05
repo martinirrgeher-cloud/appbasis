@@ -99,7 +99,7 @@ function normalizeActorAccessRow(value: unknown): UlcRegistrationScheduleActorAc
   const date = row.sessionDate;
   if (date !== null && typeof date !== "string") blocked();
   if (typeof date === "string" && (
-      !/^\\d{4}-\\d{2}-\\d{2}$/.test(date) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
       !Number.isFinite(Date.parse(date + "T12:00:00Z")) ||
       new Date(date + "T12:00:00Z").toISOString().slice(0, 10) !== date)) blocked();
   const approved = row.approved;
@@ -111,7 +111,7 @@ function normalizeActorAccessRow(value: unknown): UlcRegistrationScheduleActorAc
   }
   const instant = row.occurredAt;
   if (typeof instant !== "string" ||
-      !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(instant) ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(instant) ||
       !Number.isFinite(Date.parse(instant)) ||
       new Date(instant).toISOString() !== instant) blocked();
   return Object.freeze({
