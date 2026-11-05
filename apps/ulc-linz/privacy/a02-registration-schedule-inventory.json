@@ -22,7 +22,7 @@
       "subjectColumns": [],
       "freeTextColumns": [],
       "deletionEvidence": "privileged-offline-redaction-staged-not-integrated",
-      "exportEvidence": "not-implemented",
+      "exportEvidence": "offline-actor-subject-access-staged-not-approved",
       "retentionEvidence": "not-implemented",
       "restoreEvidence": "not-verified"
     },
@@ -40,7 +40,7 @@
       "subjectColumns": [],
       "freeTextColumns": [],
       "deletionEvidence": "privileged-offline-redaction-staged-not-integrated",
-      "exportEvidence": "not-implemented",
+      "exportEvidence": "offline-actor-subject-access-staged-not-approved",
       "retentionEvidence": "not-implemented",
       "restoreEvidence": "not-verified"
     },
@@ -56,7 +56,7 @@
       "subjectColumns": [],
       "freeTextColumns": [],
       "deletionEvidence": "privileged-offline-redaction-staged-not-integrated",
-      "exportEvidence": "not-implemented",
+      "exportEvidence": "offline-actor-subject-access-staged-not-approved",
       "retentionEvidence": "not-implemented",
       "restoreEvidence": "not-verified"
     }
@@ -64,7 +64,7 @@
   "blockers": [
     "retention-period-for-identifiable-configuration-and-audit-unapproved",
     "optional-lifecycle-redaction-hooks-not-injected-or-activated",
-    "data-subject-access-and-export-do-not-include-these-tables",
+    "subject-access-candidate-not-approved-or-wired",
     "retention-and-restore-reconciliation-not-activated",
     "migration-not-in-canonical-manifest",
     "existing-registration-note-history-privacy-gate-remains-open"
