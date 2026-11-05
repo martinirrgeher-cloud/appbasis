@@ -22,6 +22,7 @@ function eligibility(sessionDate: string, overrides: Record<string, unknown> = {
     serverNow: new Date("2026-11-05T12:00:00Z"),
     sessionState: null,
     hasExistingRegistration: false,
+    authorizedExtraDay: false,
     ...overrides,
   });
 }
@@ -46,11 +47,22 @@ describe("A02.4 registration day and deadline policy (not runtime activated)", (
 
   it("keeps exceptional sessions or existing registrations visible on other days", () => {
     expect(eligibility("2026-11-07", { sessionState: "scheduled" }))
-      .toMatchObject({ visible: true, exceptionalTrainingDay: true, mayEdit: true });
+      .toMatchObject({ visible: true, exceptionalTrainingDay: false,
+        mayEdit: false, reason: "non-training-day" });
     expect(eligibility("2026-11-07", { hasExistingRegistration: true }))
-      .toMatchObject({ visible: true, exceptionalTrainingDay: true });
+      .toMatchObject({ visible: true, exceptionalTrainingDay: false,
+        mayEdit: false, reason: "non-training-day" });
+    expect(eligibility("2026-11-07", { authorizedExtraDay: true }))
+      .toMatchObject({ visible: true, exceptionalTrainingDay: true, mayEdit: true });
     expect(eligibility("2026-11-07", { sessionState: "cancelled" }))
       .toMatchObject({ visible: true, mayEdit: false, reason: "cancelled" });
+  });
+
+  it("keeps past days readable but locked when a policy is configured", () => {
+    expect(eligibility("2026-11-04", { hasExistingRegistration: true }))
+      .toMatchObject({ visible: true, mayEdit: false, reason: "past-training-day" });
+    expect(eligibility("2026-11-04", { schedule: null }))
+      .toMatchObject({ visible: true, mayEdit: true });
   });
 
   it("honors forward booking window by ISO week, not arbitrary day count", () => {
