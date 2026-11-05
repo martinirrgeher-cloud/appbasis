@@ -107,7 +107,7 @@ export async function inspectUlcRegistrationScheduleActorData(
     ]);
     if (member !== null && marker !== null) blocked();
     if (member !== null) {
-      if (member.organizationId !== org || member.sourceRole === "admin") blocked();
+      if (member.organizationId !== org) blocked();
     } else if (marker !== null) {
       if (marker.organizationId !== org ||
           !(marker.completedAt instanceof Date) ||
