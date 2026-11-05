@@ -74,8 +74,8 @@ async function registerAtomically(
     intention: UlcTrainingRegistrationIntention;
     expectedRevision: number | null;
     actorIdentityId: string;
-    proxyActorAthleteId?: string;
-    note?: string | null;
+    proxyActorAthleteId?: string | undefined;
+    note?: string | null | undefined;
   },
 ) {
   const write = async (
