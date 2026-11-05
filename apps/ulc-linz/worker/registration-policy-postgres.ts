@@ -124,7 +124,7 @@ export class PostgresUlcRegistrationPolicyRepository {
          SELECT id FROM appbasis_training_group
          WHERE id = $2 AND organization_id = $1
            AND is_active = true AND attendance_mode = 'self_registration'
-         FOR SHARE
+         FOR UPDATE
        ),
        written AS (
          INSERT INTO ulc_linz_registration_group_policy (
