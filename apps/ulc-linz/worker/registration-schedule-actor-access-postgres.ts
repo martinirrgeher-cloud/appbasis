@@ -98,7 +98,7 @@ export class PostgresUlcRegistrationScheduleActorAccessReader {
          WHERE organization_id = $1 AND updated_by_identity_id = $2
          UNION ALL
          SELECT 'extra-day-approved'::text, group_id,
-           session_date::text, revision, is_approved, approved_at
+           session_date::text, revision, true, approved_at
          FROM ulc_linz_registration_extra_day
          WHERE organization_id = $1 AND approved_by_identity_id = $2
          UNION ALL
