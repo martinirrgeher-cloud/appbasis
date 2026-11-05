@@ -140,7 +140,7 @@ describe("A02.4 unpublished privacy/data-lifecycle inventory drift gate", () => 
     expect(contract.resultLimit).toBe(500);
     expect(contract.authorization.parentOrDelegated).toBe("denied");
     expect(contract.authorization.noHttpRoute).toBe(true);
-    expect(contract.authorization.audit).toBe("mandatory-before-returning-data");
+    expect(contract.authorization.audit).toBe("mandatory-durable-receipt-before-returning-data");
     expect(contract.excludedFromCanonicalExportUntilPrivacySignoff).toBe(true);
     expect(contract.retention).toBe("decision-pending");
     expect(contract.permittedResultFields).toEqual([
