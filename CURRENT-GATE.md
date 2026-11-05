@@ -19,6 +19,15 @@ Bereits bestätigte Teilstände: Anmeldung/Anwesenheit als Wochenansicht und sep
 
 **Bewusste Trennung:** Neue komplexe Anmelde-/Trainingstage-Erweiterungen aus Issue #509 können auf einem eigenen Draft-Branch mit Schema-/Datenschutz-Gates stehen. Deren fehlende produktive Schema-/Export-/Retention-Freigabe blockiert **nicht** unabhängige schemafreie UI-/Funktionsverbesserungen auf einem frischen Branch von `main`. Unsichere Draft-Schemaänderungen weder in neue App-PRs einbeziehen noch vorzeitig mergen; Preview-/Produktionsmigration erfordert weiterhin eigene Betreiberfreigabe. Die abgeschlossene Funktionärsrolle und die alte mobile-Formatierungs-Vorlage sollen nicht nochmals als offene PRs bearbeitet werden (siehe Issue #505).
 
+**Read-only Befund vom 05.11.2026:** In der isolierten Neon-ULC-Preview
+fehlen beide `note`-Spalten aus der bereits auf `main` enthaltenen
+App-Schema-v11-Migration `0010_ulc_linz_registration_notes.sql`.
+Ein rein migrationsfreier Runtime-Refresh muss deshalb **vor jedem
+Provider-Write fail-closed** abbrechen, bis die separate v11-Preview-
+Migration ausdrücklich freigegeben, angewendet und geprüft wurde.
+CI-PASS für den Workflow allein ist keine Freigabe. Keine stillschweigende
+Migration oder Aktivierung der A02.4-Draft-v12-Funktionen.
+
 **ULC Preview-UI-Updates ohne Datenbankänderungen:** Der operative Weg für
 reine Frontend-/Runtime-Änderungen ist
 `.github/workflows/ulc-linz-e6h-preview-runtime-refresh.yml`
