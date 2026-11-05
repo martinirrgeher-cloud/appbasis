@@ -6859,6 +6859,13 @@ describe("A02.4 extra-training-day HTTP authorization and audit contract", () =>
           if (query.includes("SELECT is_approved, revision")) {
             return revision === null ? [] : [{ is_approved: isApproved, revision }];
           }
+          if (query.includes("SELECT weekdays_mask, weeks_ahead")) {
+            return [{
+              weekdays_mask: 21, weeks_ahead: 4,
+              deadline_days_before: null, deadline_local_time: null,
+              late_mode: "allow", revision: 1,
+            }];
+          }
           if (query.includes("WITH eligible_group") &&
               query.includes("appended") === false) {
             // The CTE writes the state plus exactly one audit event.
@@ -6915,7 +6922,8 @@ describe("A02.4 extra-training-day HTTP authorization and audit contract", () =>
     const initial = await get();
     expect(initial.status).toBe(200);
     await expect(initial.json()).resolves.toEqual({
-      groupId: group.id, sessionDate: date, approved: false, revision: null,
+      groupId: group.id, sessionDate: date, approved: false,
+      revision: null, configured: true,
     });
     const created = await post(true, null);
     expect(created.status).toBe(200);
