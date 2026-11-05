@@ -21,7 +21,7 @@
       ],
       "subjectColumns": [],
       "freeTextColumns": [],
-      "deletionEvidence": "not-implemented",
+      "deletionEvidence": "privileged-offline-redaction-staged-not-integrated",
       "exportEvidence": "not-implemented",
       "retentionEvidence": "not-implemented",
       "restoreEvidence": "not-verified"
@@ -39,7 +39,7 @@
       ],
       "subjectColumns": [],
       "freeTextColumns": [],
-      "deletionEvidence": "not-implemented",
+      "deletionEvidence": "privileged-offline-redaction-staged-not-integrated",
       "exportEvidence": "not-implemented",
       "retentionEvidence": "not-implemented",
       "restoreEvidence": "not-verified"
@@ -55,7 +55,7 @@
       ],
       "subjectColumns": [],
       "freeTextColumns": [],
-      "deletionEvidence": "not-implemented",
+      "deletionEvidence": "privileged-offline-redaction-staged-not-integrated",
       "exportEvidence": "not-implemented",
       "retentionEvidence": "not-implemented",
       "restoreEvidence": "not-verified"
@@ -63,7 +63,7 @@
   ],
   "blockers": [
     "retention-period-for-identifiable-configuration-and-audit-unapproved",
-    "app-subject-lifecycle-deletion-does-not-redact-these-editor-identifiers",
+    "canonical-identity-lifecycle-does-not-invoke-a02-actor-redaction",
     "data-subject-access-and-export-do-not-include-these-tables",
     "retention-and-restore-reconciliation-not-activated",
     "migration-not-in-canonical-manifest",
