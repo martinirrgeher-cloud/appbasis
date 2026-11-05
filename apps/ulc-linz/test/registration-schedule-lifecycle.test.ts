@@ -6,6 +6,8 @@ import {
   UlcRegistrationScheduleLifecyclePrivacyBlockedError,
 } from "../worker/registration-schedule-lifecycle";
 import { runUlcLinzRetention } from "../worker/retention";
+import { deleteUlcLinzIdentityWithCanonicalAuthorization } from "../worker/lifecycle-service";
+import { principalId, roleId } from "@appbasis/permissions";
 import { reconcileUlcLinzRestoredDatabase } from "../worker/restore-reconciliation";
 
 const NOW = new Date("2026-11-05T18:30:00.000Z");
@@ -126,6 +128,81 @@ describe("A02.4 opt-in canonical deletion/retention/restore privacy coordination
       "list-markers", "redact", "evaluate", "purge-markers",
       "purge-identity", "purge-audit",
     ]);
+  });
+
+  it("manual admin deletion invokes actor redaction only after the canonical app marker", async () => {
+    const order: string[] = [];
+    const erasure = vi.fn(async () => {
+      order.push("redact");
+      return OK;
+    });
+    const admin = principalId("admin-identity");
+    const permissions = {
+      async findPrincipal(id: string) {
+        order.push("find-principal:" + id);
+        return id === admin
+          ? { principalId: admin, roleIds: [roleId("ulc-linz:admin")],
+              grants: [], revokes: [] }
+          : null;
+      },
+    };
+    const dependencies = {
+      permissions,
+      scopes: {
+        async resolveMembership() {
+          return {
+            organizationId: MARKER.organizationId,
+            sourceRole: "admin", active: true,
+          };
+        },
+        async findLifecycleTarget() { return null; },
+        async findDeletionMarker() { return MARKER; },
+        async completeIdentityDeletion() {
+          order.push("complete-marker");
+          return MARKER;
+        },
+      },
+      identityDeletion: {
+        async isDeletionCompleted() {
+          order.push("identity-already-deleted");
+          return true;
+        },
+      },
+      registrationSchedulePrivacy: privacy(erasure),
+    } as unknown as Parameters<typeof deleteUlcLinzIdentityWithCanonicalAuthorization>[1];
+    const current = {
+      access: "full",
+      identity: { identityId: "admin-identity" },
+    } as unknown as Parameters<typeof deleteUlcLinzIdentityWithCanonicalAuthorization>[0];
+    const request = {
+      organizationId: MARKER.organizationId,
+      targetIdentityId: MARKER.identityId,
+    };
+
+    const result = await deleteUlcLinzIdentityWithCanonicalAuthorization(
+      current, dependencies, request,
+    );
+    expect(result).toMatchObject({ identityDeleted: true, alreadyDeleted: true });
+    expect(order.slice(-2)).toEqual(["complete-marker", "redact"]);
+    expect(erasure).toHaveBeenCalledExactlyOnceWith({
+      organizationId: MARKER.organizationId,
+      identityId: MARKER.identityId,
+      now: NOW,
+    });
+
+    const failure = new Error("crashed after canonical deletion");
+    const failedDependencies = {
+      ...dependencies,
+      registrationSchedulePrivacy: privacy(vi.fn(async () => { throw failure; })),
+    };
+    await expect(deleteUlcLinzIdentityWithCanonicalAuthorization(
+      current, failedDependencies, request,
+    )).rejects.toBe(failure);
+    // Canonical tombstone permits the entire authorized operation to be
+    // retried; no special bypass or manual actor identity is accepted.
+    await expect(deleteUlcLinzIdentityWithCanonicalAuthorization(
+      current, dependencies, request,
+    )).resolves.toMatchObject({ identityDeleted: true });
   });
 
   it("restore reconciliation re-erases only after canonical owner and target marker reconciliation", async () => {
