@@ -3669,15 +3669,17 @@ async function loadMasterdataExtraDay() {
         extraDayDraft?.groupId !== group.id || extraDayDraft?.sessionDate !== date) return;
     if (result?.groupId !== group.id || result.sessionDate !== date ||
         typeof result.approved !== "boolean" ||
+        typeof result.configured !== "boolean" ||
         !(result.revision === null ||
           (Number.isSafeInteger(result.revision) && result.revision >= 1))) {
       throw new Error("INVALID_EXTRA_DAY_RESPONSE");
     }
     extraDayDraft = {
-      groupId: group.id, sessionDate: date, loaded: true, loading: false,
+      groupId: group.id, sessionDate: date, loaded: result.configured, loading: false,
       saving: false, approved: result.approved, revision: result.revision,
     };
     if (elements.groupExtraStatus) elements.groupExtraStatus.textContent =
+      !result.configured ? "Zuerst die regulären Trainingstage der Gruppe speichern." :
       result.approved ? "Als Sondertrainingstag freigegeben." :
       "Keine aktive Sonderfreigabe für diesen Tag.";
   } catch (error) {
@@ -4481,19 +4483,22 @@ async function loadTrainerExtraDay() {
         elements.kindertrainingExtraDate?.value !== date) return;
     if (result?.groupId !== group.id || result.sessionDate !== date ||
         typeof result.approved !== "boolean" ||
+        typeof result.configured !== "boolean" ||
         !(result.revision === null ||
           (Number.isSafeInteger(result.revision) && result.revision >= 1))) {
       throw new Error("INVALID_TRAINER_EXTRA_RESPONSE");
     }
     kindertrainingExtraDraft = {
       groupId: group.id, sessionDate: date,
-      loading: false, loaded: true, saving: false,
+      loading: false, loaded: result.configured, saving: false,
       approved: result.approved, revision: result.revision,
     };
     if (elements.kindertrainingExtraStatus) {
-      elements.kindertrainingExtraStatus.textContent = result.approved
-        ? "Der Sondertrainingstag ist freigegeben."
-        : "Für dieses Datum besteht keine aktive Sonderfreigabe.";
+      elements.kindertrainingExtraStatus.textContent = !result.configured
+        ? "Zuerst müssen die regulären Trainingstage von der Gruppenverwaltung festgelegt werden."
+        : result.approved
+          ? "Der Sondertrainingstag ist freigegeben."
+          : "Für dieses Datum besteht keine aktive Sonderfreigabe.";
     }
   } catch (error) {
     if (id !== kindertrainingExtraRequestId ||
