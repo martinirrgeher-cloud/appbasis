@@ -28,6 +28,27 @@ export class UlcRegistrationPolicyDataError extends Error {
   }
 }
 
+export interface UlcRegistrationExtraDayRecord {
+  readonly approved: boolean;
+  readonly revision: number;
+}
+function validExtraDay(value: string): string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+      Number.isNaN(Date.parse(value + "T12:00:00Z")) ||
+      new Date(value + "T12:00:00Z").toISOString().slice(0,10) !== value) {
+    throw new UlcRegistrationPolicyDataError();
+  }
+  return value;
+}
+function decodeExtraDay(row: Record<string, unknown>): UlcRegistrationExtraDayRecord {
+  if (typeof row.is_approved !== "boolean" ||
+      typeof row.revision !== "number" ||
+      !Number.isSafeInteger(row.revision) || row.revision < 1) {
+    throw new UlcRegistrationPolicyDataError();
+  }
+  return Object.freeze({ approved: row.is_approved, revision: row.revision });
+}
+
 export interface UlcRegistrationPolicyRecord {
   readonly schedule: UlcRegistrationSchedule;
   readonly revision: number;
@@ -162,6 +183,99 @@ export class PostgresUlcRegistrationPolicyRepository {
     return decodePolicy(rows[0]!);
   }
 
+
+  async readExtraDay(organizationId: string, groupId: string, sessionDate: string):
+    Promise<UlcRegistrationExtraDayRecord | null> {
+    const rows = await this.sql.unsafe(
+      `SELECT is_approved, revision FROM ulc_linz_registration_extra_day
+       WHERE organization_id = $1 AND group_id = $2 AND session_date = $3::date`,
+      [identifier(organizationId, "Organization"), identifier(groupId, "Group"),
+       validExtraDay(sessionDate)],
+    );
+    if (rows.length > 1) throw new UlcRegistrationPolicyDataError();
+    return rows.length === 0 ? null : decodeExtraDay(rows[0]!);
+  }
+
+  /**
+   * Server-actor-only CAS. Approval and revocation each append one immutable
+   * actor/revision event, atomically with the visible state change.
+   */
+  async setExtraDay(
+    organizationId: string, groupId: string, sessionDate: string,
+    actorIdentityId: string, approved: boolean, expectedRevision: number | null,
+  ): Promise<UlcRegistrationExtraDayRecord> {
+    const org = identifier(organizationId, "Organization");
+    const group = identifier(groupId, "Group");
+    const date = validExtraDay(sessionDate);
+    const actor = identifier(actorIdentityId, "Actor");
+    const expected = revision(expectedRevision);
+    if (typeof approved !== "boolean") throw new UlcRegistrationPolicyDataError();
+    const rows = await this.sql.unsafe(
+      `WITH eligible_group AS MATERIALIZED (
+         SELECT training_group.id
+         FROM appbasis_training_group AS training_group
+         INNER JOIN ulc_linz_registration_group_policy AS policy
+           ON policy.organization_id = training_group.organization_id
+          AND policy.group_id = training_group.id
+         WHERE training_group.organization_id = $1 AND training_group.id = $2
+           AND training_group.is_active = true
+           AND training_group.attendance_mode = 'self_registration'
+           AND ($5::boolean OR EXISTS (
+             SELECT 1 FROM ulc_linz_registration_extra_day AS existing
+             WHERE existing.organization_id = $1 AND existing.group_id = $2
+               AND existing.session_date = $3::date
+               AND existing.is_approved = true AND existing.revision = $6::int
+           ))
+           AND (NOT $5::boolean OR (
+             $3::date >= (clock_timestamp() AT TIME ZONE 'Europe/Vienna')::date
+             AND date_trunc('week', $3::date::timestamp) <=
+               date_trunc('week', (clock_timestamp() AT TIME ZONE 'Europe/Vienna')::timestamp)
+               + make_interval(weeks => policy.weeks_ahead)
+             AND (policy.weekdays_mask &
+               (1 << (EXTRACT(ISODOW FROM $3::date)::int - 1))) = 0
+           ))
+         FOR UPDATE OF training_group
+       ),
+       written AS (
+         INSERT INTO ulc_linz_registration_extra_day (
+           organization_id, group_id, session_date,
+           approved_by_identity_id, approved_at, is_approved, revision,
+           updated_by_identity_id, updated_at
+         )
+         SELECT $1, $2, $3::date, $4, now(), $5::boolean, 1, $4, now()
+         FROM eligible_group
+         ON CONFLICT (organization_id, group_id, session_date)
+         DO UPDATE SET is_approved = EXCLUDED.is_approved,
+                       updated_by_identity_id = EXCLUDED.updated_by_identity_id,
+                       updated_at = now(),
+                       revision = ulc_linz_registration_extra_day.revision + 1
+         WHERE $6::int IS NOT NULL
+           AND ulc_linz_registration_extra_day.revision = $6::int
+           AND ulc_linz_registration_extra_day.is_approved <> $5::boolean
+         RETURNING organization_id, group_id, session_date,
+                   is_approved, revision, updated_by_identity_id
+       ),
+       audit AS (
+         INSERT INTO ulc_linz_registration_extra_day_change (
+           organization_id, group_id, session_date, revision,
+           is_approved, actor_identity_id
+         )
+         SELECT organization_id, group_id, session_date, revision,
+                is_approved, updated_by_identity_id FROM written
+         RETURNING revision
+       )
+       SELECT written.is_approved, written.revision,
+              (SELECT count(*)::int FROM audit) AS audit_count
+       FROM written`,
+      [org, group, date, actor, approved, expected],
+    );
+    if (rows.length === 0) throw new UlcRegistrationPolicyConflictError();
+    if (rows.length !== 1 || rows[0]?.audit_count !== 1) {
+      throw new UlcRegistrationPolicyDataError();
+    }
+    return decodeExtraDay(rows[0]!);
+  }
+
   /** Explicit approval only; an existing session or registration is not proof. */
   async isApprovedExtraDay(
     organizationId: string, groupId: string, sessionDate: string,
@@ -177,7 +291,8 @@ export class PostgresUlcRegistrationPolicyRepository {
     const rows = await this.sql.unsafe(
       `SELECT 1 AS approved
        FROM ulc_linz_registration_extra_day
-       WHERE organization_id = $1 AND group_id = $2 AND session_date = $3::date`,
+       WHERE organization_id = $1 AND group_id = $2 AND session_date = $3::date
+         AND is_approved = true`,
       [org, group, sessionDate],
     );
     if (rows.length > 1) throw new UlcRegistrationPolicyDataError();
