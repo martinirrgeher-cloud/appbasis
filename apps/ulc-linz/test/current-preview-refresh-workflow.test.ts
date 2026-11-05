@@ -18,6 +18,13 @@ describe("ULC current UI preview refresh: no historical schema rollback", () => 
     expect(workflow).toContain("test \"$APPBASIS_REF\" = 'refs/heads/main'");
     expect(workflow).toContain("name: generated-preview-ulc-linz");
     expect(workflow).toContain("Require existing standard-module preview runtime");
+    expect(workflow).toContain('Require compatible Preview registration-note schema');
+    expect(workflow).toContain('validateUlcLinzD4PreviewDatabaseCredentials');
+    expect(workflow).toContain('ulc_linz_training_registration_change_note_check');
+    expect(workflow).toContain('STOP before Worker update; migration requires separate operator approval.');
+    expect(workflow.indexOf('Require compatible Preview registration-note schema')).toBeLessThan(
+      workflow.indexOf('Synchronize preview identity secret'),
+    );
     expect(workflow).toContain('entrypoint: "./worker/preview-exercise-catalog-standard.ts"');
     expect(workflow).toContain("--experimental-provision=false");
     expect(workflow).toContain("--experimental-auto-create=false");
