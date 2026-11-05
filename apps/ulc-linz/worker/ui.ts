@@ -3072,7 +3072,9 @@ function resetMasterdataSessionState() {
   closeMasterdataImportPreview();
   closeMasterdataAthleteOverlay();
   closeMasterdataTrainerOverlay();
-  closeMasterdataGroupOverlay();
+  // Session loss must clear sensitive overlays, even when an earlier request
+  // was in flight; normal user-initiated close still respects the save guard.
+  closeMasterdataGroupOverlay({ force: true });
 
   trainerIdentityAdminReady = false;
   trainerIdentityLoading = false;
@@ -7475,8 +7477,8 @@ function openNewMasterdataGroup() {
   elements.groupName?.focus();
 }
 
-function closeMasterdataGroupOverlay() {
-  if (extraDayDraft?.saving || groupPolicyDraft?.saving) return;
+function closeMasterdataGroupOverlay({ force = false } = {}) {
+  if (!force && (extraDayDraft?.saving || groupPolicyDraft?.saving)) return;
   extraDayRequestId += 1;
   extraDayDraft = null;
   groupPolicyRequestId += 1;
