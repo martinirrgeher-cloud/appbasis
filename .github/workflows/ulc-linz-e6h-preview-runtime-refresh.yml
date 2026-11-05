@@ -82,6 +82,74 @@ jobs:
             echo "::add-mask::$value"
           done
 
+      # A02.3 on main requires these v11 registration-note columns. A
+      # UI-only refresh must fail BEFORE any Worker/secret mutation if the
+      # isolated preview database has not been separately migrated.
+      - name: Require compatible Preview registration-note schema
+        shell: bash
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { createPostgresDatabase } from './packages/database/src/node-runtime.mjs';
+          import { validateUlcLinzD4PreviewDatabaseCredentials } from './tooling/ulc-linz-d4-preview-hyperdrive.mjs';
+
+          validateUlcLinzD4PreviewDatabaseCredentials({
+            migrationDatabaseUrl: process.env.APPBASIS_MIGRATION_DATABASE_URL,
+            applicationDatabaseUrl: process.env.APPBASIS_DATABASE_URL,
+            securityLogDatabaseUrl: process.env.APPBASIS_SECURITY_LOG_DATABASE_URL,
+          });
+          const db = createPostgresDatabase(process.env.APPBASIS_MIGRATION_DATABASE_URL);
+          try {
+            const columns = await db.client.unsafe(`
+              SELECT table_name, data_type, is_nullable
+                FROM information_schema.columns
+               WHERE table_schema = 'public'
+                 AND column_name = 'note'
+                 AND table_name IN (
+                   'ulc_linz_training_registration',
+                   'ulc_linz_training_registration_change'
+                 )
+               ORDER BY table_name
+            `);
+            const expectedTables = [
+              'ulc_linz_training_registration',
+              'ulc_linz_training_registration_change',
+            ];
+            const columnsValid = columns.length === expectedTables.length
+              && columns.every((col, i) => col.table_name === expectedTables[i]
+                && col.data_type === 'text' && col.is_nullable === 'YES');
+            const constraints = await db.client.unsafe(`
+              SELECT conname, convalidated
+                FROM pg_catalog.pg_constraint
+               WHERE connamespace = 'public'::regnamespace
+                 AND conname IN (
+                   'ulc_linz_training_registration_note_check',
+                   'ulc_linz_training_registration_change_note_check'
+                 )
+               ORDER BY conname
+            `);
+            const expectedConstraints = [
+              'ulc_linz_training_registration_change_note_check',
+              'ulc_linz_training_registration_note_check',
+            ];
+            const checksValid = constraints.length === expectedConstraints.length
+              && constraints.every((row, i) => row.conname === expectedConstraints[i]
+                && row.convalidated === true);
+            if (!columnsValid || !checksValid) {
+              throw new Error(
+                'Preview is missing app-owned ULC registration-note schema v11. '
+                + 'STOP before Worker update; migration requires separate operator approval.',
+              );
+            }
+            console.log('Read-only ULC registration-note schema v11 preflight PASS.');
+          } finally {
+            await db.client.end().catch(() => {});
+          }
+          NODE
       - name: Resolve preview worker and URL
         id: preview
         shell: bash
