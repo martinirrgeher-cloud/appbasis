@@ -91,6 +91,34 @@ function viennaLocalDateTime(now: Date): string {
     "T" + fields.hour + ":" + fields.minute + ":" + fields.second;
 }
 
+/**
+ * Resolve a Vienna deadline into one absolute instant, including DST changes.
+ * During the fall-back hour the first occurrence closes registration; it must
+ * never reopen when the wall clock moves backward. Missing spring-forward
+ * times close at the first valid minute after the skipped hour.
+ */
+function viennaDeadlineInstant(deadlineLocal: string): number {
+  const naiveUtc = Date.parse(deadlineLocal + ":00.000Z");
+  if (!Number.isFinite(naiveUtc)) invalid("Invalid deadline date/time.");
+  // Europe/Vienna uses UTC+1 / UTC+2. Check actual local clock values rather
+  // than assuming a particular offset on the transition day.
+  const candidates = [60, 120].map((minutes) => naiveUtc - minutes * 60_000);
+  const matches = candidates.filter((candidate) =>
+    viennaLocalDateTime(new Date(candidate)).slice(0, 16) === deadlineLocal);
+  if (matches.length > 0) return Math.min(...matches);
+
+  // A spring DST gap (e.g. 02:30) has no exact instant. Choose the very
+  // first existing minute after it on the same Vienna calendar date.
+  const begin = Math.min(...candidates) - 60 * 60_000;
+  const end = Math.max(...candidates) + 60 * 60_000;
+  for (let instant = begin; instant <= end; instant += 60_000) {
+    const actual = viennaLocalDateTime(new Date(instant)).slice(0, 16);
+    if (actual.startsWith(deadlineLocal.slice(0, 10)) &&
+        actual >= deadlineLocal) return instant;
+  }
+  return invalid("Unable to resolve Vienna registration deadline.");
+}
+
 /** Reject malformed records rather than silently accepting unsafe defaults. */
 export function normalizeUlcRegistrationSchedule(input: unknown):
   UlcRegistrationSchedule {
@@ -170,10 +198,8 @@ export function evaluateUlcRegistrationSchedule(input: {
     ? shiftDate(day, -schedule.deadline.daysBefore) + "T" +
       schedule.deadline.localTime
     : null;
-  // Compare Vienna wall-clock values at minute resolution. A final runtime
-  // writer must additionally resolve DST-fold deadlines atomically at the DB.
   const isLate = deadlineLocal !== null &&
-    nowLocal.slice(0, 16) > deadlineLocal;
+    input.serverNow.getTime() > viennaDeadlineInstant(deadlineLocal);
   const reason: UlcRegistrationScheduleEvaluation["reason"] =
     !visible ? "non-training-day" :
     input.sessionState === "cancelled" ? "cancelled" :
