@@ -243,6 +243,35 @@ describe("A02.4 opt-in canonical deletion/retention/restore privacy coordination
     });
   });
 
+  it("restores functionary deletion markers that the published app schema permits", async () => {
+    const functionaryMarker = { ...MARKER,
+      identityId: "functionary-deleted", subjectId: "functionary-1",
+      sourceRole: "functionary" as const,
+    };
+    const erasure = vi.fn(async () => OK);
+    const target = {
+      identityDeletion: { async isDeletionCompleted() { return true; } },
+      permissions: { async findPrincipal() { return null; } },
+      scopes: {
+        async findLifecycleTarget() { return null; },
+        async findDeletionMarker() { return functionaryMarker; },
+        async completeIdentityDeletion() { return functionaryMarker; },
+      },
+      registrationSchedulePrivacy: privacy(erasure),
+    } as unknown as Parameters<typeof reconcileUlcLinzRestoredDatabase>[1];
+    await expect(reconcileUlcLinzRestoredDatabase({
+      async listCurrentDeletionMarkers() { return [functionaryMarker]; },
+    }, target)).resolves.toEqual({
+      requiredDeletionCount: 1,
+      reconciledIdentityIds: ["functionary-deleted"],
+    });
+    expect(erasure).toHaveBeenCalledExactlyOnceWith({
+      organizationId: MARKER.organizationId,
+      identityId: "functionary-deleted",
+      now: NOW,
+    });
+  });
+
   it("restore replay fails rather than promoting a partially redacted target", async () => {
     const error = new Error("failed to redact restored actor references");
     const target = {
