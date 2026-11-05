@@ -11,6 +11,7 @@ import {
   createUlcExerciseCatalogWorkbook,
 } from "../worker/exercise-catalog-exchange";
 import { createGeneratedWorker } from "../worker/index";
+import { PostgresUlcRegistrationPolicyRepository } from "../worker/registration-policy-postgres";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
 import { UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
 import { TrainingBlockConflictError } from "@appbasis/training-blocks";
@@ -623,6 +624,9 @@ function runtime(
     athleteMasterdata,
     kindertraining,
     selfRegistration,
+    registrationPolicies: new PostgresUlcRegistrationPolicyRepository({
+      async unsafe() { return []; },
+    }),
     u12,
     trainingBlocks: {
       async listAudiences() {
