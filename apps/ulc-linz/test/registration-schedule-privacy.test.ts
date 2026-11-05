@@ -51,7 +51,7 @@ describe("A02.4 unpublished privacy/data-lifecycle inventory drift gate", () => 
     );
     expect(inventory.publication).toBe("blocked-not-in-database-manifest");
     expect(inventory.activation).toBe("blocked-no-preview-or-production");
-    expect(inventory.noRuntimeEndpoint).toBe(true);
+    expect(inventory.noPrivacyPreflightRuntimeEndpoint).toBe(true);
     expect(inventory.noPersonalDataExport).toBe(true);
 
     const actualTables = [...migration.matchAll(
