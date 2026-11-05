@@ -3694,7 +3694,9 @@ function isSelfRegistrationProxyRoster(roster, groupId, sessionDate) {
   if (!roster || roster.group?.id !== groupId ||
       roster.sessionDate !== sessionDate ||
       !["scheduled", "cancelled", null].includes(roster.sessionState) ||
-      !Array.isArray(roster.options)) return false;
+      !Array.isArray(roster.options) ||
+      ("registrationWindow" in roster &&
+       !isRegistrationWindowContract(roster.registrationWindow))) return false;
   const seen = new Set();
   for (const entry of roster.options) {
     const athlete = entry?.athlete;
@@ -3732,6 +3734,7 @@ function renderSelfRegistrationProxy() {
     selector.value = previousId;
   }
   const selected = options.find((option) => option.athlete.id === selector.value);
+  const policyLocked = state.roster?.registrationWindow?.mayEdit === false;
   selector.disabled = state.loading || state.saving || options.length === 0;
   const noteInput = elements.registrationProxyNote;
   const noteSave = elements.registrationProxyNoteSave;
@@ -3741,16 +3744,19 @@ function renderSelfRegistrationProxy() {
           ? state.noteDrafts.get(selected.athlete.id) : selected.note || "")
       : "";
     noteInput.disabled = state.loading || state.saving || !selected ||
-      state.roster?.sessionState === "cancelled";
+      state.roster?.sessionState === "cancelled" || policyLocked;
   }
   if (noteSave) {
     noteSave.disabled = state.loading || state.saving || !selected ||
-      state.roster?.sessionState === "cancelled" ||
+      state.roster?.sessionState === "cancelled" || policyLocked ||
       !state.noteDrafts.has(selected?.athlete.id);
   }
   if (elements.registrationProxyContext) {
     elements.registrationProxyContext.textContent =
-      state.groupName + " · " + germanDate(state.sessionDate);
+      state.groupName + " · " + germanDate(state.sessionDate) +
+      (state.roster?.registrationWindow
+        ? " · " + registrationWindowExplanation(state.roster.registrationWindow)
+        : "");
   }
   if (elements.registrationProxyCurrent) {
     elements.registrationProxyCurrent.textContent = state.loading
@@ -3767,7 +3773,7 @@ function renderSelfRegistrationProxy() {
     "[data-registration-proxy-intention]",
   ) || []) {
     button.disabled = state.loading || state.saving || !selected ||
-      state.roster?.sessionState === "cancelled";
+      state.roster?.sessionState === "cancelled" || policyLocked;
     button.setAttribute("aria-pressed",
       selected?.intention === button.dataset.registrationProxyIntention ? "true" : "false");
   }
@@ -3778,7 +3784,8 @@ async function openSelfRegistrationProxy(groupId, sessionDate) {
       selfRegistrationSavingKeys.size > 0) return;
   const option = selfRegistrationOptions.find((entry) =>
     entry.group.id === groupId && entry.sessionDate === sessionDate);
-  if (!option || option.sessionState === "cancelled") return;
+  if (!option || option.sessionState === "cancelled" ||
+      option.registrationWindow?.mayEdit === false) return;
   const generation = attendanceSessionGeneration;
   const requestId = ++selfRegistrationProxyRequestId;
   selfRegistrationProxy = {
@@ -3821,6 +3828,7 @@ async function saveSelfRegistrationProxy(intention) {
   const id = elements.registrationProxyAthlete?.value || "";
   if (!state || !state.roster || state.saving || state.loading ||
       state.roster.sessionState === "cancelled" ||
+      state.roster.registrationWindow?.mayEdit === false ||
       !["unknown", "attending", "not_attending", "maybe"].includes(intention)) return;
   const selected = state.roster.options.find((option) => option.athlete.id === id);
   if (!selected) return;
@@ -3904,7 +3912,8 @@ async function handleSelfRegistrationClick(event) {
       candidate.group.id === groupId &&
       candidate.sessionDate === sessionDate,
   );
-  if (!option || option.sessionState === "cancelled") return;
+  if (!option || option.sessionState === "cancelled" ||
+      option.registrationWindow?.mayEdit === false) return;
   const intention = noteOnly ? option.intention : clickedIntention;
   const noteDraft = selfRegistrationNoteDrafts.get(optionKey);
   const noteChanged = noteDraft !== undefined &&
