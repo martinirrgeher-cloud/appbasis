@@ -7,6 +7,7 @@ import {
 } from "./lifecycle";
 import {
   reconcileDeletedRegistrationScheduleActor,
+  replayRegistrationScheduleActorErasureForCurrentMarkers,
   type UlcRegistrationScheduleLifecyclePrivacyHook,
 } from "./registration-schedule-lifecycle";
 import type {
@@ -35,6 +36,21 @@ export interface UlcLinzRetentionDependencies
   readonly identityDeletionRetention: UlcLinzIdentityDeletionRetention;
   /** A02.4 opt-in only. Must be present before v12 retention activation. */
   readonly registrationSchedulePrivacy?: UlcRegistrationScheduleLifecyclePrivacyHook;
+  /**
+   * Required for enabled A02.4 retention: scan current authoritative
+   * app-deletion markers before any can be purged. Independent v11
+   * retention callers need not provide this dependency.
+   */
+  readonly registrationScheduleDeletedMarkers?: Readonly<{
+    listCurrentDeletionMarkers(): Promise<readonly {
+      identityId: string;
+      organizationId: string;
+      subjectId: string;
+      sourceRole: "trainer" | "athlete" | "parent" | "functionary";
+      completedAt: Date;
+      purgeAfter: Date;
+    }[]>;
+  }>;
 }
 
 export interface UlcLinzRetentionRunResult {
@@ -54,6 +70,15 @@ export interface UlcLinzRetentionRunResult {
 export async function runUlcLinzRetention(
   dependencies: UlcLinzRetentionDependencies,
 ): Promise<UlcLinzRetentionRunResult> {
+  if (dependencies.registrationSchedulePrivacy) {
+    if (!dependencies.registrationScheduleDeletedMarkers) blocked();
+    // Reconcile orphaned actor-redaction work from a prior interrupted
+    // deletion. This MUST precede marker expiration/purge.
+    await replayRegistrationScheduleActorErasureForCurrentMarkers(
+      dependencies.registrationScheduleDeletedMarkers,
+      dependencies.registrationSchedulePrivacy,
+    );
+  }
   const states = await dependencies.scopes.evaluateRetention();
   const deletedIdentityIds: string[] = [];
   const exceptionIdentityIds: string[] = [];
