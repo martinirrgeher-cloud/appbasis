@@ -490,6 +490,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                       <div class="masterdata-athlete-actions masterdata-group-actions">
                         <button class="button button--secondary" id="group-detail-edit" type="button"><span aria-hidden="true">✎</span> Bearbeiten</button>
                         <button class="button button--secondary" id="group-detail-schedule" type="button" hidden>Trainingstage &amp; Anmeldefrist</button>
+                        <button class="button button--secondary" id="group-detail-extra" type="button" hidden>Sondertrainingstag</button>
                       </div>
                     </section>
                     <form class="card masterdata-form masterdata-overlay-form" id="group-form" hidden>
@@ -544,6 +545,21 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                         <button class="button button--primary" id="group-policy-submit" type="submit" disabled>Regeln speichern</button>
                         <button class="button button--secondary" id="group-policy-cancel" type="button">Zurück</button>
                       </div>
+                    </form>
+                    <form class="card masterdata-form masterdata-overlay-form" id="group-extra-form" hidden>
+                      <div class="section-heading"><div><p class="eyebrow">Selbstanmeldung</p><h2>Sondertrainingstag</h2></div></div>
+                      <p class="settings-note">Zusätzlichen Trainingstag freigeben oder eine Freigabe zurücknehmen. Zuerst müssen reguläre Trainingstage gespeichert sein.</p>
+                      <label>Datum<input id="group-extra-date" type="date" required /></label>
+                      <p class="settings-note" id="group-extra-status" aria-live="polite">Datum auswählen und prüfen.</p>
+                      <p id="group-extra-message" class="message message--error" role="alert" hidden></p>
+                      <p id="group-extra-success" class="message message--success" role="status" hidden></p>
+                      <div class="masterdata-form-actions">
+                        <button class="button button--secondary" id="group-extra-load" type="button">Datum prüfen</button>
+                        <button class="button button--primary" id="group-extra-approve" type="button" disabled>Freigeben</button>
+                        <button class="button button--secondary" id="group-extra-revoke" type="button" disabled>Freigabe zurücknehmen</button>
+                        <button class="button button--secondary" id="group-extra-cancel" type="button">Zurück</button>
+                      </div>
+                      <p class="settings-note">Bestehende Anmeldungen bleiben nach Rücknahme einer Freigabe sichtbar, sind aber nicht mehr bearbeitbar. Jede Änderung wird protokolliert.</p>
                     </form>
                   </div>
                 </section>
@@ -2277,6 +2293,16 @@ const elements = {
   groupDetailDescription: document.querySelector("#group-detail-description"),
   groupDetailEdit: document.querySelector("#group-detail-edit"),
   groupDetailSchedule: document.querySelector("#group-detail-schedule"),
+  groupDetailExtra: document.querySelector("#group-detail-extra"),
+  groupExtraForm: document.querySelector("#group-extra-form"),
+  groupExtraDate: document.querySelector("#group-extra-date"),
+  groupExtraStatus: document.querySelector("#group-extra-status"),
+  groupExtraMessage: document.querySelector("#group-extra-message"),
+  groupExtraSuccess: document.querySelector("#group-extra-success"),
+  groupExtraLoad: document.querySelector("#group-extra-load"),
+  groupExtraApprove: document.querySelector("#group-extra-approve"),
+  groupExtraRevoke: document.querySelector("#group-extra-revoke"),
+  groupExtraCancel: document.querySelector("#group-extra-cancel"),
   groupPolicyForm: document.querySelector("#group-policy-form"),
   groupPolicyFields: document.querySelector("#group-policy-fields"),
   groupPolicyMessage: document.querySelector("#group-policy-message"),
@@ -2529,6 +2555,8 @@ let masterdataGroupOverlayId = null;
 let masterdataGroupOverlayMode = "closed";
 let groupPolicyDraft = null;
 let groupPolicyRequestId = 0;
+let extraDayDraft = null;
+let extraDayRequestId = 0;
 let masterdataSwipeStart = null;
 let trainerIdentityAdminReady = false;
 let trainerIdentityLoading = false;
@@ -2651,6 +2679,18 @@ elements.groupDetailSchedule?.addEventListener("click", () => void openMasterdat
 elements.groupPolicyDeadlineEnabled?.addEventListener("change", syncGroupPolicyDeadlineFields);
 elements.groupPolicyForm?.addEventListener("submit", (event) => void saveMasterdataGroupPolicy(event));
 elements.groupPolicyCancel?.addEventListener("click", requestCloseMasterdataGroupPolicy);
+elements.groupDetailExtra?.addEventListener("click", openMasterdataExtraDay);
+elements.groupExtraForm?.addEventListener("submit", (event) => event.preventDefault());
+elements.groupExtraLoad?.addEventListener("click", () => void loadMasterdataExtraDay());
+elements.groupExtraDate?.addEventListener("change", () => {
+  extraDayDraft = null;
+  extraDayRequestId += 1;
+  if (elements.groupExtraStatus) elements.groupExtraStatus.textContent = "Datum prüfen.";
+  refreshMasterdataExtraDayButtons();
+});
+elements.groupExtraApprove?.addEventListener("click", () => void saveMasterdataExtraDay(true));
+elements.groupExtraRevoke?.addEventListener("click", () => void saveMasterdataExtraDay(false));
+elements.groupExtraCancel?.addEventListener("click", requestCloseMasterdataExtraDay);
 elements.groupDetailEdit?.addEventListener("click", () => {
   const group = selectedMasterdataGroup();
   if (group) beginMasterdataEdit({ type: "group", id: group.id, item: group });
@@ -3004,8 +3044,8 @@ function resetMasterdataSessionState() {
 async function handleSignOut() {
   if (busy) return;
 
-  if (groupPolicyDraft?.saving) {
-    showMessage(elements.appSessionMessage, "Die Anmelderegeln werden noch gespeichert.");
+  if (groupPolicyDraft?.saving || extraDayDraft?.saving) {
+    showMessage(elements.appSessionMessage, "Trainingstag-Einstellungen werden noch gespeichert.");
     return;
   }
   if (isMasterdataGroupPolicyDirty() &&
@@ -3621,7 +3661,7 @@ function requestCloseMasterdataGroupPolicy() {
 }
 
 function requestCloseMasterdataGroupOverlay() {
-  if (groupPolicyDraft?.saving) return;
+  if (groupPolicyDraft?.saving || extraDayDraft?.saving) return;
   if (isMasterdataGroupPolicyDirty() &&
       !window.confirm("Ungespeicherte Anmelderegeln verwerfen?")) return;
   closeMasterdataGroupOverlay();
@@ -7052,6 +7092,8 @@ function openNewMasterdataGroup() {
 }
 
 function closeMasterdataGroupOverlay() {
+  extraDayRequestId += 1;
+  extraDayDraft = null;
   groupPolicyRequestId += 1;
   groupPolicyDraft = null;
   masterdataGroupOverlayMode = "closed";
@@ -7074,6 +7116,7 @@ function showMasterdataGroupOverlayMode(mode) {
   if (elements.groupDetail) elements.groupDetail.hidden = mode !== "detail";
   if (elements.groupForm) elements.groupForm.hidden = mode !== "group";
   if (elements.groupPolicyForm) elements.groupPolicyForm.hidden = mode !== "policy";
+  if (elements.groupExtraForm) elements.groupExtraForm.hidden = mode !== "extra";
   if (masterdataSnapshot) renderMasterdataGroupOverlay(masterdataSnapshot);
 }
 
@@ -7106,6 +7149,10 @@ function renderMasterdataGroupOverlay(snapshot) {
   if (elements.groupDetailSchedule) {
     elements.groupDetailSchedule.hidden = group.attendanceMode !== "self_registration";
     elements.groupDetailSchedule.disabled = !masterdataCanEdit || group.isActive === false;
+  }
+  if (elements.groupDetailExtra) {
+    elements.groupDetailExtra.hidden = group.attendanceMode !== "self_registration";
+    elements.groupDetailExtra.disabled = !masterdataCanEdit || group.isActive === false;
   }
 }
 
