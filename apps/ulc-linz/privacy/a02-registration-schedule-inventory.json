@@ -69,6 +69,6 @@
     "migration-not-in-canonical-manifest",
     "existing-registration-note-history-privacy-gate-remains-open"
   ],
-  "noRuntimeEndpoint": true,
+  "noPrivacyPreflightRuntimeEndpoint": true,
   "noPersonalDataExport": true
 }
