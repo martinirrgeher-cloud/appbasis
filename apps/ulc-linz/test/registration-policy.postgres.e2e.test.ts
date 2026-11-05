@@ -341,6 +341,73 @@ if (!databaseUrl) {
       expect(await repository.readExtraDay("other-org", group.id, date)).toBeNull();
     });
 
+    it("rechecks active trainer membership and group assignment inside extra-day writes", async () => {
+      const db = connection().client;
+      const org = "verein-trainer-scoped-extras";
+      const athletes = new PostgresAthleteMasterdataRepository(db, () => randomUUID());
+      const repo = new PostgresUlcRegistrationPolicyRepository(db);
+      const trainer = await athletes.createTrainer(org, {
+        firstName: "Martina", lastName: "Sprint",
+      });
+      const assigned = await athletes.createTrainingGroup(org, {
+        name: "Assigned self registration", attendanceMode: "self_registration",
+      });
+      const other = await athletes.createTrainingGroup(org, {
+        name: "Other self registration", attendanceMode: "self_registration",
+      });
+      await athletes.createTrainerGroupMembership(org, {
+        trainerId: trainer.id, groupId: assigned.id,
+      });
+      const actor = "trainer-extra-identity";
+      await db.unsafe(
+        `INSERT INTO ulc_linz_membership
+           (identity_id, organization_id, subject_id, source_role, active)
+         VALUES ($1, $2, $3, 'trainer', true)`,
+        [actor, org, trainer.id],
+      );
+      const policy = {
+        weekdays: [1, 3], weeksAhead: 12, deadline: null, lateMode: "allow",
+      };
+      await repo.save(org, assigned.id, "admin", null, policy);
+      await repo.save(org, other.id, "admin", null, policy);
+      const localDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Europe/Vienna", year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(new Date());
+      const date = new Date(localDate + "T12:00:00Z");
+      let upcomingFriday = "";
+      for (let i = 1; i <= 10; i++) {
+        date.setUTCDate(date.getUTCDate() + 1);
+        if (date.getUTCDay() === 5) {
+          upcomingFriday = date.toISOString().slice(0, 10);
+          break;
+        }
+      }
+      if (!upcomingFriday) throw new Error("No Friday in the next 10 days");
+      const approve = (groupId: string, expected: number | null, trainerId: string | null) =>
+        repo.setExtraDay(org, groupId, upcomingFriday, actor, true, expected, trainerId);
+      await expect(approve(other.id, null, trainer.id))
+        .rejects.toBeInstanceOf(UlcRegistrationPolicyConflictError);
+      await expect(approve(assigned.id, null, "another-trainer"))
+        .rejects.toBeInstanceOf(UlcRegistrationPolicyConflictError);
+      expect(await approve(assigned.id, null, trainer.id))
+        .toEqual({ approved: true, revision: 1 });
+      await db.unsafe(
+        `DELETE FROM appbasis_trainer_group_membership
+         WHERE organization_id = $1 AND trainer_id = $2 AND group_id = $3`,
+        [org, trainer.id, assigned.id],
+      );
+      await expect(repo.setExtraDay(
+        org, assigned.id, upcomingFriday, actor, false, 1, trainer.id,
+      )).rejects.toBeInstanceOf(UlcRegistrationPolicyConflictError);
+      expect(await repo.readExtraDay(org, assigned.id, upcomingFriday))
+        .toEqual({ approved: true, revision: 1 });
+      // Explicit organization-wide administrator can still revoke after a
+      // trainer loses the assignment, without granting the trainer access.
+      await expect(repo.setExtraDay(
+        org, assigned.id, upcomingFriday, "admin", false, 1,
+      )).resolves.toEqual({ approved: false, revision: 2 });
+    });
+
     it("rejects malformed stored policy values with database constraints", async () => {
       await expect(connection().client.unsafe(
         `INSERT INTO ulc_linz_registration_group_policy
