@@ -54,6 +54,7 @@ import {
   type UlcLinzSelfRegistrationAccessService,
 } from "./self-registration-access";
 import { createUlcSelfRegistrationService } from "./self-registration-service";
+import { PostgresUlcRegistrationPolicyRepository } from "./registration-policy-postgres";
 import {
   createUlcLinzU12AccessService,
   type UlcLinzU12AccessService,
@@ -150,6 +151,7 @@ export interface GeneratedPostgresApplicationRuntime {
   >;
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
   selfRegistration: ReturnType<typeof createUlcSelfRegistrationService>;
+  registrationPolicies: PostgresUlcRegistrationPolicyRepository;
   u12: ReturnType<typeof createUlcU12Service>;
   exerciseCatalog: ReturnType<typeof createUlcExerciseCatalogService>;
   trainingBlocks: UlcTrainingBlockService;
@@ -486,6 +488,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
     });
+    const registrationPolicies = new PostgresUlcRegistrationPolicyRepository(applicationSql);
     const u12 = createUlcU12Service({
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
@@ -541,6 +544,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       athleteMasterdata,
       kindertraining,
       selfRegistration,
+      registrationPolicies,
       u12,
       exerciseCatalog,
       trainingBlocks,
