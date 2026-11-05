@@ -115,6 +115,9 @@ describe("A02.4 unpublished privacy/data-lifecycle inventory drift gate", () => 
       permittedResultFields: readonly string[];
       excludedFromCanonicalExportUntilPrivacySignoff: boolean;
       retention: string;
+      outputValidation: string;
+      auditReceipt: string;
+      blockers: readonly string[];
     }>("../privacy/a02-subject-access-contract.json");
     const inv = await readJson<PendingPrivacyInventory>(
       "../privacy/a02-registration-schedule-inventory.json",
@@ -143,6 +146,15 @@ describe("A02.4 unpublished privacy/data-lifecycle inventory drift gate", () => 
     expect(contract.authorization.audit).toBe("mandatory-durable-receipt-before-returning-data");
     expect(contract.excludedFromCanonicalExportUntilPrivacySignoff).toBe(true);
     expect(contract.retention).toBe("decision-pending");
+    expect(contract.outputValidation).toBe(
+      "exact-six-fields-only-no-unexpected-personal-columns",
+    );
+    expect(contract.auditReceipt).toBe(
+      "persistent-event-id-required-in-memory-logs-denied",
+    );
+    expect(contract.blockers).toContain(
+      "authorization-revocation-snapshot-race-verification",
+    );
     expect(contract.permittedResultFields).toEqual([
       "referenceKind", "groupId", "sessionDate",
       "revision", "approved", "occurredAt",
