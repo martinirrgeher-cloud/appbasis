@@ -43,16 +43,16 @@ describe("ULC E4D.5 compact mobile layout", () => {
     expect(ULC_LINZ_APP_CSS).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");
   });
 
-  it("keeps athlete registration visible while preserving role-gated access", () => {
+  it("shows athlete registration only after verified access, without losing its entry point", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
-      'id="registration-dashboard">',
-    );
-    expect(ULC_LINZ_APP_HTML).not.toContain(
-      'id="registration-dashboard" hidden',
+      'id="registration-dashboard" data-dashboard-view="registration" hidden>',
     );
     expect(ULC_LINZ_APP_HTML).toContain("<h2>Meine Trainingsanmeldung</h2>");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      "elements.registrationDashboard.hidden = false;",
+      'if (section === "registration") return selfRegistrationReady;',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'card.hidden = !isAppNavigationAvailable(card.dataset.dashboardView || "")',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '"Nur mit einem verknüpften Athletenkonto verfügbar."',
