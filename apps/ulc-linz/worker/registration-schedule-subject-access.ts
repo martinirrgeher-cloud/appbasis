@@ -28,6 +28,16 @@ export interface UlcRegistrationScheduleSubjectAccessRequest {
   readonly scope: "self" | "organization-admin";
 }
 
+/**
+ * Only a durable storage adapter may return this receipt. A Promise<void>,
+ * buffered in-memory log, or a successful console write is not enough to
+ * authorize a personal actor-history disclosure.
+ */
+export interface UlcRegistrationScheduleAccessAuditReceipt {
+  readonly persisted: true;
+  readonly eventId: string;
+}
+
 export interface UlcRegistrationScheduleSubjectAccessDependencies {
   readonly permissions: Pick<PermissionStore, "findPrincipal">;
   readonly scopes: Pick<
@@ -45,7 +55,7 @@ export interface UlcRegistrationScheduleSubjectAccessDependencies {
     readonly scope: "self" | "organization-admin";
     readonly recordCount: number;
     readonly accessedAt: string;
-  }) => Promise<void>;
+  }) => Promise<UlcRegistrationScheduleAccessAuditReceipt>;
   readonly now: () => Date;
 }
 
@@ -107,13 +117,16 @@ export async function inspectUlcRegistrationScheduleActorData(
     ]);
     if (member !== null && marker !== null) blocked();
     if (member !== null) {
-      if (member.organizationId !== org) blocked();
+      if (member.identityId !== target || member.organizationId !== org) blocked();
     } else if (marker !== null) {
-      if (marker.organizationId !== org ||
+      if (marker.identityId !== target || marker.organizationId !== org ||
           !(marker.completedAt instanceof Date) ||
           !(marker.purgeAfter instanceof Date) ||
+          !Number.isFinite(marker.completedAt.getTime()) ||
+          !Number.isFinite(marker.purgeAfter.getTime()) ||
           marker.completedAt.getTime() > now.getTime() ||
-          marker.purgeAfter.getTime() < now.getTime()) blocked();
+          marker.purgeAfter.getTime() < now.getTime() ||
+          marker.purgeAfter.getTime() <= marker.completedAt.getTime()) blocked();
     } else {
       blocked();
     }
@@ -126,11 +139,16 @@ export async function inspectUlcRegistrationScheduleActorData(
   // Fail closed: unrecorded access must never return personal audit data.
   if (typeof dependencies.recordAccessAudit !== "function") blocked();
   try {
-    await dependencies.recordAccessAudit({
+    const receipt = await dependencies.recordAccessAudit({
       actorIdentityId: actor, organizationId: org,
       targetIdentityId: target, scope,
       recordCount: records.length, accessedAt,
     });
+    if (!receipt || receipt.persisted !== true ||
+        typeof receipt.eventId !== "string" ||
+        !/^[A-Za-z0-9][A-Za-z0-9:_-]{0,199}$/.test(receipt.eventId)) {
+      blocked();
+    }
   } catch {
     blocked();
   }
