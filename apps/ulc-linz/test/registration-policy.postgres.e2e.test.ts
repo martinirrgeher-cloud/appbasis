@@ -9,6 +9,10 @@ import {
   UlcRegistrationSchedulePrivacyPreflightBlockedError,
 } from "../worker/registration-schedule-privacy-preflight";
 import {
+  PostgresUlcRegistrationScheduleActorErasure,
+  UlcRegistrationScheduleActorErasureBlockedError,
+} from "../worker/registration-schedule-actor-erasure";
+import {
   PostgresUlcRegistrationPolicyRepository,
   UlcRegistrationPolicyConflictError,
   UlcRegistrationPolicyDataError,
@@ -415,6 +419,7 @@ if (!databaseUrl) {
     it("preflights deleted actor references without revealing identities or modifying data", async () => {
       const db = connection().client;
       const preflight = new PostgresUlcRegistrationSchedulePrivacyPreflight(db);
+      const erasure = new PostgresUlcRegistrationScheduleActorErasure(db);
       const org = "verein-a024-privacy";
       const otherOrg = "verein-a024-privacy-foreign";
       const actor = "a024-deleted-actor";
@@ -456,6 +461,13 @@ if (!databaseUrl) {
       await expect(inspect(org, now)).rejects.toBeInstanceOf(
         UlcRegistrationSchedulePrivacyPreflightBlockedError,
       );
+      const erase = (organizationId: string, date: Date) =>
+        erasure.redactAfterCompletedIdentityDeletion({
+          organizationId, identityId: actor, now: date,
+        });
+      await expect(erase(org, now)).rejects.toBeInstanceOf(
+        UlcRegistrationScheduleActorErasureBlockedError,
+      );
       await db.unsafe(
         `INSERT INTO ulc_linz_lifecycle_deletion (
            identity_id, organization_id, subject_id, source_role,
@@ -492,6 +504,70 @@ if (!databaseUrl) {
         [org, group],
       );
       expect(unchanged).toEqual([{ updated_by_identity_id: actor }]);
+
+      await expect(erase(otherOrg, now)).rejects.toBeInstanceOf(
+        UlcRegistrationScheduleActorErasureBlockedError,
+      );
+      await expect(erase(org, new Date(purge.getTime() + 1000)))
+        .rejects.toBeInstanceOf(UlcRegistrationScheduleActorErasureBlockedError);
+      // Even a completed marker cannot permit erasure while a live
+      // membership exists again for the same identity.
+      await db.unsafe(
+        `INSERT INTO ulc_linz_membership (
+           identity_id, organization_id, subject_id, source_role, active
+         ) VALUES ($1, $2, 'trainer-restored', 'trainer', true)`,
+        [actor, org],
+      );
+      await expect(erase(org, now)).rejects.toBeInstanceOf(
+        UlcRegistrationScheduleActorErasureBlockedError,
+      );
+      await db.unsafe(
+        `DELETE FROM ulc_linz_membership WHERE identity_id = $1`,
+        [actor],
+      );
+
+      expect(await erase(org, now)).toEqual({
+        groupPolicies: 1, extraDays: 1, auditEvents: 1, totalRows: 3,
+      });
+      expect(await inspect(org, now)).toEqual({
+        policyUpdatedBy: 0, exceptionApprovedBy: 0,
+        exceptionUpdatedBy: 0, changeActor: 0,
+        total: 0, hasOutstandingReferences: false,
+      });
+      // Repeat must be safe, and foreign organization's actor history
+      // MUST remain intact and outside the subject's deletion authority.
+      expect(await erase(org, now)).toEqual({
+        groupPolicies: 0, extraDays: 0, auditEvents: 0, totalRows: 0,
+      });
+      const preserved = await db.unsafe(
+        `SELECT policy.revision, policy.updated_by_identity_id
+         FROM ulc_linz_registration_group_policy AS policy
+         WHERE policy.organization_id = $1 AND policy.group_id = $2`,
+        [otherOrg, foreignGroup],
+      );
+      expect(preserved).toEqual([{
+        revision: 1, updated_by_identity_id: actor,
+      }]);
+      const retainedHistory = await db.unsafe(
+        `SELECT revision, is_approved, actor_identity_id, changed_at
+         FROM ulc_linz_registration_extra_day_change
+         WHERE organization_id = $1 AND group_id = $2`,
+        [org, group],
+      );
+      expect(retainedHistory).toEqual([{
+        revision: 1, is_approved: true,
+        actor_identity_id: null, changed_at: expect.any(Date),
+      }]);
+      const retainedExtra = await db.unsafe(
+        `SELECT is_approved, revision, approved_by_identity_id, updated_by_identity_id
+         FROM ulc_linz_registration_extra_day
+         WHERE organization_id = $1 AND group_id = $2`,
+        [org, group],
+      );
+      expect(retainedExtra).toEqual([{
+        is_approved: true, revision: 1,
+        approved_by_identity_id: null, updated_by_identity_id: null,
+      }]);
     });
 
     it("rejects malformed stored policy values with database constraints", async () => {
