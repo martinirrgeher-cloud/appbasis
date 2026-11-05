@@ -79,7 +79,7 @@ describe("A02.4 unpublished privacy/data-lifecycle inventory drift gate", () => 
       }
       expect(table.actorColumns.length).toBeGreaterThan(0);
       expect(table.freeTextColumns).toEqual([]);
-      expect(table.deletionEvidence).toBe("not-implemented");
+      expect(table.deletionEvidence).toBe("privileged-offline-redaction-staged-not-integrated");
       expect(table.retentionEvidence).toBe("not-implemented");
       expect(table.exportEvidence).toBe("not-implemented");
       expect(table.restoreEvidence).toBe("not-verified");
@@ -91,7 +91,7 @@ describe("A02.4 unpublished privacy/data-lifecycle inventory drift gate", () => 
       "updated_by_identity_id",
     ]);
     expect(inventory.blockers).toContain(
-      "app-subject-lifecycle-deletion-does-not-redact-these-editor-identifiers",
+      "canonical-identity-lifecycle-does-not-invoke-a02-actor-redaction",
     );
     expect(inventory.blockers).toContain(
       "existing-registration-note-history-privacy-gate-remains-open",
