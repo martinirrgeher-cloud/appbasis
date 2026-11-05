@@ -3551,6 +3551,146 @@ function closeSelfRegistrationProxy() {
   showMessage(elements.registrationProxyError, "");
 }
 
+/** Mobile special-day editor: every approval comes from server-authorized CAS. */
+function refreshMasterdataExtraDayButtons() {
+  const draft = extraDayDraft;
+  const ready = !!draft?.loaded && !draft.saving && !draft.loading &&
+    draft.groupId === selectedMasterdataGroup()?.id &&
+    draft.sessionDate === elements.groupExtraDate?.value;
+  if (elements.groupExtraLoad) elements.groupExtraLoad.disabled = !!draft?.saving || !!draft?.loading;
+  if (elements.groupExtraDate) elements.groupExtraDate.disabled = !!draft?.saving;
+  if (elements.groupExtraApprove) elements.groupExtraApprove.disabled =
+    !ready || draft.approved;
+  if (elements.groupExtraRevoke) elements.groupExtraRevoke.disabled =
+    !ready || !draft.approved;
+}
+
+function openMasterdataExtraDay() {
+  const group = selectedMasterdataGroup();
+  if (!group || group.isActive !== true || !masterdataCanEdit ||
+      group.attendanceMode !== "self_registration") return;
+  extraDayRequestId += 1;
+  extraDayDraft = null;
+  if (elements.groupExtraDate) elements.groupExtraDate.value = "";
+  if (elements.groupExtraStatus) elements.groupExtraStatus.textContent =
+    "Datum auswählen und prüfen.";
+  showMessage(elements.groupExtraMessage, "");
+  showMessage(elements.groupExtraSuccess, "");
+  showMasterdataGroupOverlayMode("extra");
+  refreshMasterdataExtraDayButtons();
+}
+
+async function loadMasterdataExtraDay() {
+  const group = selectedMasterdataGroup();
+  const date = elements.groupExtraDate?.value || "";
+  if (!group || !masterdataCanEdit ||
+      group.attendanceMode !== "self_registration" ||
+      !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)) {
+    showMessage(elements.groupExtraMessage, "Bitte zuerst ein gültiges Datum wählen.");
+    return;
+  }
+  const requestId = ++extraDayRequestId;
+  const generation = masterdataSessionGeneration;
+  extraDayDraft = { groupId: group.id, sessionDate: date,
+    loaded: false, loading: true, saving: false };
+  refreshMasterdataExtraDayButtons();
+  showMessage(elements.groupExtraMessage, "");
+  showMessage(elements.groupExtraSuccess, "");
+  try {
+    const result = await requestJson(
+      "/api/modules/athletes/registration-extra-day?groupId=" +
+        encodeURIComponent(group.id) + "&sessionDate=" + encodeURIComponent(date),
+    );
+    if (requestId !== extraDayRequestId ||
+        generation !== masterdataSessionGeneration ||
+        extraDayDraft?.groupId !== group.id || extraDayDraft?.sessionDate !== date) return;
+    if (result?.groupId !== group.id || result.sessionDate !== date ||
+        typeof result.approved !== "boolean" ||
+        !(result.revision === null ||
+          (Number.isSafeInteger(result.revision) && result.revision >= 1))) {
+      throw new Error("INVALID_EXTRA_DAY_RESPONSE");
+    }
+    extraDayDraft = {
+      groupId: group.id, sessionDate: date, loaded: true, loading: false,
+      saving: false, approved: result.approved, revision: result.revision,
+    };
+    if (elements.groupExtraStatus) elements.groupExtraStatus.textContent =
+      result.approved ? "Als Sondertrainingstag freigegeben." :
+      "Keine aktive Sonderfreigabe für diesen Tag.";
+  } catch (error) {
+    if (requestId !== extraDayRequestId ||
+        generation !== masterdataSessionGeneration) return;
+    extraDayDraft = null;
+    showMessage(elements.groupExtraMessage,
+      error?.status === 403 ? "Keine Berechtigung für Sondertrainingstage." :
+      "Die Sonderfreigabe konnte nicht geladen werden.");
+  } finally {
+    if (requestId === extraDayRequestId) refreshMasterdataExtraDayButtons();
+  }
+}
+
+function requestCloseMasterdataExtraDay() {
+  if (extraDayDraft?.saving) return;
+  extraDayRequestId += 1;
+  extraDayDraft = null;
+  showMasterdataGroupOverlayMode("detail");
+}
+
+async function saveMasterdataExtraDay(approved) {
+  const state = extraDayDraft;
+  if (!state?.loaded || state.loading || state.saving || !masterdataCanEdit ||
+      state.approved === approved ||
+      selectedMasterdataGroup()?.id !== state.groupId ||
+      elements.groupExtraDate?.value !== state.sessionDate) return;
+  if (!approved && !window.confirm(
+    "Sondertrainingstag-Freigabe zurücknehmen? Bestehende Anmeldungen bleiben sichtbar, können aber nicht mehr geändert werden."
+  )) return;
+  const requestId = extraDayRequestId;
+  const generation = masterdataSessionGeneration;
+  state.saving = true;
+  refreshMasterdataExtraDayButtons();
+  showMessage(elements.groupExtraMessage, "");
+  showMessage(elements.groupExtraSuccess, "");
+  try {
+    const saved = await requestJson("/api/modules/athletes/registration-extra-day", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: state.groupId, sessionDate: state.sessionDate,
+        approved, expectedRevision: state.revision,
+      }),
+    });
+    if (generation !== masterdataSessionGeneration ||
+        requestId !== extraDayRequestId || extraDayDraft !== state) return;
+    if (saved?.groupId !== state.groupId ||
+        saved.sessionDate !== state.sessionDate ||
+        saved.approved !== approved ||
+        !Number.isSafeInteger(saved.revision) || saved.revision < 1) {
+      throw new Error("INVALID_EXTRA_DAY_SAVE");
+    }
+    state.revision = saved.revision;
+    state.approved = saved.approved;
+    if (elements.groupExtraStatus) elements.groupExtraStatus.textContent =
+      approved ? "Sondertrainingstag freigegeben." :
+      "Sondertrainingstag-Freigabe zurückgenommen.";
+    showMessage(elements.groupExtraSuccess, "Änderung gespeichert.");
+  } catch (error) {
+    if (generation !== masterdataSessionGeneration ||
+        requestId !== extraDayRequestId || extraDayDraft !== state) return;
+    showMessage(elements.groupExtraMessage,
+      error?.status === 409
+        ? "Freigabe nicht möglich oder zwischenzeitlich geändert. Datum erneut prüfen."
+        : error?.status === 403
+          ? "Keine Berechtigung für Sondertrainingstage."
+          : "Die Sonderfreigabe konnte nicht gespeichert werden.");
+  } finally {
+    if (generation === masterdataSessionGeneration &&
+        requestId === extraDayRequestId && extraDayDraft === state) {
+      state.saving = false;
+      refreshMasterdataExtraDayButtons();
+    }
+  }
+}
+
 /** Group schedule editor is kept separate from shared Athletes data writes. */
 function masterdataGroupPolicyInput() {
   const checked = Array.from(
@@ -7092,6 +7232,7 @@ function openNewMasterdataGroup() {
 }
 
 function closeMasterdataGroupOverlay() {
+  if (extraDayDraft?.saving || groupPolicyDraft?.saving) return;
   extraDayRequestId += 1;
   extraDayDraft = null;
   groupPolicyRequestId += 1;
