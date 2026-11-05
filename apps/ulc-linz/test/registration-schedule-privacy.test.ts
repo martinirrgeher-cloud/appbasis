@@ -150,6 +150,19 @@ describe("A02.4 unpublished privacy/data-lifecycle inventory drift gate", () => 
     expect(previous.datasets.map((d) => d.id)).toEqual(["member-contact"]);
     expect(previous.excludedPrivacyClasses).toContain("audit-security-data");
 
+    // No accidental public endpoint, user-facing menu, or active lifecycle
+    // export injection while controller sign-off remains pending.
+    const [worker, runtime, legacyExport] = await Promise.all([
+      readFile(new URL("../worker/index.ts", import.meta.url), "utf8"),
+      readFile(new URL("../worker/postgres.ts", import.meta.url), "utf8"),
+      readFile(new URL("../worker/data-export.ts", import.meta.url), "utf8"),
+    ]);
+    for (const file of [worker, runtime, legacyExport]) {
+      expect(file).not.toContain("registration-schedule-subject-access");
+      expect(file).not.toContain("registration-schedule-actor-access-postgres");
+      expect(file).not.toContain("registration-schedule-actor-erasure");
+    }
+
     expect(retention.status).toBe("pending-privacy-controller-review");
     expect(retention.defaultsToNoPurge).toBe(true);
     expect(retention.purgingEnabled).toBe(false);
