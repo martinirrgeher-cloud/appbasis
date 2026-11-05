@@ -3269,7 +3269,40 @@ function isSelfRegistrationOption(option, sessionDate) {
     (!("note" in option) || option.note === null ||
       (typeof option.note === "string" && option.note.length <= 160 &&
         !/[\x00-\x1f\x7f]/.test(option.note)))
+    && (!("registrationWindow" in option) ||
+       isRegistrationWindowContract(option.registrationWindow))
   );
+}
+
+function isRegistrationWindowContract(value) {
+  return value !== null && typeof value === "object" &&
+    typeof value.visible === "boolean" &&
+    typeof value.scheduledWeekday === "boolean" &&
+    typeof value.exceptionalTrainingDay === "boolean" &&
+    typeof value.isLate === "boolean" &&
+    typeof value.mayEdit === "boolean" &&
+    ["open", "non-training-day", "too-far-ahead", "cancelled",
+      "deadline-passed", "past-training-day"].includes(value.reason) &&
+    (value.deadlineLocal === null ||
+      (typeof value.deadlineLocal === "string" &&
+       value.deadlineLocal.length === 16 &&
+       value.deadlineLocal[10] === "T"));
+}
+
+function registrationWindowExplanation(window) {
+  const messages = {
+    "non-training-day": "Kein regulärer Trainingstag.",
+    "too-far-ahead": "Dieser Trainingstag ist noch nicht freigegeben.",
+    "past-training-day": "Dieser Trainingstag liegt in der Vergangenheit.",
+    "deadline-passed": "Der Anmeldeschluss ist abgelaufen.",
+    "cancelled": "Dieses Training wurde abgesagt.",
+  };
+  const deadline = window.deadlineLocal
+    ? "Anmeldeschluss: " + germanDate(window.deadlineLocal.slice(0, 10)) +
+      " um " + window.deadlineLocal.slice(11) + " Uhr."
+    : "";
+  const late = window.isLate && window.mayEdit ? "Nachmeldung möglich." : "";
+  return [messages[window.reason] || "", deadline, late].filter(Boolean).join(" ");
 }
 
 function selfRegistrationLabel(intention) {
