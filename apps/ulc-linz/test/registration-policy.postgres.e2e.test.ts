@@ -5,6 +5,10 @@ import { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
 import { PostgresUlcTrainingSessionRepository } from "../worker/training-session-postgres";
 import {
+  PostgresUlcRegistrationSchedulePrivacyPreflight,
+  UlcRegistrationSchedulePrivacyPreflightBlockedError,
+} from "../worker/registration-schedule-privacy-preflight";
+import {
   PostgresUlcRegistrationPolicyRepository,
   UlcRegistrationPolicyConflictError,
   UlcRegistrationPolicyDataError,
@@ -406,6 +410,88 @@ if (!databaseUrl) {
       await expect(repo.setExtraDay(
         org, assigned.id, upcomingFriday, "admin", false, 1,
       )).resolves.toEqual({ approved: false, revision: 2 });
+    });
+
+    it("preflights deleted actor references without revealing identities or modifying data", async () => {
+      const db = connection().client;
+      const preflight = new PostgresUlcRegistrationSchedulePrivacyPreflight(db);
+      const org = "verein-a024-privacy";
+      const otherOrg = "verein-a024-privacy-foreign";
+      const actor = "a024-deleted-actor";
+      const now = new Date();
+      const completed = new Date(now.getTime() - 60_000);
+      const purge = new Date(completed.getTime() + 35 * 24 * 60 * 60 * 1000);
+      const group = randomUUID();
+      const foreignGroup = randomUUID();
+      await db.unsafe(
+        `INSERT INTO ulc_linz_registration_group_policy (
+          organization_id, group_id, weekdays_mask, weeks_ahead,
+          deadline_days_before, deadline_local_time, late_mode,
+          updated_by_identity_id
+        ) VALUES
+          ($1, $3, 127, 4, NULL, NULL, 'allow', $5),
+          ($2, $4, 127, 4, NULL, NULL, 'allow', $5)`,
+        [org, otherOrg, group, foreignGroup, actor],
+      );
+      await db.unsafe(
+        `INSERT INTO ulc_linz_registration_extra_day (
+          organization_id, group_id, session_date,
+          approved_by_identity_id, updated_by_identity_id
+        ) VALUES ($1, $2, '2026-12-04'::date, $3, $3)`,
+        [org, group, actor],
+      );
+      await db.unsafe(
+        `INSERT INTO ulc_linz_registration_extra_day_change (
+          organization_id, group_id, session_date, revision,
+          is_approved, actor_identity_id
+        ) VALUES
+          ($1, $3, '2026-12-04'::date, 1, true, $5),
+          ($2, $4, '2026-12-05'::date, 1, true, $5)`,
+        [org, otherOrg, group, foreignGroup, actor],
+      );
+      const inspect = (organizationId: string, date: Date) =>
+        preflight.inspectCompletedDeletedActor({
+          organizationId, identityId: actor, now: date,
+        });
+      await expect(inspect(org, now)).rejects.toBeInstanceOf(
+        UlcRegistrationSchedulePrivacyPreflightBlockedError,
+      );
+      await db.unsafe(
+        `INSERT INTO ulc_linz_lifecycle_deletion (
+           identity_id, organization_id, subject_id, source_role,
+           completed_at, purge_after
+         ) VALUES ($1, $2, 'trainer-deleted', 'trainer',
+            $3::timestamptz, $4::timestamptz)`,
+        [actor, org, completed.toISOString(), purge.toISOString()],
+      );
+      const result = await inspect(org, now);
+      expect(result).toEqual({
+        policyUpdatedBy: 1,
+        exceptionApprovedBy: 1,
+        exceptionUpdatedBy: 1,
+        changeActor: 1,
+        total: 4,
+        hasOutstandingReferences: true,
+      });
+      expect(JSON.stringify(result)).not.toContain(actor);
+      await expect(inspect(otherOrg, now)).rejects.toBeInstanceOf(
+        UlcRegistrationSchedulePrivacyPreflightBlockedError,
+      );
+      await expect(inspect(org, new Date(purge.getTime() + 1000))).rejects
+        .toBeInstanceOf(UlcRegistrationSchedulePrivacyPreflightBlockedError);
+      await expect(preflight.inspectCompletedDeletedActor({
+        organizationId: org, identityId: actor, now: new Date(NaN),
+      })).rejects.toBeInstanceOf(
+        UlcRegistrationSchedulePrivacyPreflightBlockedError,
+      );
+      // The preflight is intentionally read-only. It must report unresolved
+      // references instead of silently treating deletion as accomplished.
+      const unchanged = await db.unsafe(
+        `SELECT updated_by_identity_id FROM ulc_linz_registration_group_policy
+         WHERE organization_id = $1 AND group_id = $2`,
+        [org, group],
+      );
+      expect(unchanged).toEqual([{ updated_by_identity_id: actor }]);
     });
 
     it("rejects malformed stored policy values with database constraints", async () => {
