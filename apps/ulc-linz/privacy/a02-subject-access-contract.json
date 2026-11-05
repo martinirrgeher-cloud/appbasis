@@ -51,8 +51,11 @@
   "excludedFromCanonicalExportUntilPrivacySignoff": true,
   "blockers": [
     "legal-audit-disclosure-review",
-    "canonical-export-integration-and-persisted-audit-receipt-writer",
     "retention-duration-unapproved",
-    "v12-not-published"
-  ]
+    "v12-not-published",
+    "canonical-export-integration-and-persisted-audit-receipt-writer",
+    "authorization-revocation-snapshot-race-verification"
+  ],
+  "outputValidation": "exact-six-fields-only-no-unexpected-personal-columns",
+  "auditReceipt": "persistent-event-id-required-in-memory-logs-denied"
 }
