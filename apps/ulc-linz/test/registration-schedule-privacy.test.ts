@@ -98,6 +98,69 @@ describe("A02.4 unpublished privacy/data-lifecycle inventory drift gate", () => 
     );
   });
 
+  it("keeps proposed subject access separate from historical M5 and requires audit", async () => {
+    const contract = await readJson<{
+      state: string;
+      resultLimit: number;
+      personalReferenceFields: readonly {
+        table: string; field: string; kind: string;
+      }[];
+      authorization: {
+        self: string;
+        organizationAdmin: string;
+        parentOrDelegated: string;
+        audit: string;
+        noHttpRoute: boolean;
+      };
+      permittedResultFields: readonly string[];
+      excludedFromCanonicalExportUntilPrivacySignoff: boolean;
+      retention: string;
+    }>("../privacy/a02-subject-access-contract.json");
+    const inv = await readJson<PendingPrivacyInventory>(
+      "../privacy/a02-registration-schedule-inventory.json",
+    );
+    const previous = await readJson<{
+      datasets: readonly { id: string }[];
+      excludedPrivacyClasses: readonly string[];
+    }>("../privacy/m5-export-contract.json");
+    const retention = await readJson<{
+      status: string; defaultsToNoPurge: boolean; purgingEnabled: boolean;
+      decisions: readonly { table: string; retentionDuration: string }[];
+      releaseGate: string;
+    }>("../privacy/a02-retention-decision.json");
+
+    const defined = contract.personalReferenceFields.map((r) =>
+      r.table + "." + r.field,
+    ).sort();
+    const expected = inv.tables.flatMap((t) => t.actorColumns.map((f) =>
+      t.id + "." + f,
+    )).sort();
+    expect(defined).toEqual(expected);
+    expect(contract.state).toBe("staged-read-only-not-approved-not-runtime-injected");
+    expect(contract.resultLimit).toBe(500);
+    expect(contract.authorization.parentOrDelegated).toBe("denied");
+    expect(contract.authorization.noHttpRoute).toBe(true);
+    expect(contract.authorization.audit).toBe("mandatory-before-returning-data");
+    expect(contract.excludedFromCanonicalExportUntilPrivacySignoff).toBe(true);
+    expect(contract.retention).toBe("decision-pending");
+    expect(contract.permittedResultFields).toEqual([
+      "referenceKind", "groupId", "sessionDate",
+      "revision", "approved", "occurredAt",
+    ]);
+    expect(previous.datasets.map((d) => d.id)).toEqual(["member-contact"]);
+    expect(previous.excludedPrivacyClasses).toContain("audit-security-data");
+
+    expect(retention.status).toBe("pending-privacy-controller-review");
+    expect(retention.defaultsToNoPurge).toBe(true);
+    expect(retention.purgingEnabled).toBe(false);
+    expect(retention.releaseGate).toBe("blocked-no-v12-promotion");
+    expect(retention.decisions.map((d) => d.table).sort()).toEqual(
+      inv.tables.map((t) => t.id).sort(),
+    );
+    expect(retention.decisions.every((d) => d.retentionDuration === "undecided"))
+      .toBe(true);
+  });
+
   it("does not claim that v12 or the historical v0.5 privacy inventory is deployed", async () => {
     const manifest = await readJson<{
       owners: readonly { id: string; schemaVersion: number; migrations: readonly string[] }[];
