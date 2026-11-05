@@ -5,6 +5,10 @@ import { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
 import { PostgresUlcTrainingSessionRepository } from "../worker/training-session-postgres";
 import {
+  PostgresUlcRegistrationScheduleActorAccessReader,
+  UlcRegistrationScheduleAccessDataBlockedError,
+} from "../worker/registration-schedule-actor-access-postgres";
+import {
   PostgresUlcRegistrationSchedulePrivacyPreflight,
   UlcRegistrationSchedulePrivacyPreflightBlockedError,
 } from "../worker/registration-schedule-privacy-preflight";
@@ -576,6 +580,82 @@ if (!databaseUrl) {
         is_approved: true, revision: 1,
         approved_by_identity_id: null, updated_by_identity_id: null,
       }]);
+    });
+
+    it("reads all four actor references in a bounded one-statement privacy snapshot", async () => {
+      const db = connection().client;
+      const reader = new PostgresUlcRegistrationScheduleActorAccessReader(db);
+      const org = "verein-a024-actor-access-" + randomUUID().slice(0, 8);
+      const foreignOrg = "verein-a024-actor-other-" + randomUUID().slice(0, 8);
+      const actor = "actor-access-" + randomUUID().slice(0, 8);
+      const groupId = "group-a024-subject";
+      const foreignGroup = "group-a024-foreign";
+      await db.unsafe(
+        `INSERT INTO ulc_linz_registration_group_policy (
+          organization_id, group_id, weekdays_mask, weeks_ahead,
+          deadline_days_before, deadline_local_time, late_mode,
+          updated_by_identity_id
+        ) VALUES
+          ($1, $3, 127, 4, NULL, NULL, 'allow', $5),
+          ($2, $4, 127, 4, NULL, NULL, 'allow', $5)`,
+        [org, foreignOrg, groupId, foreignGroup, actor],
+      );
+      await db.unsafe(
+        `INSERT INTO ulc_linz_registration_extra_day (
+          organization_id, group_id, session_date,
+          approved_by_identity_id, updated_by_identity_id,
+          is_approved
+        ) VALUES ($1, $2, '2026-12-04'::date, $3, $3, false)`,
+        [org, groupId, actor],
+      );
+      await db.unsafe(
+        `INSERT INTO ulc_linz_registration_extra_day_change (
+          organization_id, group_id, session_date, revision,
+          is_approved, actor_identity_id
+        ) VALUES
+          ($1, $3, '2026-12-04'::date, 1, false, $5),
+          ($2, $4, '2026-12-04'::date, 1, false, $5)`,
+        [org, foreignOrg, groupId, foreignGroup, actor],
+      );
+      const own = await reader.readActorReferences(org, actor);
+      expect(own).toHaveLength(4);
+      expect(own.map((r) => r.referenceKind).sort()).toEqual([
+        "extra-day-approved", "extra-day-change", "extra-day-updated",
+        "group-policy-updated",
+      ]);
+      expect(own.every((r) => r.groupId === groupId)).toBe(true);
+      expect(own.every((r) => r.revision === 1)).toBe(true);
+      expect(own.every((r) => r.occurredAt.endsWith("Z"))).toBe(true);
+      expect(own.find((r) => r.referenceKind === "extra-day-approved")?.approved)
+        .toBe(true);
+      expect(own.find((r) => r.referenceKind === "extra-day-updated")?.approved)
+        .toBe(false);
+      expect(own.find((r) => r.referenceKind === "extra-day-change")?.approved)
+        .toBe(false);
+      const foreign = await reader.readActorReferences(foreignOrg, actor);
+      expect(foreign).toHaveLength(2);
+      expect(foreign.every((r) => r.groupId === foreignGroup)).toBe(true);
+      expect(await reader.readActorReferences(org, "not-this-actor")).toEqual([]);
+      await expect(reader.readActorReferences(org, " invalid "))
+        .rejects.toBeInstanceOf(UlcRegistrationScheduleAccessDataBlockedError);
+    });
+
+    it("fails closed rather than truncating a personal actor audit export", async () => {
+      const db = connection().client;
+      const org = "verein-a024-access-limit-" + randomUUID().slice(0, 8);
+      const actor = "actor-limit-" + randomUUID().slice(0, 8);
+      await db.unsafe(
+        `INSERT INTO ulc_linz_registration_extra_day_change (
+          organization_id, group_id, session_date, revision,
+          is_approved, actor_identity_id
+        )
+        SELECT $1, 'group-limit', '2026-12-10'::date, number, true, $2
+        FROM generate_series(1, 501) AS number`,
+        [org, actor],
+      );
+      const reader = new PostgresUlcRegistrationScheduleActorAccessReader(db);
+      await expect(reader.readActorReferences(org, actor))
+        .rejects.toBeInstanceOf(UlcRegistrationScheduleAccessDataBlockedError);
     });
 
     it("rejects malformed stored policy values with database constraints", async () => {
