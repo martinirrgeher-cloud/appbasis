@@ -2634,6 +2634,12 @@ elements.registrationList?.addEventListener("click", (event) => {
 });
 elements.registrationProxyClose?.addEventListener("click", requestCloseSelfRegistrationProxy);
 elements.registrationProxyDialog?.addEventListener("cancel", (event) => {
+  if (selfRegistrationProxy?.saving) {
+    event.preventDefault();
+    showMessage(elements.registrationProxyError,
+      "Die stellvertretende Anmeldung wird noch gespeichert.");
+    return;
+  }
   if (selfRegistrationProxy?.noteDrafts?.size > 0 &&
       !window.confirm("Ungespeicherte stellvertretende Hinweise verwerfen?")) {
     event.preventDefault();
@@ -2939,6 +2945,13 @@ function resetMasterdataSessionState() {
 async function handleSignOut() {
   if (busy) return;
 
+  if (selfRegistrationSavingKeys.size > 0 || selfRegistrationProxy?.saving) {
+    showMessage(
+      elements.appSessionMessage,
+      "Eine Anmeldung oder ein Hinweis wird noch gespeichert. Bitte zuerst abschließen lassen.",
+    );
+    return;
+  }
   if (masterdataExchangeBusy || trainerIdentityLoading) {
     showMessage(
       elements.appSessionMessage,
@@ -3366,6 +3379,11 @@ function renderSelfRegistration() {
 }
 
 function requestCloseSelfRegistrationProxy() {
+  if (selfRegistrationProxy?.saving) {
+    showMessage(elements.registrationProxyError,
+      "Die stellvertretende Anmeldung wird noch gespeichert.");
+    return;
+  }
   if (selfRegistrationProxy?.noteDrafts?.size > 0 &&
       !window.confirm("Ungespeicherte stellvertretende Hinweise verwerfen?")) {
     return;
