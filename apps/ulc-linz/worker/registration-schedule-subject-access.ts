@@ -77,6 +77,53 @@ function identifier(value: unknown): string {
   return value;
 }
 
+const ACCESS_ROW_KEYS = Object.freeze([
+  "approved", "groupId", "occurredAt",
+  "referenceKind", "revision", "sessionDate",
+]);
+
+function normalizeActorAccessRow(value: unknown): UlcRegistrationScheduleActorAccessRow {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) blocked();
+  const row = value as Record<string, unknown>;
+  const keys = Object.keys(row).sort();
+  if (keys.length !== ACCESS_ROW_KEYS.length ||
+      keys.some((key, index) => key !== ACCESS_ROW_KEYS[index])) blocked();
+  const kind = row.referenceKind;
+  if (kind !== "group-policy-updated" &&
+      kind !== "extra-day-approved" &&
+      kind !== "extra-day-updated" &&
+      kind !== "extra-day-change") blocked();
+  const groupId = identifier(row.groupId);
+  if (typeof row.revision !== "number" ||
+      !Number.isSafeInteger(row.revision) || row.revision < 1) blocked();
+  const date = row.sessionDate;
+  if (date !== null && typeof date !== "string") blocked();
+  if (typeof date === "string" && (
+      !/^\\d{4}-\\d{2}-\\d{2}$/.test(date) ||
+      !Number.isFinite(Date.parse(date + "T12:00:00Z")) ||
+      new Date(date + "T12:00:00Z").toISOString().slice(0, 10) !== date)) blocked();
+  const approved = row.approved;
+  if (kind === "group-policy-updated") {
+    if (date !== null || approved !== null) blocked();
+  } else {
+    if (date === null || typeof approved !== "boolean") blocked();
+    if (kind === "extra-day-approved" && approved !== true) blocked();
+  }
+  const instant = row.occurredAt;
+  if (typeof instant !== "string" ||
+      !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(instant) ||
+      !Number.isFinite(Date.parse(instant)) ||
+      new Date(instant).toISOString() !== instant) blocked();
+  return Object.freeze({
+    referenceKind: kind,
+    groupId,
+    sessionDate: date,
+    revision: row.revision,
+    approved,
+    occurredAt: instant,
+  });
+}
+
 export async function inspectUlcRegistrationScheduleActorData(
   current: UlcLinzCurrentIdentity,
   dependencies: UlcRegistrationScheduleSubjectAccessDependencies,
@@ -132,9 +179,12 @@ export async function inspectUlcRegistrationScheduleActorData(
     }
   }
 
-  const records = await dependencies.reader.readActorReferences(org, target);
-  if (!Array.isArray(records) ||
-      records.length > ULC_REGISTRATION_ACTOR_ACCESS_MAX_ROWS) blocked();
+  const sourceRecords = await dependencies.reader.readActorReferences(org, target);
+  if (!Array.isArray(sourceRecords) ||
+      sourceRecords.length > ULC_REGISTRATION_ACTOR_ACCESS_MAX_ROWS) blocked();
+  // Reconstruct *exactly* the privacy-approved fields. Even an accidentally
+  // overbroad or compromised injected reader cannot leak another actor's ID.
+  const records = Object.freeze(sourceRecords.map(normalizeActorAccessRow));
   const accessedAt = now.toISOString();
   // Fail closed: unrecorded access must never return personal audit data.
   if (typeof dependencies.recordAccessAudit !== "function") blocked();
@@ -157,6 +207,6 @@ export async function inspectUlcRegistrationScheduleActorData(
     organizationId: org,
     targetIdentityId: target,
     accessedAt,
-    records: Object.freeze([...records]),
+    records,
   });
 }
