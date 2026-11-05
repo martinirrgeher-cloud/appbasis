@@ -5,6 +5,10 @@ import {
   UlcLinzLifecycleBlockedError,
   type UlcLinzDeletionDependencies,
 } from "./lifecycle";
+import {
+  reconcileDeletedRegistrationScheduleActor,
+  type UlcRegistrationScheduleLifecyclePrivacyHook,
+} from "./registration-schedule-lifecycle";
 import type {
   PostgresUlcLinzScopePersistence,
   UlcLinzDeletableSourceRole,
@@ -29,6 +33,8 @@ export interface UlcLinzRetentionDependencies
     | "purgeExpiredLifecycleAuditEvents"
   >;
   readonly identityDeletionRetention: UlcLinzIdentityDeletionRetention;
+  /** A02.4 opt-in only. Must be present before v12 retention activation. */
+  readonly registrationSchedulePrivacy?: UlcRegistrationScheduleLifecyclePrivacyHook;
 }
 
 export interface UlcLinzRetentionRunResult {
@@ -79,11 +85,17 @@ export async function runUlcLinzRetention(
       },
       targetIdentityId,
     );
-    await dependencies.scopes.completeIdentityDeletion({
+    const completedMarker = await dependencies.scopes.completeIdentityDeletion({
       identityId: targetIdentityId,
       actor: String(RETENTION_ACTOR),
       reason: RETENTION_DELETION_AUDIT_REASON,
     });
+    if (completedMarker.identityId !== targetIdentityId ||
+        completedMarker.organizationId !== state.target.organizationId ||
+        completedMarker.sourceRole !== sourceRole) blocked();
+    await reconcileDeletedRegistrationScheduleActor(
+      dependencies.registrationSchedulePrivacy, completedMarker,
+    );
     deletedIdentityIds.push(targetIdentityId);
   }
 
