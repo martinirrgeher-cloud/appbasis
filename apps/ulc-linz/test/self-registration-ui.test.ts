@@ -28,6 +28,41 @@ describe("ULC weekly self-registration and account switching", () => {
   });
 
 
+  it("protects note drafts and in-flight note saves across sign-out and dialog dismissal", () => {
+    const signOutStart = ULC_LINZ_APP_SCRIPT.indexOf("async function handleSignOut()");
+    const signOutEnd = ULC_LINZ_APP_SCRIPT.indexOf("\\nasync function acceptSession", signOutStart);
+    const signOut = ULC_LINZ_APP_SCRIPT.slice(signOutStart, signOutEnd);
+    const savingGuard = signOut.indexOf("selfRegistrationSavingKeys.size > 0 || selfRegistrationProxy?.saving");
+    const draftGuard = signOut.indexOf("selfRegistrationNoteDrafts.size > 0 ||");
+    const lock = signOut.indexOf("setAuthenticatedAppInteractionLocked(true)");
+    const revoke = signOut.indexOf('requestJson("/api/auth/sign-out", { method: "POST" })');
+
+    expect(savingGuard).toBeGreaterThanOrEqual(0);
+    expect(draftGuard).toBeGreaterThan(savingGuard);
+    expect(lock).toBeGreaterThan(draftGuard);
+    expect(revoke).toBeGreaterThan(lock);
+    expect(signOut).toContain("selfRegistrationProxy?.noteDrafts?.size");
+    expect(signOut).toContain("Ungespeicherte Anmeldehinweise verwerfen und abmelden?");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("function requestCloseSelfRegistrationProxy()");
+    const closeStart = ULC_LINZ_APP_SCRIPT.indexOf("function requestCloseSelfRegistrationProxy()");
+    const closeEnd = ULC_LINZ_APP_SCRIPT.indexOf("\\nfunction closeSelfRegistrationProxy()", closeStart);
+    const close = ULC_LINZ_APP_SCRIPT.slice(closeStart, closeEnd);
+    expect(close.indexOf("selfRegistrationProxy?.saving")).toBeGreaterThanOrEqual(0);
+    expect(close.indexOf("selfRegistrationProxy?.noteDrafts?.size")).toBeGreaterThan(
+      close.indexOf("selfRegistrationProxy?.saving"),
+    );
+    const cancelStart = ULC_LINZ_APP_SCRIPT.indexOf(
+      'elements.registrationProxyDialog?.addEventListener("cancel",',
+    );
+    const cancelEnd = ULC_LINZ_APP_SCRIPT.indexOf(
+      'elements.registrationProxyDialog?.addEventListener("close",', cancelStart,
+    );
+    const cancel = ULC_LINZ_APP_SCRIPT.slice(cancelStart, cancelEnd);
+    expect(cancel).toContain("if (selfRegistrationProxy?.saving)");
+    expect(cancel).toContain("event.preventDefault()");
+    expect(cancel).toContain("selfRegistrationProxy?.noteDrafts?.size");
+  });
+
   it("keeps colleague proxy selection separate from the already accepted own registration flow", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="registration-proxy-dialog"');
     expect(ULC_LINZ_APP_HTML).toContain('id="registration-proxy-athlete"');
