@@ -1,5 +1,8 @@
 import type { UlcLinzDeletionMarker } from "./scope-persistence";
 import type {
+  UlcLinzDeletionReconciliationSource,
+} from "./restore-reconciliation";
+import type {
   PostgresUlcRegistrationScheduleActorErasure,
   UlcRegistrationScheduleActorErasureResult,
 } from "./registration-schedule-actor-erasure";
@@ -70,4 +73,40 @@ export async function reconcileDeletedRegistrationScheduleActor(
     throw new UlcRegistrationScheduleLifecyclePrivacyBlockedError();
   }
   return result;
+}
+
+/**
+ * Best-effort cross-owner crash recovery with fail-closed promotion semantics:
+ * replay every current authoritative completed deletion marker BEFORE a
+ * retention executor may purge tombstones. The ordinary erasure primitive
+ * verifies a matching marker in the actual target database, so a forged or
+ * different-organization source cannot authorize a destructive redaction.
+ *
+ * No global scan of personal data and no automatic invocation in the worker.
+ * The source MUST be from the same authoritative database for ordinary
+ * retention, or from a newer, independently verified database for restore.
+ */
+export async function replayRegistrationScheduleActorErasureForCurrentMarkers(
+  source: Pick<UlcLinzDeletionReconciliationSource, "listCurrentDeletionMarkers">,
+  privacy: UlcRegistrationScheduleLifecyclePrivacyHook,
+): Promise<number> {
+  if (!source || typeof source.listCurrentDeletionMarkers !== "function" ||
+      !privacy || typeof privacy.now !== "function") {
+    throw new UlcRegistrationScheduleLifecyclePrivacyBlockedError();
+  }
+  const markers = await source.listCurrentDeletionMarkers();
+  if (!Array.isArray(markers)) {
+    throw new UlcRegistrationScheduleLifecyclePrivacyBlockedError();
+  }
+  const seen = new Set<string>();
+  for (const marker of markers) {
+    if (typeof marker?.identityId !== "string" ||
+        typeof marker?.organizationId !== "string" ||
+        seen.has(marker.identityId)) {
+      throw new UlcRegistrationScheduleLifecyclePrivacyBlockedError();
+    }
+    seen.add(marker.identityId);
+    await reconcileDeletedRegistrationScheduleActor(privacy, marker);
+  }
+  return markers.length;
 }
