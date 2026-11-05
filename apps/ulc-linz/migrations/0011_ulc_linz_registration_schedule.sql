@@ -28,7 +28,7 @@ CREATE TABLE ulc_linz_registration_group_policy (
   revision integer NOT NULL DEFAULT 1
     CONSTRAINT ulc_linz_registration_policy_revision_check
       CHECK (revision >= 1),
-  updated_by_identity_id text NOT NULL
+  updated_by_identity_id text NULL
     CONSTRAINT ulc_linz_registration_policy_actor_check
       CHECK (char_length(updated_by_identity_id) BETWEEN 1 AND 200),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -37,19 +37,21 @@ CREATE TABLE ulc_linz_registration_group_policy (
   CONSTRAINT ulc_linz_registration_policy_pk PRIMARY KEY (organization_id, group_id)
 );
 --> statement-breakpoint
+-- Erasure is distinct from revocation and is NOT wired into the active
+-- identity-deletion flow. The pending privacy preflight tracks this blocker.
 -- A prior session or registration is not an authorization to bypass weekdays.
 -- Only these explicit, organization-scoped approvals qualify as extra days.
 CREATE TABLE ulc_linz_registration_extra_day (
   organization_id text NOT NULL,
   group_id text NOT NULL,
   session_date date NOT NULL,
-  approved_by_identity_id text NOT NULL,
+  approved_by_identity_id text NULL,
   approved_at timestamptz NOT NULL DEFAULT now(),
   is_approved boolean NOT NULL DEFAULT true,
   revision integer NOT NULL DEFAULT 1
     CONSTRAINT ulc_linz_registration_extra_day_revision_check
       CHECK (revision >= 1),
-  updated_by_identity_id text NOT NULL,
+  updated_by_identity_id text NULL,
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT ulc_linz_registration_extra_day_updated_actor_check
     CHECK (char_length(updated_by_identity_id) BETWEEN 1 AND 200),
@@ -64,14 +66,16 @@ CREATE TABLE ulc_linz_registration_extra_day (
 );
 
 --> statement-breakpoint
--- Append-only, versioned approval/revocation history. No free text is stored.
+-- Append-only, versioned approval/revocation events. No free text is stored.
+-- Identity actor fields may be redacted ONLY after a proven completed identity
+-- deletion. Event timestamp, version and approval state must be preserved.
 CREATE TABLE ulc_linz_registration_extra_day_change (
   organization_id text NOT NULL,
   group_id text NOT NULL,
   session_date date NOT NULL,
   revision integer NOT NULL CHECK (revision >= 1),
   is_approved boolean NOT NULL,
-  actor_identity_id text NOT NULL CHECK (char_length(actor_identity_id) BETWEEN 1 AND 200),
+  actor_identity_id text NULL CHECK (actor_identity_id IS NULL OR char_length(actor_identity_id) BETWEEN 1 AND 200),
   changed_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT ulc_linz_registration_extra_day_change_pk
     PRIMARY KEY (organization_id, group_id, session_date, revision)
