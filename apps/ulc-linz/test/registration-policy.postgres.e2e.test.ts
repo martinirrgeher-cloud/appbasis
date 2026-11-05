@@ -546,6 +546,10 @@ if (!databaseUrl) {
         exceptionUpdatedBy: 0, changeActor: 0,
         total: 0, hasOutstandingReferences: false,
       });
+      // Redacted actor identifiers cannot reappear through the proposed
+      // subject access reader; the historical decision remains intact.
+      const access = new PostgresUlcRegistrationScheduleActorAccessReader(db);
+      expect(await access.readActorReferences(org, actor)).toEqual([]);
       // Repeat must be safe, and foreign organization's actor history
       // MUST remain intact and outside the subject's deletion authority.
       expect(await erase(org, now)).toEqual({
