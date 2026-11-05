@@ -55,16 +55,19 @@ function decode(row: Record<string, unknown>): UlcRegistrationScheduleActorAcces
       kind !== "extra-day-updated" &&
       kind !== "extra-day-change") blocked();
   const date = row.session_date;
-  if (date !== null && (typeof date !== "string" ||
+  if (date !== null && typeof date !== "string") blocked();
+  if (typeof date === "string" && (
       !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !Number.isFinite(Date.parse(date + "T12:00:00Z")) ||
       new Date(date + "T12:00:00Z").toISOString().slice(0, 10) !== date)) {
     blocked();
   }
   if (typeof row.revision !== "number" || !Number.isSafeInteger(row.revision) ||
       row.revision < 1) blocked();
   const approved = row.approved;
+  if (approved !== null && typeof approved !== "boolean") blocked();
   if (kind === "group-policy-updated" ? approved !== null :
-      typeof approved !== "boolean") blocked();
+      approved === null) blocked();
   if (kind === "group-policy-updated" ? date !== null : date === null) blocked();
   return Object.freeze({
     referenceKind: kind,
@@ -111,7 +114,7 @@ export class PostgresUlcRegistrationScheduleActorAccessReader {
            session_date::text, revision, is_approved, changed_at
          FROM ulc_linz_registration_extra_day_change
          WHERE organization_id = $1 AND actor_identity_id = $2
-       ) AS references
+       ) AS actor_refs
        ORDER BY occurred_at ASC, reference_kind ASC, group_id ASC,
                 session_date ASC NULLS FIRST, revision ASC
        LIMIT 501`,
