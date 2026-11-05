@@ -54,3 +54,114 @@ CREATE TABLE ulc_linz_registration_extra_day (
   CONSTRAINT ulc_linz_registration_extra_day_actor_check
     CHECK (char_length(approved_by_identity_id) BETWEEN 1 AND 200)
 );
+
+--> statement-breakpoint
+-- Enforce configured policy on both INSERT and UPDATE. Registration writers
+-- must not be able to bypass this by issuing an authenticated direct POST.
+-- Group row lock is acquired BEFORE reading policy; the authorized admin
+-- policy writer must take an incompatible FOR UPDATE on the same row.
+CREATE FUNCTION ulc_linz_registration_schedule_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $registration_guard$
+DECLARE
+  v_group text;
+  v_date date;
+  v_state text;
+  v_policy public.ulc_linz_registration_group_policy%ROWTYPE;
+  v_today date;
+  v_deadline_local timestamp without time zone;
+  v_cutoff timestamp with time zone;
+  v_first timestamp with time zone;
+  v_local_guess timestamp without time zone;
+  v_allowed_day boolean;
+BEGIN
+  SELECT session.group_id, session.session_date, session.state
+    INTO v_group, v_date, v_state
+  FROM public.ulc_linz_training_session AS session
+  WHERE session.organization_id = NEW.organization_id
+    AND session.id = NEW.session_id;
+  IF NOT FOUND OR v_state <> 'scheduled' THEN
+    RAISE EXCEPTION 'Registration session is unavailable' USING ERRCODE = '23514';
+  END IF;
+
+  -- This lock serializes with policy administration and the group's
+  -- activation/mode changes. It is not acquired by the browser.
+  PERFORM 1
+  FROM public.appbasis_training_group AS training_group
+  WHERE training_group.organization_id = NEW.organization_id
+    AND training_group.id = v_group
+    AND training_group.is_active = true
+    AND training_group.attendance_mode = 'self_registration'
+  FOR SHARE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Registration group is unavailable' USING ERRCODE = '23514';
+  END IF;
+
+  SELECT policy.* INTO v_policy
+  FROM public.ulc_linz_registration_group_policy AS policy
+  WHERE policy.organization_id = NEW.organization_id
+    AND policy.group_id = v_group;
+  IF NOT FOUND THEN
+    -- Previously accepted registration behavior remains unchanged for
+    -- groups that have no explicitly configured schedule.
+    RETURN NEW;
+  END IF;
+
+  v_today := (clock_timestamp() AT TIME ZONE 'Europe/Vienna')::date;
+  v_allowed_day :=
+    (v_policy.weekdays_mask &
+     (1 << (EXTRACT(ISODOW FROM v_date)::int - 1))) <> 0;
+  IF NOT v_allowed_day THEN
+    SELECT EXISTS (
+      SELECT 1
+      FROM public.ulc_linz_registration_extra_day AS extra_day
+      WHERE extra_day.organization_id = NEW.organization_id
+        AND extra_day.group_id = v_group
+        AND extra_day.session_date = v_date
+    ) INTO v_allowed_day;
+  END IF;
+  IF NOT v_allowed_day THEN
+    RAISE EXCEPTION 'Registration is not open on this training day' USING ERRCODE = '23514';
+  END IF;
+
+  IF v_date < v_today OR
+    date_trunc('week', v_date::timestamp) >
+      date_trunc('week', v_today::timestamp) +
+      make_interval(weeks => v_policy.weeks_ahead) THEN
+    RAISE EXCEPTION 'Registration is outside the permitted weeks' USING ERRCODE = '23514';
+  END IF;
+
+  IF v_policy.deadline_days_before IS NOT NULL AND v_policy.late_mode = 'block' THEN
+    v_deadline_local :=
+      (v_date - v_policy.deadline_days_before)::date +
+      v_policy.deadline_local_time::time;
+    -- PostgreSQL chooses the later occurrence of an ambiguous autumn clock
+    -- time. Pick the earlier occurrence so registration never reopens.
+    v_cutoff := v_deadline_local AT TIME ZONE 'Europe/Vienna';
+    v_first := v_cutoff - interval '1 hour';
+    IF (v_first AT TIME ZONE 'Europe/Vienna') = v_deadline_local THEN
+      v_cutoff := v_first;
+    ELSE
+      -- Nonexistent 02:xx time on spring transition: close at the first
+      -- existing local minute (03:00), not at the shifted 03:xx time.
+      v_local_guess := v_cutoff AT TIME ZONE 'Europe/Vienna';
+      IF v_local_guess > v_deadline_local THEN
+        v_cutoff := date_trunc('hour', v_local_guess)
+          AT TIME ZONE 'Europe/Vienna';
+      END IF;
+    END IF;
+    IF clock_timestamp() > v_cutoff THEN
+      RAISE EXCEPTION 'Registration deadline passed' USING ERRCODE = '23514';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$registration_guard$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION ulc_linz_registration_schedule_guard() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER ulc_linz_registration_schedule_guard_trg
+BEFORE INSERT OR UPDATE ON ulc_linz_training_registration
+FOR EACH ROW EXECUTE FUNCTION ulc_linz_registration_schedule_guard();
