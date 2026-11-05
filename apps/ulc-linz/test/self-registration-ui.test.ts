@@ -30,7 +30,7 @@ describe("ULC weekly self-registration and account switching", () => {
 
   it("protects note drafts and in-flight note saves across sign-out and dialog dismissal", () => {
     const signOutStart = ULC_LINZ_APP_SCRIPT.indexOf("async function handleSignOut()");
-    const signOutEnd = ULC_LINZ_APP_SCRIPT.indexOf("\\nasync function acceptSession", signOutStart);
+    const signOutEnd = ULC_LINZ_APP_SCRIPT.indexOf("async function acceptSession", signOutStart);
     const signOut = ULC_LINZ_APP_SCRIPT.slice(signOutStart, signOutEnd);
     const savingGuard = signOut.indexOf("selfRegistrationSavingKeys.size > 0 || selfRegistrationProxy?.saving");
     const draftGuard = signOut.indexOf("selfRegistrationNoteDrafts.size > 0 ||");
@@ -45,7 +45,7 @@ describe("ULC weekly self-registration and account switching", () => {
     expect(signOut).toContain("Ungespeicherte Anmeldehinweise verwerfen und abmelden?");
     expect(ULC_LINZ_APP_SCRIPT).toContain("function requestCloseSelfRegistrationProxy()");
     const closeStart = ULC_LINZ_APP_SCRIPT.indexOf("function requestCloseSelfRegistrationProxy()");
-    const closeEnd = ULC_LINZ_APP_SCRIPT.indexOf("\\nfunction closeSelfRegistrationProxy()", closeStart);
+    const closeEnd = ULC_LINZ_APP_SCRIPT.indexOf("function closeSelfRegistrationProxy()", closeStart);
     const close = ULC_LINZ_APP_SCRIPT.slice(closeStart, closeEnd);
     expect(close.indexOf("selfRegistrationProxy?.saving")).toBeGreaterThanOrEqual(0);
     expect(close.indexOf("selfRegistrationProxy?.noteDrafts?.size")).toBeGreaterThan(
