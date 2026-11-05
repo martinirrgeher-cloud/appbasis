@@ -173,7 +173,8 @@ function assertMarkerShape(marker: UlcLinzDeletionMarker): void {
   if (
     marker.sourceRole !== "trainer" &&
     marker.sourceRole !== "athlete" &&
-    marker.sourceRole !== "parent"
+    marker.sourceRole !== "parent" &&
+    marker.sourceRole !== "functionary"
   ) {
     blocked();
   }
@@ -187,7 +188,8 @@ function markerFromRow(row: Record<string, unknown>): UlcLinzDeletionMarker {
   if (
     sourceRole !== "trainer" &&
     sourceRole !== "athlete" &&
-    sourceRole !== "parent"
+    sourceRole !== "parent" &&
+    sourceRole !== "functionary"
   ) {
     blocked();
   }
