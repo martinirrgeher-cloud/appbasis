@@ -489,6 +489,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                       <p class="masterdata-athlete-note" id="group-detail-description" hidden></p>
                       <div class="masterdata-athlete-actions masterdata-group-actions">
                         <button class="button button--secondary" id="group-detail-edit" type="button"><span aria-hidden="true">✎</span> Bearbeiten</button>
+                        <button class="button button--secondary" id="group-detail-schedule" type="button" hidden>Trainingstage &amp; Anmeldefrist</button>
                       </div>
                     </section>
                     <form class="card masterdata-form masterdata-overlay-form" id="group-form" hidden>
@@ -508,6 +509,40 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                       <div class="masterdata-form-actions">
                         <button class="button button--primary" id="group-submit-button" type="submit">Gruppe anlegen</button>
                         <button class="button button--secondary" id="group-edit-cancel" type="button">Zurück</button>
+                      </div>
+                    </form>
+                    <form class="card masterdata-form masterdata-overlay-form" id="group-policy-form" hidden>
+                      <div class="section-heading"><div><p class="eyebrow">Selbstanmeldung</p><h2>Trainingstage &amp; Anmeldefrist</h2></div></div>
+                      <p class="message message--error" id="group-policy-message" role="alert" hidden></p>
+                      <p class="message message--success" id="group-policy-success" role="status" hidden></p>
+                      <fieldset class="group-policy-fields" id="group-policy-fields" disabled>
+                        <p class="settings-note">Regelmäßige Trainingstage (Mo–So)</p>
+                        <div class="group-policy-weekdays" role="group" aria-label="Trainingstage">
+                          <label><input type="checkbox" name="group-policy-weekday" value="1" />Mo</label>
+                          <label><input type="checkbox" name="group-policy-weekday" value="2" />Di</label>
+                          <label><input type="checkbox" name="group-policy-weekday" value="3" />Mi</label>
+                          <label><input type="checkbox" name="group-policy-weekday" value="4" />Do</label>
+                          <label><input type="checkbox" name="group-policy-weekday" value="5" />Fr</label>
+                          <label><input type="checkbox" name="group-policy-weekday" value="6" />Sa</label>
+                          <label><input type="checkbox" name="group-policy-weekday" value="7" />So</label>
+                        </div>
+                        <div class="settings-grid">
+                          <label>Wochen im Voraus<input id="group-policy-weeks" type="number" min="0" max="26" step="1" value="4" required inputmode="numeric" /></label>
+                          <label class="group-policy-check"><input id="group-policy-deadline-enabled" type="checkbox" /> Anmeldeschluss aktivieren</label>
+                          <label>Tage vor dem Training<input id="group-policy-days-before" type="number" min="0" max="14" step="1" value="1" required inputmode="numeric" /></label>
+                          <label>Uhrzeit (Österreich)<input id="group-policy-deadline-time" type="time" value="18:00" required /></label>
+                          <label>Nach Anmeldeschluss
+                            <select id="group-policy-late-mode">
+                              <option value="block">Anmeldung sperren</option>
+                              <option value="allow">Nachmeldung zulassen</option>
+                            </select>
+                          </label>
+                        </div>
+                      </fieldset>
+                      <p class="settings-note">Das Speichern aktiviert diese Regeln. Vorher gelten weiterhin alle Wochentage ohne Frist. Vorhandene Anmeldungen bleiben sichtbar.</p>
+                      <div class="masterdata-form-actions">
+                        <button class="button button--primary" id="group-policy-submit" type="submit" disabled>Regeln speichern</button>
+                        <button class="button button--secondary" id="group-policy-cancel" type="button">Zurück</button>
                       </div>
                     </form>
                   </div>
@@ -1222,7 +1257,13 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   background: var(--surface-soft);
   white-space: pre-wrap;
 }
-.masterdata-group-actions { grid-template-columns: minmax(0, 180px); }
+.masterdata-group-actions { grid-template-columns: minmax(0, 220px); }
+.group-policy-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 12px; }
+.group-policy-weekdays { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.group-policy-weekdays label { display: flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 8px; padding: 9px 5px; font-size: .85rem; }
+.group-policy-weekdays input { margin: 0; }
+.group-policy-check { display: flex; align-items: center; gap: 8px; }
+@media (min-width: 480px) { .group-policy-weekdays { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
 .masterdata-trainer-identity-list { margin: 10px 0; }
 .masterdata-athlete-contacts { display: grid; gap: 8px; }
 .masterdata-athlete-contacts h3 { margin: 0; }
@@ -2235,6 +2276,18 @@ const elements = {
   groupDetail: document.querySelector("#group-detail"),
   groupDetailDescription: document.querySelector("#group-detail-description"),
   groupDetailEdit: document.querySelector("#group-detail-edit"),
+  groupDetailSchedule: document.querySelector("#group-detail-schedule"),
+  groupPolicyForm: document.querySelector("#group-policy-form"),
+  groupPolicyFields: document.querySelector("#group-policy-fields"),
+  groupPolicyMessage: document.querySelector("#group-policy-message"),
+  groupPolicySuccess: document.querySelector("#group-policy-success"),
+  groupPolicyWeeks: document.querySelector("#group-policy-weeks"),
+  groupPolicyDeadlineEnabled: document.querySelector("#group-policy-deadline-enabled"),
+  groupPolicyDaysBefore: document.querySelector("#group-policy-days-before"),
+  groupPolicyDeadlineTime: document.querySelector("#group-policy-deadline-time"),
+  groupPolicyLateMode: document.querySelector("#group-policy-late-mode"),
+  groupPolicySubmit: document.querySelector("#group-policy-submit"),
+  groupPolicyCancel: document.querySelector("#group-policy-cancel"),
   athleteCount: document.querySelector("#athlete-count"),
   trainerCount: document.querySelector("#trainer-count"),
   groupCount: document.querySelector("#group-count"),
@@ -2474,6 +2527,8 @@ let masterdataTrainerOverlayId = null;
 let masterdataTrainerOverlayMode = "closed";
 let masterdataGroupOverlayId = null;
 let masterdataGroupOverlayMode = "closed";
+let groupPolicyDraft = null;
+let groupPolicyRequestId = 0;
 let masterdataSwipeStart = null;
 let trainerIdentityAdminReady = false;
 let trainerIdentityLoading = false;
@@ -2591,7 +2646,11 @@ elements.trainerDetailReactivate?.addEventListener("click", () => {
 });
 elements.groupForm?.addEventListener("submit", (event) => void createMasterdataGroup(event));
 elements.groupNew?.addEventListener("click", openNewMasterdataGroup);
-elements.groupOverlayClose?.addEventListener("click", closeMasterdataGroupOverlay);
+elements.groupOverlayClose?.addEventListener("click", requestCloseMasterdataGroupOverlay);
+elements.groupDetailSchedule?.addEventListener("click", () => void openMasterdataGroupPolicy());
+elements.groupPolicyDeadlineEnabled?.addEventListener("change", syncGroupPolicyDeadlineFields);
+elements.groupPolicyForm?.addEventListener("submit", (event) => void saveMasterdataGroupPolicy(event));
+elements.groupPolicyCancel?.addEventListener("click", requestCloseMasterdataGroupPolicy);
 elements.groupDetailEdit?.addEventListener("click", () => {
   const group = selectedMasterdataGroup();
   if (group) beginMasterdataEdit({ type: "group", id: group.id, item: group });
@@ -2945,6 +3004,14 @@ function resetMasterdataSessionState() {
 async function handleSignOut() {
   if (busy) return;
 
+  if (groupPolicyDraft?.saving) {
+    showMessage(elements.appSessionMessage, "Die Anmelderegeln werden noch gespeichert.");
+    return;
+  }
+  if (isMasterdataGroupPolicyDirty() &&
+      !window.confirm("Ungespeicherte Anmelderegeln verwerfen und abmelden?")) {
+    return;
+  }
   if (selfRegistrationSavingKeys.size > 0 || selfRegistrationProxy?.saving) {
     showMessage(
       elements.appSessionMessage,
@@ -3400,6 +3467,185 @@ function closeSelfRegistrationProxy() {
   elements.registrationProxyAthlete?.replaceChildren();
   if (elements.registrationProxyNote) elements.registrationProxyNote.value = "";
   showMessage(elements.registrationProxyError, "");
+}
+
+/** Group schedule editor is kept separate from shared Athletes data writes. */
+function masterdataGroupPolicyInput() {
+  const checked = Array.from(
+    elements.groupPolicyForm?.querySelectorAll('input[name="group-policy-weekday"]:checked') || [],
+  ).map((input) => Number(input.value));
+  return {
+    weekdays: checked.sort((left, right) => left - right),
+    weeksAhead: Number(elements.groupPolicyWeeks?.value || "0"),
+    deadline: elements.groupPolicyDeadlineEnabled?.checked
+      ? {
+          daysBefore: Number(elements.groupPolicyDaysBefore?.value || "0"),
+          localTime: elements.groupPolicyDeadlineTime?.value || "",
+        }
+      : null,
+    lateMode: elements.groupPolicyLateMode?.value || "block",
+  };
+}
+
+function isMasterdataGroupPolicyDirty() {
+  return !!groupPolicyDraft?.loaded &&
+    JSON.stringify(masterdataGroupPolicyInput()) !== groupPolicyDraft.baseline;
+}
+
+function syncGroupPolicyDeadlineFields() {
+  const enabled = elements.groupPolicyDeadlineEnabled?.checked === true;
+  if (elements.groupPolicyDaysBefore) elements.groupPolicyDaysBefore.disabled = !enabled;
+  if (elements.groupPolicyDeadlineTime) elements.groupPolicyDeadlineTime.disabled = !enabled;
+}
+
+function fillMasterdataGroupPolicy(schedule) {
+  const stored = schedule || {
+    weekdays: [1, 2, 3, 4, 5, 6, 7],
+    weeksAhead: 4,
+    deadline: null,
+    lateMode: "allow",
+  };
+  for (const input of elements.groupPolicyForm?.querySelectorAll(
+    'input[name="group-policy-weekday"]',
+  ) || []) {
+    input.checked = stored.weekdays.includes(Number(input.value));
+  }
+  if (elements.groupPolicyWeeks) elements.groupPolicyWeeks.value = String(stored.weeksAhead);
+  if (elements.groupPolicyDeadlineEnabled) {
+    elements.groupPolicyDeadlineEnabled.checked = stored.deadline !== null;
+  }
+  if (elements.groupPolicyDaysBefore) {
+    elements.groupPolicyDaysBefore.value = String(stored.deadline?.daysBefore ?? 1);
+  }
+  if (elements.groupPolicyDeadlineTime) {
+    elements.groupPolicyDeadlineTime.value = stored.deadline?.localTime || "18:00";
+  }
+  if (elements.groupPolicyLateMode) elements.groupPolicyLateMode.value = stored.lateMode;
+  syncGroupPolicyDeadlineFields();
+}
+
+async function openMasterdataGroupPolicy() {
+  const group = selectedMasterdataGroup();
+  if (!group || group.isActive !== true ||
+      group.attendanceMode !== "self_registration" || !masterdataCanEdit) return;
+  const requestId = ++groupPolicyRequestId;
+  const generation = masterdataSessionGeneration;
+  groupPolicyDraft = {
+    groupId: group.id, revision: null, baseline: "", loaded: false, saving: false,
+  };
+  showMasterdataGroupOverlayMode("policy");
+  if (elements.groupPolicyFields) elements.groupPolicyFields.disabled = true;
+  if (elements.groupPolicySubmit) elements.groupPolicySubmit.disabled = true;
+  showMessage(elements.groupPolicyMessage, "Anmelderegeln werden geladen …");
+  showMessage(elements.groupPolicySuccess, "");
+  try {
+    const payload = await requestJson(
+      "/api/modules/athletes/registration-policy?groupId=" + encodeURIComponent(group.id),
+    );
+    if (generation !== masterdataSessionGeneration ||
+        requestId !== groupPolicyRequestId || groupPolicyDraft?.groupId !== group.id) return;
+    if (payload?.groupId !== group.id ||
+        !(payload.revision === null ||
+          (Number.isSafeInteger(payload.revision) && payload.revision >= 1)) ||
+        !(payload.schedule === null ||
+          (Array.isArray(payload.schedule?.weekdays) &&
+           typeof payload.schedule.weeksAhead === "number" &&
+           ["block", "allow"].includes(payload.schedule.lateMode)))) {
+      throw new Error("INVALID_REGISTRATION_POLICY");
+    }
+    fillMasterdataGroupPolicy(payload.schedule);
+    groupPolicyDraft.loaded = true;
+    groupPolicyDraft.revision = payload.revision;
+    groupPolicyDraft.baseline = JSON.stringify(masterdataGroupPolicyInput());
+    if (elements.groupPolicyFields) elements.groupPolicyFields.disabled = false;
+    if (elements.groupPolicySubmit) elements.groupPolicySubmit.disabled = false;
+    showMessage(elements.groupPolicyMessage, "");
+  } catch (error) {
+    if (generation !== masterdataSessionGeneration ||
+        requestId !== groupPolicyRequestId) return;
+    showMessage(elements.groupPolicyMessage,
+      error?.status === 403 ? "Keine Berechtigung für diese Gruppenregeln." :
+      "Anmelderegeln konnten nicht geladen werden.");
+  }
+}
+
+function requestCloseMasterdataGroupPolicy() {
+  if (groupPolicyDraft?.saving) return;
+  if (isMasterdataGroupPolicyDirty() &&
+      !window.confirm("Ungespeicherte Anmelderegeln verwerfen?")) return;
+  groupPolicyRequestId += 1;
+  groupPolicyDraft = null;
+  showMasterdataGroupOverlayMode("detail");
+}
+
+function requestCloseMasterdataGroupOverlay() {
+  if (groupPolicyDraft?.saving) return;
+  if (isMasterdataGroupPolicyDirty() &&
+      !window.confirm("Ungespeicherte Anmelderegeln verwerfen?")) return;
+  closeMasterdataGroupOverlay();
+}
+
+async function saveMasterdataGroupPolicy(event) {
+  event.preventDefault();
+  const state = groupPolicyDraft;
+  if (!state || !state.loaded || state.saving || !masterdataCanEdit ||
+      selectedMasterdataGroup()?.id !== state.groupId) return;
+  const schedule = masterdataGroupPolicyInput();
+  if (schedule.weekdays.length === 0 ||
+      !Number.isInteger(schedule.weeksAhead) ||
+      schedule.weeksAhead < 0 || schedule.weeksAhead > 26 ||
+      (schedule.deadline !== null &&
+       (!Number.isInteger(schedule.deadline.daysBefore) ||
+        schedule.deadline.daysBefore < 0 || schedule.deadline.daysBefore > 14 ||
+        !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(schedule.deadline.localTime)))) {
+    showMessage(elements.groupPolicyMessage, "Bitte Trainingstage und Anmeldefrist prüfen.");
+    return;
+  }
+  const generation = masterdataSessionGeneration;
+  const requestId = groupPolicyRequestId;
+  state.saving = true;
+  if (elements.groupPolicyFields) elements.groupPolicyFields.disabled = true;
+  if (elements.groupPolicySubmit) elements.groupPolicySubmit.disabled = true;
+  showMessage(elements.groupPolicyMessage, "");
+  showMessage(elements.groupPolicySuccess, "");
+  try {
+    const payload = await requestJson("/api/modules/athletes/registration-policy", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: state.groupId,
+        expectedRevision: state.revision,
+        schedule,
+      }),
+    });
+    if (generation !== masterdataSessionGeneration ||
+        requestId !== groupPolicyRequestId || groupPolicyDraft !== state) return;
+    if (payload?.groupId !== state.groupId ||
+        !Number.isSafeInteger(payload.revision) || payload.revision < 1 ||
+        !Array.isArray(payload.schedule?.weekdays)) {
+      throw new Error("INVALID_REGISTRATION_POLICY_SAVE");
+    }
+    fillMasterdataGroupPolicy(payload.schedule);
+    state.revision = payload.revision;
+    state.baseline = JSON.stringify(masterdataGroupPolicyInput());
+    showMessage(elements.groupPolicySuccess, "Anmelderegeln gespeichert.");
+  } catch (error) {
+    if (generation !== masterdataSessionGeneration ||
+        requestId !== groupPolicyRequestId || groupPolicyDraft !== state) return;
+    showMessage(elements.groupPolicyMessage,
+      error?.status === 409
+        ? "Die Gruppenregeln wurden zwischenzeitlich geändert. Bitte zurückgehen und neu öffnen."
+        : error?.status === 403
+          ? "Keine Berechtigung zum Speichern der Gruppenregeln."
+          : "Die Anmelderegeln konnten nicht gespeichert werden.");
+  } finally {
+    if (generation === masterdataSessionGeneration &&
+        requestId === groupPolicyRequestId && groupPolicyDraft === state) {
+      state.saving = false;
+      if (elements.groupPolicyFields) elements.groupPolicyFields.disabled = false;
+      if (elements.groupPolicySubmit) elements.groupPolicySubmit.disabled = false;
+      syncGroupPolicyDeadlineFields();
+    }
+  }
 }
 
 function isSelfRegistrationProxyRoster(roster, groupId, sessionDate) {
@@ -6729,6 +6975,8 @@ function selectedMasterdataGroup() {
 
 function openMasterdataGroupOverlay(groupId) {
   if (!masterdataSnapshot) return;
+  groupPolicyRequestId += 1;
+  groupPolicyDraft = null;
   const group = masterdataSnapshot.trainingGroups.find((item) => item.id === groupId);
   if (!group) return;
   masterdataEdit = null;
@@ -6753,6 +7001,8 @@ function openNewMasterdataGroup() {
 }
 
 function closeMasterdataGroupOverlay() {
+  groupPolicyRequestId += 1;
+  groupPolicyDraft = null;
   masterdataGroupOverlayMode = "closed";
   masterdataGroupOverlayId = null;
   masterdataEdit = null;
@@ -6772,6 +7022,7 @@ function showMasterdataGroupOverlayMode(mode) {
   document.body.classList.add("masterdata-athlete-overlay-open");
   if (elements.groupDetail) elements.groupDetail.hidden = mode !== "detail";
   if (elements.groupForm) elements.groupForm.hidden = mode !== "group";
+  if (elements.groupPolicyForm) elements.groupPolicyForm.hidden = mode !== "policy";
   if (masterdataSnapshot) renderMasterdataGroupOverlay(masterdataSnapshot);
 }
 
@@ -6800,6 +7051,10 @@ function renderMasterdataGroupOverlay(snapshot) {
   }
   if (elements.groupDetailEdit) {
     elements.groupDetailEdit.disabled = !masterdataCanEdit || group.isActive === false;
+  }
+  if (elements.groupDetailSchedule) {
+    elements.groupDetailSchedule.hidden = group.attendanceMode !== "self_registration";
+    elements.groupDetailSchedule.disabled = !masterdataCanEdit || group.isActive === false;
   }
 }
 
