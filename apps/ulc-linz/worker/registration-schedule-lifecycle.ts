@@ -99,13 +99,18 @@ export async function replayRegistrationScheduleActorErasureForCurrentMarkers(
     throw new UlcRegistrationScheduleLifecyclePrivacyBlockedError();
   }
   const seen = new Set<string>();
+  // Prevalidate the ENTIRE authoritative batch before the first write.
   for (const marker of markers) {
     if (typeof marker?.identityId !== "string" ||
+        marker.identityId.length === 0 ||
         typeof marker?.organizationId !== "string" ||
+        marker.organizationId.length === 0 ||
         seen.has(marker.identityId)) {
       throw new UlcRegistrationScheduleLifecyclePrivacyBlockedError();
     }
     seen.add(marker.identityId);
+  }
+  for (const marker of markers) {
     await reconcileDeletedRegistrationScheduleActor(privacy, marker);
   }
   return markers.length;
