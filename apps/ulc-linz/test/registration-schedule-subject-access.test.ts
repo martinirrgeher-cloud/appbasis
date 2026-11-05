@@ -216,6 +216,31 @@ describe("A02.4 offline subject access authorization and audit", () => {
     }
   });
 
+  it("rejects all unexpected personal fields and malformed reader records BEFORE audit", async () => {
+    const malicious = [
+      { ...RECORD, actorIdentityId: "other-user-secret" },
+      { ...RECORD, note: "personal health information" },
+      { ...RECORD, referenceKind: "unknown" },
+      { ...RECORD, groupId: " bad " },
+      { ...RECORD, revision: -2 },
+      { ...RECORD, sessionDate: "2026-02-31" },
+      { ...RECORD, approved: "false" },
+      { ...RECORD, occurredAt: "not-a-date" },
+      { ...RECORD, referenceKind: "extra-day-approved", approved: false },
+      { ...RECORD, referenceKind: "group-policy-updated" },
+    ];
+    for (const entry of malicious) {
+      const t = fixture();
+      t.deps.reader.readActorReferences = vi.fn(async () => [entry]) as never;
+      await expect(inspectUlcRegistrationScheduleActorData(
+        t.current, t.deps,
+        { organizationId: ORG, targetIdentityId: SUBJECT,
+          scope: "organization-admin" },
+      )).rejects.toBeInstanceOf(UlcRegistrationScheduleSubjectAccessBlockedError);
+      expect(t.recordAccessAudit).not.toHaveBeenCalled();
+    }
+  });
+
   it("blocks incomplete audit before releasing personal records", async () => {
     const t = fixture({ auditError: new Error("audit unavailable") });
     await expect(inspectUlcRegistrationScheduleActorData(
