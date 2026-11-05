@@ -73,6 +73,11 @@ import {
   UlcSelfRegistrationNotFoundError,
 } from "./self-registration-service";
 import {
+  normalizeUlcRegistrationSchedule,
+  UlcRegistrationScheduleValidationError,
+} from "./registration-schedule-policy";
+import { UlcRegistrationPolicyConflictError } from "./registration-policy-postgres";
+import {
   UlcTrainingBlockParameterError,
   UlcTrainingBlockReferenceError,
 } from "./training-blocks-service";
@@ -256,6 +261,8 @@ export function createGeneratedWorker(
           response = await functionaryUserAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-identities") {
           response = await trainerIdentityAdminResponse(request, runtime, url);
+        } else if (url.pathname === "/api/modules/athletes/registration-policy") {
+          response = await registrationPolicyHttpResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/athletes") {
           response = await athletesModuleResponse(request, runtime, url);
         } else if (
@@ -4209,6 +4216,132 @@ async function athletesImportApplyResponse(
           },
         },
       );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Group policy settings are app-owned, but editing is authorized through the
+ * existing athletes:edit capability. Organization and actor always come from
+ * the authenticated session; neither is accepted from the request body.
+ * A draft-only route until ULC v12 is explicitly published and activated.
+ */
+async function registrationPolicyHttpResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return methodNotAllowedFor("GET, POST", "training registration policy");
+  }
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) {
+    if (current.status >= 400) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: null,
+        organizationId: null,
+        action: request.method === "GET" ? "view" : "edit",
+        targetId: "athletes",
+        reasonCode: "identity-access-denied",
+      });
+    }
+    return current;
+  }
+
+  let access;
+  try {
+    access = request.method === "GET"
+      ? await runtime.athletesAccess.assertViewAccess(current)
+      : await runtime.athletesAccess.assertEditAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json({ error: {
+        code: error.code, message: "Training group configuration access denied.",
+      } }, { status: 403, headers: { "cache-control": "private, no-store" } });
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+
+  try {
+    let groupId: string;
+    let expectedRevision: number | null = null;
+    let schedule: ReturnType<typeof normalizeUlcRegistrationSchedule> | null = null;
+    if (request.method === "GET") {
+      if (url.searchParams.size !== 1 ||
+          url.searchParams.getAll("groupId").length !== 1) {
+        throw new InvalidAthletesRequestError();
+      }
+      groupId = url.searchParams.get("groupId") || "";
+    } else {
+      if (url.searchParams.size !== 0) throw new InvalidAthletesRequestError();
+      const body = await athletesJsonBody(
+        request,
+        ["groupId", "expectedRevision", "schedule"],
+        ["groupId", "expectedRevision", "schedule"],
+      );
+      groupId = body.groupId as string;
+      if (!(body.expectedRevision === null ||
+            (Number.isSafeInteger(body.expectedRevision) &&
+             Number(body.expectedRevision) >= 1))) {
+        throw new InvalidAthletesRequestError();
+      }
+      expectedRevision = body.expectedRevision as number | null;
+      schedule = normalizeUlcRegistrationSchedule(body.schedule);
+    }
+    if (typeof groupId !== "string" || groupId.length < 1 ||
+        groupId.length > 200 || groupId.trim() !== groupId) {
+      throw new InvalidAthletesRequestError();
+    }
+    const snapshot = await runtime.athleteMasterdata.readOrganizationSnapshot(
+      access.organizationId,
+    );
+    const matched = snapshot.trainingGroups.filter(
+      (group) => group.id === groupId &&
+        group.organizationId === access.organizationId &&
+        group.isActive && group.attendanceMode === "self_registration",
+    );
+    if (matched.length !== 1) {
+      return Response.json({ error: {
+        code: "TRAINING_GROUP_NOT_FOUND",
+        message: "This self-registration training group is unavailable.",
+      } }, { status: 404, headers: { "cache-control": "private, no-store" } });
+    }
+    const policy = request.method === "GET"
+      ? await runtime.registrationPolicies.read(access.organizationId, groupId)
+      : await runtime.registrationPolicies.save(
+          access.organizationId,
+          groupId,
+          current.identity.identityId,
+          expectedRevision,
+          schedule,
+        );
+    return Response.json({
+      groupId,
+      schedule: policy?.schedule ?? null,
+      revision: policy?.revision ?? null,
+    }, { headers: { "cache-control": "private, no-store" } });
+  } catch (error) {
+    if (error instanceof InvalidAthletesRequestError ||
+        error instanceof UlcRegistrationScheduleValidationError) {
+      return Response.json({ error: {
+        code: "INVALID_REGISTRATION_POLICY",
+        message: "The training group registration policy is invalid.",
+      } }, { status: 400, headers: { "cache-control": "private, no-store" } });
+    }
+    if (error instanceof UlcRegistrationPolicyConflictError) {
+      return Response.json({ error: {
+        code: "REGISTRATION_POLICY_CONFLICT",
+        message: "The training group policy changed. Reload it before saving.",
+      } }, { status: 409, headers: { "cache-control": "private, no-store" } });
     }
     throw error;
   }
