@@ -24,7 +24,7 @@ export interface UlcRegistrationScheduleEvaluation {
   readonly isLate: boolean;
   readonly mayEdit: boolean;
   readonly reason: "open" | "non-training-day" | "too-far-ahead" |
-    "cancelled" | "deadline-passed";
+    "cancelled" | "deadline-passed" | "past-training-day";
   readonly deadlineLocal: string | null;
 }
 
@@ -171,6 +171,8 @@ export function evaluateUlcRegistrationSchedule(input: {
   readonly serverNow: Date;
   readonly sessionState: "scheduled" | "cancelled" | null;
   readonly hasExistingRegistration: boolean;
+  /** Trusted app-owned exception approved through the trainer/admin path. */
+  readonly authorizedExtraDay: boolean;
 }): UlcRegistrationScheduleEvaluation {
   const day = validDate(input.sessionDate);
   const nowLocal = viennaLocalDateTime(input.serverNow);
@@ -179,14 +181,17 @@ export function evaluateUlcRegistrationSchedule(input: {
     normalizeUlcRegistrationSchedule(input.schedule);
   if (input.sessionState !== null && input.sessionState !== "scheduled" &&
       input.sessionState !== "cancelled") invalid("Invalid session state.");
-  if (typeof input.hasExistingRegistration !== "boolean") {
-    invalid("Existing-registration flag is invalid.");
+  if (typeof input.hasExistingRegistration !== "boolean" ||
+      typeof input.authorizedExtraDay !== "boolean") {
+    invalid("Registration visibility flags are invalid.");
   }
   const scheduledWeekday = schedule === null ||
     schedule.weekdays.includes(weekday(day));
-  const exceptionalTrainingDay = input.sessionState !== null ||
-    input.hasExistingRegistration;
-  const visible = scheduledWeekday || exceptionalTrainingDay;
+  // A previously auto-created session is NOT an authorization to bypass the
+  // training-day policy. Only a separately approved exception permits edits.
+  const exceptionalTrainingDay = input.authorizedExtraDay;
+  const visible = scheduledWeekday || exceptionalTrainingDay ||
+    input.sessionState !== null || input.hasExistingRegistration;
   const nowWeek = weekMonday(today);
   const targetWeek = weekMonday(day);
   const weeksBetween = Math.round(
@@ -194,6 +199,7 @@ export function evaluateUlcRegistrationSchedule(input: {
      Date.parse(nowWeek + "T12:00:00Z")) / (7 * 86_400_000),
   );
   const tooFarAhead = schedule !== null && weeksBetween > schedule.weeksAhead;
+  const inPast = schedule !== null && day < today;
   const deadlineLocal = schedule?.deadline
     ? shiftDate(day, -schedule.deadline.daysBefore) + "T" +
       schedule.deadline.localTime
@@ -201,8 +207,10 @@ export function evaluateUlcRegistrationSchedule(input: {
   const isLate = deadlineLocal !== null &&
     input.serverNow.getTime() > viennaDeadlineInstant(deadlineLocal);
   const reason: UlcRegistrationScheduleEvaluation["reason"] =
-    !visible ? "non-training-day" :
     input.sessionState === "cancelled" ? "cancelled" :
+    !scheduledWeekday && !exceptionalTrainingDay ? "non-training-day" :
+    !visible ? "non-training-day" :
+    inPast ? "past-training-day" :
     tooFarAhead ? "too-far-ahead" :
     isLate && schedule?.lateMode === "block" ? "deadline-passed" : "open";
   return Object.freeze({
