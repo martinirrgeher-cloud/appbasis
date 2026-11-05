@@ -40,6 +40,26 @@ describe("A02.4 mobile group schedule editor", () => {
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
   });
 
+  it("provides a separate group-scoped special-day dialog for trainers in attendance", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-extra-open"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-extra-dialog"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-extra-date" type="date"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-extra-approve"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-extra-revoke"');
+    expect(ULC_LINZ_APP_CSS).toContain(".kindertraining-extra-dialog");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'group?.attendanceMode !== "self_registration"',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("async function loadTrainerExtraDay()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("async function saveTrainerExtraDay(approved)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("expectedRevision: state.revision");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('requestJson("/api/modules/athletes/registration-extra-day"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (kindertrainingExtraDraft?.saving) event.preventDefault()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("kindertrainingExtraDraft?.saving");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Zuerst müssen die regulären Trainingstage");
+    expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
+  });
+
   it("uses a server-authorized policy endpoint and versioned updates", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '"/api/modules/athletes/registration-policy?groupId="',
