@@ -3360,6 +3360,14 @@ function renderSelfRegistration() {
       );
       head.append(identity, current);
       card.append(head);
+      const registrationWindow = option.registrationWindow;
+      const canEditRegistration = registrationWindow?.mayEdit !== false;
+      if (registrationWindow) {
+        const hint = document.createElement("p");
+        hint.className = "settings-note";
+        hint.textContent = registrationWindowExplanation(registrationWindow);
+        if (hint.textContent) card.append(hint);
+      }
 
       if (option.sessionState === "cancelled") {
         const cancelled = document.createElement("p");
@@ -3391,7 +3399,8 @@ function renderSelfRegistration() {
         );
         button.disabled =
           optionSaving ||
-          selfRegistrationLoading;
+          selfRegistrationLoading ||
+          !canEditRegistration;
         actions.append(button);
       }
       card.append(actions);
@@ -3407,7 +3416,7 @@ function renderSelfRegistration() {
       noteInput.value = selfRegistrationNoteDrafts.has(optionKey)
         ? selfRegistrationNoteDrafts.get(optionKey)
         : option.note || "";
-      noteInput.disabled = optionSaving || selfRegistrationLoading;
+      noteInput.disabled = optionSaving || selfRegistrationLoading || !canEditRegistration;
       const noteSave = document.createElement("button");
       noteSave.type = "button";
       noteSave.className = "button button--secondary";
@@ -3415,7 +3424,7 @@ function renderSelfRegistration() {
       noteSave.dataset.registrationGroup = option.group.id;
       noteSave.dataset.registrationDate = option.sessionDate;
       noteSave.dataset.registrationNoteSave = "true";
-      noteSave.disabled = optionSaving ||
+      noteSave.disabled = optionSaving || !canEditRegistration ||
         noteInput.value.trim() === (option.note || "");
       noteInput.addEventListener("input", () => {
         if (noteInput.value.trim() === (option.note || "")) {
@@ -3437,7 +3446,7 @@ function renderSelfRegistration() {
       proxy.dataset.registrationProxyGroup = option.group.id;
       proxy.dataset.registrationProxyDate = option.sessionDate;
       proxy.textContent = "Für Kollegen anmelden";
-      proxy.disabled = optionSaving || selfRegistrationLoading;
+      proxy.disabled = optionSaving || selfRegistrationLoading || !canEditRegistration;
       card.append(proxy);
       day.append(card);
     }
