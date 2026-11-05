@@ -83,7 +83,7 @@ BEGIN
   WHERE session.organization_id = NEW.organization_id
     AND session.id = NEW.session_id;
   IF NOT FOUND OR v_state <> 'scheduled' THEN
-    RAISE EXCEPTION 'Registration session is unavailable' USING ERRCODE = '23514';
+    RAISE EXCEPTION 'Registration session is unavailable' USING ERRCODE = 'UL024';
   END IF;
 
   -- This lock serializes with policy administration and the group's
@@ -96,7 +96,7 @@ BEGIN
     AND training_group.attendance_mode = 'self_registration'
   FOR SHARE;
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'Registration group is unavailable' USING ERRCODE = '23514';
+    RAISE EXCEPTION 'Registration group is unavailable' USING ERRCODE = 'UL024';
   END IF;
 
   SELECT policy.* INTO v_policy
@@ -123,14 +123,14 @@ BEGIN
     ) INTO v_allowed_day;
   END IF;
   IF NOT v_allowed_day THEN
-    RAISE EXCEPTION 'Registration is not open on this training day' USING ERRCODE = '23514';
+    RAISE EXCEPTION 'Registration is not open on this training day' USING ERRCODE = 'UL024';
   END IF;
 
   IF v_date < v_today OR
     date_trunc('week', v_date::timestamp) >
       date_trunc('week', v_today::timestamp) +
       make_interval(weeks => v_policy.weeks_ahead) THEN
-    RAISE EXCEPTION 'Registration is outside the permitted weeks' USING ERRCODE = '23514';
+    RAISE EXCEPTION 'Registration is outside the permitted weeks' USING ERRCODE = 'UL024';
   END IF;
 
   IF v_policy.deadline_days_before IS NOT NULL AND v_policy.late_mode = 'block' THEN
@@ -153,7 +153,7 @@ BEGIN
       END IF;
     END IF;
     IF clock_timestamp() > v_cutoff THEN
-      RAISE EXCEPTION 'Registration deadline passed' USING ERRCODE = '23514';
+      RAISE EXCEPTION 'Registration deadline passed' USING ERRCODE = 'UL024';
     END IF;
   END IF;
   RETURN NEW;
