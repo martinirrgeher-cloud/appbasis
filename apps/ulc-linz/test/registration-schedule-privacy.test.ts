@@ -91,7 +91,7 @@ describe("A02.4 unpublished privacy/data-lifecycle inventory drift gate", () => 
       "updated_by_identity_id",
     ]);
     expect(inventory.blockers).toContain(
-      "canonical-identity-lifecycle-does-not-invoke-a02-actor-redaction",
+      "optional-lifecycle-redaction-hooks-not-injected-or-activated",
     );
     expect(inventory.blockers).toContain(
       "existing-registration-note-history-privacy-gate-remains-open",
