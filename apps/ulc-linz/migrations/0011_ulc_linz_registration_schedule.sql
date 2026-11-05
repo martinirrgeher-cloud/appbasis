@@ -45,6 +45,14 @@ CREATE TABLE ulc_linz_registration_extra_day (
   session_date date NOT NULL,
   approved_by_identity_id text NOT NULL,
   approved_at timestamptz NOT NULL DEFAULT now(),
+  is_approved boolean NOT NULL DEFAULT true,
+  revision integer NOT NULL DEFAULT 1
+    CONSTRAINT ulc_linz_registration_extra_day_revision_check
+      CHECK (revision >= 1),
+  updated_by_identity_id text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT ulc_linz_registration_extra_day_updated_actor_check
+    CHECK (char_length(updated_by_identity_id) BETWEEN 1 AND 200),
   CONSTRAINT ulc_linz_registration_extra_day_pk
     PRIMARY KEY (organization_id, group_id, session_date),
   CONSTRAINT ulc_linz_registration_extra_day_org_check
@@ -53,6 +61,20 @@ CREATE TABLE ulc_linz_registration_extra_day (
     CHECK (char_length(group_id) BETWEEN 1 AND 200 AND group_id = btrim(group_id)),
   CONSTRAINT ulc_linz_registration_extra_day_actor_check
     CHECK (char_length(approved_by_identity_id) BETWEEN 1 AND 200)
+);
+
+--> statement-breakpoint
+-- Append-only, versioned approval/revocation history. No free text is stored.
+CREATE TABLE ulc_linz_registration_extra_day_change (
+  organization_id text NOT NULL,
+  group_id text NOT NULL,
+  session_date date NOT NULL,
+  revision integer NOT NULL CHECK (revision >= 1),
+  is_approved boolean NOT NULL,
+  actor_identity_id text NOT NULL CHECK (char_length(actor_identity_id) BETWEEN 1 AND 200),
+  changed_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT ulc_linz_registration_extra_day_change_pk
+    PRIMARY KEY (organization_id, group_id, session_date, revision)
 );
 
 --> statement-breakpoint
@@ -76,6 +98,7 @@ DECLARE
   v_first timestamp with time zone;
   v_local_guess timestamp without time zone;
   v_allowed_day boolean;
+  v_extra_approved boolean;
 BEGIN
   SELECT session.group_id, session.session_date, session.state
     INTO v_group, v_date, v_state
@@ -102,7 +125,8 @@ BEGIN
   SELECT policy.* INTO v_policy
   FROM public.ulc_linz_registration_group_policy AS policy
   WHERE policy.organization_id = NEW.organization_id
-    AND policy.group_id = v_group;
+    AND policy.group_id = v_group
+  FOR SHARE;
   IF NOT FOUND THEN
     -- Previously accepted registration behavior remains unchanged for
     -- groups that have no explicitly configured schedule.
@@ -114,13 +138,13 @@ BEGIN
     (v_policy.weekdays_mask &
      (1 << (EXTRACT(ISODOW FROM v_date)::int - 1))) <> 0;
   IF NOT v_allowed_day THEN
-    SELECT EXISTS (
-      SELECT 1
-      FROM public.ulc_linz_registration_extra_day AS extra_day
-      WHERE extra_day.organization_id = NEW.organization_id
-        AND extra_day.group_id = v_group
-        AND extra_day.session_date = v_date
-    ) INTO v_allowed_day;
+    SELECT extra_day.is_approved INTO v_extra_approved
+    FROM public.ulc_linz_registration_extra_day AS extra_day
+    WHERE extra_day.organization_id = NEW.organization_id
+      AND extra_day.group_id = v_group
+      AND extra_day.session_date = v_date
+    FOR SHARE;
+    v_allowed_day := COALESCE(v_extra_approved, false);
   END IF;
   IF NOT v_allowed_day THEN
     RAISE EXCEPTION 'Registration is not open on this training day' USING ERRCODE = 'UL024';
