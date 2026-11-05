@@ -81,7 +81,7 @@ describe("A02.4 unpublished privacy/data-lifecycle inventory drift gate", () => 
       expect(table.freeTextColumns).toEqual([]);
       expect(table.deletionEvidence).toBe("privileged-offline-redaction-staged-not-integrated");
       expect(table.retentionEvidence).toBe("not-implemented");
-      expect(table.exportEvidence).toBe("not-implemented");
+      expect(table.exportEvidence).toBe("offline-actor-subject-access-staged-not-approved");
       expect(table.restoreEvidence).toBe("not-verified");
     }
     const actorFields = [...new Set(inventory.tables.flatMap((t) => t.actorColumns))];
