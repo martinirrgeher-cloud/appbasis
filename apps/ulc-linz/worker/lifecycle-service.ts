@@ -27,6 +27,10 @@ import {
   type UlcLinzDeletionResult,
 } from "./lifecycle";
 import roleDataScope from "./role-data-scope.json";
+import {
+  reconcileDeletedRegistrationScheduleActor,
+  type UlcRegistrationScheduleLifecyclePrivacyHook,
+} from "./registration-schedule-lifecycle";
 import type {
   PostgresUlcLinzScopePersistence,
   UlcLinzDeletableSourceRole,
@@ -51,6 +55,11 @@ export interface UlcLinzCanonicalDeletionDependencies
     | "findDeletionMarker"
     | "completeIdentityDeletion"
   >;
+  /**
+   * A02.4: intentionally NOT injected by current runtime. Must become
+   * mandatory in all deletion, retention and restore paths before v12.
+   */
+  readonly registrationSchedulePrivacy?: UlcRegistrationScheduleLifecyclePrivacyHook;
 }
 
 export interface UlcLinzCanonicalDeletionRequest {
@@ -736,10 +745,17 @@ async function executeCanonicalDeletion(
   });
   if (
     completedMarker.organizationId !== organizationId ||
-    completedMarker.sourceRole !== targetSourceRole
+    completedMarker.sourceRole !== targetSourceRole ||
+    completedMarker.identityId !== targetIdentityId
   ) {
     blocked();
   }
+  // After canonical owner deletion and the app's durable deletion marker.
+  // If erasure fails, the caller does not receive a successful result.
+  // A replay of the same authorized deletion can reconcile the marker.
+  await reconcileDeletedRegistrationScheduleActor(
+    dependencies.registrationSchedulePrivacy, completedMarker,
+  );
   return result;
 }
 
