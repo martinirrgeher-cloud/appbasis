@@ -79,8 +79,11 @@ Datenschutz-/Backup-/Restore-Gates aktiviert werden.
   Kennungen anderer Bearbeiter, Freitexte oder Credentials mit ausgegeben.
   `registration-schedule-subject-access.ts` prüft die aktuelle
   authentifizierte Identität, Organisation, Verwaltungsrechte und die
-  Zugehörigkeit des betroffenen Benutzers; erst nach erfolgreicher
-  Auditbestätigung gibt die Funktion die begrenzte Auskunft zurück.
+  Zugehörigkeit des betroffenen Benutzers; erst nach einem nachweislich persistenten Auditbeleg (positiver
+  Schreibbeleg mit Ereigniskennung) gibt die Funktion die begrenzte
+  Auskunft zurück. Ein bloßer Konsolenlog oder eine aufgelöste Promise
+  ohne Persistenzbeleg wird abgewiesen. Ein konkreter persistenter
+  Auditadapter ist weiterhin **nicht** implementiert bzw. injiziert.
 - Diese Funktion ist **kein aktiver öffentlicher Export** und bleibt absichtlich
   außerhalb des bisherigen M5-E-Exports. Insbesondere die rechtliche
   Herausgabe von audit-/sicherheitsrelevanten Ereignissen, die verlässliche
