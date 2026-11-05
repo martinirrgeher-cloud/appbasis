@@ -5,6 +5,10 @@ import {
   UlcLinzLifecycleBlockedError,
   type UlcLinzDeletionDependencies,
 } from "./lifecycle";
+import {
+  reconcileDeletedRegistrationScheduleActor,
+  type UlcRegistrationScheduleLifecyclePrivacyHook,
+} from "./registration-schedule-lifecycle";
 import type {
   PostgresUlcLinzScopePersistence,
   UlcLinzDeletionMarker,
@@ -57,6 +61,8 @@ export interface UlcLinzRestoreReconciliationDependencies
     PostgresUlcLinzScopePersistence,
     "findLifecycleTarget" | "findDeletionMarker" | "completeIdentityDeletion"
   >;
+  /** Opt-in: a restored v12 database requires this before promotion. */
+  readonly registrationSchedulePrivacy?: UlcRegistrationScheduleLifecyclePrivacyHook;
 }
 
 export interface UlcLinzRestoreReconciliationResult {
@@ -125,10 +131,17 @@ export async function reconcileUlcLinzRestoredDatabase(
     if (
       completed.organizationId !== marker.organizationId ||
       completed.subjectId !== marker.subjectId ||
-      completed.sourceRole !== marker.sourceRole
+      completed.sourceRole !== marker.sourceRole ||
+      completed.identityId !== marker.identityId
     ) {
       blocked();
     }
+    // Re-erase identifiers restored from an older backup. This is invoked
+    // only after owner reconciliation and a new target deletion marker.
+    // A failed erasure blocks restore promotion and is retryable.
+    await reconcileDeletedRegistrationScheduleActor(
+      target.registrationSchedulePrivacy, completed,
+    );
     reconciledIdentityIds.push(marker.identityId);
   }
 
