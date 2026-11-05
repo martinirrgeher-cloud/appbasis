@@ -63,7 +63,7 @@
   ],
   "blockers": [
     "retention-period-for-identifiable-configuration-and-audit-unapproved",
-    "canonical-identity-lifecycle-does-not-invoke-a02-actor-redaction",
+    "optional-lifecycle-redaction-hooks-not-injected-or-activated",
     "data-subject-access-and-export-do-not-include-these-tables",
     "retention-and-restore-reconciliation-not-activated",
     "migration-not-in-canonical-manifest",
