@@ -22,6 +22,24 @@ describe("A02.4 mobile group schedule editor", () => {
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
   });
 
+  it("adds a separate, mobile-friendly exception editor without changing shared masterdata", () => {
+    expect(ULC_LINZ_APP_HTML).toContain('id="group-detail-extra"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="group-extra-form"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="group-extra-date" type="date"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="group-extra-approve"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="group-extra-revoke"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("async function loadMasterdataExtraDay()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("async function saveMasterdataExtraDay(approved)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("expectedRevision: state.revision");
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'requestJson("/api/modules/athletes/registration-extra-day", {',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("extraDayDraft?.saving");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("extraDayRequestId += 1");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Sondertrainingstag-Freigabe zurücknehmen?");
+    expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
+  });
+
   it("uses a server-authorized policy endpoint and versioned updates", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '"/api/modules/athletes/registration-policy?groupId="',
