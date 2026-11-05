@@ -203,12 +203,15 @@ export class PostgresUlcRegistrationPolicyRepository {
   async setExtraDay(
     organizationId: string, groupId: string, sessionDate: string,
     actorIdentityId: string, approved: boolean, expectedRevision: number | null,
+    trainerScopeId: string | null = null,
   ): Promise<UlcRegistrationExtraDayRecord> {
     const org = identifier(organizationId, "Organization");
     const group = identifier(groupId, "Group");
     const date = validExtraDay(sessionDate);
     const actor = identifier(actorIdentityId, "Actor");
     const expected = revision(expectedRevision);
+    const trainerScope = trainerScopeId === null
+      ? null : identifier(trainerScopeId, "Trainer");
     if (typeof approved !== "boolean") throw new UlcRegistrationPolicyDataError();
     const rows = await this.sql.unsafe(
       `WITH eligible_group AS MATERIALIZED (
@@ -220,6 +223,27 @@ export class PostgresUlcRegistrationPolicyRepository {
          WHERE training_group.organization_id = $1 AND training_group.id = $2
            AND training_group.is_active = true
            AND training_group.attendance_mode = 'self_registration'
+           -- Trainers are rechecked inside the write statement to prevent
+           -- a membership reassignment from bypassing group-scoped access.
+           AND ($7::text IS NULL OR EXISTS (
+             SELECT 1
+             FROM ulc_linz_membership AS membership
+             INNER JOIN appbasis_trainer AS trainer
+               ON trainer.id = membership.subject_id
+              AND trainer.organization_id = membership.organization_id
+              AND trainer.is_active = true
+             INNER JOIN appbasis_trainer_group_membership AS assignment
+               ON assignment.organization_id = trainer.organization_id
+              AND assignment.trainer_id = trainer.id
+             WHERE membership.identity_id = $4
+               AND membership.organization_id = $1
+               AND membership.source_role = 'trainer'
+               AND membership.active = true
+               AND membership.ended_at IS NULL
+               AND membership.subject_id = $7::text
+               AND assignment.group_id = $2
+             FOR SHARE OF membership, trainer, assignment
+           ))
            AND ($5::boolean OR EXISTS (
              SELECT 1 FROM ulc_linz_registration_extra_day AS existing
              WHERE existing.organization_id = $1 AND existing.group_id = $2
@@ -267,7 +291,7 @@ export class PostgresUlcRegistrationPolicyRepository {
        SELECT written.is_approved, written.revision,
               (SELECT count(*)::int FROM audit) AS audit_count
        FROM written`,
-      [org, group, date, actor, approved, expected],
+      [org, group, date, actor, approved, expected, trainerScope],
     );
     if (rows.length === 0) throw new UlcRegistrationPolicyConflictError();
     if (rows.length !== 1 || rows[0]?.audit_count !== 1) {
