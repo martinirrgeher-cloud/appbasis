@@ -7,7 +7,11 @@ describe("ULC administration onboarding UI", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-dashboard" hidden');
     expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-form"');
     expect(ULC_LINZ_APP_HTML).toContain('id="user-admin-copy"');
-    expect(ULC_LINZ_APP_SCRIPT).toContain('userAdminDashboard.hidden = !userAdminReady');
+    expect(ULC_LINZ_APP_HTML).toContain('data-dashboard-view="users"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('if (section === "users") return userAdminReady;');
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'card.hidden = !isAppNavigationAvailable(card.dataset.dashboardView || "")',
+    );
     expect(ULC_LINZ_APP_SCRIPT).toContain('section === "users" && userAdminReady');
   });
 
