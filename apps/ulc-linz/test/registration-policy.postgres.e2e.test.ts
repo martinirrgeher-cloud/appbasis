@@ -212,6 +212,22 @@ if (!databaseUrl) {
       );
       expect(deniedCount).toEqual([{ total: 0 }]);
 
+      // A transactional self-registration write must also roll back the
+      // ad-hoc session itself if its registration violates the policy.
+      const transactionalForbiddenDate = plusDays(forbiddenDate, 7);
+      await expect(sessions.withRegistrationTransaction(async (scoped) => {
+        const pending = await scoped.ensureScheduledSession(
+          organizationId, "kindertraining", group.id, transactionalForbiddenDate,
+        );
+        return scoped.saveRegistration(
+          organizationId, pending.session.id, athlete.id,
+          "attending", null, "actor-identity",
+        );
+      })).rejects.toThrow();
+      expect(await sessions.readSession(
+        organizationId, "kindertraining", group.id, transactionalForbiddenDate,
+      )).toBeNull();
+
       // Only the separate privileged approval makes an exceptional day writable.
       await db.unsafe(
         `INSERT INTO ulc_linz_registration_extra_day
