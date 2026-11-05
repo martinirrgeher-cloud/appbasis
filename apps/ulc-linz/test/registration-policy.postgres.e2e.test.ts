@@ -239,6 +239,23 @@ if (!databaseUrl) {
         organizationId, adHoc.session.id, athlete.id, "attending", null, "actor-identity",
       )).resolves.toMatchObject({ revision: 1 });
 
+      // Revoking a once-approved exception closes even an already-existing
+      // registration. History and previous intention are retained unchanged.
+      expect(await repository.readExtraDay(organizationId, group.id, forbiddenDate))
+        .toEqual({ approved: true, revision: 1 });
+      await repository.setExtraDay(
+        organizationId, group.id, forbiddenDate, "admin-revoke", false, 1,
+      );
+      await expect(sessions.saveRegistration(
+        organizationId, adHoc.session.id, athlete.id, "maybe", 1, "actor-identity",
+      )).rejects.toThrow();
+      const afterRevocation = await db.unsafe(
+        `SELECT intention, revision FROM ulc_linz_training_registration
+         WHERE session_id = $1 AND athlete_id = $2`,
+        [adHoc.session.id, athlete.id],
+      );
+      expect(afterRevocation).toEqual([{ intention: "attending", revision: 1 }]);
+
       // The deadline changes atomically via CAS. An existing registration
       // does not let a direct UPDATE bypass the new closed window.
       await repository.save(organizationId, group.id, "policy-actor",
