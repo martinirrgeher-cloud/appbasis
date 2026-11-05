@@ -504,6 +504,14 @@ if (!databaseUrl) {
         [org, group],
       );
       expect(unchanged).toEqual([{ updated_by_identity_id: actor }]);
+      const timestampBefore = await db.unsafe(
+        `SELECT changed_at
+         FROM ulc_linz_registration_extra_day_change
+         WHERE organization_id = $1 AND group_id = $2 AND revision = 1`,
+        [org, group],
+      );
+      expect(timestampBefore).toHaveLength(1);
+      expect(timestampBefore[0]?.changed_at).toBeTruthy();
 
       await expect(erase(otherOrg, now)).rejects.toBeInstanceOf(
         UlcRegistrationScheduleActorErasureBlockedError,
@@ -556,7 +564,7 @@ if (!databaseUrl) {
       );
       expect(retainedHistory).toEqual([{
         revision: 1, is_approved: true,
-        actor_identity_id: null, changed_at: expect.any(Date),
+        actor_identity_id: null, changed_at: timestampBefore[0]?.changed_at,
       }]);
       const retainedExtra = await db.unsafe(
         `SELECT is_approved, revision, approved_by_identity_id, updated_by_identity_id
