@@ -448,6 +448,7 @@ function runtime(
         group: { id: groupId, name: "U12", shortName: "U12" },
         sessionDate,
         session: null,
+        contentTitles: [],
         participants: [],
       };
     },
@@ -455,6 +456,7 @@ function runtime(
       return {
         group: { id: input.groupId, name: "U12", shortName: "U12" },
         sessionDate: input.sessionDate,
+        contentTitles: input.contentTitles ?? [],
         session: {
           id: "session-u12-test",
           revision: "1",
@@ -469,6 +471,7 @@ function runtime(
           notes: null,
           contacts: [],
           status: entry.status,
+          contentSlots: entry.contentSlots ?? [],
         })),
       };
     },
