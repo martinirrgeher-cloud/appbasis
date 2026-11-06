@@ -79,7 +79,41 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     );
     expect(changeHandler).toContain("u12DirtyDates.add(u12LoadedDate)");
     expect(changeHandler).not.toContain("saveU12Attendance()");
-    expect(ULC_U12_SCRIPT).toContain("u12DirtyDates.size === 0 && u12Snapshot?.session !== null");
+    expect(ULC_U12_SCRIPT).toContain("u12DirtyDates.size === 0 && u12Snapshot?.session !== null &&");
+    expect(ULC_U12_SCRIPT).toContain("!u12HasUnconfirmedAnswers());");
+  });
+
+  it("permits an explicit binary save for old open or excused records", () => {
+    const source = ULC_U12_SCRIPT.match(
+      /function u12HasUnconfirmedAnswers\(\) \{[\s\S]*?\n\}/,
+    )?.[0];
+    expect(source).toBeDefined();
+    const hasUnconfirmed = new Function(
+      "u12Snapshot",
+      "u12Present",
+      source + "\nreturn u12HasUnconfirmedAnswers();",
+    );
+    const snapshot = (status: string) => ({
+      session: { revision: "1", state: "scheduled", note: null },
+      participants: [{ athleteId: "athlete-1", status }],
+    });
+    const unchecked = new Map([["athlete-1", false]]);
+    const checked = new Map([["athlete-1", true]]);
+    expect(hasUnconfirmed(null, unchecked)).toBe(false);
+    expect(hasUnconfirmed(snapshot("absent"), unchecked)).toBe(false);
+    expect(hasUnconfirmed(snapshot("present"), checked)).toBe(false);
+    expect(hasUnconfirmed(snapshot("open"), unchecked)).toBe(true);
+    expect(hasUnconfirmed(snapshot("excused"), unchecked)).toBe(true);
+    expect(hasUnconfirmed(snapshot("present"), unchecked)).toBe(true);
+    expect(ULC_U12_SCRIPT).toContain(
+      'u12HasUnconfirmedAnswers() ? "Ja/Nein noch nicht bestätigt – bitte speichern"',
+    );
+    const saveStart = ULC_U12_SCRIPT.indexOf("async function saveU12Attendance()");
+    const saveBody = ULC_U12_SCRIPT.slice(saveStart);
+    expect(saveBody).toContain(
+      "u12DirtyDates.size === 0 && u12Snapshot.session !== null &&",
+    );
+    expect(saveBody).toContain("!u12HasUnconfirmedAnswers()) return true;");
   });
 
   it("guards unsaved rows on navigation, date changes, reload and sign-out", () => {
