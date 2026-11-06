@@ -59,7 +59,7 @@ export const ULC_U12_CSS = `
 .u12-person small { color: var(--secondary); }
 .u12-statuses { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
 .u12-statuses button { padding: 7px 2px; min-width: 0; min-height: 42px; font-size: .72rem; white-space: normal; overflow-wrap: anywhere; }
-.u12-statuses button[aria-pressed="true"] { border-color: var(--primary); background: var(--muted); font-weight: 750; }
+.u12-statuses button[aria-pressed="true"] { border-color: var(--accent); background: var(--muted); font-weight: 750; }
 .u12-day--unavailable { opacity: .75; }
 @media (min-width: 540px) {
   .u12-day-fields { grid-template-columns: minmax(140px, 1fr) minmax(0, 2fr); }
