@@ -58,7 +58,14 @@ describe("ULC A03 U12 weekly attendance vertical slice", () => {
     const start = ULC_U12_SCRIPT.indexOf("async function saveU12Week()");
     const end = ULC_U12_SCRIPT.indexOf("async function u12FlushChanges()", start);
     const saveBody = ULC_U12_SCRIPT.slice(start, end);
-    expect(saveBody).not.toContain("renderU12Week()");
+    // The normal save path must not replace the focused editor. A forced
+    // redraw is appropriate only when the backend revokes write access.
+    const normalSaveBody = saveBody.slice(0, saveBody.indexOf("} catch (error) {"));
+    const saveFinally = saveBody.slice(saveBody.lastIndexOf("} finally {"));
+    expect(normalSaveBody).not.toContain("renderU12Week()");
+    expect(saveFinally).not.toContain("renderU12Week()");
+    expect(saveBody).toContain("u12WriteAllowed = false;");
+    expect(saveBody).toContain("renderU12Week();");
     expect(saveBody).toContain("refreshU12Controls()");
     expect(saveBody).toContain("const outgoingDraft = JSON.stringify(entry.draft)");
     expect(saveBody).toContain("JSON.stringify(entry.draft) === outgoingDraft");
