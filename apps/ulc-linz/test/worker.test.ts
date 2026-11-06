@@ -449,6 +449,7 @@ function runtime(
         sessionDate,
         session: null,
         contentTitles: [],
+        contentItems: [],
         participants: [],
       };
     },
@@ -457,6 +458,8 @@ function runtime(
         group: { id: input.groupId, name: "U12", shortName: "U12" },
         sessionDate: input.sessionDate,
         contentTitles: input.contentTitles ?? [],
+        contentItems: input.contentItems ?? (input.contentTitles ?? []).map(() =>
+          ({ code: "" as const, detail: "" })),
         session: {
           id: "session-u12-test",
           revision: "1",
@@ -5337,6 +5340,7 @@ describe("U12 runtime API", () => {
               sessionDate,
               session: null,
               contentTitles: [],
+              contentItems: [],
               participants: [],
             };
           },
@@ -5384,6 +5388,8 @@ describe("U12 runtime API", () => {
               },
               sessionDate: input.sessionDate,
               contentTitles: input.contentTitles ?? [],
+              contentItems: input.contentItems ?? (input.contentTitles ?? []).map(() =>
+                ({ code: "" as const, detail: "" })),
               session: {
                 id: "session-1",
                 revision: "42",
