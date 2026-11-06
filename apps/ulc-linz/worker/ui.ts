@@ -7379,27 +7379,124 @@ function localDateValue(date) {
   return year + "-" + month + "-" + day;
 }
 
+let masterdataQuickCreateSaving = false;
+
+function readMasterdataNewAthleteContacts() {
+  const rows = [...(elements.athleteCreateContacts?.children ?? [])];
+  return rows.map((row, index) => {
+    const value = (field) => row.querySelector(
+      '[data-athlete-new-contact="' + field + '"]',
+    )?.value?.trim() ?? "";
+    return {
+      contactName: value("contactName"),
+      relationship: emptyToNull(value("relationship")),
+      phone: value("phone"),
+      notes: emptyToNull(value("notes")),
+      isEmergency: row.querySelector(
+        '[data-athlete-new-contact="isEmergency"]',
+      )?.checked === true,
+      priority: index + 1,
+    };
+  });
+}
+
 async function createMasterdataAthlete(event) {
   event.preventDefault();
+  if (masterdataQuickCreateSaving || !masterdataCanEdit || !masterdataReady) return;
   const birthYearRaw = elements.athleteBirthYear?.value.trim() || "";
   const editId = masterdataEdit?.type === "athlete" ? masterdataEdit.id : null;
-  const saved = await submitMasterdataForm(
-    editId
-      ? "/api/modules/athletes/masterdata/athletes/" + encodeURIComponent(editId) + "/update"
-      : "/api/modules/athletes/masterdata/athletes",
-    {
-      firstName: elements.athleteFirstName?.value ?? "",
-      lastName: elements.athleteLastName?.value ?? "",
-      ...(editId
-        ? { birthYear: birthYearRaw === "" ? null : Number(birthYearRaw) }
-        : birthYearRaw === "" ? {} : { birthYear: Number(birthYearRaw) }),
-      notes: emptyToNull(elements.athleteNotes?.value),
-    },
-    elements.athleteForm,
-  );
-  if (saved) {
-    if (editId) cancelMasterdataEdit();
-    else closeMasterdataAthleteOverlay();
+  const athleteInput = {
+    firstName: elements.athleteFirstName?.value ?? "",
+    lastName: elements.athleteLastName?.value ?? "",
+    ...(editId ? { birthYear: birthYearRaw === "" ? null : Number(birthYearRaw) } :
+      birthYearRaw === "" ? {} : { birthYear: Number(birthYearRaw) }),
+    notes: emptyToNull(elements.athleteNotes?.value),
+  };
+  if (editId) {
+    const saved = await submitMasterdataForm(
+      "/api/modules/athletes/masterdata/athletes/" +
+        encodeURIComponent(editId) + "/update",
+      athleteInput,
+      elements.athleteForm,
+    );
+    if (saved) cancelMasterdataEdit();
+    return;
+  }
+
+  const context = masterdataAthleteCreateContext;
+  const groupId = context?.source === "u12" ? context.groupId :
+    (elements.athleteCreateGroup?.value || "");
+  const startedOn = context?.source === "u12" ? context.startedOn :
+    (elements.athleteCreateStartedOn?.value || "");
+  const contacts = readMasterdataNewAthleteContacts();
+  if (groupId && (!masterdataSnapshot?.trainingGroups.some(
+      (group) => group.id === groupId && group.isActive !== false,
+    ) || !/^\d{4}-\d{2}-\d{2}$/.test(startedOn))) {
+    showMessage(elements.athleteCreateMessage,
+      "Bitte eine gültige aktive Trainingsgruppe und ein Startdatum wählen.");
+    return;
+  }
+  const generation = masterdataSessionGeneration;
+  masterdataQuickCreateSaving = true;
+  setMasterdataFormsDisabled(true);
+  showMessage(elements.athleteCreateMessage, "");
+  showMessage(elements.masterdataSuccess, "");
+  try {
+    const result = await requestJson(
+      "/api/modules/athletes/masterdata/athletes/create-complete",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...athleteInput,
+          groupId: groupId || null,
+          startedOn: groupId ? startedOn : null,
+          contacts,
+        }),
+      },
+    );
+    if (generation !== masterdataSessionGeneration) return;
+    // The backend commits athlete, contacts, and group in one transaction.
+    // Refresh failure must not prompt a second create (duplicate risk).
+    const createdId = result?.athlete?.id;
+    closeMasterdataAthleteOverlay();
+    masterdataSnapshot = null;
+    const refreshed = await loadMasterdata(true);
+    if (generation !== masterdataSessionGeneration) return;
+    if (context?.source === "u12") {
+      u12Snapshot = null;
+      u12Present = new Map();
+      u12DirtyDates.clear();
+      await loadU12Attendance();
+      if (generation !== masterdataSessionGeneration) return;
+      showAppSection("u12");
+      showMessage(u12Ui.success, refreshed
+        ? "Neues Kind angelegt und der U12-Gruppe zugeordnet."
+        : "Kind und Gruppenzuordnung angelegt. Stammdaten konnten nicht neu geladen werden.");
+    } else if (refreshed && createdId) {
+      showMasterdataTab("athletes");
+      openMasterdataAthleteOverlay(createdId);
+      showMessage(elements.masterdataSuccess,
+        "Athlet, Gruppenzuordnung und Kontakte wurden gemeinsam gespeichert.");
+    } else {
+      showMessage(elements.masterdataSuccess,
+        "Athlet wurde angelegt. Stammdaten bitte erneut laden.");
+    }
+  } catch (error) {
+    if (generation !== masterdataSessionGeneration) return;
+    showMessage(elements.athleteCreateMessage,
+      error?.status === 403
+        ? "Du darfst Athleten nicht anlegen."
+        : error?.status === 400
+          ? "Bitte Namen, Jahrgang, Gruppenzuordnung und Kontakte prüfen."
+          : "Athlet konnte nicht gespeichert werden. Keine Teilanlage übernommen.");
+  } finally {
+    masterdataQuickCreateSaving = false;
+    setMasterdataFormsDisabled(false);
+    if (masterdataAthleteCreateContext?.source === "u12") {
+      if (elements.athleteCreateGroup) elements.athleteCreateGroup.disabled = true;
+      if (elements.athleteCreateStartedOn) elements.athleteCreateStartedOn.disabled = true;
+    }
+    if (elements.athleteCreateExtras?.hidden) elements.athleteCreateExtras.disabled = true;
   }
 }
 
