@@ -174,7 +174,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
       );
       return {
         ...owner,
-        schemaVersion: 13,
+        schemaVersion: 14,
         migrations: [
           ...owner.migrations,
           "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
