@@ -83,7 +83,7 @@ describe("ULC U12 content assignment overlay and roster summary", () => {
     };
     const createElement = vi.fn(() => ({ className: "", textContent: "" }));
     const factory = new Function(
-      "u12Ui", "u12Present", "u12ContentTitles", "u12ContentAssignments", "document",
+      "u12Ui", "u12Present", "u12ContentTitles", "u12ContentAssignments", "document", "u12ContentItems",
       source + "\nreturn refreshU12AssignmentSummaries;",
     ) as (...args: unknown[]) => () => void;
     const render = factory(
@@ -92,11 +92,12 @@ describe("ULC U12 content assignment overlay and roster summary", () => {
       ["Sprint", "Sprung", "Koordination"],
       new Map([["anna", new Set([1, 3])], ["ben", new Set([2])], ["clara", new Set<number>()]]),
       { createElement },
+      [{ code: "sprint", detail: "4 × 30 m" }, { code: "jump", detail: "" }, { code: "coordination", detail: "" }],
     );
     render();
     expect(ann.hidden).toBe(false);
     expect(ann.children.map((c) => c.textContent)).toEqual([
-      "Inhalte:", "1. Sprint", "3. Koordination",
+      "Inhalte:", "1. Sprint · 4 × 30 m", "3. Koordination",
     ]);
     expect(ben.hidden).toBe(true);
     expect(ben.children).toHaveLength(0);
