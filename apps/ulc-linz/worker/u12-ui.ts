@@ -515,6 +515,8 @@ async function saveU12Week() {
           for (const day of u12Days) day.draft = u12Draft(day.snapshot);
           u12DirtyDates.clear();
           showMessage(u12Ui.message, "Keine U12-Schreibberechtigung. Änderungen wurden nicht übernommen.");
+          // Revert visible fields to the last server snapshot after access revocation.
+          renderU12Week();
         } else {
           showMessage(u12Ui.message, "U12 konnte nicht vollständig speichern. Ungespeicherte Tage bleiben erhalten.");
         }
