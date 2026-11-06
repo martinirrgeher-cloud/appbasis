@@ -2705,6 +2705,11 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 window.addEventListener("beforeunload", (event) => {
+  if (u12Saving || u12DirtyDates.size > 0) {
+    event.preventDefault();
+    event.returnValue = "";
+    return;
+  }
   if (runMode !== "running" && runMode !== "paused") return;
   event.preventDefault();
   event.returnValue = "";
