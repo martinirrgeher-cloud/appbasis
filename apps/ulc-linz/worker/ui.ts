@@ -4893,6 +4893,7 @@ function refreshAppAvailability() {
   }
   const u12QuickAction = document.querySelector("#u12-quick-action");
   if (u12QuickAction) u12QuickAction.disabled = !u12Ready;
+  if (typeof refreshU12Controls === "function") refreshU12Controls();
   if (elements.kindertrainingQuickAction) {
     elements.kindertrainingQuickAction.disabled = !kindertrainingReady;
   }
