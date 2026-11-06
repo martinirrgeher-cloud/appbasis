@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,6 +10,8 @@ import {
 } from "../worker/training-content-catalog";
 import { UlcTrainingValidationError } from "../worker/training-session-domain";
 import { ULC_U12_HTML, ULC_U12_SCRIPT, ULC_U12_CSS } from "../worker/u12-ui";
+
+const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("ULC youth training category catalog v13", () => {
   it("offers stable distinct machine identifiers for all youth groups", () => {
@@ -54,7 +57,7 @@ describe("ULC youth training category catalog v13", () => {
   });
 
   it("adds metadata to existing session rows without touching attendance assignments", async () => {
-    const root = resolve(process.cwd(), "apps/ulc-linz");
+    const root = appRoot;
     const sql = await readFile(
       resolve(root, "migrations/0012_ulc_linz_youth_training_catalog.sql"), "utf8",
     );
@@ -83,7 +86,7 @@ describe("ULC youth training category catalog v13", () => {
   });
 
   it("uses an authorized U12 save path with unchanged CAS semantics", async () => {
-    const root = resolve(process.cwd(), "apps/ulc-linz/worker");
+    const root = resolve(appRoot, "worker");
     const [http, service, repository] = await Promise.all([
       readFile(resolve(root, "index.ts"), "utf8"),
       readFile(resolve(root, "u12-service.ts"), "utf8"),
