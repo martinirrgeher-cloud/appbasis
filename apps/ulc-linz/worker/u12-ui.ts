@@ -234,7 +234,11 @@ function u12ValidGroup(group) {
 function u12ValidSnapshot(snapshot, date, groupId) {
   if (!snapshot || typeof snapshot !== "object" ||
       snapshot.sessionDate !== date || !u12ValidGroup(snapshot.group) ||
-      snapshot.group.id !== groupId || !Array.isArray(snapshot.participants)) return false;
+      snapshot.group.id !== groupId || !Array.isArray(snapshot.participants) ||
+      !Array.isArray(snapshot.contentTitles) || snapshot.contentTitles.length > 5 ||
+      !snapshot.contentTitles.every((title) =>
+        typeof title === "string" && title.length > 0 &&
+        title.length <= 120 && title.trim() === title)) return false;
   if (snapshot.session !== null && (
       typeof snapshot.session !== "object" ||
       typeof snapshot.session.revision !== "string" ||
@@ -245,6 +249,12 @@ function u12ValidSnapshot(snapshot, date, groupId) {
     if (!person || typeof person.athleteId !== "string" || !person.athleteId ||
         typeof person.firstName !== "string" || typeof person.lastName !== "string" ||
         !U12_SERVER_STATUSES.includes(person.status) ||
+        !Array.isArray(person.contentSlots) ||
+        person.contentSlots.length > snapshot.contentTitles.length ||
+        new Set(person.contentSlots).size !== person.contentSlots.length ||
+        !person.contentSlots.every((slot) => Number.isInteger(slot) &&
+          slot >= 1 && slot <= snapshot.contentTitles.length) ||
+        (person.status !== "present" && person.contentSlots.length > 0) ||
         (person.notes !== null && typeof person.notes !== "string") ||
         !Array.isArray(person.contacts) ||
         !person.contacts.every((contact) =>
@@ -322,9 +332,16 @@ async function bootstrapU12() {
 // as "Nein" must not claim that the binary answer has already been saved.
 function u12HasUnconfirmedAnswers() {
   if (!u12Snapshot) return false;
-  return u12Snapshot.participants.some((person) =>
-    person.status !==
-      (u12Present.get(person.athleteId) === true ? "present" : "absent"));
+  if (JSON.stringify(u12Snapshot.contentTitles) !==
+      JSON.stringify(u12ContentTitles.map((title) => title.trim()))) return true;
+  return u12Snapshot.participants.some((person) => {
+    const present = u12Present.get(person.athleteId) === true;
+    if (person.status !== (present ? "present" : "absent")) return true;
+    const slots = present
+      ? [...(u12ContentAssignments.get(person.athleteId) ?? new Set())].sort((a, b) => a - b)
+      : [];
+    return JSON.stringify(person.contentSlots) !== JSON.stringify(slots);
+  });
 }
 
 function groupIdOrValidU12Group() {
@@ -341,6 +358,25 @@ function refreshU12Controls() {
     u12WriteAllowed && !u12Conflict;
   for (const input of u12Ui.days?.querySelectorAll("[data-u12-athlete-id]") ?? []) {
     input.disabled = !editable;
+  }
+  for (const input of u12Ui.contentRows?.querySelectorAll("input, button") ?? []) {
+    input.disabled = !editable;
+  }
+  if (u12Ui.contentAdd) {
+    u12Ui.contentAdd.disabled = !editable || u12ContentTitles.length >= 5;
+    u12Ui.contentAdd.hidden = u12ContentTitles.length >= 5;
+  }
+  if (u12Ui.contentCount) {
+    u12Ui.contentCount.textContent = u12ContentTitles.length + " / 5";
+  }
+  for (const control of u12Ui.days?.querySelectorAll("[data-u12-assign-id]") ?? []) {
+    const id = control.dataset.u12AssignId;
+    const assigned = u12ContentAssignments.get(id)?.size ?? 0;
+    control.textContent = "Inhalte " + assigned + " / " + u12ContentTitles.length;
+    control.disabled = !editable || !u12Present.get(id);
+  }
+  for (const input of u12Ui.assignOptions?.querySelectorAll("input") ?? []) {
+    input.disabled = !editable || !u12Present.get(u12AssignmentAthleteId);
   }
   if (u12Ui.addAthlete) {
     const canCreate = masterdataReady && masterdataCanEdit && u12Ready;
