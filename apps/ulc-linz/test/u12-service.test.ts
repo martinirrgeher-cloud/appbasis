@@ -214,6 +214,8 @@ describe("ULC U12 service", () => {
           firstName: "Anna",
           lastName: "Auer",
           birthYear: 2017,
+          notes: null,
+          contacts: [],
           status: "present",
         },
         {
@@ -221,10 +223,56 @@ describe("ULC U12 service", () => {
           firstName: "Berta",
           lastName: "Zeller",
           birthYear: 2016,
+          notes: null,
+          contacts: [],
           status: "excused",
         },
       ],
     });
+  });
+
+  it("returns notes and contacts only for roster athletes in the configured group", async () => {
+    const snapshot = masterdataSnapshot();
+    const service = createUlcU12Service({
+      masterdata: {
+        async readOrganizationSnapshot() {
+          return {
+            ...snapshot,
+            athletes: snapshot.athletes.map((athlete) =>
+              athlete.id === "athlete-1" ? { ...athlete, notes: "Allergie" } : athlete),
+            athleteContacts: [
+              {
+                id: "contact-a", organizationId: ORGANIZATION_ID,
+                athleteId: "athlete-1", contactName: "Mutter",
+                relationship: "Mutter", phone: "+43 123", isEmergency: true,
+                priority: 1, notes: "Nur abends",
+              },
+              {
+                id: "contact-foreign", organizationId: ORGANIZATION_ID,
+                athleteId: "athlete-old", contactName: "Nicht im Kader",
+                relationship: null, phone: "123", isEmergency: true,
+                priority: 1, notes: null,
+              },
+            ],
+          };
+        },
+      },
+      moduleGroups: moduleGroups(),
+      sessions: {
+        async readSession() { return storedSession(); },
+        async saveSession() { throw new Error("not used"); },
+      },
+    });
+    const roster = await service.readSnapshot(ORGANIZATION_ID, GROUP_ID, DATE);
+    expect(roster.participants).toHaveLength(2);
+    expect(roster.participants[0]?.notes).toBe("Allergie");
+    expect(roster.participants[0]?.contacts).toEqual([{
+      id: "contact-a", contactName: "Mutter",
+      relationship: "Mutter", phone: "+43 123",
+      isEmergency: true, notes: "Nur abends",
+    }]);
+    expect(JSON.stringify(roster)).not.toContain("Nicht im Kader");
+    expect(JSON.stringify(roster)).not.toContain("contact-foreign");
   });
 
   it("forces U12 and saves only an exact participant set", async () => {
