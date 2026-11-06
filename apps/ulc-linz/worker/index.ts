@@ -82,6 +82,10 @@ import type { UlcLinzU12AccessScope } from "./u12-access";
 import { UlcU12NotFoundError } from "./u12-service";
 import { UlcTrainingValidationError } from "./training-session-domain";
 import type { UlcYouthContentItem } from "./training-content-catalog";
+import {
+  UlcYouthCategoryValidationError,
+  UlcYouthCategoryConflictError,
+} from "./youth-category-postgres";
 import { UlcTrainingSessionConflictError } from "./training-session-postgres";
 import {
   UlcLinzTrainerIdentityConflictError,
@@ -237,6 +241,8 @@ export function createGeneratedWorker(
           url.pathname === "/api/modules/kindertraining/registration/proxy"
         ) {
           response = await selfRegistrationResponse(request, runtime, url);
+        } else if (url.pathname === "/api/modules/youth-categories") {
+          response = await youthCategoriesResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/u12") {
           response = await u12ModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/u12/session") {
@@ -1738,6 +1744,84 @@ function kindertrainingGroupNotFound(): Response {
     },
     { status: 404 },
   );
+}
+
+async function youthCategoriesResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (!["GET", "POST", "PATCH"].includes(request.method)) {
+    return methodNotAllowedFor("GET, POST, PATCH", "Youth categories");
+  }
+  const editing = request.method !== "GET";
+  // Shared catalog is readable via U12 or Kindertraining. Its management
+  // changes all youth groups, therefore writes require organization scope.
+  const action = editing ? "edit" : "view";
+  let access = await authorizeU12Request(request, runtime, url, action);
+  if (access instanceof Response && access.status === 403) {
+    access = await authorizeKindertrainingRequest(request, runtime, url, action);
+  }
+  if (access instanceof Response) return access;
+  if (editing && access.scope !== "organization") {
+    recordUlcLinzSecurityEvent(runtime.securityEvents, {
+      eventType: "authorization.denied",
+      actorPrincipalId: access.actorPrincipalId,
+      organizationId: access.organizationId,
+      action: "edit",
+      targetId: "youth-categories",
+      reasonCode: "scope-denied",
+    });
+    return Response.json({ error: { code: "YOUTH_CATEGORY_FORBIDDEN",
+      message: "Only organization administrators can edit shared training categories." } },
+      { status: 403 });
+  }
+
+  try {
+    if (request.method === "GET") {
+      const categories = await runtime.youthCategories.list(access.organizationId);
+      return Response.json({ categories, canManage: access.scope === "organization" });
+    }
+    let value: unknown;
+    try { value = await request.json(); } catch { throw new UlcYouthCategoryValidationError(); }
+    if (value === null || typeof value !== "object" || Array.isArray(value) ||
+        Object.getPrototypeOf(value) !== Object.prototype) {
+      throw new UlcYouthCategoryValidationError();
+    }
+    const body = value as Record<string, unknown>;
+    if (request.method === "POST") {
+      if (JSON.stringify(Object.keys(body).sort()) !== '["label"]') {
+        throw new UlcYouthCategoryValidationError();
+      }
+      const category = await runtime.youthCategories.create(access.organizationId, body.label as string);
+      return Response.json({ category }, { status: 201 });
+    }
+    if (JSON.stringify(Object.keys(body).sort()) !==
+        '["code","expectedRevision","isActive","label"]') {
+      throw new UlcYouthCategoryValidationError();
+    }
+    const category = await runtime.youthCategories.update(
+      access.organizationId,
+      body.code as string,
+      {
+        label: body.label as string,
+        isActive: body.isActive as boolean,
+        expectedRevision: body.expectedRevision as number,
+      },
+    );
+    return Response.json({ category });
+  } catch (error) {
+    if (error instanceof UlcYouthCategoryValidationError) {
+      return Response.json({ error: { code: error.code, message: "Invalid category." } },
+        { status: 400 });
+    }
+    if (error instanceof UlcYouthCategoryConflictError) {
+      return Response.json({ error: { code: error.code,
+        message: "Category was changed or already exists. Reload the list." } },
+        { status: 409 });
+    }
+    throw error;
+  }
 }
 
 async function u12ModuleResponse(
