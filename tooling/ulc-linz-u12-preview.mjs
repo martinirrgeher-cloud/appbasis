@@ -37,10 +37,10 @@ export async function loadU12PreviewSchemaPlan({ repositoryRoot = process.cwd() 
   const matches = manifest?.owners?.filter((item) => item?.id === owner.id);
   if (manifest?.application !== APPLICATION || manifest?.manifestVersion !== 1 ||
       manifest?.dialect !== "postgresql" || matches?.length !== 1 ||
-      matches[0].schemaVersion !== 12 ||
       JSON.stringify(matches[0]) !== JSON.stringify(owner) ||
-      owner.migrations.at(-1) !== MIGRATION_PATH) {
-    throw new UlcU12PreviewSchemaError("U12 preview requires the exact canonical schema-v12 owner.");
+      !Number.isInteger(owner.schemaVersion) || owner.schemaVersion < 12 ||
+      owner.migrations[11] !== MIGRATION_PATH) {
+    throw new UlcU12PreviewSchemaError("U12 preview requires the canonical owner containing the original schema-v12 migration.");
   }
 
   const sql = await readFile(resolve(root, MIGRATION_PATH), "utf8");
