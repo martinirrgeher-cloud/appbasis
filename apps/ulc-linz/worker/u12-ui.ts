@@ -47,6 +47,16 @@ export const ULC_U12_HTML = `
                 </div>
               </details>
               <div id="u12-days" class="u12-days" aria-live="polite"></div>
+              <section class="card u12-matrix-card" id="u12-assignment-section" aria-labelledby="u12-assignment-heading" hidden>
+                <div class="u12-matrix-heading">
+                  <h2 id="u12-assignment-heading">Trainingsinhalte zuordnen</h2>
+                  <small id="u12-assignment-summary" role="status">Nur anwesende Athleten</small>
+                </div>
+                <p class="u12-matrix-help">Jede Spalte ist ein Inhalt. Häkchen pro Kind setzen oder oben „Alle“ wählen.</p>
+                <div class="u12-matrix-scroll" role="region" aria-label="Trainingsinhalte-Matrix" tabindex="0">
+                  <table class="u12-matrix-table" id="u12-assignment-matrix"></table>
+                </div>
+              </section>
             </section>
             <dialog class="u12-details-dialog" id="u12-assign-dialog" aria-labelledby="u12-assign-title">
               <header class="u12-details-header">
@@ -118,6 +128,33 @@ export const ULC_U12_CSS = `
 .u12-assign-option input { width:22px; height:22px; flex:0 0 22px; accent-color:var(--accent); }
 .u12-assign-option span { overflow-wrap:anywhere; }
 
+/* Mobile matrix: fixed athlete names and horizontal scrolling across up to five slots. */
+.u12-matrix-card { min-width:0; max-width:100%; padding:12px 0; overflow:hidden; }
+.u12-matrix-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 12px; }
+.u12-matrix-heading h2 { font-size:.94rem; margin:0; }
+.u12-matrix-heading small { font-size:.72rem; color:var(--secondary); text-align:right; }
+.u12-matrix-help { margin:8px 12px; font-size:.76rem; color:var(--secondary); line-height:1.4; }
+.u12-matrix-scroll { max-width:100%; overflow-x:auto; overscroll-behavior-x:contain; }
+.u12-matrix-scroll:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.u12-matrix-table { border-spacing:0; border-collapse:separate; width:max-content; min-width:100%; table-layout:fixed; font-size:.8rem; }
+.u12-matrix-table th, .u12-matrix-table td { border-bottom:1px solid var(--border); padding:4px; text-align:center; vertical-align:middle; }
+.u12-matrix-table th:first-child, .u12-matrix-table td:first-child {
+  position:sticky; left:0; z-index:1; width:130px; min-width:130px; max-width:160px;
+  text-align:left; background:var(--card); overflow-wrap:anywhere; padding:8px 10px;
+}
+.u12-matrix-table thead th { background:var(--muted); vertical-align:top; font-weight:750; }
+.u12-matrix-table thead th:first-child { z-index:2; background:var(--muted); }
+.u12-matrix-table th:not(:first-child), .u12-matrix-table td:not(:first-child) { width:72px; min-width:72px; max-width:72px; }
+.u12-matrix-col { display:grid; gap:5px; justify-items:center; }
+.u12-matrix-col__name { width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:.75rem; }
+.u12-matrix-col__all { display:grid; gap:2px; justify-items:center; cursor:pointer; font-size:.7rem; }
+.u12-matrix-col__all input, .u12-matrix-check {
+  width:24px; height:24px; margin:0; accent-color:var(--accent); cursor:pointer;
+}
+.u12-matrix-table td label { display:flex; min-height:44px; align-items:center; justify-content:center; cursor:pointer; }
+.u12-matrix-table input:disabled { cursor:not-allowed; opacity:.5; }
+.u12-matrix-empty { padding:12px 8px; color:var(--secondary); font-size:.8rem; }
+
 .u12-savebar { position: sticky; top: 57px; z-index: 8; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .u12-savebar > div { display: grid; gap: 3px; min-width: 0; }
 .u12-savebar strong { font-size: .9rem; }
@@ -156,6 +193,9 @@ const u12Ui = {
   contentCount: document.querySelector("#u12-content-count"),
   contentRows: document.querySelector("#u12-content-rows"),
   contentAdd: document.querySelector("#u12-content-add"),
+  matrixSection: document.querySelector("#u12-assignment-section"),
+  matrix: document.querySelector("#u12-assignment-matrix"),
+  matrixSummary: document.querySelector("#u12-assignment-summary"),
   assignDialog: document.querySelector("#u12-assign-dialog"),
   assignTitle: document.querySelector("#u12-assign-title"),
   assignOptions: document.querySelector("#u12-assign-options"),
