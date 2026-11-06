@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "scope": "a02-registration-schedule-proposed-v12-unpublished",
+  "owner": "ulc-linz-lifecycle",
+  "proposedOwnerSchemaVersion": 12,
+  "migration": "apps/ulc-linz/migrations/0011_ulc_linz_registration_schedule.sql",
+  "publication": "blocked-not-in-database-manifest",
+  "activation": "blocked-no-preview-or-production",
+  "existingInventory": "apps/ulc-linz/privacy/m5-data-inventory.json",
+  "existingInventoryStatus": "historical-current-materialized-v0.5-not-v12-evidence",
+  "tables": [
+    {
+      "id": "ulc_linz_registration_group_policy",
+      "classification": "group-settings-with-identifiable-editor",
+      "actorColumns": [
+        "updated_by_identity_id"
+      ],
+      "timestampColumns": [
+        "updated_at"
+      ],
+      "subjectColumns": [],
+      "freeTextColumns": [],
+      "deletionEvidence": "privileged-offline-redaction-staged-not-integrated",
+      "exportEvidence": "offline-actor-subject-access-staged-not-approved",
+      "retentionEvidence": "not-implemented",
+      "restoreEvidence": "not-verified"
+    },
+    {
+      "id": "ulc_linz_registration_extra_day",
+      "classification": "exception-settings-with-identifiable-approval-and-editor",
+      "actorColumns": [
+        "approved_by_identity_id",
+        "updated_by_identity_id"
+      ],
+      "timestampColumns": [
+        "approved_at",
+        "updated_at"
+      ],
+      "subjectColumns": [],
+      "freeTextColumns": [],
+      "deletionEvidence": "privileged-offline-redaction-staged-not-integrated",
+      "exportEvidence": "offline-actor-subject-access-staged-not-approved",
+      "retentionEvidence": "not-implemented",
+      "restoreEvidence": "not-verified"
+    },
+    {
+      "id": "ulc_linz_registration_extra_day_change",
+      "classification": "append-only-identifiable-approval-audit",
+      "actorColumns": [
+        "actor_identity_id"
+      ],
+      "timestampColumns": [
+        "changed_at"
+      ],
+      "subjectColumns": [],
+      "freeTextColumns": [],
+      "deletionEvidence": "privileged-offline-redaction-staged-not-integrated",
+      "exportEvidence": "offline-actor-subject-access-staged-not-approved",
+      "retentionEvidence": "not-implemented",
+      "restoreEvidence": "not-verified"
+    }
+  ],
+  "blockers": [
+    "retention-period-for-identifiable-configuration-and-audit-unapproved",
+    "optional-lifecycle-redaction-hooks-not-injected-or-activated",
+    "subject-access-candidate-not-approved-or-wired",
+    "retention-and-restore-reconciliation-not-activated",
+    "migration-not-in-canonical-manifest",
+    "existing-registration-note-history-privacy-gate-remains-open"
+  ],
+  "noPrivacyPreflightRuntimeEndpoint": true,
+  "noPersonalDataExport": true
+}

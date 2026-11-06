@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "scope": "a02.4-proposed-v12-actor-access",
+  "state": "staged-read-only-not-approved-not-runtime-injected",
+  "canonicalM5Export": "unchanged-excludes-audit-and-configuration",
+  "authorization": {
+    "self": "active-same-organization-member-only-for-own-identity",
+    "organizationAdmin": "active-same-organization-admin-exact-role-no-custom-grants-or-revokes",
+    "parentOrDelegated": "denied",
+    "targetIdentity": "own-identity-or-verified-same-organization-active-or-retained-member-or-current-deletion-marker",
+    "audit": "mandatory-durable-receipt-before-returning-data",
+    "noHttpRoute": true
+  },
+  "personalReferenceFields": [
+    {
+      "table": "ulc_linz_registration_group_policy",
+      "field": "updated_by_identity_id",
+      "kind": "group-policy-updated"
+    },
+    {
+      "table": "ulc_linz_registration_extra_day",
+      "field": "approved_by_identity_id",
+      "kind": "extra-day-approved"
+    },
+    {
+      "table": "ulc_linz_registration_extra_day",
+      "field": "updated_by_identity_id",
+      "kind": "extra-day-updated"
+    },
+    {
+      "table": "ulc_linz_registration_extra_day_change",
+      "field": "actor_identity_id",
+      "kind": "extra-day-change"
+    }
+  ],
+  "permittedResultFields": [
+    "referenceKind",
+    "groupId",
+    "sessionDate",
+    "revision",
+    "approved",
+    "occurredAt"
+  ],
+  "resultLimit": 500,
+  "overflow": "deny-without-partial-export",
+  "rawOtherActorIds": false,
+  "rawNoteText": false,
+  "rawCredentials": false,
+  "retention": "decision-pending",
+  "excludedFromCanonicalExportUntilPrivacySignoff": true,
+  "blockers": [
+    "legal-audit-disclosure-review",
+    "retention-duration-unapproved",
+    "v12-not-published",
+    "canonical-export-integration-and-persisted-audit-receipt-writer",
+    "authorization-revocation-snapshot-race-verification"
+  ],
+  "outputValidation": "exact-six-fields-only-no-unexpected-personal-columns",
+  "auditReceipt": "persistent-event-id-required-in-memory-logs-denied"
+}

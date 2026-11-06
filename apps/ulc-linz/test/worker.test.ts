@@ -11,6 +11,7 @@ import {
   createUlcExerciseCatalogWorkbook,
 } from "../worker/exercise-catalog-exchange";
 import { createGeneratedWorker } from "../worker/index";
+import { PostgresUlcRegistrationPolicyRepository } from "../worker/registration-policy-postgres";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
 import { UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
 import { TrainingBlockConflictError } from "@appbasis/training-blocks";
@@ -623,6 +624,9 @@ function runtime(
     athleteMasterdata,
     kindertraining,
     selfRegistration,
+    registrationPolicies: new PostgresUlcRegistrationPolicyRepository({
+      async unsafe() { return []; },
+    }),
     u12,
     trainingBlocks: {
       async listAudiences() {
@@ -6614,4 +6618,400 @@ describe("U12 runtime API", () => {
     expect(updateCalls).toBe(0);
   });
 
+});
+
+
+describe("A02.4 authenticated training-group policy HTTP contract", () => {
+  const path = "https://ulc.example.test/api/modules/athletes/registration-policy";
+  const schedule = {
+    weekdays: [1, 3, 5],
+    weeksAhead: 5,
+    deadline: { daysBefore: 1, localTime: "18:00" },
+    lateMode: "block",
+  };
+  const group = {
+    id: "group-self-policy",
+    organizationId: "verein-1",
+    name: "Leistungsgruppe",
+    shortName: "LG",
+    description: null,
+    attendanceMode: "self_registration" as const,
+    isActive: true,
+    sortOrder: 1,
+  };
+
+  function workerWithPolicy() {
+    let currentRevision: number | null = null;
+    let storedSchedule: typeof schedule | null = null;
+    let writes = 0;
+    let actor = "";
+    let organization = "";
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      athleteMasterdata: {
+        ...base.athleteMasterdata,
+        async readOrganizationSnapshot(organizationId) {
+          expect(organizationId).toBe("verein-1");
+          return {
+            trainingGroups: [group],
+            athletes: [], athleteContacts: [], trainers: [],
+            athleteGroupMemberships: [], trainerGroupMemberships: [],
+          };
+        },
+      },
+      registrationPolicies: new PostgresUlcRegistrationPolicyRepository({
+        async unsafe(query, parameters = []) {
+          if (query.includes("SELECT weekdays_mask, weeks_ahead")) {
+            if (currentRevision === null || storedSchedule === null) return [];
+            return [{
+              weekdays_mask: storedSchedule.weekdays.reduce(
+                (mask, day) => mask | (1 << (day - 1)), 0,
+              ),
+              weeks_ahead: storedSchedule.weeksAhead,
+              deadline_days_before: storedSchedule.deadline.daysBefore,
+              deadline_local_time: storedSchedule.deadline.localTime,
+              late_mode: storedSchedule.lateMode,
+              revision: currentRevision,
+            }];
+          }
+          if (query.includes("WITH eligible_group")) {
+            organization = String(parameters[0]);
+            actor = String(parameters[7]);
+            if (parameters[1] !== group.id ||
+                parameters[8] !== currentRevision) return [];
+            writes += 1;
+            currentRevision = (currentRevision ?? 0) + 1;
+            storedSchedule = {
+              weekdays: [1, 3, 5],
+              weeksAhead: Number(parameters[3]),
+              deadline: {
+                daysBefore: Number(parameters[4]),
+                localTime: String(parameters[5]),
+              },
+              lateMode: String(parameters[6]),
+            };
+            return [{
+              weekdays_mask: parameters[2],
+              weeks_ahead: parameters[3],
+              deadline_days_before: parameters[4],
+              deadline_local_time: parameters[5],
+              late_mode: parameters[6],
+              revision: currentRevision,
+            }];
+          }
+          throw new Error("Unexpected policy SQL call");
+        },
+      }),
+    }));
+    return { worker, counters: () => ({ writes, actor, organization }) };
+  }
+
+  it("uses session identity, same-org masterdata and revisions without browser-owned scope", async () => {
+    const { worker, counters } = workerWithPolicy();
+    const headers = { cookie: currentIdentity.sessionToken };
+    const get = () => worker.fetch(
+      new Request(path + "?groupId=" + group.id, { headers }), validEnv,
+    );
+    const initial = await get();
+    expect(initial.status).toBe(200);
+    expect(initial.headers.get("cache-control")).toBe("private, no-store");
+    await expect(initial.json()).resolves.toEqual({
+      groupId: group.id, schedule: null, revision: null,
+    });
+    const save = (expectedRevision: number | null, scheduleInput: unknown = schedule) =>
+      worker.fetch(new Request(path, {
+        method: "POST", headers,
+        body: JSON.stringify({
+          groupId: group.id, schedule: scheduleInput, expectedRevision,
+        }),
+      }), validEnv);
+
+    const saved = await save(null);
+    expect(saved.status).toBe(200);
+    await expect(saved.json()).resolves.toEqual({
+      groupId: group.id, schedule, revision: 1,
+    });
+    expect(counters()).toEqual({
+      writes: 1, actor: currentIdentity.identity.identityId,
+      organization: "verein-1",
+    });
+    const readBack = await get();
+    expect(readBack.status).toBe(200);
+    await expect(readBack.json()).resolves.toEqual({
+      groupId: group.id, schedule, revision: 1,
+    });
+    const stale = await save(null);
+    expect(stale.status).toBe(409);
+    expect(counters().writes).toBe(1);
+    const updated = await save(1);
+    expect(updated.status).toBe(200);
+    await expect(updated.json()).resolves.toMatchObject({ revision: 2 });
+  });
+
+  it("rejects unauthenticated, invalid or foreign-policy input before any write", async () => {
+    const { worker, counters } = workerWithPolicy();
+    const headers = { cookie: currentIdentity.sessionToken };
+    const anon = await worker.fetch(new Request(path + "?groupId=" + group.id), validEnv);
+    expect(anon.status).toBe(401);
+    const badGroup = await worker.fetch(
+      new Request(path + "?groupId=other-group", { headers }), validEnv,
+    );
+    expect(badGroup.status).toBe(404);
+    const invalid = await worker.fetch(new Request(path, {
+      method: "POST", headers,
+      body: JSON.stringify({
+        groupId: group.id, expectedRevision: null,
+        schedule: { ...schedule, weekdays: [] },
+      }),
+    }), validEnv);
+    expect(invalid.status).toBe(400);
+    const orgSpoof = await worker.fetch(new Request(path, {
+      method: "POST", headers,
+      body: JSON.stringify({
+        groupId: group.id, expectedRevision: null,
+        organizationId: "foreign-org", schedule,
+      }),
+    }), validEnv);
+    expect(orgSpoof.status).toBe(400);
+    expect(counters().writes).toBe(0);
+  });
+
+  it("denies policy administration without athletes:edit", async () => {
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      athletesAccess: {
+        async assertViewAccess() {
+          return { organizationId: "verein-1", canEdit: false };
+        },
+        async assertEditAccess() {
+          throw new UlcLinzAuthorizationDeniedError();
+        },
+      },
+    }));
+    const response = await worker.fetch(new Request(path, {
+      method: "POST",
+      headers: { cookie: currentIdentity.sessionToken },
+      body: JSON.stringify({ groupId: group.id, expectedRevision: null, schedule }),
+    }), validEnv);
+    expect(response.status).toBe(403);
+  });
+});
+
+
+describe("A02.4 extra-training-day HTTP authorization and audit contract", () => {
+  const endpoint = "https://ulc.example.test/api/modules/athletes/registration-extra-day";
+  const group = {
+    id: "group-extra-1", organizationId: "verein-1",
+    name: "Leistungsgruppe", shortName: "LG", description: null,
+    attendanceMode: "self_registration" as const, isActive: true, sortOrder: 1,
+  };
+  const date = "2026-11-20";
+  const headers = { cookie: currentIdentity.sessionToken };
+
+  function configuredWorker(canEdit = true, trainerAccess: "denied" | "assigned" | "foreign" = "denied") {
+    let revision: number | null = null;
+    let isApproved = false;
+    let calls = 0;
+    let actor = "";
+    let org = "";
+    let dbTrainerScope: unknown = null;
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      athleteMasterdata: {
+        ...base.athleteMasterdata,
+        async readOrganizationSnapshot(organizationId) {
+          expect(organizationId).toBe("verein-1");
+          return {
+            trainingGroups: [group],
+            athletes: [], athleteContacts: [], trainers: [],
+            athleteGroupMemberships: [], trainerGroupMemberships: [],
+          };
+        },
+      },
+      athletesAccess: {
+        ...base.athletesAccess,
+        async assertViewAccess() {
+          if (!canEdit) throw new UlcLinzAuthorizationDeniedError();
+          return { organizationId: "verein-1", canEdit };
+        },
+        async assertEditAccess() {
+          if (!canEdit) throw new UlcLinzAuthorizationDeniedError();
+          return { organizationId: "verein-1", canEdit: true };
+        },
+      },
+      kindertrainingAccess: {
+        async assertViewAccess() {
+          if (trainerAccess === "denied") throw new UlcLinzAuthorizationDeniedError();
+          return kindertrainingTrainerAccess("verein-1", "trainer-1",
+            trainerAccess === "assigned" ? [group.id] : ["other-group"]);
+        },
+        async assertEditAccess() {
+          if (trainerAccess === "denied") throw new UlcLinzAuthorizationDeniedError();
+          return kindertrainingTrainerAccess("verein-1", "trainer-1",
+            trainerAccess === "assigned" ? [group.id] : ["other-group"]);
+        },
+      },
+      registrationPolicies: new PostgresUlcRegistrationPolicyRepository({
+        async unsafe(query, params = []) {
+          if (query.includes("SELECT is_approved, revision")) {
+            return revision === null ? [] : [{ is_approved: isApproved, revision }];
+          }
+          if (query.includes("SELECT weekdays_mask, weeks_ahead")) {
+            return [{
+              weekdays_mask: 21, weeks_ahead: 4,
+              deadline_days_before: null, deadline_local_time: null,
+              late_mode: "allow", revision: 1,
+            }];
+          }
+          if (query.includes("WITH eligible_group") &&
+              query.includes("appended") === false) {
+            // The CTE writes the state plus exactly one audit event.
+            calls++;
+            org = String(params[0]);
+            actor = String(params[3]);
+            dbTrainerScope = params[6] ?? null;
+            if (params[1] !== group.id ||
+                params[2] !== date ||
+                params[5] !== revision ||
+                (revision !== null && params[4] === isApproved)) return [];
+            isApproved = params[4] === true;
+            revision = (revision ?? 0) + 1;
+            return [{ is_approved: isApproved, revision, audit_count: 1 }];
+          }
+          throw new Error("Unexpected special-day SQL");
+        },
+      }),
+    }));
+    return { worker, recorded: () => ({ revision, isApproved, calls, org, actor, dbTrainerScope }) };
+  }
+
+  it("requires authentication and validates query/body group scope", async () => {
+    const { worker, recorded } = configuredWorker();
+    expect((await worker.fetch(new Request(endpoint + "?groupId=" + group.id +
+      "&sessionDate=" + date), validEnv)).status).toBe(401);
+    expect((await worker.fetch(new Request(endpoint +
+      "?groupId=another-group&sessionDate=" + date, { headers }), validEnv)).status)
+      .toBe(404);
+    expect((await worker.fetch(new Request(endpoint +
+      "?groupId=" + group.id + "&sessionDate=2026-02-30", { headers }), validEnv)).status)
+      .toBe(400);
+    const spoof = await worker.fetch(new Request(endpoint, {
+      method: "POST", headers,
+      body: JSON.stringify({
+        groupId: group.id, sessionDate: date, approved: true,
+        expectedRevision: null, organizationId: "foreign-org",
+      }),
+    }), validEnv);
+    expect(spoof.status).toBe(400);
+    expect(recorded().calls).toBe(0);
+  });
+
+  it("supports CAS approvals/revocations with the server-side actor", async () => {
+    const { worker, recorded } = configuredWorker();
+    const get = () => worker.fetch(new Request(endpoint +
+      "?groupId=" + group.id + "&sessionDate=" + date, { headers }), validEnv);
+    const post = (approved: boolean, expectedRevision: number | null) =>
+      worker.fetch(new Request(endpoint, {
+        method: "POST", headers,
+        body: JSON.stringify({ groupId: group.id, sessionDate: date,
+          approved, expectedRevision }),
+      }), validEnv);
+    const initial = await get();
+    expect(initial.status).toBe(200);
+    await expect(initial.json()).resolves.toEqual({
+      groupId: group.id, sessionDate: date, approved: false,
+      revision: null, configured: true,
+    });
+    const created = await post(true, null);
+    expect(created.status).toBe(200);
+    await expect(created.json()).resolves.toMatchObject({
+      approved: true, revision: 1,
+    });
+    expect(recorded()).toEqual({
+      revision: 1, isApproved: true, calls: 1,
+      org: "verein-1", actor: currentIdentity.identity.identityId, dbTrainerScope: null,
+    });
+    const stale = await post(false, null);
+    expect(stale.status).toBe(409);
+    const revoked = await post(false, 1);
+    expect(revoked.status).toBe(200);
+    await expect(revoked.json()).resolves.toMatchObject({
+      approved: false, revision: 2,
+    });
+    const after = await get();
+    expect(after.status).toBe(200);
+    await expect(after.json()).resolves.toMatchObject({
+      approved: false, revision: 2,
+    });
+  });
+
+  it("permits an assigned trainer to approve and revoke only a mapped group", async () => {
+    const { worker, recorded } = configuredWorker(false, "assigned");
+    const send = (approved: boolean, expectedRevision: number | null) =>
+      worker.fetch(new Request(endpoint, {
+        method: "POST", headers,
+        body: JSON.stringify({
+          groupId: group.id, sessionDate: date, approved, expectedRevision,
+        }),
+      }), validEnv);
+    const read = await worker.fetch(new Request(endpoint +
+      "?groupId=" + group.id + "&sessionDate=" + date, { headers }), validEnv);
+    expect(read.status).toBe(200);
+    const approved = await send(true, null);
+    expect(approved.status).toBe(200);
+    expect(recorded()).toEqual({
+      revision: 1, isApproved: true, calls: 1,
+      org: "verein-1", actor: currentIdentity.identity.identityId,
+      dbTrainerScope: "trainer-1",
+    });
+    const revoked = await send(false, 1);
+    expect(revoked.status).toBe(200);
+    await expect(revoked.json()).resolves.toMatchObject({
+      approved: false, revision: 2,
+    });
+  });
+
+  it("denies trainer access to a non-assigned group for BOTH GET and POST", async () => {
+    const { worker, recorded } = configuredWorker(false, "foreign");
+    const get = await worker.fetch(new Request(endpoint +
+      "?groupId=" + group.id + "&sessionDate=" + date, { headers }), validEnv);
+    expect(get.status).toBe(404);
+    const write = await worker.fetch(new Request(endpoint, {
+      method: "POST", headers,
+      body: JSON.stringify({
+        groupId: group.id, sessionDate: date,
+        approved: true, expectedRevision: null,
+      }),
+    }), validEnv);
+    expect(write.status).toBe(404);
+    expect(recorded().calls).toBe(0);
+  });
+
+  it("keeps regular policy edits denied to a trainer without athletes:edit", async () => {
+    const { worker } = configuredWorker(false, "assigned");
+    const response = await worker.fetch(new Request(
+      "https://ulc.example.test/api/modules/athletes/registration-policy",
+      { method: "POST", headers, body: JSON.stringify({
+        groupId: group.id, expectedRevision: null,
+        schedule: { weekdays: [1, 3], weeksAhead: 4,
+          deadline: null, lateMode: "block" },
+      }) },
+    ), validEnv);
+    expect(response.status).toBe(403);
+  });
+
+  it("denies special-day writes when both athletes:edit and scoped trainer edit are missing", async () => {
+    const { worker, recorded } = configuredWorker(false);
+    const response = await worker.fetch(new Request(endpoint, {
+      method: "POST", headers,
+      body: JSON.stringify({
+        groupId: group.id, sessionDate: date, approved: true, expectedRevision: null,
+      }),
+    }), validEnv);
+    expect(response.status).toBe(403);
+    expect(recorded().calls).toBe(0);
+  });
 });

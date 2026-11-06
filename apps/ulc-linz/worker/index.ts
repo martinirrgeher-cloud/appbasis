@@ -71,7 +71,16 @@ import {
 import {
   UlcSelfRegistrationModeError,
   UlcSelfRegistrationNotFoundError,
+  UlcSelfRegistrationWindowError,
 } from "./self-registration-service";
+import {
+  normalizeUlcRegistrationSchedule,
+  UlcRegistrationScheduleValidationError,
+} from "./registration-schedule-policy";
+import {
+  UlcRegistrationPolicyConflictError,
+  UlcRegistrationPolicyDataError,
+} from "./registration-policy-postgres";
 import {
   UlcTrainingBlockParameterError,
   UlcTrainingBlockReferenceError,
@@ -256,6 +265,11 @@ export function createGeneratedWorker(
           response = await functionaryUserAdminResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/trainer-identities") {
           response = await trainerIdentityAdminResponse(request, runtime, url);
+        } else if (
+          url.pathname === "/api/modules/athletes/registration-policy" ||
+          url.pathname === "/api/modules/athletes/registration-extra-day"
+        ) {
+          response = await registrationPolicyHttpResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/athletes") {
           response = await athletesModuleResponse(request, runtime, url);
         } else if (
@@ -1269,6 +1283,18 @@ async function selfRegistrationResponse(
           headers: { "cache-control": "private, no-store" },
         },
       );
+    }
+    if (error instanceof UlcSelfRegistrationWindowError) {
+      return Response.json({
+        error: {
+          code: error.code,
+          reason: error.reason,
+          message: "Training registration is outside the configured time window.",
+        },
+      }, {
+        status: 409,
+        headers: { "cache-control": "private, no-store" },
+      });
     }
     if (error instanceof UlcSelfRegistrationModeError) {
       return Response.json(
@@ -4209,6 +4235,296 @@ async function athletesImportApplyResponse(
           },
         },
       );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Group policy settings are app-owned, but editing is authorized through the
+ * existing athletes:edit capability. Organization and actor always come from
+ * the authenticated session; neither is accepted from the request body.
+ * A draft-only route until ULC v12 is explicitly published and activated.
+ */
+async function registrationPolicyHttpResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "POST") {
+    return methodNotAllowedFor("GET, POST", "training registration policy");
+  }
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity,
+    secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) {
+    if (current.status >= 400) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: null,
+        organizationId: null,
+        action: request.method === "GET" ? "view" : "edit",
+        targetId: "athletes",
+        reasonCode: "identity-access-denied",
+      });
+    }
+    return current;
+  }
+
+  if (url.pathname === "/api/modules/athletes/registration-extra-day") {
+    // Special days may also be administered with the EXISTING
+    // kindertraining:edit/view contract. Trainer access remains restricted
+    // to the currently assigned groups; regular policy edits still require
+    // athletes:edit and remain on their separate route.
+    let extraScope: Readonly<{
+      organizationId: string;
+      trainerId: string | null;
+      groupIds: readonly string[] | null;
+    }>;
+    try {
+      const athletes = request.method === "GET"
+        ? await runtime.athletesAccess.assertViewAccess(current)
+        : await runtime.athletesAccess.assertEditAccess(current);
+      extraScope = {
+        organizationId: athletes.organizationId,
+        trainerId: null, groupIds: null,
+      };
+    } catch (error) {
+      if (isPasswordChangeRequiredError(error)) {
+        return identityHttp.identityErrorResponse(error);
+      }
+      if (!(error instanceof UlcLinzAuthorizationDeniedError)) throw error;
+      try {
+        const training = request.method === "GET"
+          ? await runtime.kindertrainingAccess.assertViewAccess(current)
+          : await runtime.kindertrainingAccess.assertEditAccess(current);
+        extraScope = training.scope === "trainer"
+          ? { organizationId: training.organizationId,
+              trainerId: training.trainerId, groupIds: training.groupIds }
+          : { organizationId: training.organizationId,
+              trainerId: null, groupIds: null };
+      } catch (trainingError) {
+        if (isPasswordChangeRequiredError(trainingError)) {
+          return identityHttp.identityErrorResponse(trainingError);
+        }
+        if (!(trainingError instanceof UlcLinzAuthorizationDeniedError)) {
+          throw trainingError;
+        }
+        return Response.json({ error: {
+          code: trainingError.code,
+          message: "Special training day access denied.",
+        } }, { status: 403, headers: { "cache-control": "private, no-store" } });
+      }
+    }
+    return registrationExtraDayAuthorizedResponse(
+      request, runtime, url, extraScope, current.identity.identityId,
+    );
+  }
+
+  let access;
+  try {
+    access = request.method === "GET"
+      ? await runtime.athletesAccess.assertViewAccess(current)
+      : await runtime.athletesAccess.assertEditAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      return Response.json({ error: {
+        code: error.code, message: "Training group configuration access denied.",
+      } }, { status: 403, headers: { "cache-control": "private, no-store" } });
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+
+  try {
+    let groupId: string;
+    let expectedRevision: number | null = null;
+    let schedule: ReturnType<typeof normalizeUlcRegistrationSchedule> | null = null;
+    if (request.method === "GET") {
+      if (url.searchParams.size !== 1 ||
+          url.searchParams.getAll("groupId").length !== 1) {
+        throw new InvalidAthletesRequestError();
+      }
+      groupId = url.searchParams.get("groupId") || "";
+    } else {
+      if (url.searchParams.size !== 0) throw new InvalidAthletesRequestError();
+      const body = await athletesJsonBody(
+        request,
+        ["groupId", "expectedRevision", "schedule"],
+        ["groupId", "expectedRevision", "schedule"],
+      );
+      groupId = body.groupId as string;
+      if (!(body.expectedRevision === null ||
+            (Number.isSafeInteger(body.expectedRevision) &&
+             Number(body.expectedRevision) >= 1))) {
+        throw new InvalidAthletesRequestError();
+      }
+      expectedRevision = body.expectedRevision as number | null;
+      schedule = normalizeUlcRegistrationSchedule(body.schedule);
+    }
+    if (typeof groupId !== "string" || groupId.length < 1 ||
+        groupId.length > 200 || groupId.trim() !== groupId) {
+      throw new InvalidAthletesRequestError();
+    }
+    const snapshot = await runtime.athleteMasterdata.readOrganizationSnapshot(
+      access.organizationId,
+    );
+    const matched = snapshot.trainingGroups.filter(
+      (group) => group.id === groupId &&
+        group.organizationId === access.organizationId &&
+        group.isActive && group.attendanceMode === "self_registration",
+    );
+    if (matched.length !== 1) {
+      return Response.json({ error: {
+        code: "TRAINING_GROUP_NOT_FOUND",
+        message: "This self-registration training group is unavailable.",
+      } }, { status: 404, headers: { "cache-control": "private, no-store" } });
+    }
+    const policy = request.method === "GET"
+      ? await runtime.registrationPolicies.read(access.organizationId, groupId)
+      : await runtime.registrationPolicies.save(
+          access.organizationId,
+          groupId,
+          current.identity.identityId,
+          expectedRevision,
+          schedule,
+        );
+    return Response.json({
+      groupId,
+      schedule: policy?.schedule ?? null,
+      revision: policy?.revision ?? null,
+    }, { headers: { "cache-control": "private, no-store" } });
+  } catch (error) {
+    if (error instanceof InvalidAthletesRequestError ||
+        error instanceof UlcRegistrationScheduleValidationError) {
+      return Response.json({ error: {
+        code: "INVALID_REGISTRATION_POLICY",
+        message: "The training group registration policy is invalid.",
+      } }, { status: 400, headers: { "cache-control": "private, no-store" } });
+    }
+    if (error instanceof UlcRegistrationPolicyConflictError) {
+      return Response.json({ error: {
+        code: "REGISTRATION_POLICY_CONFLICT",
+        message: "The training group policy changed. Reload it before saving.",
+      } }, { status: 409, headers: { "cache-control": "private, no-store" } });
+    }
+    throw error;
+  }
+}
+
+async function registrationExtraDayAuthorizedResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+  scope: Readonly<{
+    organizationId: string;
+    trainerId: string | null;
+    groupIds: readonly string[] | null;
+  }>,
+  actorIdentityId: string,
+): Promise<Response> {
+  const organizationId = scope.organizationId;
+  try {
+    let groupId: string;
+    let sessionDate: string;
+    let approved = false;
+    let expectedRevision: number | null = null;
+    if (request.method === "GET") {
+      if (url.searchParams.size !== 2 ||
+          url.searchParams.getAll("groupId").length !== 1 ||
+          url.searchParams.getAll("sessionDate").length !== 1) {
+        throw new InvalidAthletesRequestError();
+      }
+      groupId = url.searchParams.get("groupId") || "";
+      sessionDate = url.searchParams.get("sessionDate") || "";
+    } else {
+      if (url.searchParams.size !== 0) throw new InvalidAthletesRequestError();
+      const body = await athletesJsonBody(
+        request,
+        ["groupId", "sessionDate", "approved", "expectedRevision"],
+        ["groupId", "sessionDate", "approved", "expectedRevision"],
+      );
+      groupId = body.groupId as string;
+      sessionDate = body.sessionDate as string;
+      if (typeof body.approved !== "boolean" ||
+          !(body.expectedRevision === null ||
+            (Number.isSafeInteger(body.expectedRevision) &&
+             Number(body.expectedRevision) >= 1))) {
+        throw new InvalidAthletesRequestError();
+      }
+      approved = body.approved;
+      expectedRevision = body.expectedRevision as number | null;
+    }
+    if (typeof groupId !== "string" || groupId.length < 1 ||
+        groupId.length > 200 || groupId.trim() !== groupId ||
+        typeof sessionDate !== "string" ||
+        !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(sessionDate) ||
+        Number.isNaN(Date.parse(sessionDate + "T12:00:00Z")) ||
+        new Date(sessionDate + "T12:00:00Z").toISOString().slice(0, 10) !== sessionDate) {
+      throw new InvalidAthletesRequestError();
+    }
+    if (scope.groupIds !== null && !scope.groupIds.includes(groupId)) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: actorIdentityId,
+        organizationId,
+        action: request.method === "GET" ? "view" : "edit",
+        targetId: "kindertraining",
+        reasonCode: "scope-denied",
+      });
+      return Response.json({ error: {
+        code: "TRAINING_GROUP_NOT_FOUND",
+        message: "This self-registration group is unavailable.",
+      } }, { status: 404, headers: { "cache-control": "private, no-store" } });
+    }
+    const snapshot = await runtime.athleteMasterdata.readOrganizationSnapshot(
+      organizationId,
+    );
+    const validGroups = snapshot.trainingGroups.filter(
+      (group) => group.id === groupId &&
+        group.organizationId === organizationId &&
+        group.isActive && group.attendanceMode === "self_registration",
+    );
+    if (validGroups.length !== 1) {
+      return Response.json({ error: {
+        code: "TRAINING_GROUP_NOT_FOUND",
+        message: "This self-registration group is unavailable.",
+      } }, { status: 404, headers: { "cache-control": "private, no-store" } });
+    }
+    const record = request.method === "GET"
+      ? await runtime.registrationPolicies.readExtraDay(
+          organizationId, groupId, sessionDate,
+        )
+      : await runtime.registrationPolicies.setExtraDay(
+          organizationId, groupId, sessionDate, actorIdentityId,
+          approved, expectedRevision, scope.trainerId,
+        );
+    const configured = request.method === "GET"
+      ? (await runtime.registrationPolicies.read(organizationId, groupId)) !== null
+      : true;
+    return Response.json({
+      groupId, sessionDate,
+      approved: record?.approved ?? false,
+      revision: record?.revision ?? null,
+      configured,
+    }, { headers: { "cache-control": "private, no-store" } });
+  } catch (error) {
+    if (error instanceof InvalidAthletesRequestError ||
+        error instanceof UlcRegistrationPolicyDataError) {
+      return Response.json({ error: {
+        code: "INVALID_REGISTRATION_EXTRA_DAY",
+        message: "The exceptional training day request is invalid.",
+      } }, { status: 400, headers: { "cache-control": "private, no-store" } });
+    }
+    if (error instanceof UlcRegistrationPolicyConflictError) {
+      return Response.json({ error: {
+        code: "REGISTRATION_EXTRA_DAY_CONFLICT",
+        message: "The exceptional day changed or is unavailable. Reload before saving.",
+      } }, { status: 409, headers: { "cache-control": "private, no-store" } });
     }
     throw error;
   }

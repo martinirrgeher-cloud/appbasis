@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "scope": "a02.4-proposed-v12-retention-decision",
+  "status": "pending-privacy-controller-review",
+  "defaultsToNoPurge": true,
+  "purgingEnabled": false,
+  "decisions": [
+    {
+      "table": "ulc_linz_registration_group_policy",
+      "data": "schedule-configuration-with-last-actor-identifier",
+      "proposedLifecycle": "until-group-policy-replaced-or-group-closed; actor-id-redact-on-verified-identity-deletion",
+      "retentionDuration": "undecided",
+      "reviewNeeded": "group-closure, subject erasure and backup replay"
+    },
+    {
+      "table": "ulc_linz_registration_extra_day",
+      "data": "approval-configuration-and-editor-identity",
+      "proposedLifecycle": "while-required-for-registration-and-revocation-integrity; actor-id-redact-on-verified-identity-deletion",
+      "retentionDuration": "undecided",
+      "reviewNeeded": "expired sessions, registration history dependencies, backup replay"
+    },
+    {
+      "table": "ulc_linz_registration_extra_day_change",
+      "data": "approval-and-revocation-audit",
+      "proposedLifecycle": "immutable revision/timestamp/decision; actor-id-redact-on-verified-identity-deletion",
+      "retentionDuration": "undecided",
+      "reviewNeeded": "audit purpose, access limits, regulatory basis, deletion-on-expiry"
+    }
+  ],
+  "otherSensitiveHistory": "registration-note-history-separate-existing-gate-still-open",
+  "approvalRequiredFrom": "organization-data-controller",
+  "evidenceNeeded": [
+    "approved-purposes-and-periods",
+    "documented-group-closure-behavior",
+    "approved-audit-access-exceptions",
+    "backup-restore-and-subject-deletion-tests"
+  ],
+  "releaseGate": "blocked-no-v12-promotion"
+}

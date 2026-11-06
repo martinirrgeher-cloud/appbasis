@@ -480,6 +480,8 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                       <p class="masterdata-athlete-note" id="group-detail-description" hidden></p>
                       <div class="masterdata-athlete-actions masterdata-group-actions">
                         <button class="button button--secondary" id="group-detail-edit" type="button"><span aria-hidden="true">✎</span> Bearbeiten</button>
+                        <button class="button button--secondary" id="group-detail-schedule" type="button" hidden>Trainingstage &amp; Anmeldefrist</button>
+                        <button class="button button--secondary" id="group-detail-extra" type="button" hidden>Sondertrainingstag</button>
                       </div>
                     </section>
                     <form class="card masterdata-form masterdata-overlay-form" id="group-form" hidden>
@@ -500,6 +502,55 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                         <button class="button button--primary" id="group-submit-button" type="submit">Gruppe anlegen</button>
                         <button class="button button--secondary" id="group-edit-cancel" type="button">Zurück</button>
                       </div>
+                    </form>
+                    <form class="card masterdata-form masterdata-overlay-form" id="group-policy-form" hidden>
+                      <div class="section-heading"><div><p class="eyebrow">Selbstanmeldung</p><h2>Trainingstage &amp; Anmeldefrist</h2></div></div>
+                      <p class="message message--error" id="group-policy-message" role="alert" hidden></p>
+                      <p class="message message--success" id="group-policy-success" role="status" hidden></p>
+                      <fieldset class="group-policy-fields" id="group-policy-fields" disabled>
+                        <p class="settings-note">Regelmäßige Trainingstage (Mo–So)</p>
+                        <div class="group-policy-weekdays" role="group" aria-label="Trainingstage">
+                          <label><input type="checkbox" name="group-policy-weekday" value="1" />Mo</label>
+                          <label><input type="checkbox" name="group-policy-weekday" value="2" />Di</label>
+                          <label><input type="checkbox" name="group-policy-weekday" value="3" />Mi</label>
+                          <label><input type="checkbox" name="group-policy-weekday" value="4" />Do</label>
+                          <label><input type="checkbox" name="group-policy-weekday" value="5" />Fr</label>
+                          <label><input type="checkbox" name="group-policy-weekday" value="6" />Sa</label>
+                          <label><input type="checkbox" name="group-policy-weekday" value="7" />So</label>
+                        </div>
+                        <div class="settings-grid">
+                          <label>Wochen im Voraus<input id="group-policy-weeks" type="number" min="0" max="26" step="1" value="4" required inputmode="numeric" /></label>
+                          <label class="group-policy-check"><input id="group-policy-deadline-enabled" type="checkbox" /> Anmeldeschluss aktivieren</label>
+                          <label>Tage vor dem Training<input id="group-policy-days-before" type="number" min="0" max="14" step="1" value="1" required inputmode="numeric" /></label>
+                          <label>Uhrzeit (Österreich)<input id="group-policy-deadline-time" type="time" value="18:00" required /></label>
+                          <label>Nach Anmeldeschluss
+                            <select id="group-policy-late-mode">
+                              <option value="block">Anmeldung sperren</option>
+                              <option value="allow">Nachmeldung zulassen</option>
+                            </select>
+                          </label>
+                        </div>
+                      </fieldset>
+                      <p class="settings-note">Das Speichern aktiviert diese Regeln. Vorher gelten weiterhin alle Wochentage ohne Frist. Vorhandene Anmeldungen bleiben sichtbar.</p>
+                      <div class="masterdata-form-actions">
+                        <button class="button button--primary" id="group-policy-submit" type="submit" disabled>Regeln speichern</button>
+                        <button class="button button--secondary" id="group-policy-cancel" type="button">Zurück</button>
+                      </div>
+                    </form>
+                    <form class="card masterdata-form masterdata-overlay-form" id="group-extra-form" hidden>
+                      <div class="section-heading"><div><p class="eyebrow">Selbstanmeldung</p><h2>Sondertrainingstag</h2></div></div>
+                      <p class="settings-note">Zusätzlichen Trainingstag freigeben oder eine Freigabe zurücknehmen. Zuerst müssen reguläre Trainingstage gespeichert sein.</p>
+                      <label>Datum<input id="group-extra-date" type="date" required /></label>
+                      <p class="settings-note" id="group-extra-status" aria-live="polite">Datum auswählen und prüfen.</p>
+                      <p id="group-extra-message" class="message message--error" role="alert" hidden></p>
+                      <p id="group-extra-success" class="message message--success" role="status" hidden></p>
+                      <div class="masterdata-form-actions">
+                        <button class="button button--secondary" id="group-extra-load" type="button">Datum prüfen</button>
+                        <button class="button button--primary" id="group-extra-approve" type="button" disabled>Freigeben</button>
+                        <button class="button button--secondary" id="group-extra-revoke" type="button" disabled>Freigabe zurücknehmen</button>
+                        <button class="button button--secondary" id="group-extra-cancel" type="button">Zurück</button>
+                      </div>
+                      <p class="settings-note">Bestehende Anmeldungen bleiben nach Rücknahme einer Freigabe sichtbar, sind aber nicht mehr bearbeitbar. Jede Änderung wird protokolliert.</p>
                     </form>
                   </div>
                 </section>
@@ -608,8 +659,28 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <div class="kindertraining-week-actions">
                 <button class="button button--secondary" id="kindertraining-week-current" type="button">Aktuelle Woche</button>
                 <button class="button button--secondary" id="kindertraining-week-reload" type="button">↻ Neu laden</button>
+                <button class="button button--secondary" id="kindertraining-extra-open" type="button" hidden>+ Sondertrainingstag</button>
               </div>
             </section>
+
+            <dialog class="kindertraining-extra-dialog" id="kindertraining-extra-dialog" aria-labelledby="kindertraining-extra-title">
+              <div class="kindertraining-extra-dialog__head">
+                <h2 id="kindertraining-extra-title">Sondertrainingstag</h2>
+                <button class="button button--secondary" id="kindertraining-extra-close" type="button" aria-label="Schließen">✕</button>
+              </div>
+              <p class="settings-note" id="kindertraining-extra-group"></p>
+              <p class="settings-note">Ein zusätzlicher Trainingstag gilt nur für diese Gruppe. Freigaben und Rücknahmen werden protokolliert.</p>
+              <label>Datum<input id="kindertraining-extra-date" type="date" required /></label>
+              <p class="settings-note" id="kindertraining-extra-status" aria-live="polite">Datum auswählen und prüfen.</p>
+              <p class="message message--error" id="kindertraining-extra-error" role="alert" hidden></p>
+              <p class="message message--success" id="kindertraining-extra-success" role="status" hidden></p>
+              <div class="masterdata-form-actions">
+                <button class="button button--secondary" id="kindertraining-extra-load" type="button">Datum prüfen</button>
+                <button class="button button--primary" id="kindertraining-extra-approve" type="button" disabled>Freigeben</button>
+                <button class="button button--secondary" id="kindertraining-extra-revoke" type="button" disabled>Freigabe zurücknehmen</button>
+              </div>
+              <small>Bereits gespeicherte Anmeldungen bleiben nach Rücknahme lesbar.</small>
+            </dialog>
 
             <section class="kindertraining-week" id="kindertraining-week" hidden>
               <div class="card kindertraining-week-savebar">
@@ -1212,7 +1283,19 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   background: var(--surface-soft);
   white-space: pre-wrap;
 }
-.masterdata-group-actions { grid-template-columns: minmax(0, 180px); }
+.masterdata-group-actions { grid-template-columns: minmax(0, 220px); }
+.kindertraining-extra-dialog { width: min(440px, calc(100% - 24px)); max-height: 90dvh; overflow-y: auto; padding: 20px; border-radius: 16px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+.kindertraining-extra-dialog::backdrop { background: rgb(15 23 42 / 55%); }
+.kindertraining-extra-dialog__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.kindertraining-extra-dialog__head h2 { font-size: 1.1rem; margin: 0; }
+.kindertraining-extra-dialog > label { display: grid; gap: 6px; margin: 12px 0; }
+.kindertraining-extra-dialog > label input { min-height: 40px; width: 100%; box-sizing: border-box; }
+.group-policy-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 12px; }
+.group-policy-weekdays { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.group-policy-weekdays label { display: flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-radius: 8px; padding: 9px 5px; font-size: .85rem; }
+.group-policy-weekdays input { margin: 0; }
+.group-policy-check { display: flex; align-items: center; gap: 8px; }
+@media (min-width: 480px) { .group-policy-weekdays { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
 .masterdata-trainer-identity-list { margin: 10px 0; }
 .masterdata-athlete-contacts { display: grid; gap: 8px; }
 .masterdata-athlete-contacts h3 { margin: 0; }
@@ -2141,6 +2224,17 @@ const elements = {
   kindertrainingWeekNext: document.querySelector("#kindertraining-week-next"),
   kindertrainingWeekCurrent: document.querySelector("#kindertraining-week-current"),
   kindertrainingWeekReload: document.querySelector("#kindertraining-week-reload"),
+  kindertrainingExtraOpen: document.querySelector("#kindertraining-extra-open"),
+  kindertrainingExtraDialog: document.querySelector("#kindertraining-extra-dialog"),
+  kindertrainingExtraClose: document.querySelector("#kindertraining-extra-close"),
+  kindertrainingExtraGroup: document.querySelector("#kindertraining-extra-group"),
+  kindertrainingExtraDate: document.querySelector("#kindertraining-extra-date"),
+  kindertrainingExtraStatus: document.querySelector("#kindertraining-extra-status"),
+  kindertrainingExtraError: document.querySelector("#kindertraining-extra-error"),
+  kindertrainingExtraSuccess: document.querySelector("#kindertraining-extra-success"),
+  kindertrainingExtraLoad: document.querySelector("#kindertraining-extra-load"),
+  kindertrainingExtraApprove: document.querySelector("#kindertraining-extra-approve"),
+  kindertrainingExtraRevoke: document.querySelector("#kindertraining-extra-revoke"),
   kindertrainingWeekLabel: document.querySelector("#kindertraining-week-label"),
   kindertrainingWeek: document.querySelector("#kindertraining-week"),
   kindertrainingWeekState: document.querySelector("#kindertraining-week-state"),
@@ -2225,6 +2319,28 @@ const elements = {
   groupDetail: document.querySelector("#group-detail"),
   groupDetailDescription: document.querySelector("#group-detail-description"),
   groupDetailEdit: document.querySelector("#group-detail-edit"),
+  groupDetailSchedule: document.querySelector("#group-detail-schedule"),
+  groupDetailExtra: document.querySelector("#group-detail-extra"),
+  groupExtraForm: document.querySelector("#group-extra-form"),
+  groupExtraDate: document.querySelector("#group-extra-date"),
+  groupExtraStatus: document.querySelector("#group-extra-status"),
+  groupExtraMessage: document.querySelector("#group-extra-message"),
+  groupExtraSuccess: document.querySelector("#group-extra-success"),
+  groupExtraLoad: document.querySelector("#group-extra-load"),
+  groupExtraApprove: document.querySelector("#group-extra-approve"),
+  groupExtraRevoke: document.querySelector("#group-extra-revoke"),
+  groupExtraCancel: document.querySelector("#group-extra-cancel"),
+  groupPolicyForm: document.querySelector("#group-policy-form"),
+  groupPolicyFields: document.querySelector("#group-policy-fields"),
+  groupPolicyMessage: document.querySelector("#group-policy-message"),
+  groupPolicySuccess: document.querySelector("#group-policy-success"),
+  groupPolicyWeeks: document.querySelector("#group-policy-weeks"),
+  groupPolicyDeadlineEnabled: document.querySelector("#group-policy-deadline-enabled"),
+  groupPolicyDaysBefore: document.querySelector("#group-policy-days-before"),
+  groupPolicyDeadlineTime: document.querySelector("#group-policy-deadline-time"),
+  groupPolicyLateMode: document.querySelector("#group-policy-late-mode"),
+  groupPolicySubmit: document.querySelector("#group-policy-submit"),
+  groupPolicyCancel: document.querySelector("#group-policy-cancel"),
   athleteCount: document.querySelector("#athlete-count"),
   trainerCount: document.querySelector("#trainer-count"),
   groupCount: document.querySelector("#group-count"),
@@ -2445,6 +2561,8 @@ let kindertrainingWeekSaving = false;
 let kindertrainingWeekAutosaveTimer = null;
 let kindertrainingWeekLoadId = 0;
 let kindertrainingLoadedGroupId = "";
+let kindertrainingExtraDraft = null;
+let kindertrainingExtraRequestId = 0;
 let masterdataLoading = false;
 let masterdataSessionGeneration = 0;
 let masterdataExchangeBusy = false;
@@ -2464,6 +2582,10 @@ let masterdataTrainerOverlayId = null;
 let masterdataTrainerOverlayMode = "closed";
 let masterdataGroupOverlayId = null;
 let masterdataGroupOverlayMode = "closed";
+let groupPolicyDraft = null;
+let groupPolicyRequestId = 0;
+let extraDayDraft = null;
+let extraDayRequestId = 0;
 let masterdataSwipeStart = null;
 let trainerIdentityAdminReady = false;
 let trainerIdentityLoading = false;
@@ -2581,7 +2703,23 @@ elements.trainerDetailReactivate?.addEventListener("click", () => {
 });
 elements.groupForm?.addEventListener("submit", (event) => void createMasterdataGroup(event));
 elements.groupNew?.addEventListener("click", openNewMasterdataGroup);
-elements.groupOverlayClose?.addEventListener("click", closeMasterdataGroupOverlay);
+elements.groupOverlayClose?.addEventListener("click", requestCloseMasterdataGroupOverlay);
+elements.groupDetailSchedule?.addEventListener("click", () => void openMasterdataGroupPolicy());
+elements.groupPolicyDeadlineEnabled?.addEventListener("change", syncGroupPolicyDeadlineFields);
+elements.groupPolicyForm?.addEventListener("submit", (event) => void saveMasterdataGroupPolicy(event));
+elements.groupPolicyCancel?.addEventListener("click", requestCloseMasterdataGroupPolicy);
+elements.groupDetailExtra?.addEventListener("click", openMasterdataExtraDay);
+elements.groupExtraForm?.addEventListener("submit", (event) => event.preventDefault());
+elements.groupExtraLoad?.addEventListener("click", () => void loadMasterdataExtraDay());
+elements.groupExtraDate?.addEventListener("change", () => {
+  extraDayDraft = null;
+  extraDayRequestId += 1;
+  if (elements.groupExtraStatus) elements.groupExtraStatus.textContent = "Datum prüfen.";
+  refreshMasterdataExtraDayButtons();
+});
+elements.groupExtraApprove?.addEventListener("click", () => void saveMasterdataExtraDay(true));
+elements.groupExtraRevoke?.addEventListener("click", () => void saveMasterdataExtraDay(false));
+elements.groupExtraCancel?.addEventListener("click", requestCloseMasterdataExtraDay);
 elements.groupDetailEdit?.addEventListener("click", () => {
   const group = selectedMasterdataGroup();
   if (group) beginMasterdataEdit({ type: "group", id: group.id, item: group });
@@ -2668,6 +2806,26 @@ elements.kindertrainingWeekCurrent?.addEventListener("click", () => void moveKin
 elements.kindertrainingWeekReload?.addEventListener("click", () => void reloadKindertrainingWeek());
 elements.kindertrainingWeekSave?.addEventListener("click", () => void saveKindertrainingWeek());
 elements.kindertrainingGroup?.addEventListener("change", () => void handleKindertrainingWeekGroupChange());
+elements.kindertrainingExtraOpen?.addEventListener("click", openTrainerExtraDay);
+elements.kindertrainingExtraClose?.addEventListener("click", closeTrainerExtraDay);
+elements.kindertrainingExtraDate?.addEventListener("change", () => {
+  kindertrainingExtraRequestId += 1;
+  kindertrainingExtraDraft = null;
+  if (elements.kindertrainingExtraStatus) {
+    elements.kindertrainingExtraStatus.textContent = "Datum prüfen.";
+  }
+  refreshTrainerExtraDayControls();
+});
+elements.kindertrainingExtraLoad?.addEventListener("click", () => void loadTrainerExtraDay());
+elements.kindertrainingExtraApprove?.addEventListener("click", () => void saveTrainerExtraDay(true));
+elements.kindertrainingExtraRevoke?.addEventListener("click", () => void saveTrainerExtraDay(false));
+elements.kindertrainingExtraDialog?.addEventListener("cancel", (event) => {
+  if (kindertrainingExtraDraft?.saving) event.preventDefault();
+});
+elements.kindertrainingExtraDialog?.addEventListener("close", () => {
+  kindertrainingExtraRequestId += 1;
+  kindertrainingExtraDraft = null;
+});
 elements.kindertrainingWeekDays?.addEventListener("click", handleKindertrainingWeekClick);
 elements.kindertrainingWeekDays?.addEventListener("change", handleKindertrainingWeekChange);
 elements.kindertrainingWeekDays?.addEventListener("input", handleKindertrainingWeekInput);
@@ -2856,6 +3014,9 @@ function resetAttendanceSessionState() {
   clearKindertrainingWeekAutosave();
   kindertrainingWeekLoadId += 1;
   kindertrainingLoadedGroupId = "";
+  kindertrainingExtraRequestId += 1;
+  kindertrainingExtraDraft = null;
+  elements.kindertrainingExtraDialog?.close();
   renderKindertrainingGroups();
   renderKindertrainingWeekLabel();
   renderKindertrainingWeek();
@@ -2901,7 +3062,9 @@ function resetMasterdataSessionState() {
   closeMasterdataImportPreview();
   closeMasterdataAthleteOverlay();
   closeMasterdataTrainerOverlay();
-  closeMasterdataGroupOverlay();
+  // Session loss must clear sensitive overlays, even when an earlier request
+  // was in flight; normal user-initiated close still respects the save guard.
+  closeMasterdataGroupOverlay({ force: true });
 
   trainerIdentityAdminReady = false;
   trainerIdentityLoading = false;
@@ -2935,6 +3098,15 @@ function resetMasterdataSessionState() {
 async function handleSignOut() {
   if (busy) return;
 
+  if (groupPolicyDraft?.saving || extraDayDraft?.saving ||
+      kindertrainingExtraDraft?.saving) {
+    showMessage(elements.appSessionMessage, "Trainingstag-Einstellungen werden noch gespeichert.");
+    return;
+  }
+  if (isMasterdataGroupPolicyDirty() &&
+      !window.confirm("Ungespeicherte Anmelderegeln verwerfen und abmelden?")) {
+    return;
+  }
   if (selfRegistrationSavingKeys.size > 0 || selfRegistrationProxy?.saving) {
     showMessage(
       elements.appSessionMessage,
@@ -3192,7 +3364,40 @@ function isSelfRegistrationOption(option, sessionDate) {
     (!("note" in option) || option.note === null ||
       (typeof option.note === "string" && option.note.length <= 160 &&
         !/[\x00-\x1f\x7f]/.test(option.note)))
+    && (!("registrationWindow" in option) ||
+       isRegistrationWindowContract(option.registrationWindow))
   );
+}
+
+function isRegistrationWindowContract(value) {
+  return value !== null && typeof value === "object" &&
+    typeof value.visible === "boolean" &&
+    typeof value.scheduledWeekday === "boolean" &&
+    typeof value.exceptionalTrainingDay === "boolean" &&
+    typeof value.isLate === "boolean" &&
+    typeof value.mayEdit === "boolean" &&
+    ["open", "non-training-day", "too-far-ahead", "cancelled",
+      "deadline-passed", "past-training-day"].includes(value.reason) &&
+    (value.deadlineLocal === null ||
+      (typeof value.deadlineLocal === "string" &&
+       value.deadlineLocal.length === 16 &&
+       value.deadlineLocal[10] === "T"));
+}
+
+function registrationWindowExplanation(window) {
+  const messages = {
+    "non-training-day": "Kein regulärer Trainingstag.",
+    "too-far-ahead": "Dieser Trainingstag ist noch nicht freigegeben.",
+    "past-training-day": "Dieser Trainingstag liegt in der Vergangenheit.",
+    "deadline-passed": "Der Anmeldeschluss ist abgelaufen.",
+    "cancelled": "Dieses Training wurde abgesagt.",
+  };
+  const deadline = window.deadlineLocal
+    ? "Anmeldeschluss: " + germanDate(window.deadlineLocal.slice(0, 10)) +
+      " um " + window.deadlineLocal.slice(11) + " Uhr."
+    : "";
+  const late = window.isLate && window.mayEdit ? "Nachmeldung möglich." : "";
+  return [messages[window.reason] || "", deadline, late].filter(Boolean).join(" ");
 }
 
 function selfRegistrationLabel(intention) {
@@ -3283,6 +3488,14 @@ function renderSelfRegistration() {
       );
       head.append(identity, current);
       card.append(head);
+      const registrationWindow = option.registrationWindow;
+      const canEditRegistration = registrationWindow?.mayEdit !== false;
+      if (registrationWindow) {
+        const hint = document.createElement("p");
+        hint.className = "settings-note";
+        hint.textContent = registrationWindowExplanation(registrationWindow);
+        if (hint.textContent) card.append(hint);
+      }
 
       if (option.sessionState === "cancelled") {
         const cancelled = document.createElement("p");
@@ -3314,7 +3527,8 @@ function renderSelfRegistration() {
         );
         button.disabled =
           optionSaving ||
-          selfRegistrationLoading;
+          selfRegistrationLoading ||
+          !canEditRegistration;
         actions.append(button);
       }
       card.append(actions);
@@ -3330,7 +3544,7 @@ function renderSelfRegistration() {
       noteInput.value = selfRegistrationNoteDrafts.has(optionKey)
         ? selfRegistrationNoteDrafts.get(optionKey)
         : option.note || "";
-      noteInput.disabled = optionSaving || selfRegistrationLoading;
+      noteInput.disabled = optionSaving || selfRegistrationLoading || !canEditRegistration;
       const noteSave = document.createElement("button");
       noteSave.type = "button";
       noteSave.className = "button button--secondary";
@@ -3338,7 +3552,7 @@ function renderSelfRegistration() {
       noteSave.dataset.registrationGroup = option.group.id;
       noteSave.dataset.registrationDate = option.sessionDate;
       noteSave.dataset.registrationNoteSave = "true";
-      noteSave.disabled = optionSaving ||
+      noteSave.disabled = optionSaving || !canEditRegistration ||
         noteInput.value.trim() === (option.note || "");
       noteInput.addEventListener("input", () => {
         if (noteInput.value.trim() === (option.note || "")) {
@@ -3360,7 +3574,7 @@ function renderSelfRegistration() {
       proxy.dataset.registrationProxyGroup = option.group.id;
       proxy.dataset.registrationProxyDate = option.sessionDate;
       proxy.textContent = "Für Kollegen anmelden";
-      proxy.disabled = optionSaving || selfRegistrationLoading;
+      proxy.disabled = optionSaving || selfRegistrationLoading || !canEditRegistration;
       card.append(proxy);
       day.append(card);
     }
@@ -3392,11 +3606,334 @@ function closeSelfRegistrationProxy() {
   showMessage(elements.registrationProxyError, "");
 }
 
+/** Mobile special-day editor: every approval comes from server-authorized CAS. */
+function refreshMasterdataExtraDayButtons() {
+  const draft = extraDayDraft;
+  const ready = !!draft?.loaded && !draft.saving && !draft.loading &&
+    draft.groupId === selectedMasterdataGroup()?.id &&
+    draft.sessionDate === elements.groupExtraDate?.value;
+  if (elements.groupExtraLoad) elements.groupExtraLoad.disabled = !!draft?.saving || !!draft?.loading;
+  if (elements.groupExtraDate) elements.groupExtraDate.disabled = !!draft?.saving;
+  if (elements.groupExtraApprove) elements.groupExtraApprove.disabled =
+    !ready || draft.approved;
+  if (elements.groupExtraRevoke) elements.groupExtraRevoke.disabled =
+    !ready || !draft.approved;
+}
+
+function openMasterdataExtraDay() {
+  const group = selectedMasterdataGroup();
+  if (!group || group.isActive !== true || !masterdataCanEdit ||
+      group.attendanceMode !== "self_registration") return;
+  extraDayRequestId += 1;
+  extraDayDraft = null;
+  if (elements.groupExtraDate) elements.groupExtraDate.value = "";
+  if (elements.groupExtraStatus) elements.groupExtraStatus.textContent =
+    "Datum auswählen und prüfen.";
+  showMessage(elements.groupExtraMessage, "");
+  showMessage(elements.groupExtraSuccess, "");
+  showMasterdataGroupOverlayMode("extra");
+  refreshMasterdataExtraDayButtons();
+}
+
+async function loadMasterdataExtraDay() {
+  const group = selectedMasterdataGroup();
+  const date = elements.groupExtraDate?.value || "";
+  if (!group || !masterdataCanEdit ||
+      group.attendanceMode !== "self_registration" ||
+      !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)) {
+    showMessage(elements.groupExtraMessage, "Bitte zuerst ein gültiges Datum wählen.");
+    return;
+  }
+  const requestId = ++extraDayRequestId;
+  const generation = masterdataSessionGeneration;
+  extraDayDraft = { groupId: group.id, sessionDate: date,
+    loaded: false, loading: true, saving: false };
+  refreshMasterdataExtraDayButtons();
+  showMessage(elements.groupExtraMessage, "");
+  showMessage(elements.groupExtraSuccess, "");
+  try {
+    const result = await requestJson(
+      "/api/modules/athletes/registration-extra-day?groupId=" +
+        encodeURIComponent(group.id) + "&sessionDate=" + encodeURIComponent(date),
+    );
+    if (requestId !== extraDayRequestId ||
+        generation !== masterdataSessionGeneration ||
+        extraDayDraft?.groupId !== group.id || extraDayDraft?.sessionDate !== date) return;
+    if (result?.groupId !== group.id || result.sessionDate !== date ||
+        typeof result.approved !== "boolean" ||
+        typeof result.configured !== "boolean" ||
+        !(result.revision === null ||
+          (Number.isSafeInteger(result.revision) && result.revision >= 1))) {
+      throw new Error("INVALID_EXTRA_DAY_RESPONSE");
+    }
+    extraDayDraft = {
+      groupId: group.id, sessionDate: date, loaded: result.configured, loading: false,
+      saving: false, approved: result.approved, revision: result.revision,
+    };
+    if (elements.groupExtraStatus) elements.groupExtraStatus.textContent =
+      !result.configured ? "Zuerst die regulären Trainingstage der Gruppe speichern." :
+      result.approved ? "Als Sondertrainingstag freigegeben." :
+      "Keine aktive Sonderfreigabe für diesen Tag.";
+  } catch (error) {
+    if (requestId !== extraDayRequestId ||
+        generation !== masterdataSessionGeneration) return;
+    extraDayDraft = null;
+    showMessage(elements.groupExtraMessage,
+      error?.status === 403 ? "Keine Berechtigung für Sondertrainingstage." :
+      "Die Sonderfreigabe konnte nicht geladen werden.");
+  } finally {
+    if (requestId === extraDayRequestId) refreshMasterdataExtraDayButtons();
+  }
+}
+
+function requestCloseMasterdataExtraDay() {
+  if (extraDayDraft?.saving) return;
+  extraDayRequestId += 1;
+  extraDayDraft = null;
+  showMasterdataGroupOverlayMode("detail");
+}
+
+async function saveMasterdataExtraDay(approved) {
+  const state = extraDayDraft;
+  if (!state?.loaded || state.loading || state.saving || !masterdataCanEdit ||
+      state.approved === approved ||
+      selectedMasterdataGroup()?.id !== state.groupId ||
+      elements.groupExtraDate?.value !== state.sessionDate) return;
+  if (!approved && !window.confirm(
+    "Sondertrainingstag-Freigabe zurücknehmen? Bestehende Anmeldungen bleiben sichtbar, können aber nicht mehr geändert werden."
+  )) return;
+  const requestId = extraDayRequestId;
+  const generation = masterdataSessionGeneration;
+  state.saving = true;
+  refreshMasterdataExtraDayButtons();
+  showMessage(elements.groupExtraMessage, "");
+  showMessage(elements.groupExtraSuccess, "");
+  try {
+    const saved = await requestJson("/api/modules/athletes/registration-extra-day", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: state.groupId, sessionDate: state.sessionDate,
+        approved, expectedRevision: state.revision,
+      }),
+    });
+    if (generation !== masterdataSessionGeneration ||
+        requestId !== extraDayRequestId || extraDayDraft !== state) return;
+    if (saved?.groupId !== state.groupId ||
+        saved.sessionDate !== state.sessionDate ||
+        saved.approved !== approved ||
+        !Number.isSafeInteger(saved.revision) || saved.revision < 1) {
+      throw new Error("INVALID_EXTRA_DAY_SAVE");
+    }
+    state.revision = saved.revision;
+    state.approved = saved.approved;
+    if (elements.groupExtraStatus) elements.groupExtraStatus.textContent =
+      approved ? "Sondertrainingstag freigegeben." :
+      "Sondertrainingstag-Freigabe zurückgenommen.";
+    showMessage(elements.groupExtraSuccess, "Änderung gespeichert.");
+  } catch (error) {
+    if (generation !== masterdataSessionGeneration ||
+        requestId !== extraDayRequestId || extraDayDraft !== state) return;
+    showMessage(elements.groupExtraMessage,
+      error?.status === 409
+        ? "Freigabe nicht möglich oder zwischenzeitlich geändert. Datum erneut prüfen."
+        : error?.status === 403
+          ? "Keine Berechtigung für Sondertrainingstage."
+          : "Die Sonderfreigabe konnte nicht gespeichert werden.");
+  } finally {
+    if (generation === masterdataSessionGeneration &&
+        requestId === extraDayRequestId && extraDayDraft === state) {
+      state.saving = false;
+      refreshMasterdataExtraDayButtons();
+    }
+  }
+}
+
+/** Group schedule editor is kept separate from shared Athletes data writes. */
+function masterdataGroupPolicyInput() {
+  const checked = Array.from(
+    elements.groupPolicyForm?.querySelectorAll('input[name="group-policy-weekday"]:checked') || [],
+  ).map((input) => Number(input.value));
+  return {
+    weekdays: checked.sort((left, right) => left - right),
+    weeksAhead: Number(elements.groupPolicyWeeks?.value || "0"),
+    deadline: elements.groupPolicyDeadlineEnabled?.checked
+      ? {
+          daysBefore: Number(elements.groupPolicyDaysBefore?.value || "0"),
+          localTime: elements.groupPolicyDeadlineTime?.value || "",
+        }
+      : null,
+    lateMode: elements.groupPolicyLateMode?.value || "block",
+  };
+}
+
+function isMasterdataGroupPolicyDirty() {
+  return !!groupPolicyDraft?.loaded &&
+    JSON.stringify(masterdataGroupPolicyInput()) !== groupPolicyDraft.baseline;
+}
+
+function syncGroupPolicyDeadlineFields() {
+  const enabled = elements.groupPolicyDeadlineEnabled?.checked === true;
+  if (elements.groupPolicyDaysBefore) elements.groupPolicyDaysBefore.disabled = !enabled;
+  if (elements.groupPolicyDeadlineTime) elements.groupPolicyDeadlineTime.disabled = !enabled;
+}
+
+function fillMasterdataGroupPolicy(schedule) {
+  const stored = schedule || {
+    weekdays: [1, 2, 3, 4, 5, 6, 7],
+    weeksAhead: 4,
+    deadline: null,
+    lateMode: "allow",
+  };
+  for (const input of elements.groupPolicyForm?.querySelectorAll(
+    'input[name="group-policy-weekday"]',
+  ) || []) {
+    input.checked = stored.weekdays.includes(Number(input.value));
+  }
+  if (elements.groupPolicyWeeks) elements.groupPolicyWeeks.value = String(stored.weeksAhead);
+  if (elements.groupPolicyDeadlineEnabled) {
+    elements.groupPolicyDeadlineEnabled.checked = stored.deadline !== null;
+  }
+  if (elements.groupPolicyDaysBefore) {
+    elements.groupPolicyDaysBefore.value = String(stored.deadline?.daysBefore ?? 1);
+  }
+  if (elements.groupPolicyDeadlineTime) {
+    elements.groupPolicyDeadlineTime.value = stored.deadline?.localTime || "18:00";
+  }
+  if (elements.groupPolicyLateMode) elements.groupPolicyLateMode.value = stored.lateMode;
+  syncGroupPolicyDeadlineFields();
+}
+
+async function openMasterdataGroupPolicy() {
+  const group = selectedMasterdataGroup();
+  if (!group || group.isActive !== true ||
+      group.attendanceMode !== "self_registration" || !masterdataCanEdit) return;
+  const requestId = ++groupPolicyRequestId;
+  const generation = masterdataSessionGeneration;
+  groupPolicyDraft = {
+    groupId: group.id, revision: null, baseline: "", loaded: false, saving: false,
+  };
+  showMasterdataGroupOverlayMode("policy");
+  if (elements.groupPolicyFields) elements.groupPolicyFields.disabled = true;
+  if (elements.groupPolicySubmit) elements.groupPolicySubmit.disabled = true;
+  showMessage(elements.groupPolicyMessage, "Anmelderegeln werden geladen …");
+  showMessage(elements.groupPolicySuccess, "");
+  try {
+    const payload = await requestJson(
+      "/api/modules/athletes/registration-policy?groupId=" + encodeURIComponent(group.id),
+    );
+    if (generation !== masterdataSessionGeneration ||
+        requestId !== groupPolicyRequestId || groupPolicyDraft?.groupId !== group.id) return;
+    if (payload?.groupId !== group.id ||
+        !(payload.revision === null ||
+          (Number.isSafeInteger(payload.revision) && payload.revision >= 1)) ||
+        !(payload.schedule === null ||
+          (Array.isArray(payload.schedule?.weekdays) &&
+           typeof payload.schedule.weeksAhead === "number" &&
+           ["block", "allow"].includes(payload.schedule.lateMode)))) {
+      throw new Error("INVALID_REGISTRATION_POLICY");
+    }
+    fillMasterdataGroupPolicy(payload.schedule);
+    groupPolicyDraft.loaded = true;
+    groupPolicyDraft.revision = payload.revision;
+    groupPolicyDraft.baseline = JSON.stringify(masterdataGroupPolicyInput());
+    if (elements.groupPolicyFields) elements.groupPolicyFields.disabled = false;
+    if (elements.groupPolicySubmit) elements.groupPolicySubmit.disabled = false;
+    showMessage(elements.groupPolicyMessage, "");
+  } catch (error) {
+    if (generation !== masterdataSessionGeneration ||
+        requestId !== groupPolicyRequestId) return;
+    showMessage(elements.groupPolicyMessage,
+      error?.status === 403 ? "Keine Berechtigung für diese Gruppenregeln." :
+      "Anmelderegeln konnten nicht geladen werden.");
+  }
+}
+
+function requestCloseMasterdataGroupPolicy() {
+  if (groupPolicyDraft?.saving) return;
+  if (isMasterdataGroupPolicyDirty() &&
+      !window.confirm("Ungespeicherte Anmelderegeln verwerfen?")) return;
+  groupPolicyRequestId += 1;
+  groupPolicyDraft = null;
+  showMasterdataGroupOverlayMode("detail");
+}
+
+function requestCloseMasterdataGroupOverlay() {
+  if (groupPolicyDraft?.saving || extraDayDraft?.saving) return;
+  if (isMasterdataGroupPolicyDirty() &&
+      !window.confirm("Ungespeicherte Anmelderegeln verwerfen?")) return;
+  closeMasterdataGroupOverlay();
+}
+
+async function saveMasterdataGroupPolicy(event) {
+  event.preventDefault();
+  const state = groupPolicyDraft;
+  if (!state || !state.loaded || state.saving || !masterdataCanEdit ||
+      selectedMasterdataGroup()?.id !== state.groupId) return;
+  const schedule = masterdataGroupPolicyInput();
+  if (schedule.weekdays.length === 0 ||
+      !Number.isInteger(schedule.weeksAhead) ||
+      schedule.weeksAhead < 0 || schedule.weeksAhead > 26 ||
+      (schedule.deadline !== null &&
+       (!Number.isInteger(schedule.deadline.daysBefore) ||
+        schedule.deadline.daysBefore < 0 || schedule.deadline.daysBefore > 14 ||
+        !/^(?:[01]\\d|2[0-3]):[0-5]\\d$/.test(schedule.deadline.localTime)))) {
+    showMessage(elements.groupPolicyMessage, "Bitte Trainingstage und Anmeldefrist prüfen.");
+    return;
+  }
+  const generation = masterdataSessionGeneration;
+  const requestId = groupPolicyRequestId;
+  state.saving = true;
+  if (elements.groupPolicyFields) elements.groupPolicyFields.disabled = true;
+  if (elements.groupPolicySubmit) elements.groupPolicySubmit.disabled = true;
+  showMessage(elements.groupPolicyMessage, "");
+  showMessage(elements.groupPolicySuccess, "");
+  try {
+    const payload = await requestJson("/api/modules/athletes/registration-policy", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: state.groupId,
+        expectedRevision: state.revision,
+        schedule,
+      }),
+    });
+    if (generation !== masterdataSessionGeneration ||
+        requestId !== groupPolicyRequestId || groupPolicyDraft !== state) return;
+    if (payload?.groupId !== state.groupId ||
+        !Number.isSafeInteger(payload.revision) || payload.revision < 1 ||
+        !Array.isArray(payload.schedule?.weekdays)) {
+      throw new Error("INVALID_REGISTRATION_POLICY_SAVE");
+    }
+    fillMasterdataGroupPolicy(payload.schedule);
+    state.revision = payload.revision;
+    state.baseline = JSON.stringify(masterdataGroupPolicyInput());
+    showMessage(elements.groupPolicySuccess, "Anmelderegeln gespeichert.");
+  } catch (error) {
+    if (generation !== masterdataSessionGeneration ||
+        requestId !== groupPolicyRequestId || groupPolicyDraft !== state) return;
+    showMessage(elements.groupPolicyMessage,
+      error?.status === 409
+        ? "Die Gruppenregeln wurden zwischenzeitlich geändert. Bitte zurückgehen und neu öffnen."
+        : error?.status === 403
+          ? "Keine Berechtigung zum Speichern der Gruppenregeln."
+          : "Die Anmelderegeln konnten nicht gespeichert werden.");
+  } finally {
+    if (generation === masterdataSessionGeneration &&
+        requestId === groupPolicyRequestId && groupPolicyDraft === state) {
+      state.saving = false;
+      if (elements.groupPolicyFields) elements.groupPolicyFields.disabled = false;
+      if (elements.groupPolicySubmit) elements.groupPolicySubmit.disabled = false;
+      syncGroupPolicyDeadlineFields();
+    }
+  }
+}
+
 function isSelfRegistrationProxyRoster(roster, groupId, sessionDate) {
   if (!roster || roster.group?.id !== groupId ||
       roster.sessionDate !== sessionDate ||
       !["scheduled", "cancelled", null].includes(roster.sessionState) ||
-      !Array.isArray(roster.options)) return false;
+      !Array.isArray(roster.options) ||
+      ("registrationWindow" in roster &&
+       !isRegistrationWindowContract(roster.registrationWindow))) return false;
   const seen = new Set();
   for (const entry of roster.options) {
     const athlete = entry?.athlete;
@@ -3434,6 +3971,7 @@ function renderSelfRegistrationProxy() {
     selector.value = previousId;
   }
   const selected = options.find((option) => option.athlete.id === selector.value);
+  const policyLocked = state.roster?.registrationWindow?.mayEdit === false;
   selector.disabled = state.loading || state.saving || options.length === 0;
   const noteInput = elements.registrationProxyNote;
   const noteSave = elements.registrationProxyNoteSave;
@@ -3443,16 +3981,19 @@ function renderSelfRegistrationProxy() {
           ? state.noteDrafts.get(selected.athlete.id) : selected.note || "")
       : "";
     noteInput.disabled = state.loading || state.saving || !selected ||
-      state.roster?.sessionState === "cancelled";
+      state.roster?.sessionState === "cancelled" || policyLocked;
   }
   if (noteSave) {
     noteSave.disabled = state.loading || state.saving || !selected ||
-      state.roster?.sessionState === "cancelled" ||
+      state.roster?.sessionState === "cancelled" || policyLocked ||
       !state.noteDrafts.has(selected?.athlete.id);
   }
   if (elements.registrationProxyContext) {
     elements.registrationProxyContext.textContent =
-      state.groupName + " · " + germanDate(state.sessionDate);
+      state.groupName + " · " + germanDate(state.sessionDate) +
+      (state.roster?.registrationWindow
+        ? " · " + registrationWindowExplanation(state.roster.registrationWindow)
+        : "");
   }
   if (elements.registrationProxyCurrent) {
     elements.registrationProxyCurrent.textContent = state.loading
@@ -3469,7 +4010,7 @@ function renderSelfRegistrationProxy() {
     "[data-registration-proxy-intention]",
   ) || []) {
     button.disabled = state.loading || state.saving || !selected ||
-      state.roster?.sessionState === "cancelled";
+      state.roster?.sessionState === "cancelled" || policyLocked;
     button.setAttribute("aria-pressed",
       selected?.intention === button.dataset.registrationProxyIntention ? "true" : "false");
   }
@@ -3480,7 +4021,8 @@ async function openSelfRegistrationProxy(groupId, sessionDate) {
       selfRegistrationSavingKeys.size > 0) return;
   const option = selfRegistrationOptions.find((entry) =>
     entry.group.id === groupId && entry.sessionDate === sessionDate);
-  if (!option || option.sessionState === "cancelled") return;
+  if (!option || option.sessionState === "cancelled" ||
+      option.registrationWindow?.mayEdit === false) return;
   const generation = attendanceSessionGeneration;
   const requestId = ++selfRegistrationProxyRequestId;
   selfRegistrationProxy = {
@@ -3523,6 +4065,7 @@ async function saveSelfRegistrationProxy(intention) {
   const id = elements.registrationProxyAthlete?.value || "";
   if (!state || !state.roster || state.saving || state.loading ||
       state.roster.sessionState === "cancelled" ||
+      state.roster.registrationWindow?.mayEdit === false ||
       !["unknown", "attending", "not_attending", "maybe"].includes(intention)) return;
   const selected = state.roster.options.find((option) => option.athlete.id === id);
   if (!selected) return;
@@ -3606,7 +4149,8 @@ async function handleSelfRegistrationClick(event) {
       candidate.group.id === groupId &&
       candidate.sessionDate === sessionDate,
   );
-  if (!option || option.sessionState === "cancelled") return;
+  if (!option || option.sessionState === "cancelled" ||
+      option.registrationWindow?.mayEdit === false) return;
   const intention = noteOnly ? option.intention : clickedIntention;
   const noteDraft = selfRegistrationNoteDrafts.get(optionKey);
   const noteChanged = noteDraft !== undefined &&
@@ -3848,6 +4392,176 @@ async function bootstrapKindertraining() {
   }
   if (generation === attendanceSessionGeneration) {
     refreshAppAvailability();
+  }
+}
+
+/** Trainer access uses the server-scoped kindertraining:edit permission. */
+function refreshTrainerExtraDayControls() {
+  const state = kindertrainingExtraDraft;
+  const valid = !!state?.loaded &&
+    !state.loading && !state.saving &&
+    state.groupId === elements.kindertrainingGroup?.value &&
+    state.sessionDate === elements.kindertrainingExtraDate?.value;
+  const busy = !!state?.loading || !!state?.saving;
+  if (elements.kindertrainingExtraDate) elements.kindertrainingExtraDate.disabled = busy;
+  if (elements.kindertrainingExtraLoad) elements.kindertrainingExtraLoad.disabled = busy;
+  if (elements.kindertrainingExtraClose) elements.kindertrainingExtraClose.disabled = !!state?.saving;
+  if (elements.kindertrainingExtraApprove) {
+    elements.kindertrainingExtraApprove.disabled = !valid || state.approved;
+  }
+  if (elements.kindertrainingExtraRevoke) {
+    elements.kindertrainingExtraRevoke.disabled = !valid || !state.approved;
+  }
+}
+
+function openTrainerExtraDay() {
+  const group = kindertrainingGroups.find(
+    (entry) => entry.id === elements.kindertrainingGroup?.value,
+  );
+  if (!kindertrainingReady || !group ||
+      group.attendanceMode !== "self_registration" ||
+      kindertrainingExtraDraft?.saving ||
+      elements.kindertrainingExtraDialog?.open) return;
+  kindertrainingExtraRequestId += 1;
+  kindertrainingExtraDraft = null;
+  if (elements.kindertrainingExtraGroup) {
+    elements.kindertrainingExtraGroup.textContent = group.name;
+  }
+  if (elements.kindertrainingExtraDate) elements.kindertrainingExtraDate.value = "";
+  if (elements.kindertrainingExtraStatus) {
+    elements.kindertrainingExtraStatus.textContent = "Datum auswählen und prüfen.";
+  }
+  showMessage(elements.kindertrainingExtraError, "");
+  showMessage(elements.kindertrainingExtraSuccess, "");
+  refreshTrainerExtraDayControls();
+  elements.kindertrainingExtraDialog?.showModal();
+}
+
+function closeTrainerExtraDay() {
+  if (kindertrainingExtraDraft?.saving) return;
+  kindertrainingExtraRequestId += 1;
+  kindertrainingExtraDraft = null;
+  elements.kindertrainingExtraDialog?.close();
+}
+
+async function loadTrainerExtraDay() {
+  const group = kindertrainingGroups.find(
+    (entry) => entry.id === elements.kindertrainingGroup?.value,
+  );
+  const date = elements.kindertrainingExtraDate?.value || "";
+  if (!group || group.attendanceMode !== "self_registration" ||
+      !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)) {
+    showMessage(elements.kindertrainingExtraError,
+      "Bitte einen gültigen Sondertrainingstag wählen.");
+    return;
+  }
+  const id = ++kindertrainingExtraRequestId;
+  const generation = attendanceSessionGeneration;
+  kindertrainingExtraDraft = {
+    groupId: group.id, sessionDate: date,
+    loading: true, loaded: false, saving: false,
+  };
+  refreshTrainerExtraDayControls();
+  showMessage(elements.kindertrainingExtraError, "");
+  showMessage(elements.kindertrainingExtraSuccess, "");
+  try {
+    const result = await requestJson(
+      "/api/modules/athletes/registration-extra-day?groupId=" +
+        encodeURIComponent(group.id) + "&sessionDate=" + encodeURIComponent(date),
+    );
+    if (id !== kindertrainingExtraRequestId ||
+        generation !== attendanceSessionGeneration ||
+        kindertrainingExtraDraft?.groupId !== group.id ||
+        elements.kindertrainingExtraDate?.value !== date) return;
+    if (result?.groupId !== group.id || result.sessionDate !== date ||
+        typeof result.approved !== "boolean" ||
+        typeof result.configured !== "boolean" ||
+        !(result.revision === null ||
+          (Number.isSafeInteger(result.revision) && result.revision >= 1))) {
+      throw new Error("INVALID_TRAINER_EXTRA_RESPONSE");
+    }
+    kindertrainingExtraDraft = {
+      groupId: group.id, sessionDate: date,
+      loading: false, loaded: result.configured, saving: false,
+      approved: result.approved, revision: result.revision,
+    };
+    if (elements.kindertrainingExtraStatus) {
+      elements.kindertrainingExtraStatus.textContent = !result.configured
+        ? "Zuerst müssen die regulären Trainingstage von der Gruppenverwaltung festgelegt werden."
+        : result.approved
+          ? "Der Sondertrainingstag ist freigegeben."
+          : "Für dieses Datum besteht keine aktive Sonderfreigabe.";
+    }
+  } catch (error) {
+    if (id !== kindertrainingExtraRequestId ||
+        generation !== attendanceSessionGeneration) return;
+    kindertrainingExtraDraft = null;
+    showMessage(elements.kindertrainingExtraError,
+      error?.status === 403 ? "Du darfst für diese Gruppe keine Sondertrainingstage verwalten." :
+      error?.status === 404 ? "Die Trainingsgruppe ist nicht mehr verfügbar." :
+      "Der Sondertrainingstag konnte nicht geprüft werden.");
+  } finally {
+    if (id === kindertrainingExtraRequestId) refreshTrainerExtraDayControls();
+  }
+}
+
+async function saveTrainerExtraDay(approved) {
+  const state = kindertrainingExtraDraft;
+  if (!state?.loaded || state.loading || state.saving ||
+      state.approved === approved ||
+      elements.kindertrainingGroup?.value !== state.groupId ||
+      elements.kindertrainingExtraDate?.value !== state.sessionDate) return;
+  if (!approved && !window.confirm(
+    "Sondertrainingstag-Freigabe zurücknehmen? Vorhandene Anmeldungen bleiben lesbar, aber gesperrt."
+  )) return;
+  const id = kindertrainingExtraRequestId;
+  const generation = attendanceSessionGeneration;
+  state.saving = true;
+  refreshTrainerExtraDayControls();
+  showMessage(elements.kindertrainingExtraError, "");
+  showMessage(elements.kindertrainingExtraSuccess, "");
+  try {
+    const result = await requestJson("/api/modules/athletes/registration-extra-day", {
+      method: "POST",
+      body: JSON.stringify({
+        groupId: state.groupId, sessionDate: state.sessionDate,
+        approved, expectedRevision: state.revision,
+      }),
+    });
+    if (id !== kindertrainingExtraRequestId ||
+        generation !== attendanceSessionGeneration ||
+        kindertrainingExtraDraft !== state) return;
+    if (result?.groupId !== state.groupId ||
+        result.sessionDate !== state.sessionDate ||
+        result.approved !== approved ||
+        !Number.isSafeInteger(result.revision) || result.revision < 1) {
+      throw new Error("INVALID_TRAINER_EXTRA_SAVE");
+    }
+    state.approved = approved;
+    state.revision = result.revision;
+    if (elements.kindertrainingExtraStatus) {
+      elements.kindertrainingExtraStatus.textContent = approved
+        ? "Sondertrainingstag freigegeben." :
+          "Sondertrainingstag-Freigabe zurückgenommen.";
+    }
+    showMessage(elements.kindertrainingExtraSuccess, "Gespeichert.");
+  } catch (error) {
+    if (id !== kindertrainingExtraRequestId ||
+        generation !== attendanceSessionGeneration ||
+        kindertrainingExtraDraft !== state) return;
+    showMessage(elements.kindertrainingExtraError,
+      error?.status === 409
+        ? "Sondertrainingstag nicht möglich oder zwischenzeitlich geändert. Datum erneut prüfen."
+        : error?.status === 403 || error?.status === 404
+          ? "Keine Berechtigung für diese Trainingsgruppe."
+          : "Sondertrainingstag konnte nicht gespeichert werden.");
+  } finally {
+    if (id === kindertrainingExtraRequestId &&
+        generation === attendanceSessionGeneration &&
+        kindertrainingExtraDraft === state) {
+      state.saving = false;
+      refreshTrainerExtraDayControls();
+    }
   }
 }
 
@@ -4261,6 +4975,15 @@ function refreshKindertrainingWeekControls() {
     elements.kindertrainingWeekReload,
   ]) {
     if (control) control.disabled = !kindertrainingReady || !hasGroup || busyWeek;
+  }
+  const group = kindertrainingGroups.find(
+    (entry) => entry.id === elements.kindertrainingGroup?.value,
+  );
+  if (elements.kindertrainingExtraOpen) {
+    elements.kindertrainingExtraOpen.hidden =
+      !kindertrainingReady || group?.attendanceMode !== "self_registration";
+    elements.kindertrainingExtraOpen.disabled =
+      !kindertrainingReady || busyWeek;
   }
   if (elements.kindertrainingWeekSave) {
     elements.kindertrainingWeekSave.disabled =
@@ -6722,6 +7445,8 @@ function selectedMasterdataGroup() {
 
 function openMasterdataGroupOverlay(groupId) {
   if (!masterdataSnapshot) return;
+  groupPolicyRequestId += 1;
+  groupPolicyDraft = null;
   const group = masterdataSnapshot.trainingGroups.find((item) => item.id === groupId);
   if (!group) return;
   masterdataEdit = null;
@@ -6745,7 +7470,12 @@ function openNewMasterdataGroup() {
   elements.groupName?.focus();
 }
 
-function closeMasterdataGroupOverlay() {
+function closeMasterdataGroupOverlay({ force = false } = {}) {
+  if (!force && (extraDayDraft?.saving || groupPolicyDraft?.saving)) return;
+  extraDayRequestId += 1;
+  extraDayDraft = null;
+  groupPolicyRequestId += 1;
+  groupPolicyDraft = null;
   masterdataGroupOverlayMode = "closed";
   masterdataGroupOverlayId = null;
   masterdataEdit = null;
@@ -6765,6 +7495,8 @@ function showMasterdataGroupOverlayMode(mode) {
   document.body.classList.add("masterdata-athlete-overlay-open");
   if (elements.groupDetail) elements.groupDetail.hidden = mode !== "detail";
   if (elements.groupForm) elements.groupForm.hidden = mode !== "group";
+  if (elements.groupPolicyForm) elements.groupPolicyForm.hidden = mode !== "policy";
+  if (elements.groupExtraForm) elements.groupExtraForm.hidden = mode !== "extra";
   if (masterdataSnapshot) renderMasterdataGroupOverlay(masterdataSnapshot);
 }
 
@@ -6793,6 +7525,14 @@ function renderMasterdataGroupOverlay(snapshot) {
   }
   if (elements.groupDetailEdit) {
     elements.groupDetailEdit.disabled = !masterdataCanEdit || group.isActive === false;
+  }
+  if (elements.groupDetailSchedule) {
+    elements.groupDetailSchedule.hidden = group.attendanceMode !== "self_registration";
+    elements.groupDetailSchedule.disabled = !masterdataCanEdit || group.isActive === false;
+  }
+  if (elements.groupDetailExtra) {
+    elements.groupDetailExtra.hidden = group.attendanceMode !== "self_registration";
+    elements.groupDetailExtra.disabled = !masterdataCanEdit || group.isActive === false;
   }
 }
 

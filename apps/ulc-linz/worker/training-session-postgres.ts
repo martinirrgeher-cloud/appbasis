@@ -194,6 +194,39 @@ export class PostgresUlcTrainingSessionRepository {
     return snapshot;
   }
 
+
+  /**
+   * Keep ad-hoc session creation, registration and its change-history write in
+   * one PostgreSQL transaction. A rejected configured-day/deadline write rolls
+   * back the session too. Direct attendance session edits remain independent.
+   *
+   * A real PostgreSQL begin() capability is required; no silent non-atomic
+   * fallback is permitted here. The caller still performs authenticated
+   * identity/group eligibility checks, and the DB trigger guards both writes.
+   */
+  async withRegistrationTransaction<T>(
+    callback: (sessions: Pick<PostgresUlcTrainingSessionRepository,
+      "ensureScheduledSession" | "saveRegistration">) => Promise<T>,
+  ): Promise<T> {
+    const transactionalSql = this.#sql as UlcTrainingSessionSqlClient & {
+      begin?: <R>(
+        callback: (transaction: UlcTrainingSessionSqlClient) => Promise<R>,
+      ) => Promise<R>;
+    };
+    if (typeof transactionalSql.begin !== "function") {
+      throw new UlcTrainingSessionPersistenceError(
+        "Atomic registration requires a PostgreSQL transaction.",
+      );
+    }
+    return transactionalSql.begin(async (transaction) => {
+      const scopedSessions = new PostgresUlcTrainingSessionRepository(
+        transaction,
+        this.#createId,
+      );
+      return callback(scopedSessions);
+    });
+  }
+
   async listAttendanceForAthleteDateRange(
     organizationId: string,
     athleteId: string,
