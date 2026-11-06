@@ -81,14 +81,15 @@ export class PostgresUlcYouthCategoryRepository {
   async list(organizationId: string): Promise<readonly UlcYouthCategory[]> {
     const org = safeOrganization(organizationId);
     // New organizations receive defaults lazily, without restoring inactive items.
-    const codes = ULC_YOUTH_CONTENT_CATALOG.map((x) => x.code);
-    const labels = ULC_YOUTH_CONTENT_CATALOG.map((x) => x.label);
+    const defaults = ULC_YOUTH_CONTENT_CATALOG.map((x) => ({
+      code: x.code, label: x.label,
+    }));
     await this.sql.unsafe(
       `INSERT INTO ulc_linz_youth_content_category (organization_id, code, label)
        SELECT $1, defaults.code, defaults.label
-         FROM unnest($2::text[], $3::text[]) AS defaults(code, label)
+         FROM jsonb_to_recordset($2::jsonb) AS defaults(code text, label text)
        ON CONFLICT DO NOTHING`,
-      [org, JSON.stringify(codes), JSON.stringify(labels)],
+      [org, JSON.stringify(defaults)],
     );
     const rows = await this.sql.unsafe(
       `SELECT code, label, is_active, revision
