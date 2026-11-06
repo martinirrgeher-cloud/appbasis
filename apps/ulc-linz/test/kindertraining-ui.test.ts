@@ -9,7 +9,7 @@ import {
 describe("ULC Kindertraining weekly attendance UI", () => {
   it("ships a mobile weekly attendance workspace", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
-      'data-nav-view="attendance" data-nav-priority="2" disabled>Anwesenheit',
+      'data-nav-view="attendance" data-nav-priority="2" aria-expanded="false"',
     );
     expect(ULC_LINZ_APP_HTML).toContain(
       'data-app-section="kindertraining"',
@@ -30,7 +30,7 @@ describe("ULC Kindertraining weekly attendance UI", () => {
 
   it("separates preregistration from actual trainer attendance", () => {
     expect(ULC_LINZ_APP_HTML).toContain("<h2>Anwesenheit</h2>");
-    expect(ULC_LINZ_APP_HTML).toContain("Anwesenheit öffnen");
+    expect(ULC_LINZ_APP_HTML).toContain("Gruppe auswählen");
     expect(ULC_LINZ_APP_HTML).toContain("<h1>Anwesenheit</h1>");
     expect(ULC_LINZ_APP_HTML).toContain(
       "Die ganze Trainingswoche im Blick: Voranmeldungen prüfen und die tatsächliche Anwesenheit gesammelt erfassen.",

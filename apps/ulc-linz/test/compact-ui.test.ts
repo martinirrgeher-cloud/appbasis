@@ -13,7 +13,7 @@ describe("ULC E4D.5 compact mobile layout", () => {
       ULC_LINZ_APP_HTML.indexOf('id="app-nav-overflow"'),
     );
     expect(primary).toContain('data-nav-view="home" data-nav-priority="0">Start');
-    expect(primary).toContain('data-nav-view="attendance" data-nav-priority="2" disabled>Anwesenheit');
+    expect(primary).toContain('data-nav-view="attendance" data-nav-priority="2" aria-expanded="false"');
     expect(primary).toContain('data-nav-view="training-documentation" data-nav-priority="4" disabled>Doku');
     expect(primary).not.toContain('data-nav-view="registration"');
     expect(primary).not.toContain('data-nav-view="training-plans"');
@@ -38,6 +38,8 @@ describe("ULC E4D.5 compact mobile layout", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('group.hidden = !hasVisibleItems');
     expect(ULC_LINZ_APP_SCRIPT).toContain("setAppNavMoreOpen(false);");
     expect(ULC_LINZ_APP_CSS).toContain(".app-nav__overflow {");
+    expect(ULC_LINZ_APP_CSS).toContain(".app-nav__attendance-menu {");
+    expect(ULC_LINZ_APP_HTML).toContain('id="app-nav-attendance-menu"');
     expect(ULC_LINZ_APP_CSS).toContain("bottom: calc(100% + 6px);");
     expect(ULC_LINZ_APP_CSS).toContain("max-height: min(72dvh, 620px)");
     expect(ULC_LINZ_APP_CSS).toContain("grid-template-columns: repeat(4, minmax(0, 1fr));");

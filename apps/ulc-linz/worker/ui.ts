@@ -93,9 +93,23 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
         <nav class="app-nav" aria-label="Hauptnavigation">
           <div class="app-nav__primary" id="app-nav-primary">
             <button class="app-nav__link is-active" type="button" data-nav-view="home" data-nav-priority="0">Start</button>
-            <button class="app-nav__link" type="button" data-nav-view="attendance" data-nav-priority="2" disabled>Anwesenheit</button>
+            <button class="app-nav__link" id="app-nav-attendance" type="button" data-nav-view="attendance" data-nav-priority="2" aria-expanded="false" aria-controls="app-nav-attendance-menu" aria-haspopup="true" disabled>Anwesenheit</button>
             <button class="app-nav__link" type="button" data-nav-view="training-documentation" data-nav-priority="4" disabled>Doku</button>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" aria-haspopup="true">Mehr</button>
+          </div>
+          <div class="app-nav__attendance-menu" id="app-nav-attendance-menu" aria-label="Anwesenheit nach Gruppe" hidden>
+            <button class="app-nav__attendance-item" type="button" data-attendance-target="u12" hidden disabled>
+              <strong>U12</strong><small>Anwesenheit und Trainingsinhalte</small>
+            </button>
+            <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="kindertraining" hidden disabled>
+              <strong>Kindertraining</strong><small>Anwesenheit je Trainingstag</small>
+            </button>
+            <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="irrgeher" hidden disabled>
+              <strong>Gruppe Irrgeher</strong><small>Bestehende Gruppenanmeldung und Anwesenheit</small>
+            </button>
+            <div class="app-nav__attendance-item app-nav__attendance-item--pending" aria-disabled="true">
+              <strong>U14</strong><small>In Vorbereitung</small>
+            </div>
           </div>
           <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden>
             <button class="app-nav__link" type="button" data-nav-view="registration" data-nav-priority="1" hidden disabled>Anmeldung</button>
@@ -165,7 +179,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                   <h2>Anwesenheit</h2>
                   <p>Wähle deine Gruppe und erfasse die Anwesenheit direkt im Training.</p>
                 </div>
-                <button class="button button--primary dashboard-action" id="attendance-quick-action" type="button" data-open-view="attendance" disabled>Anwesenheit öffnen</button>
+                <button class="button button--primary dashboard-action" id="attendance-quick-action" type="button" data-open-attendance-menu disabled>Gruppe auswählen</button>
               </article>
 
               <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="training-plans" hidden>
@@ -601,34 +615,6 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               </div>
               <small class="registration-proxy-hint">Änderungen werden dem ausführenden Benutzer zugeordnet. Nur Mitglieder derselben Gruppe können vertreten werden.</small>
             </dialog>
-          </section>
-
-          <section class="app-section" data-app-section="attendance" id="attendance" hidden>
-            <section class="hero">
-              <p class="eyebrow">Training</p>
-              <h1>Anwesenheit</h1>
-              <p class="summary">Gruppe auswählen – Anwesenheit und Inhalte direkt beim Training dokumentieren.</p>
-            </section>
-            <div class="attendance-group-list" aria-label="Trainingsgruppen">
-              <button class="attendance-group-choice" type="button" data-open-view="u12" data-attendance-view="u12" hidden disabled>
-                <span class="attendance-group-choice__icon" aria-hidden="true">✓</span>
-                <span class="attendance-group-choice__main"><strong>U12</strong><small>Namensliste je Training</small></span>
-                <span aria-hidden="true">›</span>
-              </button>
-              <button class="attendance-group-choice" type="button" data-open-view="kindertraining" data-attendance-view="kindertraining" hidden disabled>
-                <span class="attendance-group-choice__icon" aria-hidden="true">✓</span>
-                <span class="attendance-group-choice__main"><strong>Kindertraining</strong><small>Wochenübersicht und Anwesenheit</small></span>
-                <span aria-hidden="true">›</span>
-              </button>
-              <div class="attendance-group-choice attendance-group-choice--pending">
-                <span class="attendance-group-choice__icon" aria-hidden="true">·</span>
-                <span class="attendance-group-choice__main"><strong>U14</strong><small>Modul in Vorbereitung</small></span>
-              </div>
-              <div class="attendance-group-choice attendance-group-choice--pending">
-                <span class="attendance-group-choice__icon" aria-hidden="true">·</span>
-                <span class="attendance-group-choice__main"><strong>Gruppe Irrgeher</strong><small>Personenbezogene Detailansicht folgt separat</small></span>
-              </div>
-            </div>
           </section>
 
 ${ULC_U12_HTML}
@@ -2142,14 +2128,26 @@ ${ULC_USER_ADMIN_CSS}
 .athlete-create-contact { min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
 .athlete-create-contact legend { font-size: .82rem; }
 .athlete-create-contact > button { min-height: 44px; margin-top: 10px; }
-/* Attendance hub: independent group destinations, not a content submenu. */
-.attendance-group-list { display:grid; gap:9px; max-width:720px; }
-.attendance-group-choice { display:flex; align-items:center; text-align:left; gap:12px; min-width:0; min-height:72px; padding:12px; border:1px solid var(--border); border-radius:14px; background:var(--card); color:var(--text); cursor:pointer; }
-.attendance-group-choice__icon { width:38px; height:38px; flex:0 0 38px; display:grid; place-items:center; border-radius:12px; background:var(--muted); color:var(--accent); font-weight:800; font-size:1.12rem; }
-.attendance-group-choice__main { min-width:0; display:grid; gap:3px; flex:1; }
-.attendance-group-choice__main strong { font-size:.98rem; }
-.attendance-group-choice__main small { font-size:.78rem; color:var(--secondary); overflow-wrap:anywhere; }
-.attendance-group-choice--pending { opacity:.6; cursor:default; }
+/* Attendance group choices are an anchored overlay like "Mehr", not another page. */
+.app-nav__attendance-menu {
+  position: absolute; left: 8px; bottom: calc(100% + 6px);
+  display: grid; gap: 4px; width: min(320px, calc(100vw - 16px));
+  max-height: min(72dvh, 520px); overflow-y: auto; overscroll-behavior: contain;
+  padding: 8px; border: 1px solid var(--border); border-radius: 14px;
+  background: white; box-shadow: 0 12px 36px rgb(15 23 42 / 18%);
+}
+.app-nav__attendance-menu[hidden], .app-nav__attendance-item[hidden] { display: none !important; }
+.app-nav__attendance-item {
+  display: grid; gap: 3px; width: 100%; min-height: 48px; padding: 9px 12px;
+  border: 0; border-radius: 10px; background: transparent; color: var(--text);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.app-nav__attendance-item strong { font-size: .86rem; }
+.app-nav__attendance-item small { font-size: .74rem; color: var(--secondary); }
+.app-nav__attendance-item:not(:disabled):hover,
+.app-nav__attendance-item:not(:disabled):focus-visible { background: var(--muted); }
+.app-nav__attendance-item--pending { opacity: .55; cursor: default; }
+#app-nav-attendance[aria-expanded="true"] { background: #dbeafe; color: #1d4ed8; }
 ${ULC_U12_CSS}
 `;
 
@@ -2161,6 +2159,8 @@ const elements = {
   passwordView: document.querySelector("#password-view"),
   appView: document.querySelector("#app-view"),
   appNavPrimary: document.querySelector("#app-nav-primary"),
+  appNavAttendance: document.querySelector("#app-nav-attendance"),
+  appNavAttendanceMenu: document.querySelector("#app-nav-attendance-menu"),
   appNavMore: document.querySelector("#app-nav-more"),
   appNavOverflow: document.querySelector("#app-nav-overflow"),
   loginForm: document.querySelector("#login-form"),
@@ -2493,6 +2493,7 @@ const APP_NAV_FIXED = Object.freeze([
 ]);
 
 let appNavMoreOpen = false;
+let appNavAttendanceOpen = false;
 let busy = false;
 let countdownReady = false;
 let masterdataReady = false;
@@ -2778,25 +2779,30 @@ elements.appNavMore?.addEventListener("click", () => {
   setAppNavMoreOpen(!appNavMoreOpen);
 });
 document.addEventListener("click", (event) => {
-  if (!appNavMoreOpen || event.target?.closest?.(".app-nav")) return;
-  setAppNavMoreOpen(false);
+  if (event.target?.closest?.(".app-nav") ||
+      event.target?.closest?.("[data-open-attendance-menu]")) return;
+  if (appNavMoreOpen) setAppNavMoreOpen(false);
+  if (appNavAttendanceOpen) setAppNavAttendanceOpen(false);
 });
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  const attendanceWasOpen = appNavAttendanceOpen;
   setAppNavMoreOpen(false);
+  setAppNavAttendanceOpen(false);
+  if (attendanceWasOpen) elements.appNavAttendance?.focus();
   if (!elements.masterdataImportPreview?.hidden) closeMasterdataImportPreview();
 });
 async function navigateAppSection(section) {
   const current = document.querySelector("[data-app-section]:not([hidden])")?.dataset.appSection || "home";
   if (current === "u12" && section !== "u12" &&
-      !(await u12FlushChanges())) return;
+      !(await u12FlushChanges())) return false;
   if (
     current === "training-plans" &&
     section !== "training-plans" &&
     typeof closeTrainingPlanEditor === "function"
   ) {
     const closed = await closeTrainingPlanEditor(false);
-    if (!closed) return;
+    if (!closed) return false;
   }
   if (
     current === "training-documentation" &&
@@ -2804,16 +2810,40 @@ async function navigateAppSection(section) {
     typeof prepareTrainingDocumentationForLeave === "function"
   ) {
     const closed = await prepareTrainingDocumentationForLeave();
-    if (!closed) return;
+    if (!closed) return false;
   }
   showAppSection(section);
+  return true;
 }
 
 for (const control of document.querySelectorAll("[data-nav-view]")) {
   control.addEventListener("click", () => {
     if (control.disabled) return;
+    if (control.dataset.navView === "attendance") {
+      setAppNavAttendanceOpen(!appNavAttendanceOpen);
+      return;
+    }
     setAppNavMoreOpen(false);
+    setAppNavAttendanceOpen(false);
     void navigateAppSection(control.dataset.navView || "home");
+  });
+}
+for (const control of document.querySelectorAll("[data-open-attendance-menu]")) {
+  control.addEventListener("click", () => {
+    if (control.disabled) return;
+    setAppNavAttendanceOpen(true);
+    elements.appNavAttendance?.focus();
+  });
+}
+for (const control of document.querySelectorAll("[data-attendance-target]")) {
+  control.addEventListener("click", () => {
+    if (control.disabled || control.hidden) return;
+    setAppNavAttendanceOpen(false);
+    if (control.dataset.attendanceTarget === "u12") {
+      void navigateAppSection("u12");
+    } else if (control.dataset.attendanceTarget === "kindertraining") {
+      void navigateToAttendanceGroup(control.dataset.attendanceGroup || "");
+    }
   });
 }
 for (const control of document.querySelectorAll("[data-open-view]")) {
@@ -4782,7 +4812,10 @@ function isAppNavigationAvailable(section) {
   if (section === "masterdata") return masterdataReady;
   if (section === "users") return userAdminReady;
   if (section === "registration") return selfRegistrationReady;
-  if (section === "attendance") return kindertrainingReady || u12Ready;
+  if (section === "attendance") return u12Ready ||
+    (kindertrainingReady &&
+      (findAttendanceTrainingGroup("kindertraining") !== null ||
+       findAttendanceTrainingGroup("irrgeher") !== null));
   if (section === "kindertraining") return kindertrainingReady;
   if (section === "u12") return u12Ready;
   if (section === "exercise-catalog") return exerciseCatalogReady;
@@ -4812,6 +4845,7 @@ function refreshAppNavigation() {
     if (!hasVisibleItems) group.open = false;
   }
   const hasOverflow = secondaryAvailable > 0 || elements.appSignOut !== null;
+  if (!isAppNavigationAvailable("attendance")) setAppNavAttendanceOpen(false);
   if (!hasOverflow) appNavMoreOpen = false;
   if (elements.appNavMore) {
     elements.appNavMore.hidden = !hasOverflow;
@@ -4826,7 +4860,43 @@ function refreshAppNavigation() {
   syncAppNavigationActive(activeSection);
 }
 
+function findAttendanceTrainingGroup(kind) {
+  if (!kindertrainingReady) return null;
+  return kindertrainingGroups.find((group) => {
+    const name = group.name.trim().toLocaleLowerCase("de-AT");
+    if (kind === "kindertraining") return name === "kindertraining";
+    if (kind === "irrgeher") return group.attendanceMode === "trainer_roll_call" &&
+      /\\b(?:irrgeher|irge)\\b/i.test(name);
+    return false;
+  }) || null;
+}
+
+function setAppNavAttendanceOpen(open) {
+  if (open && isAppNavigationAvailable("attendance")) setAppNavMoreOpen(false);
+  appNavAttendanceOpen = !!open && isAppNavigationAvailable("attendance");
+  elements.appNavAttendance?.setAttribute(
+    "aria-expanded", appNavAttendanceOpen ? "true" : "false",
+  );
+  if (elements.appNavAttendanceMenu) {
+    elements.appNavAttendanceMenu.hidden = !appNavAttendanceOpen;
+  }
+}
+
+async function navigateToAttendanceGroup(kind) {
+  const group = findAttendanceTrainingGroup(kind);
+  if (!group || kindertrainingLoading || kindertrainingWeekSaving ||
+      !elements.kindertrainingGroup) return;
+  if (!(await navigateAppSection("kindertraining"))) return;
+  if (elements.kindertrainingGroup.value !== group.id) {
+    elements.kindertrainingGroup.value = group.id;
+    await handleKindertrainingWeekGroupChange();
+  } else if (kindertrainingLoadedGroupId !== group.id) {
+    await loadKindertrainingWeek();
+  }
+}
+
 function setAppNavMoreOpen(open) {
+  if (open) setAppNavAttendanceOpen(false);
   const hasOverflow =
     [...(elements.appNavOverflow?.querySelectorAll("[data-nav-view]") ?? [])]
       .some(control => !control.hidden && !control.disabled) ||
@@ -4877,8 +4947,11 @@ function refreshAppAvailability() {
   for (const card of document.querySelectorAll("[data-dashboard-view]")) {
     card.hidden = !isAppNavigationAvailable(card.dataset.dashboardView || "");
   }
-  for (const choice of document.querySelectorAll("[data-attendance-view]")) {
-    const available = isAppNavigationAvailable(choice.dataset.attendanceView || "");
+  for (const choice of document.querySelectorAll("[data-attendance-target]")) {
+    const target = choice.dataset.attendanceTarget || "";
+    const available = target === "u12" ? u12Ready :
+      target === "kindertraining" &&
+      findAttendanceTrainingGroup(choice.dataset.attendanceGroup || "") !== null;
     choice.hidden = !available;
     choice.disabled = !available;
   }
@@ -4999,7 +5072,6 @@ function showAppSection(section) {
     (section === "masterdata" && masterdataReady) ||
     (section === "users" && userAdminReady) ||
     (section === "registration" && selfRegistrationReady) ||
-    (section === "attendance" && (kindertrainingReady || u12Ready)) ||
     (section === "kindertraining" && kindertrainingReady) ||
     (section === "u12" && u12Ready) ||
     (section === "exercise-catalog" && exerciseCatalogReady) ||
@@ -5014,6 +5086,7 @@ function showAppSection(section) {
     candidate.hidden = candidate.dataset.appSection !== target;
   }
   setAppNavMoreOpen(false);
+  setAppNavAttendanceOpen(false);
   syncAppNavigationActive(target);
   if (target === "countdown") {
     window.scrollTo({ top: 0, behavior: "instant" });
