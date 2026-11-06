@@ -13,7 +13,7 @@ describe("ULC E4D.5 compact mobile layout", () => {
       ULC_LINZ_APP_HTML.indexOf('id="app-nav-overflow"'),
     );
     expect(primary).toContain('data-nav-view="home" data-nav-priority="0">Start');
-    expect(primary).toContain('data-nav-view="kindertraining" data-nav-priority="2" disabled>Anwesenheit');
+    expect(primary).toContain('data-nav-view="attendance" data-nav-priority="2" disabled>Anwesenheit');
     expect(primary).toContain('data-nav-view="training-documentation" data-nav-priority="4" disabled>Doku');
     expect(primary).not.toContain('data-nav-view="registration"');
     expect(primary).not.toContain('data-nav-view="training-plans"');
