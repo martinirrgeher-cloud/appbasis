@@ -664,6 +664,18 @@ function runtime(
     kindertraining,
     selfRegistration,
     u12,
+    youthCategories: {
+      async list() { return []; },
+      async create(_organizationId, label) {
+        return { code: "custom_test", label, isActive: true, revision: 1 };
+      },
+      async update(_organizationId, code, input) {
+        return {
+          code, label: input.label, isActive: input.isActive,
+          revision: input.expectedRevision + 1,
+        };
+      },
+    },
     trainingBlocks: {
       async listAudiences() {
         return [];
