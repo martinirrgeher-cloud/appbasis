@@ -11,6 +11,11 @@ import {
 import type {
   UlcTrainingSessionSnapshot,
 } from "./training-session-postgres";
+import {
+  normalizeUlcYouthContentItems,
+  youthContentItemsForLegacyTitles,
+  type UlcYouthContentItem,
+} from "./training-content-catalog";
 import type {
   UlcLinzTrainingModuleGroupReader,
 } from "./training-module-group-postgres";
@@ -58,6 +63,7 @@ export interface UlcU12Snapshot {
   }> | null;
   readonly participants: readonly UlcU12Participant[];
   readonly contentTitles: readonly string[];
+  readonly contentItems: readonly UlcYouthContentItem[];
 }
 
 export interface UlcU12MasterdataReader {
@@ -89,6 +95,7 @@ export interface UlcU12SessionStore {
     }[],
     expectedRevision: string | null,
     trainingContentTitles?: readonly string[],
+    trainingContentItems?: readonly UlcYouthContentItem[],
   ): Promise<UlcTrainingSessionSnapshot>;
 }
 
@@ -198,6 +205,7 @@ export function createUlcU12Service({
           readonly contentSlots?: readonly number[];
         }[];
         readonly contentTitles?: readonly string[];
+        readonly contentItems?: readonly UlcYouthContentItem[];
       },
     ): Promise<UlcU12Snapshot> {
       if (!Array.isArray(input.attendance)) {
@@ -227,6 +235,12 @@ export function createUlcU12Service({
       );
       assertExactParticipantSet(context.participants, input.attendance);
       validateU12ContentDraft(input.contentTitles, input.attendance);
+      if (input.contentItems !== undefined) {
+        if (input.contentTitles === undefined) {
+          throw new UlcTrainingValidationError("Content metadata requires complete titles.");
+        }
+        normalizeUlcYouthContentItems(input.contentTitles, input.contentItems);
+      }
       const expectedRevision = revisionToken(input.expectedRevision);
 
       const stored = await sessions.saveSession(
@@ -241,6 +255,7 @@ export function createUlcU12Service({
         input.attendance,
         expectedRevision,
         input.contentTitles,
+        input.contentItems,
       );
       return presentSnapshot(context, stored);
     },
@@ -444,8 +459,19 @@ function presentSnapshot(
   }
 
   const contentTitles = stored?.trainingContentTitles ?? [];
+  const storedContentItems = stored?.trainingContentItems ?? [];
   const assignedSlots = new Map<string, readonly number[]>();
-  if (!Array.isArray(contentTitles) || contentTitles.length > 5) {
+  if (!Array.isArray(contentTitles) || contentTitles.length > 5 ||
+      !Array.isArray(storedContentItems) ||
+      (storedContentItems.length > 0 && storedContentItems.length !== contentTitles.length)) {
+    throw new UlcU12ConsistencyError();
+  }
+  let contentItems: readonly UlcYouthContentItem[];
+  try {
+    contentItems = storedContentItems.length > 0
+      ? normalizeUlcYouthContentItems(contentTitles, storedContentItems)
+      : youthContentItemsForLegacyTitles(contentTitles);
+  } catch {
     throw new UlcU12ConsistencyError();
   }
   for (const assignment of stored?.trainingContentAssignments ?? []) {
@@ -469,6 +495,7 @@ function presentSnapshot(
     }),
     sessionDate: context.sessionDate,
     contentTitles: Object.freeze([...contentTitles]),
+    contentItems,
     session:
       stored === null
         ? null
