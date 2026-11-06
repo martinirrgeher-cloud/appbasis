@@ -4297,7 +4297,7 @@ async function athletesMasterdataMutationResponse(
           (typeof body.groupId !== "string" || !validRequestIdentifier(body.groupId))) ||
         (body.startedOn !== null &&
           (typeof body.startedOn !== "string" ||
-            !/^\\d{4}-\\d{2}-\\d{2}$/.test(body.startedOn))) ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(body.startedOn))) ||
         (body.groupId === null) !== (body.startedOn === null) ||
         !Array.isArray(body.contacts) || body.contacts.length > 6 ||
         !body.contacts.every((entry: unknown) => {
