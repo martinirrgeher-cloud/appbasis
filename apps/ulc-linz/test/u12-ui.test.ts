@@ -10,14 +10,11 @@ import {
   ULC_U12_SCRIPT,
 } from "../worker/u12-ui";
 
-describe("ULC A03 U12 weekly attendance vertical slice", () => {
-  it("adds a U12 surface without changing the three fixed navigation items", () => {
+describe("ULC A03: one training date, one binary trainer name list", () => {
+  it("keeps the existing navigation and module permission gate", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-app-section="u12"');
     expect(ULC_LINZ_APP_HTML).toContain('data-dashboard-view="u12" hidden');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="u12"');
-    expect(ULC_LINZ_APP_HTML).toContain('id="u12-week"');
-    expect(ULC_LINZ_APP_HTML).toContain('id="u12-group"');
-    expect(ULC_LINZ_APP_HTML).toContain('id="u12-save"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-documentation"');
@@ -25,63 +22,93 @@ describe("ULC A03 U12 weekly attendance vertical slice", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('if (section === "u12") return u12Ready;');
     expect(ULC_LINZ_APP_SCRIPT).toContain('card.hidden = !isAppNavigationAvailable(card.dataset.dashboardView || "")');
     expect(ULC_LINZ_APP_SCRIPT).toContain('if (target === "u12") prepareU12View();');
-    expect(ULC_LINZ_APP_SCRIPT).toContain('    bootstrapU12(),');
-    expect(ULC_LINZ_APP_SCRIPT).toContain('  resetU12SessionState();');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("    bootstrapU12(),");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("  resetU12SessionState();");
   });
 
-  it("handles seven ISO dates, server-side roster, optimistic CAS and fail-closed access", () => {
+  it("shows only date, name, anwesenheit checkbox and save; no week or 4-state editor", () => {
+    expect(ULC_U12_HTML).toContain('id="u12-group"');
+    expect(ULC_U12_HTML).toContain('type="date" id="u12-date"');
+    expect(ULC_U12_HTML).toContain('id="u12-prev"');
+    expect(ULC_U12_HTML).toContain('id="u12-next"');
+    expect(ULC_U12_HTML).toContain('id="u12-reload"');
+    expect(ULC_U12_HTML).toContain('id="u12-save"');
+    expect(ULC_U12_HTML).toContain("Liste speichern");
+    expect(ULC_U12_HTML).toContain('id="u12-count"');
+    expect(ULC_U12_HTML).not.toContain('id="u12-week-label"');
+    expect(ULC_U12_HTML).not.toContain("Tagesnotiz");
+    expect(ULC_U12_HTML).not.toContain("Wochenmatrix");
+    expect(ULC_U12_SCRIPT).toContain('input.type = "checkbox"');
+    expect(ULC_U12_SCRIPT).toContain('input.dataset.u12AthleteId = person.athleteId');
+    expect(ULC_U12_SCRIPT).toContain('status.textContent = input.checked ? "Ja" : "Nein"');
+    expect(ULC_U12_SCRIPT).toContain('label.className = "u12-person"');
+    expect(ULC_U12_SCRIPT).not.toContain('registrationWeekDates(');
+    expect(ULC_U12_SCRIPT).not.toContain('u12AutoTimer');
+    expect(ULC_U12_SCRIPT).not.toContain("Promise.allSettled(");
+  });
+
+  it("reads exactly one training date and saves a full yes/no list with CAS", () => {
     expect(ULC_U12_SCRIPT).toContain('requestJson("/api/modules/u12")');
     expect(ULC_U12_SCRIPT).toContain('requestJson("/api/modules/u12/session?groupId="');
+    expect(ULC_U12_SCRIPT).toContain('encodeURIComponent(groupId) + "&sessionDate=" + encodeURIComponent(date)');
     expect(ULC_U12_SCRIPT).toContain('requestJson("/api/modules/u12/session", {');
-    expect(ULC_U12_SCRIPT).toContain('const dates = registrationWeekDates(weekStart);');
-    expect(ULC_U12_SCRIPT).toContain('Promise.allSettled(dates.map(');
-    expect(ULC_U12_SCRIPT).toContain('expectedRevision: entry.snapshot.session?.revision ?? null');
-    expect(ULC_U12_SCRIPT).toContain('attendance: entry.draft.participants.map(');
+    expect(ULC_U12_SCRIPT).toContain('expectedRevision: u12Snapshot.session?.revision ?? null');
+    expect(ULC_U12_SCRIPT).toContain('status: u12Present.get(person.athleteId) === true ? "present" : "absent"');
+    expect(ULC_U12_SCRIPT).toContain('state: u12Snapshot.session?.state ?? "scheduled"');
+    expect(ULC_U12_SCRIPT).toContain('note: u12Snapshot.session?.note ?? null');
     expect(ULC_U12_SCRIPT).toContain('error?.status === 409');
-    expect(ULC_U12_SCRIPT).toContain('u12Conflict = true;');
-    expect(ULC_U12_SCRIPT).toContain('u12WriteAllowed = false;');
-    expect(ULC_U12_SCRIPT).toContain('if (generation !== attendanceSessionGeneration)');
-    expect(ULC_U12_SCRIPT).toContain('window.confirm("Ungespeicherte U12-Änderungen verwerfen');
+    expect(ULC_U12_SCRIPT).toContain("u12Conflict = true;");
+    expect(ULC_U12_SCRIPT).toContain("u12WriteAllowed = false;");
+    expect(ULC_U12_SCRIPT).toContain('u12Snapshot.session?.state === "cancelled"');
+    expect(ULC_U12_SCRIPT).toContain('if (generation !== attendanceSessionGeneration || loadId !== u12LoadId)');
+    expect(ULC_U12_SCRIPT).toContain('u12Snapshot.session === null ? "Noch nicht erfasst');
+    expect(ULC_U12_SCRIPT).toContain("u12DirtyDates.clear();");
   });
 
-  it("preserves edits when navigating or signing out and avoids cached personal data", () => {
+  it("does not silently persist a completely unchecked first visit", () => {
+    // The initial state is a draft only. Save is enabled explicitly, and
+    // marking every unchecked name absent requires a deliberate trainer save.
+    const bootstrap = ULC_U12_SCRIPT.slice(
+      ULC_U12_SCRIPT.indexOf("async function bootstrapU12()"),
+      ULC_U12_SCRIPT.indexOf("function refreshU12Controls()"),
+    );
+    expect(bootstrap).toContain("await loadU12Attendance()");
+    expect(bootstrap).not.toContain("saveU12Attendance()");
+    const changeHandler = ULC_U12_SCRIPT.slice(
+      ULC_U12_SCRIPT.indexOf('u12Ui.days?.addEventListener("change"'),
+    );
+    expect(changeHandler).toContain("u12DirtyDates.add(u12LoadedDate)");
+    expect(changeHandler).not.toContain("saveU12Attendance()");
+    expect(ULC_U12_SCRIPT).toContain("u12DirtyDates.size === 0 && u12Snapshot?.session !== null");
+  });
+
+  it("guards unsaved rows on navigation, date changes, reload and sign-out", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('current === "u12" && section !== "u12"');
-    expect(ULC_LINZ_APP_SCRIPT).toContain('u12DirtyDates.size > 0 && !(await u12FlushChanges())');
-    expect(ULC_U12_SCRIPT).toContain('u12AutoTimer = window.setTimeout');
-    expect(ULC_U12_SCRIPT).toContain('u12DirtyDates.delete(date)');
-    expect(ULC_U12_SCRIPT).not.toMatch(/localStorage|sessionStorage|indexedDB/);
-    expect(ULC_U12_SCRIPT).toContain('label.textContent = person.lastName + " " + person.firstName;');
-    expect(ULC_LINZ_APP_CSS).toContain(ULC_U12_CSS);
+    expect(ULC_LINZ_APP_SCRIPT).toContain("u12DirtyDates.size > 0 && !(await u12FlushChanges())");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (u12Saving || u12DirtyDates.size > 0)");
+    expect(ULC_U12_SCRIPT).toContain('window.confirm("Ungespeicherte U12-Häkchen verwerfen');
+    expect(ULC_U12_SCRIPT).toContain("if (!(await u12FlushChanges())) return;");
+    expect(ULC_U12_SCRIPT).toContain("if (!(await u12FlushChanges())) {");
+    expect(ULC_U12_SCRIPT).toContain('u12Ui.reload?.addEventListener("click"');
+    expect(ULC_U12_SCRIPT).not.toMatch(/localStorage|sessionStorage|indexedDB|innerHTML/);
   });
 
-  it("keeps the mobile note editor mounted during autosave and retries concurrent edits", () => {
-    const start = ULC_U12_SCRIPT.indexOf("async function saveU12Week()");
-    const end = ULC_U12_SCRIPT.indexOf("async function u12FlushChanges()", start);
-    const saveBody = ULC_U12_SCRIPT.slice(start, end);
-    // The normal save path must not replace the focused editor. A forced
-    // redraw is appropriate only when the backend revokes write access.
-    const normalSaveBody = saveBody.slice(0, saveBody.indexOf("} catch (error) {"));
-    const saveFinally = saveBody.slice(saveBody.lastIndexOf("} finally {"));
-    expect(normalSaveBody).not.toContain("renderU12Week()");
-    expect(saveFinally).not.toContain("renderU12Week()");
-    expect(saveBody).toContain("u12WriteAllowed = false;");
-    expect(saveBody).toContain("renderU12Week();");
+  it("keeps checkboxes mounted while toggling and saving on mobile", () => {
+    const saveBody = ULC_U12_SCRIPT.slice(
+      ULC_U12_SCRIPT.indexOf("async function saveU12Attendance()"),
+      ULC_U12_SCRIPT.indexOf("async function u12FlushChanges()"),
+    );
+    expect(saveBody).not.toContain("renderU12Attendance()");
     expect(saveBody).toContain("refreshU12Controls()");
-    expect(saveBody).toContain("const outgoingDraft = JSON.stringify(entry.draft)");
-    expect(saveBody).toContain("JSON.stringify(entry.draft) === outgoingDraft");
-    expect(saveBody).toContain("u12DirtyDates.add(date)");
-    expect(saveBody).toContain("u12AutoTimer = window.setTimeout");
-    const noteHandler = ULC_U12_SCRIPT.slice(ULC_U12_SCRIPT.indexOf('u12Ui.days?.addEventListener("input"'));
-    expect(noteHandler).toContain("if (!date || !u12WriteAllowed || u12Conflict) return;");
-    expect(noteHandler).not.toContain("if (!date || !u12WriteAllowed || u12Saving || u12Conflict)");
-    expect(ULC_U12_SCRIPT).toContain('querySelectorAll("[data-u12-note-date]")');
-    expect(ULC_U12_SCRIPT).toContain("note.disabled = !u12WriteAllowed || u12Conflict");
-  });
-
-  it("compiles into the existing browser JS and keeps stable responsive HTML", () => {
+    const changeHandler = ULC_U12_SCRIPT.slice(
+      ULC_U12_SCRIPT.indexOf('u12Ui.days?.addEventListener("change"'),
+    );
+    expect(changeHandler).toContain("refreshU12Controls()");
+    expect(changeHandler).not.toContain("renderU12Attendance()");
+    expect(ULC_U12_CSS).toContain("min-height: 44px");
+    expect(ULC_U12_CSS).toContain("max-width: 100%");
+    expect(ULC_U12_CSS).not.toContain("grid-template-columns: repeat(4");
+    expect(ULC_LINZ_APP_CSS).toContain(ULC_U12_CSS);
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
-    expect(ULC_U12_HTML).toContain('aria-live="polite"');
-    expect(ULC_U12_CSS).toContain('grid-template-columns: repeat(4, minmax(0, 1fr))');
-    expect(ULC_U12_CSS).toContain('max-width: 100%');
   });
 });
