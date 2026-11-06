@@ -23,6 +23,11 @@ import {
   ULC_TRAINING_DOCUMENTATION_HTML,
   ULC_TRAINING_DOCUMENTATION_SCRIPT,
 } from "./training-documentation-ui";
+import {
+  ULC_U12_HTML,
+  ULC_U12_CSS,
+  ULC_U12_SCRIPT,
+} from "./u12-ui";
 import { generatedPwaResponse } from "./pwa";
 
 export const ULC_LINZ_APP_HTML = `<!doctype html>
@@ -100,6 +105,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <div class="app-nav__group-list">
                 <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="5" hidden disabled>Übungen</button>
                 <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="6" hidden disabled>Blöcke</button>
+                <button class="app-nav__link" type="button" data-nav-view="u12" data-nav-priority="10" hidden disabled>U12-Anwesenheit</button>
               </div>
             </details>
             <details class="app-nav__group" data-nav-group="administration" hidden>
@@ -162,6 +168,16 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary dashboard-action" id="kindertraining-quick-action" type="button" data-open-view="kindertraining" disabled>Anwesenheit öffnen</button>
                 <small id="kindertraining-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="u12" hidden>
+                <div>
+                  <p class="eyebrow">Training</p>
+                  <h2>U12-Anwesenheit</h2>
+                  <p>U12-Wochenansicht für berechtigte Trainer.</p>
+                </div>
+                <button class="button button--primary dashboard-action" id="u12-quick-action" type="button" data-open-view="u12" disabled>U12 öffnen</button>
+                <small>Nur für freigeschaltete U12-Gruppen.</small>
               </article>
 
               <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="training-plans" hidden>
@@ -581,6 +597,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             </dialog>
           </section>
 
+${ULC_U12_HTML}
           <section class="app-section" data-app-section="kindertraining" id="kindertraining" hidden>
             <section class="hero">
               <p class="eyebrow">Training</p>
@@ -2081,6 +2098,7 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
 .masterdata-icon-action__label { display: none; }
 
 ${ULC_USER_ADMIN_CSS}
+${ULC_U12_CSS}
 `;
 
 export const ULC_LINZ_APP_SCRIPT = `const SETTINGS_KEY = "ulc-linz.countdown.settings.v1";
@@ -2705,6 +2723,8 @@ document.addEventListener("keydown", (event) => {
 });
 async function navigateAppSection(section) {
   const current = document.querySelector("[data-nav-view].is-active")?.dataset.navView || "home";
+  if (current === "u12" && section !== "u12" &&
+      !(await u12FlushChanges())) return;
   if (
     current === "training-plans" &&
     section !== "training-plans" &&
@@ -2747,6 +2767,8 @@ ${ULC_TRAINING_PLANS_SCRIPT}
 ${ULC_TRAINING_DOCUMENTATION_SCRIPT}
 
 ${ULC_USER_ADMIN_SCRIPT}
+
+${ULC_U12_SCRIPT}
 
 void restoreSession();
 
@@ -2843,6 +2865,7 @@ function resetAttendanceSessionState() {
   renderSelfRegistrationWeekLabel();
   renderSelfRegistration();
 
+  resetU12SessionState();
   kindertrainingReady = false;
   kindertrainingLoading = false;
   kindertrainingGroups = [];
@@ -2940,6 +2963,14 @@ async function handleSignOut() {
       elements.appSessionMessage,
       "Eine Anmeldung oder ein Hinweis wird noch gespeichert. Bitte zuerst abschließen lassen.",
     );
+    return;
+  }
+  if (u12Saving || u12Loading) {
+    showMessage(elements.appSessionMessage, "U12 wird noch verarbeitet. Bitte danach abmelden.");
+    return;
+  }
+  if (u12DirtyDates.size > 0 && !(await u12FlushChanges())) {
+    showMessage(elements.appSessionMessage, "U12-Änderungen konnten nicht gespeichert werden.");
     return;
   }
   if (masterdataExchangeBusy || trainerIdentityLoading) {
@@ -3045,6 +3076,7 @@ async function acceptSession(next) {
     bootstrapUserAdmin(),
     bootstrapSelfRegistration(),
     bootstrapKindertraining(),
+    bootstrapU12(),
     bootstrapExerciseCatalog(),
     bootstrapTrainingBlocks(),
     bootstrapTrainingPlans(),
@@ -4686,6 +4718,7 @@ function isAppNavigationAvailable(section) {
   if (section === "users") return userAdminReady;
   if (section === "registration") return selfRegistrationReady;
   if (section === "kindertraining") return kindertrainingReady;
+  if (section === "u12") return u12Ready;
   if (section === "exercise-catalog") return exerciseCatalogReady;
   if (section === "training-blocks") return trainingBlocksReady;
   if (section === "training-plans") return trainingPlansReady;
@@ -4817,6 +4850,8 @@ function refreshAppAvailability() {
       ? "Für deine Athleten-Identität freigeschaltet."
       : "Nur mit einem verknüpften Athletenkonto verfügbar.";
   }
+  const u12QuickAction = document.querySelector("#u12-quick-action");
+  if (u12QuickAction) u12QuickAction.disabled = !u12Ready;
   if (elements.kindertrainingQuickAction) {
     elements.kindertrainingQuickAction.disabled = !kindertrainingReady;
   }
@@ -4889,6 +4924,7 @@ function showAppSection(section) {
     (section === "users" && userAdminReady) ||
     (section === "registration" && selfRegistrationReady) ||
     (section === "kindertraining" && kindertrainingReady) ||
+    (section === "u12" && u12Ready) ||
     (section === "exercise-catalog" && exerciseCatalogReady) ||
     (section === "training-blocks" && trainingBlocksReady) ||
     (section === "training-plans" && trainingPlansReady) ||
@@ -4913,6 +4949,7 @@ function showAppSection(section) {
   if (target === "users") void prepareUserAdminView();
   if (target === "registration") prepareSelfRegistrationView();
   if (target === "kindertraining") prepareKindertrainingView();
+  if (target === "u12") prepareU12View();
   if (target === "exercise-catalog") prepareExerciseCatalogView();
   if (target === "training-blocks") prepareTrainingBlocksView();
   if (target === "training-plans") prepareTrainingPlansView();
