@@ -159,24 +159,13 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <button class="button button--primary dashboard-action" type="button" data-open-view="users">Benutzer öffnen</button>
               </article>
 
-              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="kindertraining" hidden>
+              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="attendance" hidden>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Anwesenheit</h2>
-                  <p>Voranmeldungen einer Trainingsgruppe prüfen und die tatsächliche Anwesenheit für einen Trainingstag erfassen.</p>
+                  <p>Wähle deine Gruppe und erfasse die Anwesenheit direkt im Training.</p>
                 </div>
-                <button class="button button--primary dashboard-action" id="kindertraining-quick-action" type="button" data-open-view="kindertraining" disabled>Anwesenheit öffnen</button>
-                <small id="kindertraining-access-label">Berechtigung wird geprüft …</small>
-              </article>
-
-              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="u12" hidden>
-                <div>
-                  <p class="eyebrow">Training</p>
-                  <h2>U12-Anwesenheit</h2>
-                  <p>Namensliste pro Training: Anwesend ja oder nein.</p>
-                </div>
-                <button class="button button--primary dashboard-action" id="u12-quick-action" type="button" data-open-view="u12" disabled>U12 öffnen</button>
-                <small>Nur für freigeschaltete U12-Gruppen.</small>
+                <button class="button button--primary dashboard-action" type="button" data-open-view="attendance" disabled>Anwesenheit öffnen</button>
               </article>
 
               <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="training-plans" hidden>
@@ -612,6 +601,34 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               </div>
               <small class="registration-proxy-hint">Änderungen werden dem ausführenden Benutzer zugeordnet. Nur Mitglieder derselben Gruppe können vertreten werden.</small>
             </dialog>
+          </section>
+
+          <section class="app-section" data-app-section="attendance" id="attendance" hidden>
+            <section class="hero">
+              <p class="eyebrow">Training</p>
+              <h1>Anwesenheit</h1>
+              <p class="summary">Gruppe auswählen – Anwesenheit und Inhalte direkt beim Training dokumentieren.</p>
+            </section>
+            <div class="attendance-group-list" aria-label="Trainingsgruppen">
+              <button class="attendance-group-choice" type="button" data-open-view="u12" data-attendance-view="u12" hidden disabled>
+                <span class="attendance-group-choice__icon" aria-hidden="true">✓</span>
+                <span class="attendance-group-choice__main"><strong>U12</strong><small>Namensliste je Training</small></span>
+                <span aria-hidden="true">›</span>
+              </button>
+              <button class="attendance-group-choice" type="button" data-open-view="kindertraining" data-attendance-view="kindertraining" hidden disabled>
+                <span class="attendance-group-choice__icon" aria-hidden="true">✓</span>
+                <span class="attendance-group-choice__main"><strong>Kindertraining</strong><small>Wochenübersicht und Anwesenheit</small></span>
+                <span aria-hidden="true">›</span>
+              </button>
+              <div class="attendance-group-choice attendance-group-choice--pending">
+                <span class="attendance-group-choice__icon" aria-hidden="true">·</span>
+                <span class="attendance-group-choice__main"><strong>U14</strong><small>Modul in Vorbereitung</small></span>
+              </div>
+              <div class="attendance-group-choice attendance-group-choice--pending">
+                <span class="attendance-group-choice__icon" aria-hidden="true">·</span>
+                <span class="attendance-group-choice__main"><strong>Gruppe Irrgeher</strong><small>Personenbezogene Detailansicht folgt separat</small></span>
+              </div>
+            </div>
           </section>
 
 ${ULC_U12_HTML}
@@ -2125,6 +2142,14 @@ ${ULC_USER_ADMIN_CSS}
 .athlete-create-contact { min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
 .athlete-create-contact legend { font-size: .82rem; }
 .athlete-create-contact > button { min-height: 44px; margin-top: 10px; }
+/* Attendance hub: independent group destinations, not a content submenu. */
+.attendance-group-list { display:grid; gap:9px; max-width:720px; }
+.attendance-group-choice { display:flex; align-items:center; text-align:left; gap:12px; min-width:0; min-height:72px; padding:12px; border:1px solid var(--border); border-radius:14px; background:var(--card); color:var(--text); cursor:pointer; }
+.attendance-group-choice__icon { width:38px; height:38px; flex:0 0 38px; display:grid; place-items:center; border-radius:12px; background:var(--muted); color:var(--accent); font-weight:800; font-size:1.12rem; }
+.attendance-group-choice__main { min-width:0; display:grid; gap:3px; flex:1; }
+.attendance-group-choice__main strong { font-size:.98rem; }
+.attendance-group-choice__main small { font-size:.78rem; color:var(--secondary); overflow-wrap:anywhere; }
+.attendance-group-choice--pending { opacity:.6; cursor:default; }
 ${ULC_U12_CSS}
 `;
 
