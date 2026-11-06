@@ -11,6 +11,7 @@ import {
 import type {
   UlcTrainingSessionSnapshot,
 } from "./training-session-postgres";
+import type { PostgresUlcYouthCategoryRepository } from "./youth-category-postgres";
 import {
   normalizeUlcYouthContentItems,
   youthContentItemsForLegacyTitles,
@@ -121,10 +122,13 @@ export function createUlcU12Service({
   masterdata,
   sessions,
   moduleGroups,
+  categories,
 }: {
   masterdata: UlcU12MasterdataReader;
   sessions: UlcU12SessionStore;
   moduleGroups: UlcLinzTrainingModuleGroupReader;
+  /** Shared for U12, future U14 and Kindertraining; optional only for legacy unit fixtures. */
+  categories?: Pick<PostgresUlcYouthCategoryRepository, "validateSessionContents">;
 }) {
   return Object.freeze({
     async listGroups(
@@ -240,6 +244,20 @@ export function createUlcU12Service({
           throw new UlcTrainingValidationError("Content metadata requires complete titles.");
         }
         normalizeUlcYouthContentItems(input.contentTitles, input.contentItems);
+        if (categories) {
+          const previous = await sessions.readSession(
+            context.organizationId, MODULE_ID, context.group.id, context.sessionDate,
+          );
+          await categories.validateSessionContents(
+            context.organizationId,
+            input.contentTitles,
+            input.contentItems,
+            previous === null ? null : {
+              titles: previous.trainingContentTitles ?? [],
+              items: previous.trainingContentItems ?? [],
+            },
+          );
+        }
       }
       const expectedRevision = revisionToken(input.expectedRevision);
 
