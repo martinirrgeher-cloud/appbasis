@@ -413,6 +413,100 @@ function refreshU12Controls() {
   }
 }
 
+
+function markU12DraftDirty() {
+  u12DirtyDates.add(u12LoadedDate);
+  showMessage(u12Ui.success, "");
+  refreshU12Controls();
+}
+
+function renderU12ContentRows() {
+  if (!u12Ui.contentRows) return;
+  u12Ui.contentRows.replaceChildren();
+  if (u12Ui.contentCard) u12Ui.contentCard.hidden = !u12Snapshot;
+  if (!u12Snapshot) return;
+  if (u12ContentTitles.length === 0) {
+    const empty = document.createElement("small");
+    empty.textContent = "Noch keine Trainingsinhalte erfasst.";
+    u12Ui.contentRows.append(empty);
+  }
+  for (const [index, title] of u12ContentTitles.entries()) {
+    const row = document.createElement("div");
+    row.className = "u12-content-row";
+    const number = document.createElement("strong");
+    number.textContent = String(index + 1);
+    const input = document.createElement("input");
+    input.type = "text";
+    input.required = true;
+    input.maxLength = 120;
+    input.placeholder = "z. B. Koordination oder Sprint";
+    input.value = title;
+    input.dataset.u12TitleIndex = String(index);
+    input.setAttribute("aria-label", "Trainingsinhalt " + (index + 1));
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "u12-content-remove";
+    remove.dataset.u12RemoveIndex = String(index);
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", "Inhalt " + (index + 1) + " entfernen");
+    row.append(number, input, remove);
+    u12Ui.contentRows.append(row);
+  }
+}
+
+function addU12Content() {
+  if (!u12Snapshot || u12ContentTitles.length >= 5 || u12Loading ||
+      u12Saving || !u12WriteAllowed || u12Conflict ||
+      u12Snapshot.session?.state === "cancelled") return;
+  u12ContentTitles.push("");
+  if (u12Ui.contentCard) u12Ui.contentCard.open = true;
+  renderU12ContentRows();
+  markU12DraftDirty();
+  u12Ui.contentRows?.querySelectorAll("[data-u12-title-index]")[u12ContentTitles.length - 1]?.focus();
+}
+
+function removeU12Content(index) {
+  if (!u12Snapshot || !Number.isInteger(index) ||
+      index < 0 || index >= u12ContentTitles.length ||
+      u12Loading || u12Saving || !u12WriteAllowed || u12Conflict ||
+      u12Snapshot.session?.state === "cancelled") return;
+  u12ContentTitles.splice(index, 1);
+  for (const [id, slots] of u12ContentAssignments) {
+    u12ContentAssignments.set(id, new Set(
+      [...slots].filter((slot) => slot !== index + 1)
+        .map((slot) => slot > index + 1 ? slot - 1 : slot),
+    ));
+  }
+  u12AssignmentAthleteId = null;
+  if (u12Ui.assignDialog?.open) u12Ui.assignDialog.close();
+  renderU12Attendance();
+  markU12DraftDirty();
+}
+
+function openU12ContentAssignments(athleteId) {
+  const person = u12Snapshot?.participants.find((item) => item.athleteId === athleteId);
+  if (!person || !u12Present.get(athleteId) || u12ContentTitles.length === 0 ||
+      !u12Ui.assignDialog || !u12Ui.assignOptions || u12Loading || u12Saving) return;
+  u12AssignmentAthleteId = athleteId;
+  u12Ui.assignTitle.textContent = "Inhalte: " + person.firstName + " " + person.lastName;
+  u12Ui.assignOptions.replaceChildren();
+  const selected = u12ContentAssignments.get(athleteId) ?? new Set();
+  for (const [index, title] of u12ContentTitles.entries()) {
+    const label = document.createElement("label");
+    label.className = "u12-assign-option";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.dataset.u12AssignSlot = String(index + 1);
+    input.checked = selected.has(index + 1);
+    const name = document.createElement("span");
+    name.textContent = String(index + 1) + ". " + (title.trim() || "Inhalt ohne Bezeichnung");
+    label.append(input, name);
+    u12Ui.assignOptions.append(label);
+  }
+  u12Ui.assignDialog.showModal();
+  refreshU12Controls();
+}
+
 function renderU12Attendance() {
   if (!u12Ui.days || !u12Ui.week) return;
   u12Ui.days.replaceChildren();
