@@ -41,7 +41,8 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_SCRIPT).toContain('input.type = "checkbox"');
     expect(ULC_U12_SCRIPT).toContain('input.dataset.u12AthleteId = person.athleteId');
     expect(ULC_U12_SCRIPT).toContain('status.textContent = input.checked ? "Ja" : "Nein"');
-    expect(ULC_U12_SCRIPT).toContain('label.className = "u12-person"');
+    expect(ULC_U12_SCRIPT).toContain('row.className = "u12-person"');
+    expect(ULC_U12_SCRIPT).toContain('label.className = "u12-person__toggle"');
     expect(ULC_U12_SCRIPT).not.toContain('registrationWeekDates(');
     expect(ULC_U12_SCRIPT).not.toContain('u12AutoTimer');
     expect(ULC_U12_SCRIPT).not.toContain("Promise.allSettled(");
@@ -114,6 +115,39 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
       "u12DirtyDates.size === 0 && u12Snapshot.session !== null &&",
     );
     expect(saveBody).toContain("!u12HasUnconfirmedAnswers()) return true;");
+  });
+
+  it("offers a local-date Heute shortcut without changing the binary roster", () => {
+    expect(ULC_U12_HTML).toContain('id="u12-today"');
+    expect(ULC_U12_SCRIPT).toContain("async function u12GoToday()");
+    expect(ULC_U12_SCRIPT).toContain("const today = localIsoDate(new Date());");
+    expect(ULC_U12_SCRIPT).toContain("await u12ChangeDate();");
+    expect(ULC_U12_SCRIPT).toContain('u12Ui.today?.addEventListener("click"');
+    expect(ULC_U12_SCRIPT).toContain('"aria-pressed", String(u12Ui.date?.value === localIsoDate(new Date()))');
+    expect(ULC_U12_SCRIPT).not.toContain("toISOString().slice(0, 10)");
+  });
+
+  it("only offers quick create when athlete edit rights exist and preserves U12 group/date", () => {
+    expect(ULC_U12_HTML).toContain('id="u12-add-athlete" hidden');
+    expect(ULC_U12_SCRIPT).toContain("masterdataReady && masterdataCanEdit && u12Ready");
+    expect(ULC_U12_SCRIPT).toContain("async function openU12NewAthlete()");
+    expect(ULC_U12_SCRIPT).toContain("if (!(await u12FlushChanges())) return;");
+    expect(ULC_U12_SCRIPT).toContain("await loadMasterdata()");
+    expect(ULC_U12_SCRIPT).toContain('showAppSection("masterdata");');
+    expect(ULC_U12_SCRIPT).toContain('source: "u12", groupId, startedOn');
+  });
+
+  it("shows scoped notes/contacts on demand without rendering them in roster rows", () => {
+    expect(ULC_U12_HTML).toContain('id="u12-details-dialog"');
+    expect(ULC_U12_HTML).toContain('id="u12-details-content"');
+    expect(ULC_U12_SCRIPT).toContain('info.dataset.u12InfoId = person.athleteId;');
+    expect(ULC_U12_SCRIPT).toContain("function openU12AthleteDetails(athleteId)");
+    expect(ULC_U12_SCRIPT).toContain('notesBody.textContent = person.notes?.trim()');
+    expect(ULC_U12_SCRIPT).toContain('name.textContent = contact.contactName');
+    expect(ULC_U12_SCRIPT).toContain('phone.textContent = "Telefon: " + contact.phone;');
+    expect(ULC_U12_SCRIPT).toContain('label.textContent = contact.isEmergency ? "Notfallkontakt"');
+    expect(ULC_U12_SCRIPT).not.toMatch(/\.innerHTML\s*=/);
+    expect(ULC_U12_SCRIPT).toContain("u12Ui.detailsContent?.replaceChildren()");
   });
 
   it("guards unsaved rows on navigation, date changes, reload and sign-out", () => {

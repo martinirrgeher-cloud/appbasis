@@ -23,11 +23,22 @@ export interface UlcU12GroupOption {
   readonly shortName: string | null;
 }
 
+export interface UlcU12ParticipantContact {
+  readonly id: string;
+  readonly contactName: string;
+  readonly relationship: string | null;
+  readonly phone: string;
+  readonly isEmergency: boolean;
+  readonly notes: string | null;
+}
+
 export interface UlcU12Participant {
   readonly athleteId: string;
   readonly firstName: string;
   readonly lastName: string;
   readonly birthYear: number | null;
+  readonly notes: string | null;
+  readonly contacts: readonly UlcU12ParticipantContact[];
   readonly status: UlcTrainingAttendanceStatus;
 }
 
@@ -280,6 +291,8 @@ interface ResolvedContext {
     readonly firstName: string;
     readonly lastName: string;
     readonly birthYear: number | null;
+    readonly notes: string | null;
+    readonly contacts: readonly UlcU12ParticipantContact[];
   }[];
 }
 
@@ -334,6 +347,29 @@ async function resolveContext(
     participantIds.add(membership.athleteId);
   }
 
+  // Only attach information for athletes in the *authorized U12 group*.
+  // Do not return the organization-wide contacts/masterdata snapshot.
+  const contactsByAthlete = new Map<string, UlcU12ParticipantContact[]>();
+  for (const contact of snapshot.athleteContacts) {
+    if (contact.organizationId !== normalizedOrganizationId ||
+        !participantIds.has(contact.athleteId)) continue;
+    const contacts = contactsByAthlete.get(contact.athleteId) ?? [];
+    contacts.push(Object.freeze({
+      id: contact.id,
+      contactName: contact.contactName,
+      relationship: contact.relationship,
+      phone: contact.phone,
+      isEmergency: contact.isEmergency,
+      notes: contact.notes,
+    }));
+    contactsByAthlete.set(contact.athleteId, contacts);
+  }
+  for (const contacts of contactsByAthlete.values()) {
+    contacts.sort((a, b) =>
+      Number(b.isEmergency) - Number(a.isEmergency) ||
+      a.contactName.localeCompare(b.contactName, "de"));
+  }
+
   const participants = [...participantIds]
     .map((athleteId) => {
       const athlete = athletesById.get(athleteId);
@@ -343,6 +379,8 @@ async function resolveContext(
         firstName: athlete.firstName,
         lastName: athlete.lastName,
         birthYear: athlete.birthYear,
+        notes: athlete.notes,
+        contacts: Object.freeze(contactsByAthlete.get(athleteId) ?? []),
       });
     })
     .sort(

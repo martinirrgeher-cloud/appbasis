@@ -147,7 +147,23 @@ export interface GeneratedPostgresApplicationRuntime {
     | "deactivateTrainer"
     | "reactivateAthlete"
     | "reactivateTrainer"
-  >;
+  > & {
+    createAthleteComplete(
+      organizationId: string,
+      input: {
+        athlete: Parameters<PostgresAthleteMasterdataRepository["createAthlete"]>[1];
+        groupId: string | null;
+        startedOn: string | null;
+        contacts: readonly Parameters<
+          PostgresAthleteMasterdataRepository["createAthleteContact"]
+        >[2][];
+      },
+    ): Promise<{
+      athlete: Awaited<ReturnType<PostgresAthleteMasterdataRepository["createAthlete"]>>;
+      groupMembership: Awaited<ReturnType<PostgresAthleteMasterdataRepository["createAthleteGroupMembership"]>> | null;
+      contacts: readonly NonNullable<Awaited<ReturnType<PostgresAthleteMasterdataRepository["createAthleteContact"]>>>[];
+    }>;
+  };
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
   selfRegistration: ReturnType<typeof createUlcSelfRegistrationService>;
   u12: ReturnType<typeof createUlcU12Service>;
@@ -331,6 +347,41 @@ export async function createGeneratedPostgresApplicationRuntime(
         input: Parameters<PostgresAthleteMasterdataRepository["createAthlete"]>[1],
       ) {
         return athleteMasterdataRepository.createAthlete(organizationId, input);
+      },
+      createAthleteComplete(
+        organizationId: string,
+        input: {
+          athlete: Parameters<PostgresAthleteMasterdataRepository["createAthlete"]>[1];
+          groupId: string | null;
+          startedOn: string | null;
+          contacts: readonly Parameters<
+            PostgresAthleteMasterdataRepository["createAthleteContact"]
+          >[2][];
+        },
+      ) {
+        // All steps use the established athletes repository's validation and
+        // its organization-bound SQL. Any error rolls back the entire create.
+        return applicationSql.begin(async (transaction) => {
+          const repository = new PostgresAthleteMasterdataRepository(transaction);
+          const athlete = await repository.createAthlete(organizationId, input.athlete);
+          const groupMembership = input.groupId === null ? null :
+            await repository.createAthleteGroupMembership(organizationId, {
+              athleteId: athlete.id,
+              groupId: input.groupId,
+              startedOn: input.startedOn ?? "",
+            });
+          const contacts = [];
+          for (const contactInput of input.contacts) {
+            const contact = await repository.createAthleteContact(
+              organizationId, athlete.id, contactInput,
+            );
+            if (contact === null) {
+              throw new Error("Athlete contact creation failed: rolling back");
+            }
+            contacts.push(contact);
+          }
+          return { athlete, groupMembership, contacts };
+        });
       },
       createAthleteContact(
         organizationId: string,

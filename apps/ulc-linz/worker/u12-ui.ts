@@ -20,7 +20,10 @@ export const ULC_U12_HTML = `
                 </label>
                 <button class="button button--secondary" type="button" id="u12-next" aria-label="Nächster Trainingstag">›</button>
               </div>
-              <button class="button button--secondary u12-reload" type="button" id="u12-reload">↻ Liste neu laden</button>
+              <div class="u12-actions">
+                <button class="button button--secondary" type="button" id="u12-today">Heute</button>
+                <button class="button button--secondary" type="button" id="u12-reload">↻ Liste neu laden</button>
+              </div>
             </section>
             <section id="u12-week" class="u12-week" hidden>
               <div class="card u12-savebar">
@@ -30,8 +33,16 @@ export const ULC_U12_HTML = `
                 </div>
                 <button class="button button--primary" type="button" id="u12-save" disabled>Liste speichern</button>
               </div>
+              <button class="button button--secondary u12-athlete-new" type="button" id="u12-add-athlete" hidden>＋ Neues Kind anlegen</button>
               <div id="u12-days" class="u12-days" aria-live="polite"></div>
             </section>
+            <dialog class="u12-details-dialog" id="u12-details-dialog" aria-labelledby="u12-details-title">
+              <header class="u12-details-header">
+                <h2 id="u12-details-title">Athletenhinweise</h2>
+                <button class="button button--secondary" id="u12-details-close" type="button" aria-label="Hinweise schließen">✕</button>
+              </header>
+              <div id="u12-details-content"></div>
+            </dialog>
           </section>
 `;
 
@@ -40,7 +51,21 @@ export const ULC_U12_CSS = `
 .u12-toolbar, .u12-week, .u12-days { display: grid; gap: 10px; min-width: 0; max-width: 100%; }
 .u12-toolbar > label { font-weight: 700; font-size: .82rem; }
 .u12-toolbar > select { width: 100%; min-width: 0; }
-.u12-reload { justify-self: start; min-height: 44px; }
+ .u12-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.u12-actions button { min-height: 44px; }
+.u12-athlete-new { justify-self: start; min-height: 44px; }
+.u12-info { flex: 0 0 40px; height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: transparent; color: inherit; font-size: 1.2rem; font-weight: 750; }
+.u12-person__toggle { display: flex; gap: 10px; flex: 1 1 auto; align-items: center; min-width: 0; cursor: pointer; }
+.u12-details-dialog { width: min(96vw, 480px); max-height: min(85dvh, 690px); border-radius: 16px; border: 1px solid var(--border); padding: 18px; color: inherit; background: var(--surface, #fff); overflow-y: auto; }
+.u12-details-dialog::backdrop { background: rgba(0, 0, 0, .6); }
+.u12-details-header { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.u12-details-header h2 { margin: 0; font-size: 1.2rem; }
+.u12-details-section { margin-top: 16px; display: grid; gap: 8px; }
+.u12-details-section h3 { font-size: .94rem; margin: 0; }
+.u12-contact-entry { padding: 10px 0; border-top: 1px solid var(--border); display: grid; gap: 3px; }
+.u12-contact-entry small { color: var(--secondary); }
+.u12-details-section p { overflow-wrap: anywhere; white-space: pre-wrap; }
+.u12-roster { isolation: isolate; }
 .u12-date-nav { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 8px; align-items: end; }
 .u12-date-nav > button { min-height: 44px; padding: 0; font-size: 1.2rem; }
 .u12-date-nav > label { display: grid; gap: 4px; min-width: 0; font-size: .8rem; font-weight: 700; }
@@ -76,6 +101,12 @@ const u12Ui = {
   prev: document.querySelector("#u12-prev"),
   next: document.querySelector("#u12-next"),
   reload: document.querySelector("#u12-reload"),
+  today: document.querySelector("#u12-today"),
+  addAthlete: document.querySelector("#u12-add-athlete"),
+  detailsDialog: document.querySelector("#u12-details-dialog"),
+  detailsTitle: document.querySelector("#u12-details-title"),
+  detailsContent: document.querySelector("#u12-details-content"),
+  detailsClose: document.querySelector("#u12-details-close"),
   week: document.querySelector("#u12-week"),
   days: document.querySelector("#u12-days"),
   count: document.querySelector("#u12-count"),
@@ -119,6 +150,8 @@ function resetU12SessionState() {
     u12Ui.group.append(placeholder);
   }
   if (u12Ui.date) u12Ui.date.value = localIsoDate(new Date());
+  if (u12Ui.detailsDialog?.open) u12Ui.detailsDialog.close();
+  u12Ui.detailsContent?.replaceChildren();
   showMessage(u12Ui.message, "");
   showMessage(u12Ui.success, "");
   renderU12Attendance();
@@ -145,6 +178,15 @@ function u12ValidSnapshot(snapshot, date, groupId) {
     if (!person || typeof person.athleteId !== "string" || !person.athleteId ||
         typeof person.firstName !== "string" || typeof person.lastName !== "string" ||
         !U12_SERVER_STATUSES.includes(person.status) ||
+        (person.notes !== null && typeof person.notes !== "string") ||
+        !Array.isArray(person.contacts) ||
+        !person.contacts.every((contact) =>
+          contact && typeof contact.id === "string" &&
+          typeof contact.contactName === "string" &&
+          typeof contact.phone === "string" &&
+          typeof contact.isEmergency === "boolean" &&
+          (contact.relationship === null || typeof contact.relationship === "string") &&
+          (contact.notes === null || typeof contact.notes === "string")) ||
         ids.has(person.athleteId)) return false;
     ids.add(person.athleteId);
   }
@@ -212,9 +254,13 @@ function u12HasUnconfirmedAnswers() {
       (u12Present.get(person.athleteId) === true ? "present" : "absent"));
 }
 
+function groupIdOrValidU12Group() {
+  return u12Groups.some((group) => group.id === u12Ui.group?.value);
+}
+
 function refreshU12Controls() {
   const busy = u12Loading || u12Saving;
-  for (const control of [u12Ui.group, u12Ui.date, u12Ui.prev, u12Ui.next, u12Ui.reload]) {
+  for (const control of [u12Ui.group, u12Ui.date, u12Ui.prev, u12Ui.next, u12Ui.reload, u12Ui.today]) {
     if (control) control.disabled = busy || !u12Ready;
   }
   const cancelled = u12Snapshot?.session?.state === "cancelled";
@@ -223,6 +269,14 @@ function refreshU12Controls() {
   for (const input of u12Ui.days?.querySelectorAll("[data-u12-athlete-id]") ?? []) {
     input.disabled = !editable;
   }
+  if (u12Ui.addAthlete) {
+    const canCreate = masterdataReady && masterdataCanEdit && u12Ready;
+    u12Ui.addAthlete.hidden = !canCreate;
+    u12Ui.addAthlete.disabled = busy || !groupIdOrValidU12Group();
+  }
+  if (u12Ui.today) u12Ui.today.setAttribute(
+    "aria-pressed", String(u12Ui.date?.value === localIsoDate(new Date())),
+  );
   if (u12Ui.save) {
     u12Ui.save.disabled = !editable ||
       (u12DirtyDates.size === 0 && u12Snapshot?.session !== null &&
@@ -290,8 +344,10 @@ function renderU12Attendance() {
     roster.append(empty);
   }
   for (const person of u12Snapshot.participants) {
+    const row = document.createElement("div");
+    row.className = "u12-person";
     const label = document.createElement("label");
-    label.className = "u12-person";
+    label.className = "u12-person__toggle";
     const name = document.createElement("span");
     name.className = "u12-person__name";
     name.textContent = person.lastName + " " + person.firstName;
@@ -307,7 +363,18 @@ function renderU12Attendance() {
     status.textContent = input.checked ? "Ja" : "Nein";
     answer.append(input, status);
     label.append(name, answer);
-    roster.append(label);
+    row.append(label);
+    if (person.notes || person.contacts.length > 0) {
+      const info = document.createElement("button");
+      info.type = "button";
+      info.className = "u12-info";
+      info.dataset.u12InfoId = person.athleteId;
+      info.textContent = "ⓘ";
+      info.setAttribute("aria-label", "Hinweise und Kontakte zu " +
+        person.firstName + " " + person.lastName + " anzeigen");
+      row.append(info);
+    }
+    roster.append(row);
   }
   u12Ui.days.append(roster);
   refreshU12Controls();
@@ -324,6 +391,8 @@ async function loadU12Attendance() {
   const loadId = ++u12LoadId;
   u12LoadedGroupId = groupId;
   u12LoadedDate = date;
+  if (u12Ui.detailsDialog?.open) u12Ui.detailsDialog.close();
+  u12Ui.detailsContent?.replaceChildren();
   u12Snapshot = null;
   u12Present = new Map();
   u12DirtyDates.clear();
@@ -471,6 +540,82 @@ async function u12ReloadAttendance() {
   await loadU12Attendance();
 }
 
+
+function openU12AthleteDetails(athleteId) {
+  const person = u12Snapshot?.participants.find(
+    (item) => item.athleteId === athleteId,
+  );
+  if (!person || !u12Ui.detailsDialog || !u12Ui.detailsContent) return;
+  u12Ui.detailsTitle.textContent = person.firstName + " " + person.lastName;
+  u12Ui.detailsContent.replaceChildren();
+  const notes = document.createElement("section");
+  notes.className = "u12-details-section";
+  const notesTitle = document.createElement("h3");
+  notesTitle.textContent = "Hinweise";
+  const notesBody = document.createElement("p");
+  notesBody.textContent = person.notes?.trim() || "Keine Hinweise hinterlegt.";
+  notes.append(notesTitle, notesBody);
+  u12Ui.detailsContent.append(notes);
+
+  const contacts = document.createElement("section");
+  contacts.className = "u12-details-section";
+  const title = document.createElement("h3");
+  title.textContent = "Kontaktpersonen";
+  contacts.append(title);
+  if (person.contacts.length === 0) {
+    const empty = document.createElement("p");
+    empty.textContent = "Keine Kontaktperson hinterlegt.";
+    contacts.append(empty);
+  }
+  for (const contact of person.contacts) {
+    const entry = document.createElement("div");
+    entry.className = "u12-contact-entry";
+    const name = document.createElement("strong");
+    name.textContent = contact.contactName +
+      (contact.relationship ? " · " + contact.relationship : "");
+    const phone = document.createElement("span");
+    phone.textContent = "Telefon: " + contact.phone;
+    const label = document.createElement("small");
+    label.textContent = contact.isEmergency ? "Notfallkontakt" : "Kontakt";
+    entry.append(name, phone, label);
+    if (contact.notes) {
+      const note = document.createElement("p");
+      note.textContent = contact.notes;
+      entry.append(note);
+    }
+    contacts.append(entry);
+  }
+  u12Ui.detailsContent.append(contacts);
+  u12Ui.detailsDialog.showModal();
+}
+
+async function u12GoToday() {
+  if (!u12Ui.date || u12Loading || u12Saving) return;
+  const today = localIsoDate(new Date());
+  if (u12Ui.date.value === today && u12LoadedDate === today) return;
+  u12Ui.date.value = today;
+  await u12ChangeDate();
+}
+
+async function openU12NewAthlete() {
+  const groupId = u12Ui.group?.value || "";
+  const startedOn = u12Ui.date?.value || "";
+  if (!masterdataReady || !masterdataCanEdit ||
+      !u12Ready || !u12Groups.some((group) => group.id === groupId)) return;
+  if (!(await u12FlushChanges())) return;
+  // Load the authorized masterdata snapshot *before* switching sections:
+  // showAppSection("masterdata") also invokes loadMasterdata asynchronously.
+  if (!(await loadMasterdata())) {
+    showMessage(u12Ui.message, "Stammdaten konnten nicht geladen werden.");
+    return;
+  }
+  showAppSection("masterdata");
+  showMasterdataTab("athletes");
+  openNewMasterdataAthlete({
+    source: "u12", groupId, startedOn,
+  });
+}
+
 function prepareU12View() {
   if (u12Ready && u12Ui.group?.value && u12Ui.date?.value &&
       !u12Snapshot && !u12Loading) void loadU12Attendance();
@@ -478,6 +623,13 @@ function prepareU12View() {
 
 u12Ui.prev?.addEventListener("click", () => void u12MoveDate(-1));
 u12Ui.next?.addEventListener("click", () => void u12MoveDate(1));
+u12Ui.today?.addEventListener("click", () => void u12GoToday());
+u12Ui.addAthlete?.addEventListener("click", () => void openU12NewAthlete());
+u12Ui.detailsClose?.addEventListener("click", () => u12Ui.detailsDialog?.close());
+u12Ui.days?.addEventListener("click", (event) => {
+  const info = event.target?.closest?.("[data-u12-info-id]");
+  if (info && u12Ui.days.contains(info)) openU12AthleteDetails(info.dataset.u12InfoId);
+});
 u12Ui.date?.addEventListener("change", () => void u12ChangeDate());
 u12Ui.group?.addEventListener("change", () => void u12ChangeGroup());
 u12Ui.save?.addEventListener("click", () => void saveU12Attendance());

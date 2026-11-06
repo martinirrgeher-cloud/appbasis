@@ -161,6 +161,38 @@ function runtime(
         isActive: true,
       };
     },
+    async createAthleteComplete(organizationId, input) {
+      const athlete = {
+        id: "athlete-test",
+        organizationId,
+        firstName: input.athlete.firstName,
+        lastName: input.athlete.lastName,
+        birthYear: input.athlete.birthYear ?? null,
+        notes: input.athlete.notes ?? null,
+        isActive: true,
+      };
+      return {
+        athlete,
+        groupMembership: input.groupId === null ? null : {
+          organizationId,
+          athleteId: athlete.id,
+          groupId: input.groupId,
+          startedOn: input.startedOn ?? "",
+          endedOn: null,
+        },
+        contacts: input.contacts.map((contact, index) => ({
+          id: "contact-test-" + index,
+          organizationId,
+          athleteId: athlete.id,
+          contactName: contact.contactName,
+          relationship: contact.relationship ?? null,
+          phone: contact.phone,
+          isEmergency: contact.isEmergency ?? true,
+          priority: contact.priority ?? 1,
+          notes: contact.notes ?? null,
+        })),
+      };
+    },
     async createAthleteContact(organizationId, athleteId, input) {
       return {
         id: "contact-test",
@@ -434,6 +466,8 @@ function runtime(
           firstName: "Test",
           lastName: "Athlet",
           birthYear: null,
+          notes: null,
+          contacts: [],
           status: entry.status,
         })),
       };
@@ -1052,7 +1086,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       'requestJson("/api/modules/athletes/masterdata")',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      '"/api/modules/athletes/masterdata/athletes"',
+      '"/api/modules/athletes/masterdata/athletes/create-complete"',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '"/api/modules/athletes/masterdata/trainers"',
@@ -1099,7 +1133,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('"Trainer bearbeiten"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('"Trainingsgruppe bearbeiten"');
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      '"/api/modules/athletes/masterdata/athletes/" + encodeURIComponent(editId) + "/update"',
+      '"/api/modules/athletes/masterdata/athletes/" +\n        encodeURIComponent(editId) + "/update"',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '"/api/modules/athletes/masterdata/trainers/" + encodeURIComponent(editId) + "/update"',
