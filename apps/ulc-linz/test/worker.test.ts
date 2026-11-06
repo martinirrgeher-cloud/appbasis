@@ -1086,7 +1086,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       'requestJson("/api/modules/athletes/masterdata")',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      '"/api/modules/athletes/masterdata/athletes"',
+      '"/api/modules/athletes/masterdata/athletes/create-complete"',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '"/api/modules/athletes/masterdata/trainers"',
@@ -1133,7 +1133,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('"Trainer bearbeiten"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('"Trainingsgruppe bearbeiten"');
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      '"/api/modules/athletes/masterdata/athletes/" + encodeURIComponent(editId) + "/update"',
+      '"/api/modules/athletes/masterdata/athletes/" +\n        encodeURIComponent(editId) + "/update"',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       '"/api/modules/athletes/masterdata/trainers/" + encodeURIComponent(editId) + "/update"',
