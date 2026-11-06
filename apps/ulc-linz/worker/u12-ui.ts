@@ -52,7 +52,8 @@ export const ULC_U12_HTML = `
                   <h2 id="u12-assignment-heading">Trainingsinhalte zuordnen</h2>
                   <small id="u12-assignment-summary" role="status">Nur anwesende Athleten</small>
                 </div>
-                <p class="u12-matrix-help">Jede Spalte ist ein Inhalt. Häkchen pro Kind setzen oder oben „Alle“ wählen.</p>
+                <p class="u12-matrix-help">Häkchen pro Kind setzen oder oben „Alle“ wählen. Die Spaltenbezeichnungen stehen hier:</p>
+                <div class="u12-matrix-legend" id="u12-assignment-legend"></div>
                 <div class="u12-matrix-scroll" role="region" aria-label="Trainingsinhalte-Matrix" tabindex="0">
                   <table class="u12-matrix-table" id="u12-assignment-matrix"></table>
                 </div>
@@ -126,6 +127,9 @@ export const ULC_U12_CSS = `
 .u12-matrix-heading h2 { font-size:.94rem; margin:0; }
 .u12-matrix-heading small { font-size:.72rem; color:var(--secondary); text-align:right; }
 .u12-matrix-help { margin:8px 12px; font-size:.76rem; color:var(--secondary); line-height:1.4; }
+.u12-matrix-legend { display:flex; flex-wrap:wrap; gap:5px 10px; margin:0 12px 10px; }
+.u12-matrix-legend span { font-size:.73rem; color:var(--text); overflow-wrap:anywhere; }
+.u12-matrix-legend strong { color:var(--accent); }
 .u12-matrix-scroll { max-width:100%; overflow-x:auto; overscroll-behavior-x:contain; }
 .u12-matrix-scroll:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 .u12-matrix-table { border-spacing:0; border-collapse:separate; width:max-content; min-width:100%; table-layout:fixed; font-size:.8rem; }
@@ -187,6 +191,7 @@ const u12Ui = {
   contentAdd: document.querySelector("#u12-content-add"),
   matrixSection: document.querySelector("#u12-assignment-section"),
   matrix: document.querySelector("#u12-assignment-matrix"),
+  matrixLegend: document.querySelector("#u12-assignment-legend"),
   matrixSummary: document.querySelector("#u12-assignment-summary"),
   detailsDialog: document.querySelector("#u12-details-dialog"),
   detailsTitle: document.querySelector("#u12-details-title"),
@@ -531,11 +536,20 @@ function refreshU12MatrixControls(editable = u12EditableDraft()) {
 function renderU12AssignmentMatrix() {
   if (!u12Ui.matrix || !u12Ui.matrixSection) return;
   u12Ui.matrix.replaceChildren();
+  u12Ui.matrixLegend?.replaceChildren();
   u12Ui.matrixSection.hidden = !u12Snapshot || u12ContentTitles.length === 0;
   if (u12Ui.matrixSection.hidden) return;
   const athletes = u12PresentAthletes();
   if (u12Ui.matrixSummary) u12Ui.matrixSummary.textContent =
     athletes.length + " anwesend · " + u12ContentTitles.length + " Inhalte";
+  for (const [index, title] of u12ContentTitles.entries()) {
+    const legend = document.createElement("span");
+    const number = document.createElement("strong");
+    number.textContent = String(index + 1) + ". ";
+    legend.dataset.u12MatrixLegend = String(index);
+    legend.append(number, document.createTextNode(title.trim() || "Inhalt ohne Bezeichnung"));
+    u12Ui.matrixLegend?.append(legend);
+  }
   const head = document.createElement("thead");
   const header = document.createElement("tr");
   const first = document.createElement("th");
@@ -550,7 +564,7 @@ function renderU12AssignmentMatrix() {
     const titleLabel = document.createElement("span");
     titleLabel.className = "u12-matrix-col__name";
     titleLabel.dataset.u12MatrixHeading = String(index);
-    titleLabel.textContent = title.trim() || "Inhalt " + (index + 1);
+    titleLabel.textContent = String(index + 1);
     titleLabel.title = titleLabel.textContent;
     const all = document.createElement("label");
     all.className = "u12-matrix-col__all";
@@ -996,8 +1010,16 @@ u12Ui.contentRows?.addEventListener("input", (event) => {
   u12ContentTitles[index] = input.value;
   for (const heading of u12Ui.matrix?.querySelectorAll("[data-u12-matrix-heading]") ?? []) {
     if (Number(heading.dataset.u12MatrixHeading) === index) {
-      heading.textContent = input.value.trim() || "Inhalt " + (index + 1);
-      heading.title = heading.textContent;
+      heading.textContent = String(index + 1);
+      heading.title = input.value.trim() || "Inhalt " + (index + 1);
+    }
+  }
+  for (const legend of u12Ui.matrixLegend?.querySelectorAll("[data-u12-matrix-legend]") ?? []) {
+    if (Number(legend.dataset.u12MatrixLegend) === index) {
+      const number = legend.querySelector("strong");
+      legend.replaceChildren();
+      if (number) legend.append(number);
+      legend.append(document.createTextNode(input.value.trim() || "Inhalt ohne Bezeichnung"));
     }
   }
   markU12DraftDirty();
