@@ -486,25 +486,57 @@ function renderU12ContentRows() {
     u12Ui.contentRows.append(empty);
   }
   for (const [index, title] of u12ContentTitles.entries()) {
+    const meta = u12ContentItems[index] ?? { code: "", detail: "" };
     const row = document.createElement("div");
     row.className = "u12-content-row";
     const number = document.createElement("strong");
     number.textContent = String(index + 1);
+    const fields = document.createElement("div");
+    fields.className = "u12-content-fields";
+
+    const category = document.createElement("select");
+    category.dataset.u12CodeIndex = String(index);
+    category.setAttribute("aria-label", "Kategorie für Inhalt " + (index + 1));
+    const freeOption = document.createElement("option");
+    freeOption.value = "";
+    freeOption.textContent = "Freie Bezeichnung (nicht standardisiert)";
+    category.append(freeOption);
+    for (const standard of U12_STANDARD_CONTENT_CATALOG) {
+      const option = document.createElement("option");
+      option.value = standard.code;
+      option.textContent = standard.label;
+      category.append(option);
+    }
+    category.value = meta.code;
+
     const input = document.createElement("input");
     input.type = "text";
     input.required = true;
     input.maxLength = 120;
-    input.placeholder = "z. B. Koordination oder Sprint";
+    input.placeholder = "Freien Inhalt benennen";
     input.value = title;
+    input.hidden = !!meta.code;
+    input.readOnly = !!meta.code;
     input.dataset.u12TitleIndex = String(index);
     input.setAttribute("aria-label", "Trainingsinhalt " + (index + 1));
+
+    const detail = document.createElement("input");
+    detail.type = "text";
+    detail.maxLength = 200;
+    detail.className = "u12-content-detail";
+    detail.placeholder = "Zusatzinfo (optional), z. B. 4 × 30 m";
+    detail.value = meta.detail;
+    detail.dataset.u12DetailIndex = String(index);
+    detail.setAttribute("aria-label", "Zusatzinfo für Inhalt " + (index + 1));
+    fields.append(category, input, detail);
+
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "u12-content-remove";
     remove.dataset.u12RemoveIndex = String(index);
     remove.textContent = "×";
     remove.setAttribute("aria-label", "Inhalt " + (index + 1) + " entfernen");
-    row.append(number, input, remove);
+    row.append(number, fields, remove);
     u12Ui.contentRows.append(row);
   }
 }
@@ -514,6 +546,7 @@ function addU12Content() {
       u12Saving || !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return;
   u12ContentTitles.push("");
+  u12ContentItems.push({ code: "", detail: "" });
   if (u12Ui.contentCard) u12Ui.contentCard.open = true;
   renderU12Attendance();
   markU12DraftDirty();
@@ -526,6 +559,7 @@ function removeU12Content(index) {
       u12Loading || u12Saving || !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return;
   u12ContentTitles.splice(index, 1);
+  u12ContentItems.splice(index, 1);
   for (const [id, slots] of u12ContentAssignments) {
     u12ContentAssignments.set(id, new Set(
       [...slots].filter((slot) => slot !== index + 1)
