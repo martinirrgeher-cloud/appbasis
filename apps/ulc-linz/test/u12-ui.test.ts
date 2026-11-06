@@ -54,6 +54,23 @@ describe("ULC A03 U12 weekly attendance vertical slice", () => {
     expect(ULC_LINZ_APP_CSS).toContain(ULC_U12_CSS);
   });
 
+  it("keeps the mobile note editor mounted during autosave and retries concurrent edits", () => {
+    const start = ULC_U12_SCRIPT.indexOf("async function saveU12Week()");
+    const end = ULC_U12_SCRIPT.indexOf("async function u12FlushChanges()", start);
+    const saveBody = ULC_U12_SCRIPT.slice(start, end);
+    expect(saveBody).not.toContain("renderU12Week()");
+    expect(saveBody).toContain("refreshU12Controls()");
+    expect(saveBody).toContain("const outgoingDraft = JSON.stringify(entry.draft)");
+    expect(saveBody).toContain("JSON.stringify(entry.draft) === outgoingDraft");
+    expect(saveBody).toContain("u12DirtyDates.add(date)");
+    expect(saveBody).toContain("u12AutoTimer = window.setTimeout");
+    const noteHandler = ULC_U12_SCRIPT.slice(ULC_U12_SCRIPT.indexOf('u12Ui.days?.addEventListener("input"'));
+    expect(noteHandler).toContain("if (!date || !u12WriteAllowed || u12Conflict) return;");
+    expect(noteHandler).not.toContain("if (!date || !u12WriteAllowed || u12Saving || u12Conflict)");
+    expect(ULC_U12_SCRIPT).toContain('querySelectorAll("[data-u12-note-date]")');
+    expect(ULC_U12_SCRIPT).toContain("note.disabled = !u12WriteAllowed || u12Conflict");
+  });
+
   it("compiles into the existing browser JS and keeps stable responsive HTML", () => {
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
     expect(ULC_U12_HTML).toContain('aria-live="polite"');
