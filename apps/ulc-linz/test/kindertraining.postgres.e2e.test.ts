@@ -69,6 +69,74 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await administrativeConnection.client.end();
     });
 
+    it("persists U12 contents and athlete slots atomically with CAS and retention-safe rows", async () => {
+      const repo = new PostgresUlcTrainingSessionRepository(
+        requiredConnection().client,
+        () => randomUUID(),
+      );
+      const input = {
+        moduleId: "u12" as const,
+        groupId: "test-u12-contents",
+        sessionDate: "2026-11-01",
+      };
+      const created = await repo.saveSession("verein-u12-content-test", input, [
+        { athleteId: "athlete-u12-a", status: "present", contentSlots: [2, 1] },
+        { athleteId: "athlete-u12-b", status: "absent", contentSlots: [] },
+      ], null, ["Sprint", "Koordination"]);
+      expect(created.trainingContentTitles).toEqual(["Sprint", "Koordination"]);
+      expect(created.trainingContentAssignments).toEqual([
+        { athleteId: "athlete-u12-a", slots: [1, 2] },
+        { athleteId: "athlete-u12-b", slots: [] },
+      ]);
+
+      const readBack = await repo.readSession(
+        "verein-u12-content-test", "u12", input.groupId, input.sessionDate,
+      );
+      expect(readBack?.trainingContentTitles).toEqual(["Sprint", "Koordination"]);
+      expect(readBack?.trainingContentAssignments).toEqual([
+        { athleteId: "athlete-u12-a", slots: [1, 2] },
+        { athleteId: "athlete-u12-b", slots: [] },
+      ]);
+      await expect(repo.readSession(
+        "another-organization", "u12", input.groupId, input.sessionDate,
+      )).resolves.toBeNull();
+
+      const changed = await repo.saveSession("verein-u12-content-test", input, [
+        { athleteId: "athlete-u12-a", status: "absent", contentSlots: [] },
+        { athleteId: "athlete-u12-b", status: "present", contentSlots: [1] },
+      ], created.revision, ["Sprint"]);
+      const afterChange = await repo.readSession(
+        "verein-u12-content-test", "u12", input.groupId, input.sessionDate,
+      );
+      expect(afterChange?.trainingContentTitles).toEqual(["Sprint"]);
+      expect(afterChange?.trainingContentAssignments).toEqual([
+        { athleteId: "athlete-u12-a", slots: [] },
+        { athleteId: "athlete-u12-b", slots: [1] },
+      ]);
+
+      await expect(repo.saveSession("verein-u12-content-test", input, [
+        { athleteId: "athlete-u12-a", status: "present", contentSlots: [1] },
+        { athleteId: "athlete-u12-b", status: "present", contentSlots: [1] },
+      ], created.revision, ["Sprint"])).rejects.toBeInstanceOf(
+        UlcTrainingSessionConflictError,
+      );
+
+      // Legacy attendance-only saves preserve current contents for present athletes.
+      const legacy = await repo.saveSession("verein-u12-content-test", input, [
+        { athleteId: "athlete-u12-b", status: "present" },
+      ], changed.revision);
+      const finalSnapshot = await repo.readSession(
+        "verein-u12-content-test", "u12", input.groupId, input.sessionDate,
+      );
+      expect(finalSnapshot?.trainingContentTitles).toEqual(["Sprint"]);
+      expect(finalSnapshot?.trainingContentAssignments).toEqual([
+        { athleteId: "athlete-u12-b", slots: [1] },
+      ]);
+      expect(legacy.attendance.map((entry) => entry.athleteId)).toEqual([
+        "athlete-u12-b",
+      ]);
+    });
+
     it("reads date-effective participants and atomically replaces the attendance snapshot", async () => {
       const connection = requiredConnection();
       const masterdata = new PostgresAthleteMasterdataRepository(
