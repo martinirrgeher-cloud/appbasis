@@ -150,6 +150,14 @@ jobs:
             await db.client.end().catch(() => {});
           }
           NODE
+      # Block deploy before secrets/Worker mutation if schema v13 is not installed.
+      - name: Require current youth-content schema-v13 before preview runtime refresh
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-youth-content-preview.mjs verify
+
       - name: Resolve preview worker and URL
         id: preview
         shell: bash
