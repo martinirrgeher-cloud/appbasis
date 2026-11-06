@@ -1,30 +1,32 @@
 export const ULC_U12_HTML = `
           <section class="app-section" data-app-section="u12" id="u12" hidden>
-            <section class="hero">
-              <p class="eyebrow">Training</p>
-              <h1>U12 – Anwesenheit</h1>
-              <p class="summary">Ein Trainingstermin, eine Namensliste: anwesend ja oder nein.</p>
-            </section>
+            <header class="u12-head">
+              <div class="u12-head__title">
+                <p class="eyebrow">Anwesenheit · Nachwuchs</p>
+                <h1>U12</h1>
+                <small id="u12-group-label">Trainingsgruppe wird geladen</small>
+              </div>
+              <button class="button button--secondary u12-athlete-new" type="button" id="u12-add-athlete" hidden title="Kind direkt der U12-Gruppe zuordnen" aria-label="Neues Kind anlegen">＋ <span>Kind</span></button>
+            </header>
             <p class="message message--error" id="u12-message" role="alert" hidden></p>
             <p class="message message--success" id="u12-success" role="status" hidden></p>
-            <section class="card u12-toolbar">
-              <label for="u12-group">Trainingsgruppe</label>
-              <select id="u12-group" aria-label="U12 Trainingsgruppe">
-                <option value="">Gruppe wählen</option>
-              </select>
+            <select id="u12-group" aria-label="Zugeordnete U12-Gruppe" hidden>
+              <option value="">Gruppe wird geladen</option>
+            </select>
+            <div class="u12-date-toolbar" aria-label="Trainingstermin">
               <div class="u12-date-nav">
-                <button class="button button--secondary" type="button" id="u12-prev" aria-label="Vorheriger Trainingstag">‹</button>
-                <label for="u12-date">
-                  Training am
-                  <input type="date" id="u12-date" required aria-label="Trainingstermin auswählen" />
+                <button class="u12-date-arrow" type="button" id="u12-prev" aria-label="Vorheriger Tag">‹</button>
+                <label class="u12-date-field" for="u12-date">
+                  <span>Trainingstag</span>
+                  <input type="date" id="u12-date" required aria-label="Trainingstag auswählen" />
                 </label>
-                <button class="button button--secondary" type="button" id="u12-next" aria-label="Nächster Trainingstag">›</button>
+                <button class="u12-date-arrow" type="button" id="u12-next" aria-label="Nächster Tag">›</button>
               </div>
-              <div class="u12-actions">
-                <button class="button button--secondary" type="button" id="u12-today">Heute</button>
-                <button class="button button--secondary" type="button" id="u12-reload">↻ Liste neu laden</button>
+              <div class="u12-date-shortcuts">
+                <button class="u12-date-today" type="button" id="u12-today">Heute</button>
+                <button class="u12-date-reload" type="button" id="u12-reload" title="Anwesenheit neu laden" aria-label="Liste neu laden">↻</button>
               </div>
-            </section>
+            </div>
             <section id="u12-week" class="u12-week" hidden>
               <div class="card u12-savebar">
                 <div>
@@ -33,7 +35,6 @@ export const ULC_U12_HTML = `
                 </div>
                 <button class="button button--primary" type="button" id="u12-save" disabled>Liste speichern</button>
               </div>
-              <button class="button button--secondary u12-athlete-new" type="button" id="u12-add-athlete" hidden>＋ Neues Kind anlegen</button>
               <div id="u12-days" class="u12-days" aria-live="polite"></div>
             </section>
             <dialog class="u12-details-dialog" id="u12-details-dialog" aria-labelledby="u12-details-title">
@@ -47,13 +48,23 @@ export const ULC_U12_HTML = `
 `;
 
 export const ULC_U12_CSS = `
-/* U12: one training date, one mobile roll-call list, no week grid. */
-.u12-toolbar, .u12-week, .u12-days { display: grid; gap: 10px; min-width: 0; max-width: 100%; }
-.u12-toolbar > label { font-weight: 700; font-size: .82rem; }
-.u12-toolbar > select { width: 100%; min-width: 0; }
- .u12-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.u12-actions button { min-height: 44px; }
-.u12-athlete-new { justify-self: start; min-height: 44px; }
+/* Compact U12: single configured group, date picker, context action. */
+.u12-head { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; min-width:0; }
+.u12-head__title { min-width:0; }
+.u12-head__title .eyebrow { margin:0 0 2px; }
+.u12-head h1 { margin:0; line-height:1.2; font-size:1.55rem; }
+.u12-head small { display:block; color:var(--secondary); margin-top:3px; overflow-wrap:anywhere; font-size:.75rem; }
+.u12-athlete-new { flex:0 0 auto; align-self:center; min-height:44px; border-radius:12px; font-size:.85rem; padding:0 12px; font-weight:800; }
+.u12-date-toolbar { display:grid; gap:6px; padding:10px 12px 8px; border-radius:14px; background:var(--card); border:1px solid var(--border); min-width:0; }
+.u12-date-nav { display:grid; grid-template-columns:40px minmax(0,1fr) 40px; align-items:center; gap:6px; }
+.u12-date-arrow { height:44px; border:0; border-radius:10px; background:var(--muted); color:var(--text); font-size:1.4rem; font-weight:800; cursor:pointer; }
+.u12-date-field { display:grid; gap:1px; min-width:0; text-align:center; }
+.u12-date-field span { font-size:.68rem; font-weight:800; color:var(--secondary); letter-spacing:.03em; }
+.u12-date-field input { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:38px; padding:3px 5px; text-align:center; font-size:.96rem; font-weight:700; background:transparent; border:0; color:var(--text); }
+.u12-date-shortcuts { display:flex; justify-content:center; gap:10px; align-items:center; }
+.u12-date-shortcuts button { min-height:32px; border:0; background:transparent; color:var(--accent); padding:3px 9px; font-size:.82rem; font-weight:800; border-radius:8px; cursor:pointer; }
+.u12-date-shortcuts button[aria-pressed="true"] { background:var(--muted); color:var(--secondary); }
+.u12-week, .u12-days { display:grid; gap:10px; min-width:0; max-width:100%; }
 .u12-info { flex: 0 0 40px; height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: transparent; color: inherit; font-size: 1.2rem; font-weight: 750; }
 .u12-person__toggle { display: flex; gap: 10px; flex: 1 1 auto; align-items: center; min-width: 0; cursor: pointer; }
 .u12-details-dialog { width: min(96vw, 480px); max-height: min(85dvh, 690px); border-radius: 16px; border: 1px solid var(--border); padding: 18px; color: inherit; background: var(--surface, #fff); overflow-y: auto; }
@@ -66,10 +77,6 @@ export const ULC_U12_CSS = `
 .u12-contact-entry small { color: var(--secondary); }
 .u12-details-section p { overflow-wrap: anywhere; white-space: pre-wrap; }
 .u12-roster { isolation: isolate; }
-.u12-date-nav { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 8px; align-items: end; }
-.u12-date-nav > button { min-height: 44px; padding: 0; font-size: 1.2rem; }
-.u12-date-nav > label { display: grid; gap: 4px; min-width: 0; font-size: .8rem; font-weight: 700; }
-.u12-date-nav input { width: 100%; min-width: 0; min-height: 44px; }
 .u12-savebar { position: sticky; top: 57px; z-index: 8; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .u12-savebar > div { display: grid; gap: 3px; min-width: 0; }
 .u12-savebar strong { font-size: .9rem; }
@@ -97,6 +104,7 @@ export const ULC_U12_SCRIPT = `
    Data, training-group access and CAS revisions remain server-authoritative. */
 const u12Ui = {
   group: document.querySelector("#u12-group"),
+  groupLabel: document.querySelector("#u12-group-label"),
   date: document.querySelector("#u12-date"),
   prev: document.querySelector("#u12-prev"),
   next: document.querySelector("#u12-next"),
@@ -210,6 +218,12 @@ function u12GroupOptions() {
   }
   u12Ui.group.value = u12Groups.some((group) => group.id === selected)
     ? selected : u12Groups.length === 1 ? u12Groups[0].id : "";
+  const active = u12Groups.find((group) => group.id === u12Ui.group.value);
+  if (u12Ui.groupLabel) {
+    u12Ui.groupLabel.textContent = active ? active.name :
+      u12Groups.length === 0 ? "Keine U12-Gruppe freigeschaltet" :
+      "Trainingsgruppe nicht zugeordnet";
+  }
 }
 
 async function bootstrapU12() {
