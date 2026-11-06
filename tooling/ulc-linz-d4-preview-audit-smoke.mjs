@@ -93,7 +93,8 @@ async function verifyKindertrainingPreviewSurface({
   const html = await htmlResponse.text();
   if (
     !html.includes('data-app-section="kindertraining"') ||
-    !html.includes('id="kindertraining-save"')
+    // Weekly autosave replaced the retired single-day save control.
+    !html.includes('id="kindertraining-week-save"')
   ) {
     throw new Error("ULC D4 preview is missing the Kindertraining UI surface.");
   }
