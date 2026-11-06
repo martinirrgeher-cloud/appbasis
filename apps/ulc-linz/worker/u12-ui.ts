@@ -373,7 +373,7 @@ function refreshU12Controls() {
     const id = control.dataset.u12AssignId;
     const assigned = u12ContentAssignments.get(id)?.size ?? 0;
     control.textContent = "Inhalte " + assigned + " / " + u12ContentTitles.length;
-    control.disabled = !editable || !u12Present.get(id);
+    control.disabled = !editable || !u12Present.get(id) || u12ContentTitles.length === 0;
   }
   for (const input of u12Ui.assignOptions?.querySelectorAll("input") ?? []) {
     input.disabled = !editable || !u12Present.get(u12AssignmentAthleteId);
@@ -460,7 +460,7 @@ function addU12Content() {
       u12Snapshot.session?.state === "cancelled") return;
   u12ContentTitles.push("");
   if (u12Ui.contentCard) u12Ui.contentCard.open = true;
-  renderU12ContentRows();
+  renderU12Attendance();
   markU12DraftDirty();
   u12Ui.contentRows?.querySelectorAll("[data-u12-title-index]")[u12ContentTitles.length - 1]?.focus();
 }
@@ -486,7 +486,9 @@ function removeU12Content(index) {
 function openU12ContentAssignments(athleteId) {
   const person = u12Snapshot?.participants.find((item) => item.athleteId === athleteId);
   if (!person || !u12Present.get(athleteId) || u12ContentTitles.length === 0 ||
-      !u12Ui.assignDialog || !u12Ui.assignOptions || u12Loading || u12Saving) return;
+      !u12Ui.assignDialog || !u12Ui.assignOptions || u12Loading || u12Saving ||
+      !u12WriteAllowed || u12Conflict ||
+      u12Snapshot.session?.state === "cancelled") return;
   u12AssignmentAthleteId = athleteId;
   u12Ui.assignTitle.textContent = "Inhalte: " + person.firstName + " " + person.lastName;
   u12Ui.assignOptions.replaceChildren();
@@ -657,6 +659,14 @@ async function saveU12Attendance() {
       u12Snapshot.session?.state === "cancelled") return false;
   if (u12DirtyDates.size === 0 && u12Snapshot.session !== null &&
       !u12HasUnconfirmedAnswers()) return true;
+  const titles = u12ContentTitles.map((title) => title.trim());
+  const invalidTitleIndex = titles.findIndex((title) => title.length === 0 || title.length > 120);
+  if (invalidTitleIndex !== -1) {
+    if (u12Ui.contentCard) u12Ui.contentCard.open = true;
+    showMessage(u12Ui.message, "Bitte alle Trainingsinhalte benennen (maximal 120 Zeichen).");
+    u12Ui.contentRows?.querySelector('[data-u12-title-index="' + invalidTitleIndex + '"]')?.focus();
+    return false;
+  }
   const generation = attendanceSessionGeneration;
   const loadId = u12LoadId;
   const groupId = u12LoadedGroupId;
@@ -678,7 +688,11 @@ async function saveU12Attendance() {
         attendance: u12Snapshot.participants.map((person) => ({
           athleteId: person.athleteId,
           status: u12Present.get(person.athleteId) === true ? "present" : "absent",
+          contentSlots: u12Present.get(person.athleteId) === true
+            ? [...(u12ContentAssignments.get(person.athleteId) ?? new Set())].sort((a, b) => a - b)
+            : [],
         })),
+        contentTitles: titles,
       }),
     });
     if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return false;
@@ -760,7 +774,7 @@ async function u12ChangeGroup() {
 async function u12ReloadAttendance() {
   if (u12Saving || u12Loading) return;
   if (u12DirtyDates.size > 0 &&
-      !window.confirm("Ungespeicherte U12-Häkchen verwerfen und Liste neu laden?")) return;
+      !window.confirm("Ungespeicherte Anwesenheit und Trainingsinhalte verwerfen und neu laden?")) return;
   u12DirtyDates.clear();
   u12Conflict = false;
   await loadU12Attendance();
@@ -859,6 +873,45 @@ u12Ui.days?.addEventListener("click", (event) => {
 u12Ui.date?.addEventListener("change", () => void u12ChangeDate());
 u12Ui.group?.addEventListener("change", () => void u12ChangeGroup());
 u12Ui.save?.addEventListener("click", () => void saveU12Attendance());
+u12Ui.contentAdd?.addEventListener("click", () => addU12Content());
+u12Ui.contentRows?.addEventListener("click", (event) => {
+  const remove = event.target?.closest?.("[data-u12-remove-index]");
+  if (remove && u12Ui.contentRows.contains(remove)) {
+    removeU12Content(Number(remove.dataset.u12RemoveIndex));
+  }
+});
+u12Ui.contentRows?.addEventListener("input", (event) => {
+  const input = event.target;
+  const index = Number(input?.dataset?.u12TitleIndex);
+  if (!input || !Object.prototype.hasOwnProperty.call(input.dataset, "u12TitleIndex") ||
+      !Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
+      u12Loading || u12Saving || !u12WriteAllowed || u12Conflict ||
+      u12Snapshot?.session?.state === "cancelled") return;
+  u12ContentTitles[index] = input.value;
+  if (u12Ui.assignDialog?.open) u12Ui.assignDialog.close();
+  markU12DraftDirty();
+});
+u12Ui.assignClose?.addEventListener("click", () => u12Ui.assignDialog?.close());
+u12Ui.assignOptions?.addEventListener("change", (event) => {
+  const input = event.target;
+  const index = Number(input?.dataset?.u12AssignSlot);
+  const id = u12AssignmentAthleteId;
+  if (!input || !Object.prototype.hasOwnProperty.call(input.dataset, "u12AssignSlot") ||
+      !Number.isInteger(index) || index < 1 || index > u12ContentTitles.length ||
+      !id || !u12Present.get(id) || !u12WriteAllowed || u12Conflict ||
+      u12Loading || u12Saving || u12Snapshot?.session?.state === "cancelled") return;
+  const selected = new Set(u12ContentAssignments.get(id) ?? []);
+  if (input.checked) selected.add(index);
+  else selected.delete(index);
+  u12ContentAssignments.set(id, selected);
+  markU12DraftDirty();
+});
+u12Ui.days?.addEventListener("click", (event) => {
+  const assign = event.target?.closest?.("[data-u12-assign-id]");
+  if (assign && u12Ui.days.contains(assign)) {
+    openU12ContentAssignments(assign.dataset.u12AssignId);
+  }
+});
 u12Ui.reload?.addEventListener("click", () => void u12ReloadAttendance());
 u12Ui.days?.addEventListener("change", (event) => {
   const input = event.target;
@@ -868,6 +921,10 @@ u12Ui.days?.addEventListener("change", (event) => {
       u12Snapshot.session?.state === "cancelled" ||
       !u12Snapshot.participants.some((person) => person.athleteId === athleteId)) return;
   u12Present.set(athleteId, input.checked === true);
+  if (!input.checked) u12ContentAssignments.set(athleteId, new Set());
+  if (!input.checked && u12AssignmentAthleteId === athleteId && u12Ui.assignDialog?.open) {
+    u12Ui.assignDialog.close();
+  }
   u12DirtyDates.add(u12LoadedDate);
   showMessage(u12Ui.success, "");
   // Update just the count/status: no DOM rebuild and no lost checkbox focus.
