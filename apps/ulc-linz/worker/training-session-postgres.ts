@@ -26,6 +26,12 @@ export interface UlcTrainingSessionSnapshot {
   readonly revision: string;
   readonly attendance: readonly UlcTrainingAttendance[];
   readonly registrations: readonly UlcTrainingRegistration[];
+  /** Only U12 currently consumes these app-owned youth documentation fields. */
+  readonly trainingContentTitles?: readonly string[];
+  readonly trainingContentAssignments?: readonly Readonly<{
+    athleteId: string;
+    slots: readonly number[];
+  }>[];
 }
 
 export interface UlcTrainingAttendanceSummary {
@@ -50,6 +56,27 @@ export class UlcTrainingSessionPersistenceError extends Error {
     super(message);
     this.name = "UlcTrainingSessionPersistenceError";
   }
+}
+
+function readTrainingContentTitles(value: unknown): readonly string[] {
+  if (value === undefined) return Object.freeze([]); // legacy test fixture
+  if (!Array.isArray(value) || value.length > 5 ||
+      !value.every((title) => typeof title === "string" &&
+        title.length > 0 && title.length <= 120 &&
+        title.trim() === title && !/[\\x00-\\x1F\\x7F]/.test(title))) {
+    throw new UlcTrainingSessionPersistenceError("Invalid training content titles.");
+  }
+  return Object.freeze([...value]);
+}
+
+function readTrainingContentSlots(value: unknown): readonly number[] {
+  if (value === undefined) return Object.freeze([]); // legacy test fixture
+  if (!Array.isArray(value) || value.length > 5 ||
+      new Set(value).size !== value.length ||
+      !value.every((slot) => Number.isInteger(slot) && slot >= 1 && slot <= 5)) {
+    throw new UlcTrainingSessionPersistenceError("Invalid attendee content slots.");
+  }
+  return Object.freeze([...value].sort((a, b) => a - b));
 }
 
 export class PostgresUlcTrainingSessionRepository {
@@ -90,6 +117,7 @@ export class PostgresUlcTrainingSessionRepository {
               session_date::text AS session_date,
               state,
               note,
+              training_content_titles,
               xmin::text AS revision
        FROM ulc_linz_training_session
        WHERE organization_id = $1
@@ -108,7 +136,7 @@ export class PostgresUlcTrainingSessionRepository {
 
     const session = sessionFromRow(rows[0], expected.organizationId);
     const attendanceRows = await this.#sql.unsafe(
-      `SELECT organization_id, session_id, athlete_id, status
+      `SELECT organization_id, session_id, athlete_id, status, training_content_slots
        FROM ulc_linz_training_attendance
        WHERE organization_id = $1
          AND session_id = $2
@@ -145,6 +173,19 @@ export class PostgresUlcTrainingSessionRepository {
       revision: rowRevision(rows[0]),
       attendance,
       registrations,
+      ...(moduleId === "u12"
+        ? {
+            trainingContentTitles: readTrainingContentTitles(
+              rows[0].training_content_titles,
+            ),
+            trainingContentAssignments: Object.freeze(attendanceRows.map((row) =>
+              Object.freeze({
+                athleteId: String(row.athlete_id),
+                slots: readTrainingContentSlots(row.training_content_slots),
+              }),
+            )),
+          }
+        : {}),
     });
   }
 
