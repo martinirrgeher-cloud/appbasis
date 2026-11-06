@@ -24,6 +24,11 @@ import {
   ULC_TRAINING_DOCUMENTATION_SCRIPT,
 } from "./training-documentation-ui";
 import {
+  ULC_YOUTH_CATEGORY_HTML,
+  ULC_YOUTH_CATEGORY_CSS,
+  ULC_YOUTH_CATEGORY_SCRIPT,
+} from "./youth-category-ui";
+import {
   ULC_U12_HTML,
   ULC_U12_CSS,
   ULC_U12_SCRIPT,
@@ -110,7 +115,11 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <div class="app-nav__attendance-item app-nav__attendance-item--pending" aria-disabled="true">
               <strong>U14</strong><small>In Vorbereitung</small>
             </div>
+            <button class="app-nav__attendance-item" type="button" data-attendance-target="categories" hidden disabled>
+              <strong><span aria-hidden="true">⚙</span> Trainingskategorien</strong><small>Für U12, U14 und Kindertraining verwalten</small>
+            </button>
           </div>
+          ${ULC_YOUTH_CATEGORY_HTML}
           <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden>
             <button class="app-nav__link" type="button" data-nav-view="registration" data-nav-priority="1" hidden disabled>Anmeldung</button>
             <button class="app-nav__link" type="button" data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung</button>
@@ -2149,6 +2158,7 @@ ${ULC_USER_ADMIN_CSS}
 .app-nav__attendance-item--pending { opacity: .55; cursor: default; }
 #app-nav-attendance[aria-expanded="true"] { background: #dbeafe; color: #1d4ed8; }
 ${ULC_U12_CSS}
+${ULC_YOUTH_CATEGORY_CSS}
 `;
 
 export const ULC_LINZ_APP_SCRIPT = `const SETTINGS_KEY = "ulc-linz.countdown.settings.v1";
@@ -2843,6 +2853,8 @@ for (const control of document.querySelectorAll("[data-attendance-target]")) {
       void navigateAppSection("u12");
     } else if (control.dataset.attendanceTarget === "kindertraining") {
       void navigateToAttendanceGroup(control.dataset.attendanceGroup || "");
+    } else if (control.dataset.attendanceTarget === "categories") {
+      void openYouthCategoryManagement();
     }
   });
 }
@@ -2862,6 +2874,8 @@ ${ULC_TRAINING_PLANS_SCRIPT}
 ${ULC_TRAINING_DOCUMENTATION_SCRIPT}
 
 ${ULC_USER_ADMIN_SCRIPT}
+
+${ULC_YOUTH_CATEGORY_SCRIPT}
 
 ${ULC_U12_SCRIPT}
 
@@ -4950,6 +4964,7 @@ function refreshAppAvailability() {
   for (const choice of document.querySelectorAll("[data-attendance-target]")) {
     const target = choice.dataset.attendanceTarget || "";
     const available = target === "u12" ? u12Ready :
+      target === "categories" ? (u12Ready || kindertrainingReady) :
       target === "kindertraining" &&
       findAttendanceTrainingGroup(choice.dataset.attendanceGroup || "") !== null;
     choice.hidden = !available;
