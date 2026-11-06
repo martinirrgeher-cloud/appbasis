@@ -53,7 +53,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_HTML).toContain('id="u12-next"');
     expect(ULC_U12_HTML).toContain('id="u12-reload"');
     expect(ULC_U12_HTML).toContain('id="u12-save"');
-    expect(ULC_U12_HTML).toContain("Liste speichern");
+    expect(ULC_U12_HTML).toContain("Training speichern");
     expect(ULC_U12_HTML).toContain('id="u12-count"');
     expect(ULC_U12_HTML).not.toContain('id="u12-week-label"');
     expect(ULC_U12_HTML).not.toContain("Tagesnotiz");
@@ -112,20 +112,25 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     const hasUnconfirmed = new Function(
       "u12Snapshot",
       "u12Present",
+      "u12ContentTitles",
+      "u12ContentAssignments",
       source + "\nreturn u12HasUnconfirmedAnswers();",
     );
     const snapshot = (status: string) => ({
       session: { revision: "1", state: "scheduled", note: null },
-      participants: [{ athleteId: "athlete-1", status }],
+      contentTitles: [],
+      participants: [{ athleteId: "athlete-1", status, contentSlots: [] }],
     });
     const unchecked = new Map([["athlete-1", false]]);
     const checked = new Map([["athlete-1", true]]);
-    expect(hasUnconfirmed(null, unchecked)).toBe(false);
-    expect(hasUnconfirmed(snapshot("absent"), unchecked)).toBe(false);
-    expect(hasUnconfirmed(snapshot("present"), checked)).toBe(false);
-    expect(hasUnconfirmed(snapshot("open"), unchecked)).toBe(true);
-    expect(hasUnconfirmed(snapshot("excused"), unchecked)).toBe(true);
-    expect(hasUnconfirmed(snapshot("present"), unchecked)).toBe(true);
+    const titles: string[] = [];
+    const assignments = new Map([["athlete-1", new Set<number>()]]);
+    expect(hasUnconfirmed(null, unchecked, titles, assignments)).toBe(false);
+    expect(hasUnconfirmed(snapshot("absent"), unchecked, titles, assignments)).toBe(false);
+    expect(hasUnconfirmed(snapshot("present"), checked, titles, assignments)).toBe(false);
+    expect(hasUnconfirmed(snapshot("open"), unchecked, titles, assignments)).toBe(true);
+    expect(hasUnconfirmed(snapshot("excused"), unchecked, titles, assignments)).toBe(true);
+    expect(hasUnconfirmed(snapshot("present"), unchecked, titles, assignments)).toBe(true);
     expect(ULC_U12_SCRIPT).toContain(
       'u12HasUnconfirmedAnswers() ? "Ja/Nein noch nicht bestätigt – bitte speichern"',
     );
@@ -168,6 +173,23 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_SCRIPT).toContain('label.textContent = contact.isEmergency ? "Notfallkontakt"');
     expect(ULC_U12_SCRIPT).not.toMatch(/\.innerHTML\s*=/);
     expect(ULC_U12_SCRIPT).toContain("u12Ui.detailsContent?.replaceChildren()");
+  });
+
+  it("persists five short contents and each present athlete's assignments with the attendance", () => {
+    expect(ULC_U12_HTML).toContain('id="u12-content-card"');
+    expect(ULC_U12_HTML).toContain('id="u12-content-add"');
+    expect(ULC_U12_HTML).toContain('id="u12-assign-dialog"');
+    expect(ULC_U12_SCRIPT).toContain('u12Ui.contentAdd?.addEventListener("click"');
+    expect(ULC_U12_SCRIPT).toContain('u12Ui.contentRows?.addEventListener("input"');
+    expect(ULC_U12_SCRIPT).toContain('u12Ui.assignOptions?.addEventListener("change"');
+    expect(ULC_U12_SCRIPT).toContain('openU12ContentAssignments(assign.dataset.u12AssignId)');
+    expect(ULC_U12_SCRIPT).toContain('const titles = u12ContentTitles.map((title) => title.trim());');
+    expect(ULC_U12_SCRIPT).toContain('contentTitles: titles,');
+    expect(ULC_U12_SCRIPT).toContain('contentSlots: u12Present.get(person.athleteId) === true');
+    expect(ULC_U12_SCRIPT).toContain('if (!input.checked) u12ContentAssignments.set(athleteId, new Set());');
+    expect(ULC_U12_SCRIPT).toContain('u12ContentTitles.length >= 5');
+    expect(ULC_U12_SCRIPT).toContain('Bitte alle Trainingsinhalte benennen');
+    expect(ULC_U12_SCRIPT).not.toMatch(/localStorage|sessionStorage|indexedDB|innerHTML/);
   });
 
   it("guards unsaved rows on navigation, date changes, reload and sign-out", () => {
