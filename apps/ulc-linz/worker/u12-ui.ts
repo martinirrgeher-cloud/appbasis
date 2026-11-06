@@ -1,3 +1,5 @@
+import { ULC_YOUTH_CONTENT_CATALOG } from "./training-content-catalog";
+
 export const ULC_U12_HTML = `
           <section class="app-section" data-app-section="u12" id="u12" hidden>
             <header class="u12-head">
@@ -41,7 +43,7 @@ export const ULC_U12_HTML = `
                   <span aria-hidden="true">⌄</span>
                 </summary>
                 <div class="u12-content-body">
-                  <p>Bis zu fünf kurze Inhalte je Training. Ordne sie anschließend den anwesenden Kindern zu.</p>
+                  <p>Pro Training bis zu fünf Inhalte. Wähle eine standardisierte Kategorie und ergänze bei Bedarf Zusatzinfos. Vorhandene freie Inhalte bleiben erhalten.</p>
                   <div id="u12-content-rows" class="u12-content-rows"></div>
                   <div class="u12-content-actions">
                     <button type="button" class="u12-content-add" id="u12-content-add">＋ Inhalt</button>
@@ -118,7 +120,10 @@ export const ULC_U12_CSS = `
 .u12-content-rows { display:grid; gap:8px; }
 .u12-content-row { display:grid; grid-template-columns:24px minmax(0,1fr) 38px; gap:8px; align-items:center; }
 .u12-content-row > strong { font-size:.84rem; color:var(--secondary); text-align:center; }
-.u12-content-row input { min-width:0; width:100%; min-height:42px; border:1px solid var(--border-strong); border-radius:9px; padding:8px 10px; background:var(--card); color:var(--text); }
+.u12-content-fields { display:grid; gap:6px; min-width:0; }
+.u12-content-fields input, .u12-content-fields select { min-width:0; width:100%; min-height:42px; border:1px solid var(--border-strong); border-radius:9px; padding:8px 10px; background:var(--card); color:var(--text); }
+.u12-content-fields input[hidden] { display:none; }
+.u12-content-fields .u12-content-detail { font-size:.85rem; }
 .u12-content-remove { width:38px; height:42px; border:0; background:var(--muted); color:var(--text); border-radius:9px; font-size:1.15rem; cursor:pointer; }
 .u12-content-add { justify-self:start; min-height:42px; padding:0 11px; border:1px solid var(--border-strong); border-radius:9px; background:var(--muted); color:var(--text); font-weight:750; cursor:pointer; }
 .u12-content-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
@@ -227,6 +232,7 @@ const u12Ui = {
   success: document.querySelector("#u12-success"),
 };
 const U12_SERVER_STATUSES = Object.freeze(["open", "present", "excused", "absent"]);
+const U12_STANDARD_CONTENT_CATALOG = ${JSON.stringify(ULC_YOUTH_CONTENT_CATALOG)};
 let u12Ready = false;
 let u12WriteAllowed = true;
 let u12Groups = [];
@@ -235,6 +241,7 @@ let u12LoadedDate = "";
 let u12Snapshot = null;
 let u12Present = new Map();
 let u12ContentTitles = [];
+let u12ContentItems = [];
 let u12ContentAssignments = new Map();
 let u12DirtyDates = new Set();
 let u12Loading = false;
@@ -252,6 +259,7 @@ function resetU12SessionState() {
   u12Snapshot = null;
   u12Present = new Map();
   u12ContentTitles = [];
+  u12ContentItems = [];
   u12ContentAssignments = new Map();
   u12Ui.contentRows?.replaceChildren();
   if (u12Ui.matrixSection?.open) u12Ui.matrixSection.close();
@@ -410,7 +418,7 @@ function refreshU12Controls() {
   for (const input of u12Ui.days?.querySelectorAll("[data-u12-athlete-id]") ?? []) {
     input.disabled = !editable;
   }
-  for (const input of u12Ui.contentRows?.querySelectorAll("input, button") ?? []) {
+  for (const input of u12Ui.contentRows?.querySelectorAll("input, select, button") ?? []) {
     input.disabled = !editable;
   }
   if (u12Ui.contentAdd) {
@@ -809,6 +817,7 @@ async function loadU12Attendance() {
   u12Snapshot = null;
   u12Present = new Map();
   u12ContentTitles = [];
+  u12ContentItems = [];
   u12ContentAssignments = new Map();
   u12DirtyDates.clear();
   u12Conflict = false;
