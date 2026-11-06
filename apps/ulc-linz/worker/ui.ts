@@ -306,6 +306,24 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                         <label>Jahrgang<input id="athlete-birth-year" type="number" min="1900" max="2100" inputmode="numeric" /></label>
                         <label>Notiz<input id="athlete-notes" maxlength="3000" /></label>
                       </div>
+                      <fieldset class="athlete-create-extras" id="athlete-create-extras">
+                        <legend>Gruppe und Kontakte direkt anlegen</legend>
+                        <div class="settings-grid">
+                          <label>Trainingsgruppe (optional)
+                            <select id="athlete-create-group"><option value="">Ohne Gruppe</option></select>
+                          </label>
+                          <label>Gruppenzugehörigkeit ab
+                            <input type="date" id="athlete-create-started-on" />
+                          </label>
+                        </div>
+                        <div class="athlete-create-contacts-head">
+                          <strong>Kontaktpersonen</strong>
+                          <button class="button button--secondary" id="athlete-create-contact-add" type="button">＋ Kontaktperson</button>
+                        </div>
+                        <div id="athlete-create-contacts" class="athlete-create-contacts"></div>
+                        <p class="settings-note">Kontaktpersonen können gleich mitgespeichert werden; weitere sind später bearbeitbar.</p>
+                      </fieldset>
+                      <p class="message message--error" role="alert" id="athlete-create-message" hidden></p>
                       <div class="masterdata-form-actions">
                         <button class="button button--primary" id="athlete-submit-button" type="submit">Athlet anlegen</button>
                         <button class="button button--secondary" id="athlete-edit-cancel" type="button">Zurück</button>
@@ -2098,6 +2116,16 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
 .masterdata-icon-action__label { display: none; }
 
 ${ULC_USER_ADMIN_CSS}
+
+/* Athletes: multi-field create is one overlay, not a sequence of forms. */
+.athlete-create-extras { margin: 16px 0 4px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
+.athlete-create-extras legend { padding: 0 6px; font-size: .92rem; font-weight: 750; }
+.athlete-create-contacts-head { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin: 16px 0 8px; }
+.athlete-create-contacts-head button { min-height: 44px; }
+.athlete-create-contacts { display: grid; gap: 10px; }
+.athlete-create-contact { min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
+.athlete-create-contact legend { font-size: .82rem; }
+.athlete-create-contact > button { min-height: 44px; margin-top: 10px; }
 ${ULC_U12_CSS}
 `;
 
@@ -2251,6 +2279,12 @@ const elements = {
   athleteLastName: document.querySelector("#athlete-last-name"),
   athleteBirthYear: document.querySelector("#athlete-birth-year"),
   athleteNotes: document.querySelector("#athlete-notes"),
+  athleteCreateExtras: document.querySelector("#athlete-create-extras"),
+  athleteCreateGroup: document.querySelector("#athlete-create-group"),
+  athleteCreateStartedOn: document.querySelector("#athlete-create-started-on"),
+  athleteCreateContactAdd: document.querySelector("#athlete-create-contact-add"),
+  athleteCreateContacts: document.querySelector("#athlete-create-contacts"),
+  athleteCreateMessage: document.querySelector("#athlete-create-message"),
   athleteFormTitle: document.querySelector("#athlete-form-title"),
   athleteSubmitButton: document.querySelector("#athlete-submit-button"),
   athleteEditCancel: document.querySelector("#athlete-edit-cancel"),
@@ -2478,6 +2512,7 @@ let masterdataEdit = null;
 let masterdataContactEdit = null;
 let masterdataAthleteOverlayId = null;
 let masterdataAthleteOverlayMode = "closed";
+let masterdataAthleteCreateContext = null;
 let masterdataTrainerOverlayId = null;
 let masterdataTrainerOverlayMode = "closed";
 let masterdataGroupOverlayId = null;
@@ -2548,7 +2583,8 @@ elements.masterdataExport?.addEventListener("click", () => {
 });
 elements.athleteForm?.addEventListener("submit", (event) => void createMasterdataAthlete(event));
 elements.athleteContactForm?.addEventListener("submit", (event) => void saveMasterdataAthleteContact(event));
-elements.athleteNew?.addEventListener("click", openNewMasterdataAthlete);
+elements.athleteNew?.addEventListener("click", () => openNewMasterdataAthlete()); 
+elements.athleteCreateContactAdd?.addEventListener("click", addMasterdataNewAthleteContact);
 elements.athleteShowInactive?.addEventListener("change", () => {
   masterdataShowInactiveAthletes = elements.athleteShowInactive.checked;
   if (masterdataSnapshot) renderMasterdata(masterdataSnapshot);
@@ -6859,24 +6895,115 @@ function openMasterdataAthleteOverlay(athleteId) {
   showMasterdataAthleteOverlayMode("detail");
 }
 
-function openNewMasterdataAthlete() {
-  if (!masterdataCanEdit) return;
+function openNewMasterdataAthlete(context = null) {
+  if (!masterdataCanEdit || !masterdataSnapshot) return;
+  const fromU12 = context?.source === "u12" &&
+    masterdataSnapshot.trainingGroups.some((group) =>
+      group.id === context.groupId && group.isActive !== false);
+  if (context?.source === "u12" && !fromU12) {
+    showMessage(elements.masterdataMessage,
+      "Die U12-Gruppe ist in den Stammdaten nicht verfügbar.");
+    return;
+  }
+  masterdataAthleteCreateContext = fromU12
+    ? { source: "u12", groupId: context.groupId, startedOn: context.startedOn }
+    : null;
   masterdataAthleteOverlayId = null;
   masterdataEdit = null;
   masterdataContactEdit = null;
   elements.athleteForm?.reset();
+  elements.athleteCreateContacts?.replaceChildren();
+  showMessage(elements.athleteCreateMessage, "");
+  replaceSelectOptions(
+    elements.athleteCreateGroup,
+    masterdataSnapshot.trainingGroups.filter((group) => group.isActive !== false),
+    "Ohne Gruppe",
+    (group) => group.id,
+    (group) => group.name,
+  );
+  if (elements.athleteCreateGroup) {
+    elements.athleteCreateGroup.value = fromU12 ? context.groupId : "";
+    elements.athleteCreateGroup.disabled = fromU12;
+  }
+  if (elements.athleteCreateStartedOn) {
+    elements.athleteCreateStartedOn.value = fromU12
+      ? context.startedOn : localDateValue(new Date());
+    elements.athleteCreateStartedOn.disabled = fromU12;
+  }
   refreshMasterdataEditMode();
   showMasterdataAthleteOverlayMode("athlete");
   if (elements.athleteOverlayTitle) {
     elements.athleteOverlayTitle.textContent = "Athlet anlegen";
   }
   if (elements.athleteOverlayMeta) {
-    elements.athleteOverlayMeta.textContent = "Neuen Athleten erfassen";
+    elements.athleteOverlayMeta.textContent = fromU12
+      ? "Neue U12-Teilnahme: Gruppe wird automatisch zugeordnet"
+      : "Stammdaten, Gruppe und Kontaktpersonen gemeinsam erfassen";
   }
   elements.athleteFirstName?.focus();
 }
 
+function addMasterdataNewAthleteContact() {
+  const host = elements.athleteCreateContacts;
+  if (!host || host.children.length >= 6 || masterdataEdit?.type === "athlete") return;
+  const row = document.createElement("fieldset");
+  row.className = "athlete-create-contact";
+  const title = document.createElement("legend");
+  title.textContent = "Kontaktperson " + (host.children.length + 1);
+  row.append(title);
+  const grid = document.createElement("div");
+  grid.className = "settings-grid";
+  function field(labelText, key, options = {}) {
+    const label = document.createElement("label");
+    label.textContent = labelText;
+    const input = document.createElement("input");
+    input.dataset.athleteNewContact = key;
+    input.maxLength = options.maxLength || 80;
+    input.required = !!options.required;
+    if (options.type) input.type = options.type;
+    if (options.minLength) input.minLength = options.minLength;
+    if (options.inputMode) input.inputMode = options.inputMode;
+    label.append(input);
+    grid.append(label);
+  }
+  field("Name", "contactName", { maxLength: 120, required: true });
+  field("Beziehung", "relationship");
+  field("Telefon", "phone", { maxLength: 80, required: true, minLength: 3, inputMode: "tel" });
+  field("Notiz", "notes", { maxLength: 3000 });
+  const emergency = document.createElement("label");
+  emergency.className = "setting-checkbox";
+  const check = document.createElement("input");
+  check.type = "checkbox";
+  check.dataset.athleteNewContact = "isEmergency";
+  check.checked = true;
+  const text = document.createElement("span");
+  text.textContent = "Notfallkontakt";
+  emergency.append(check, text);
+  grid.append(emergency);
+  row.append(grid);
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "button button--secondary";
+  remove.textContent = "Kontaktperson entfernen";
+  remove.addEventListener("click", () => {
+    row.remove();
+    [...host.children].forEach((child, i) => {
+      const legend = child.querySelector("legend");
+      if (legend) legend.textContent = "Kontaktperson " + (i + 1);
+    });
+    elements.athleteCreateContactAdd.disabled = host.children.length >= 6;
+  });
+  row.append(remove);
+  host.append(row);
+  elements.athleteCreateContactAdd.disabled = host.children.length >= 6;
+  row.querySelector('[data-athlete-new-contact="contactName"]')?.focus();
+}
+
 function closeMasterdataAthleteOverlay() {
+  masterdataAthleteCreateContext = null;
+  elements.athleteCreateContacts?.replaceChildren();
+  if (elements.athleteCreateContactAdd) elements.athleteCreateContactAdd.disabled = false;
+  showMessage(elements.athleteCreateMessage, "");
   masterdataAthleteOverlayMode = "closed";
   masterdataAthleteOverlayId = null;
   masterdataEdit = null;
@@ -7156,6 +7283,10 @@ function refreshMasterdataEditMode() {
   const trainerEditing = masterdataEdit?.type === "trainer";
   const groupEditing = masterdataEdit?.type === "group";
 
+  if (elements.athleteCreateExtras) {
+    elements.athleteCreateExtras.hidden = athleteEditing;
+    elements.athleteCreateExtras.disabled = athleteEditing;
+  }
   if (elements.athleteFormTitle) {
     elements.athleteFormTitle.textContent = athleteEditing ? "Athlet bearbeiten" : "Athlet anlegen";
   }
