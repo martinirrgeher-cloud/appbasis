@@ -20,6 +20,7 @@ export const ULC_U12_HTML = `
                 </label>
                 <button class="button button--secondary" type="button" id="u12-next" aria-label="Nächster Trainingstag">›</button>
               </div>
+              <button class="button button--secondary u12-reload" type="button" id="u12-reload">↻ Liste neu laden</button>
             </section>
             <section id="u12-week" class="u12-week" hidden>
               <div class="card u12-savebar">
@@ -39,6 +40,7 @@ export const ULC_U12_CSS = `
 .u12-toolbar, .u12-week, .u12-days { display: grid; gap: 10px; min-width: 0; max-width: 100%; }
 .u12-toolbar > label { font-weight: 700; font-size: .82rem; }
 .u12-toolbar > select { width: 100%; min-width: 0; }
+.u12-reload { justify-self: start; min-height: 44px; }
 .u12-date-nav { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 8px; align-items: end; }
 .u12-date-nav > button { min-height: 44px; padding: 0; font-size: 1.2rem; }
 .u12-date-nav > label { display: grid; gap: 4px; min-width: 0; font-size: .8rem; font-weight: 700; }
@@ -73,6 +75,7 @@ const u12Ui = {
   date: document.querySelector("#u12-date"),
   prev: document.querySelector("#u12-prev"),
   next: document.querySelector("#u12-next"),
+  reload: document.querySelector("#u12-reload"),
   week: document.querySelector("#u12-week"),
   days: document.querySelector("#u12-days"),
   count: document.querySelector("#u12-count"),
@@ -202,7 +205,7 @@ async function bootstrapU12() {
 
 function refreshU12Controls() {
   const busy = u12Loading || u12Saving;
-  for (const control of [u12Ui.group, u12Ui.date, u12Ui.prev, u12Ui.next]) {
+  for (const control of [u12Ui.group, u12Ui.date, u12Ui.prev, u12Ui.next, u12Ui.reload]) {
     if (control) control.disabled = busy || !u12Ready;
   }
   const cancelled = u12Snapshot?.session?.state === "cancelled";
@@ -466,6 +469,7 @@ u12Ui.next?.addEventListener("click", () => void u12MoveDate(1));
 u12Ui.date?.addEventListener("change", () => void u12ChangeDate());
 u12Ui.group?.addEventListener("change", () => void u12ChangeGroup());
 u12Ui.save?.addEventListener("click", () => void saveU12Attendance());
+u12Ui.reload?.addEventListener("click", () => void u12ReloadAttendance());
 u12Ui.days?.addEventListener("change", (event) => {
   const input = event.target;
   const athleteId = input?.dataset?.u12AthleteId;
