@@ -409,12 +409,7 @@ function refreshU12Controls() {
   if (u12Ui.contentCount) {
     u12Ui.contentCount.textContent = u12ContentTitles.length + " / 5";
   }
-  for (const control of u12Ui.days?.querySelectorAll("[data-u12-assign-id]") ?? []) {
-    const id = control.dataset.u12AssignId;
-    const assigned = u12ContentAssignments.get(id)?.size ?? 0;
-    control.textContent = "Inhalte " + assigned + " / " + u12ContentTitles.length;
-    control.disabled = !editable || !u12Present.get(id) || u12ContentTitles.length === 0;
-  }
+  refreshU12MatrixControls(editable);
   for (const input of u12Ui.assignOptions?.querySelectorAll("input") ?? []) {
     input.disabled = !editable || !u12Present.get(u12AssignmentAthleteId);
   }
@@ -549,6 +544,138 @@ function openU12ContentAssignments(athleteId) {
   refreshU12Controls();
 }
 
+
+function u12PresentAthletes() {
+  return (u12Snapshot?.participants ?? []).filter((person) =>
+    u12Present.get(person.athleteId) === true,
+  );
+}
+
+function u12EditableDraft() {
+  return !!u12Snapshot && u12Ready && u12WriteAllowed && !u12Conflict &&
+    !u12Loading && !u12Saving && u12Snapshot.session?.state !== "cancelled";
+}
+
+function refreshU12MatrixControls(editable = u12EditableDraft()) {
+  const athletes = u12PresentAthletes();
+  for (const input of u12Ui.matrix?.querySelectorAll("[data-u12-matrix-athlete]") ?? []) {
+    const athleteId = input.dataset.u12MatrixAthlete;
+    const slot = Number(input.dataset.u12MatrixSlot);
+    input.checked = u12ContentAssignments.get(athleteId)?.has(slot) === true;
+    input.disabled = !editable || !u12Present.get(athleteId);
+  }
+  for (const input of u12Ui.matrix?.querySelectorAll("[data-u12-matrix-all]") ?? []) {
+    const slot = Number(input.dataset.u12MatrixAll);
+    const assigned = athletes.filter((person) =>
+      u12ContentAssignments.get(person.athleteId)?.has(slot)).length;
+    input.checked = athletes.length > 0 && assigned === athletes.length;
+    input.indeterminate = assigned > 0 && assigned < athletes.length;
+    input.disabled = !editable || athletes.length === 0;
+    input.setAttribute("aria-label",
+      "Inhalt " + slot + (input.checked ? " bei allen entfernen" : " allen zuordnen"));
+  }
+}
+
+function renderU12AssignmentMatrix() {
+  if (!u12Ui.matrix || !u12Ui.matrixSection) return;
+  u12Ui.matrix.replaceChildren();
+  u12Ui.matrixSection.hidden = !u12Snapshot || u12ContentTitles.length === 0;
+  if (u12Ui.matrixSection.hidden) return;
+  const athletes = u12PresentAthletes();
+  if (u12Ui.matrixSummary) u12Ui.matrixSummary.textContent =
+    athletes.length + " anwesend · " + u12ContentTitles.length + " Inhalte";
+  const head = document.createElement("thead");
+  const header = document.createElement("tr");
+  const first = document.createElement("th");
+  first.scope = "col";
+  first.textContent = "Athlet";
+  header.append(first);
+  for (const [index, title] of u12ContentTitles.entries()) {
+    const column = document.createElement("th");
+    column.scope = "col";
+    const stack = document.createElement("div");
+    stack.className = "u12-matrix-col";
+    const titleLabel = document.createElement("span");
+    titleLabel.className = "u12-matrix-col__name";
+    titleLabel.dataset.u12MatrixHeading = String(index);
+    titleLabel.textContent = title.trim() || "Inhalt " + (index + 1);
+    titleLabel.title = titleLabel.textContent;
+    const all = document.createElement("label");
+    all.className = "u12-matrix-col__all";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.dataset.u12MatrixAll = String(index + 1);
+    const legend = document.createElement("span");
+    legend.textContent = "Alle";
+    all.append(checkbox, legend);
+    stack.append(titleLabel, all);
+    column.append(stack);
+    header.append(column);
+  }
+  head.append(header);
+  u12Ui.matrix.append(head);
+  const body = document.createElement("tbody");
+  if (athletes.length === 0) {
+    const tr = document.createElement("tr");
+    const empty = document.createElement("td");
+    empty.colSpan = u12ContentTitles.length + 1;
+    empty.className = "u12-matrix-empty";
+    empty.textContent = "Zuerst die anwesenden Athleten anhaken.";
+    tr.append(empty);
+    body.append(tr);
+  }
+  for (const person of athletes) {
+    const tr = document.createElement("tr");
+    const name = document.createElement("th");
+    name.scope = "row";
+    name.textContent = person.lastName + " " + person.firstName;
+    tr.append(name);
+    for (const [index, title] of u12ContentTitles.entries()) {
+      const td = document.createElement("td");
+      const label = document.createElement("label");
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.className = "u12-matrix-check";
+      input.dataset.u12MatrixAthlete = person.athleteId;
+      input.dataset.u12MatrixSlot = String(index + 1);
+      input.setAttribute("aria-label", (title.trim() || "Inhalt " + (index + 1)) +
+        " für " + person.firstName + " " + person.lastName);
+      label.append(input);
+      td.append(label);
+      tr.append(td);
+    }
+    body.append(tr);
+  }
+  u12Ui.matrix.append(body);
+  refreshU12MatrixControls();
+}
+
+function changeU12MatrixAssignment(athleteId, slot, checked) {
+  if (!u12EditableDraft() || !Number.isInteger(slot) ||
+      slot < 1 || slot > u12ContentTitles.length ||
+      !u12Present.get(athleteId) ||
+      !u12Snapshot.participants.some((person) => person.athleteId === athleteId)) return;
+  const selected = new Set(u12ContentAssignments.get(athleteId) ?? []);
+  if (checked) selected.add(slot);
+  else selected.delete(slot);
+  u12ContentAssignments.set(athleteId, selected);
+  markU12DraftDirty();
+}
+
+function changeU12MatrixColumn(slot, checked) {
+  if (!u12EditableDraft() || !Number.isInteger(slot) ||
+      slot < 1 || slot > u12ContentTitles.length) return;
+  const athletes = u12PresentAthletes();
+  if (athletes.length === 0) return;
+  for (const person of athletes) {
+    const selected = new Set(u12ContentAssignments.get(person.athleteId) ?? []);
+    if (checked) selected.add(slot);
+    else selected.delete(slot);
+    u12ContentAssignments.set(person.athleteId, selected);
+  }
+  markU12DraftDirty();
+}
+
 function renderU12Attendance() {
   if (!u12Ui.days || !u12Ui.week) return;
   u12Ui.days.replaceChildren();
@@ -620,20 +747,10 @@ function renderU12Attendance() {
         person.firstName + " " + person.lastName + " anzeigen");
       row.append(info);
     }
-    if (u12ContentTitles.length > 0) {
-      const assign = document.createElement("button");
-      assign.type = "button";
-      assign.className = "u12-person__assignment";
-      assign.dataset.u12AssignId = person.athleteId;
-      const assigned = u12ContentAssignments.get(person.athleteId)?.size ?? 0;
-      assign.textContent = "Inhalte " + assigned + " / " + u12ContentTitles.length;
-      assign.setAttribute("aria-label", "Trainingsinhalte zu " +
-        person.firstName + " " + person.lastName + " zuordnen");
-      row.append(assign);
-    }
     roster.append(row);
   }
   u12Ui.days.append(roster);
+  renderU12AssignmentMatrix();
   refreshU12Controls();
 }
 
@@ -928,7 +1045,12 @@ u12Ui.contentRows?.addEventListener("input", (event) => {
       u12Loading || u12Saving || !u12WriteAllowed || u12Conflict ||
       u12Snapshot?.session?.state === "cancelled") return;
   u12ContentTitles[index] = input.value;
-  if (u12Ui.assignDialog?.open) u12Ui.assignDialog.close();
+  for (const heading of u12Ui.matrix?.querySelectorAll("[data-u12-matrix-heading]") ?? []) {
+    if (Number(heading.dataset.u12MatrixHeading) === index) {
+      heading.textContent = input.value.trim() || "Inhalt " + (index + 1);
+      heading.title = heading.textContent;
+    }
+  }
   markU12DraftDirty();
 });
 u12Ui.assignClose?.addEventListener("click", () => u12Ui.assignDialog?.close());
@@ -962,9 +1084,7 @@ u12Ui.days?.addEventListener("change", (event) => {
       !u12Snapshot.participants.some((person) => person.athleteId === athleteId)) return;
   u12Present.set(athleteId, input.checked === true);
   if (!input.checked) u12ContentAssignments.set(athleteId, new Set());
-  if (!input.checked && u12AssignmentAthleteId === athleteId && u12Ui.assignDialog?.open) {
-    u12Ui.assignDialog.close();
-  }
+  renderU12AssignmentMatrix();
   u12DirtyDates.add(u12LoadedDate);
   showMessage(u12Ui.success, "");
   // Update just the count/status: no DOM rebuild and no lost checkbox focus.
