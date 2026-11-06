@@ -657,6 +657,14 @@
       "retentionPolicy": "35-days-after-subject-deletion",
       "deletionEvidence": "repository-verified-app-authorization-activation-pending",
       "retentionEvidence": "fail-closed-purge-not-implemented"
+    },
+    {
+      "id": "ulc_linz_youth_content_category",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "youth-training-category-configuration",
+      "retentionPolicy": "configuration-lifecycle-not-personal",
+      "deletionEvidence": "not-personal",
+      "retentionEvidence": "not-personal"
     }
   ],
   "runtimeModules": [
