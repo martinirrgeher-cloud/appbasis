@@ -14,7 +14,7 @@ function responseFor(url) {
   }
   if (parsed.pathname === "/") {
     return new Response(
-      '<!doctype html><link rel="stylesheet" href="/app.css"><section data-app-section="kindertraining"><button id="kindertraining-save"></button></section><script src="/app.js"></script>',
+      '<!doctype html><link rel="stylesheet" href="/app.css"><section data-app-section="kindertraining"><button id="kindertraining-week-save" disabled></button></section><script src="/app.js"></script>',
       {
         status: 200,
         headers: {
@@ -129,5 +129,39 @@ test("fails closed on a non-session countdown denial", async () => {
       { databaseFactory: databaseFactory([0]) },
     ),
     /unexpected denial/,
+  );
+});
+
+
+test("rejects the retired day-save HTML instead of accepting a stale preview", async () => {
+  const fetchImpl = async (url) => {
+    const parsed = new URL(url);
+    if (parsed.pathname !== "/") return responseFor(url);
+    return new Response(
+      '<!doctype html><link rel="stylesheet" href="/app.css"><section data-app-section="kindertraining"><button id="kindertraining-save"></button></section><script src="/app.js"></script>',
+      {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "content-security-policy":
+            "default-src 'self'; script-src 'self'; frame-ancestors 'none'",
+        },
+      },
+    );
+  };
+
+  await assert.rejects(
+    verifyUlcLinzD4PreviewAuditSmoke(
+      {
+        baseURL: BASE_URL,
+        migrationDatabaseUrl:
+          "postgresql://owner:secret@example.test/appbasis_ulc_linz_preview",
+        betterAuthSecret: BETTER_AUTH_SECRET,
+        correlationId: CORRELATION_ID,
+        fetchImpl,
+      },
+      { databaseFactory: databaseFactory([]) },
+    ),
+    /missing the Kindertraining UI surface/,
   );
 });
