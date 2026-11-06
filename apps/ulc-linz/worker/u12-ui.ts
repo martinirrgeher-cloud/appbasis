@@ -33,10 +33,29 @@ export const ULC_U12_HTML = `
                   <strong id="u12-count">0 von 0 anwesend</strong>
                   <small id="u12-save-state" role="status">Training auswählen</small>
                 </div>
-                <button class="button button--primary" type="button" id="u12-save" disabled>Liste speichern</button>
+                <button class="button button--primary" type="button" id="u12-save" disabled>Training speichern</button>
               </div>
+              <details class="u12-content-card" id="u12-content-card">
+                <summary class="u12-content-summary">
+                  <span>Trainingsinhalte <small id="u12-content-count">0 / 5</small></span>
+                  <span aria-hidden="true">⌄</span>
+                </summary>
+                <div class="u12-content-body">
+                  <p>Bis zu fünf kurze Inhalte je Training. Ordne sie anschließend den anwesenden Kindern zu.</p>
+                  <div id="u12-content-rows" class="u12-content-rows"></div>
+                  <button type="button" class="u12-content-add" id="u12-content-add">＋ Inhalt</button>
+                </div>
+              </details>
               <div id="u12-days" class="u12-days" aria-live="polite"></div>
             </section>
+            <dialog class="u12-details-dialog" id="u12-assign-dialog" aria-labelledby="u12-assign-title">
+              <header class="u12-details-header">
+                <h2 id="u12-assign-title">Trainingsinhalte</h2>
+                <button class="button button--secondary" type="button" id="u12-assign-close" aria-label="Zuordnung schließen">✕</button>
+              </header>
+              <p>Wähle aus, welche Inhalte das Kind absolviert hat.</p>
+              <div id="u12-assign-options" class="u12-assign-options"></div>
+            </dialog>
             <dialog class="u12-details-dialog" id="u12-details-dialog" aria-labelledby="u12-details-title">
               <header class="u12-details-header">
                 <h2 id="u12-details-title">Athletenhinweise</h2>
@@ -76,7 +95,29 @@ export const ULC_U12_CSS = `
 .u12-contact-entry { padding: 10px 0; border-top: 1px solid var(--border); display: grid; gap: 3px; }
 .u12-contact-entry small { color: var(--secondary); }
 .u12-details-section p { overflow-wrap: anywhere; white-space: pre-wrap; }
-.u12-roster { isolation: isolate; }
+ .u12-roster { isolation: isolate; }
+.u12-content-card { border:1px solid var(--border); border-radius:14px; background:var(--card); padding:0; min-width:0; }
+.u12-content-summary { display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; padding:13px 14px; font-size:.95rem; font-weight:800; min-height:50px; }
+.u12-content-summary::marker { content:""; }
+.u12-content-summary small { font-size:.75rem; color:var(--secondary); margin-left:7px; }
+.u12-content-body { display:grid; gap:12px; padding:0 12px 14px; }
+.u12-content-body p { margin:0; font-size:.79rem; line-height:1.4; color:var(--secondary); }
+.u12-content-rows { display:grid; gap:8px; }
+.u12-content-row { display:grid; grid-template-columns:24px minmax(0,1fr) 38px; gap:8px; align-items:center; }
+.u12-content-row > strong { font-size:.84rem; color:var(--secondary); text-align:center; }
+.u12-content-row input { min-width:0; width:100%; min-height:42px; border:1px solid var(--border-strong); border-radius:9px; padding:8px 10px; background:var(--card); color:var(--text); }
+.u12-content-remove { width:38px; height:42px; border:0; background:var(--muted); color:var(--text); border-radius:9px; font-size:1.15rem; cursor:pointer; }
+.u12-content-add { justify-self:start; min-height:42px; padding:0 11px; border:1px solid var(--border-strong); border-radius:9px; background:var(--muted); color:var(--text); font-weight:750; cursor:pointer; }
+.u12-person { display:grid !important; grid-template-columns:minmax(0,1fr) 44px; column-gap:8px; }
+.u12-person__toggle { grid-column:1; }
+.u12-person:not(:has(.u12-info)) > .u12-person__toggle { grid-column:1 / -1; }
+.u12-person__assignment { grid-column:1 / -1; justify-self:start; border:0; border-radius:8px; padding:5px 9px; min-height:34px; background:var(--muted); color:var(--accent); font-weight:700; font-size:.77rem; cursor:pointer; }
+.u12-person__assignment:disabled { opacity:.55; cursor:default; }
+.u12-assign-options { display:grid; gap:8px; margin-top:12px; }
+.u12-assign-option { display:flex; align-items:center; gap:12px; min-height:48px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; cursor:pointer; }
+.u12-assign-option input { width:22px; height:22px; flex:0 0 22px; accent-color:var(--accent); }
+.u12-assign-option span { overflow-wrap:anywhere; }
+
 .u12-savebar { position: sticky; top: 57px; z-index: 8; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .u12-savebar > div { display: grid; gap: 3px; min-width: 0; }
 .u12-savebar strong { font-size: .9rem; }
@@ -111,6 +152,14 @@ const u12Ui = {
   reload: document.querySelector("#u12-reload"),
   today: document.querySelector("#u12-today"),
   addAthlete: document.querySelector("#u12-add-athlete"),
+  contentCard: document.querySelector("#u12-content-card"),
+  contentCount: document.querySelector("#u12-content-count"),
+  contentRows: document.querySelector("#u12-content-rows"),
+  contentAdd: document.querySelector("#u12-content-add"),
+  assignDialog: document.querySelector("#u12-assign-dialog"),
+  assignTitle: document.querySelector("#u12-assign-title"),
+  assignOptions: document.querySelector("#u12-assign-options"),
+  assignClose: document.querySelector("#u12-assign-close"),
   detailsDialog: document.querySelector("#u12-details-dialog"),
   detailsTitle: document.querySelector("#u12-details-title"),
   detailsContent: document.querySelector("#u12-details-content"),
@@ -131,6 +180,9 @@ let u12LoadedGroupId = "";
 let u12LoadedDate = "";
 let u12Snapshot = null;
 let u12Present = new Map();
+let u12ContentTitles = [];
+let u12ContentAssignments = new Map();
+let u12AssignmentAthleteId = null;
 let u12DirtyDates = new Set();
 let u12Loading = false;
 let u12Saving = false;
@@ -146,6 +198,13 @@ function resetU12SessionState() {
   u12LoadedDate = "";
   u12Snapshot = null;
   u12Present = new Map();
+  u12ContentTitles = [];
+  u12ContentAssignments = new Map();
+  u12AssignmentAthleteId = null;
+  if (u12Ui.assignDialog?.open) u12Ui.assignDialog.close();
+  u12Ui.assignOptions?.replaceChildren();
+  u12Ui.contentRows?.replaceChildren();
+  if (u12Ui.contentCard) u12Ui.contentCard.open = false;
   u12DirtyDates = new Set();
   u12Loading = false;
   u12Saving = false;
