@@ -177,14 +177,19 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_SCRIPT).toContain("u12Ui.detailsContent?.replaceChildren()");
   });
 
-  it("persists five short contents and each present athlete's assignments with the attendance", () => {
+  it("replaces individual dialogs with a checked-athletes content matrix and bulk columns", () => {
     expect(ULC_U12_HTML).toContain('id="u12-content-card"');
     expect(ULC_U12_HTML).toContain('id="u12-content-add"');
-    expect(ULC_U12_HTML).toContain('id="u12-assign-dialog"');
+    expect(ULC_U12_HTML).toContain('id="u12-assignment-section"');
+    expect(ULC_U12_HTML).toContain('id="u12-assignment-matrix"');
+    expect(ULC_U12_HTML).toContain('id="u12-assignment-legend"');
+    expect(ULC_U12_HTML).not.toContain('id="u12-assign-dialog"');
     expect(ULC_U12_SCRIPT).toContain('u12Ui.contentAdd?.addEventListener("click"');
     expect(ULC_U12_SCRIPT).toContain('u12Ui.contentRows?.addEventListener("input"');
-    expect(ULC_U12_SCRIPT).toContain('u12Ui.assignOptions?.addEventListener("change"');
-    expect(ULC_U12_SCRIPT).toContain('openU12ContentAssignments(assign.dataset.u12AssignId)');
+    expect(ULC_U12_SCRIPT).toContain('u12Ui.matrix?.addEventListener("change"');
+    expect(ULC_U12_SCRIPT).toContain('renderU12AssignmentMatrix();');
+    expect(ULC_U12_SCRIPT).toContain('changeU12MatrixColumn(Number(input.dataset.u12MatrixAll), input.checked === true)');
+    expect(ULC_U12_SCRIPT).toContain('changeU12MatrixAssignment(');
     expect(ULC_U12_SCRIPT).toContain('const titles = u12ContentTitles.map((title) => title.trim());');
     expect(ULC_U12_SCRIPT).toContain('contentTitles: titles,');
     expect(ULC_U12_SCRIPT).toContain('contentSlots: u12Present.get(person.athleteId) === true');
@@ -192,6 +197,8 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_SCRIPT).toContain('u12ContentTitles.length >= 5');
     expect(ULC_U12_SCRIPT).toContain('Bitte alle Trainingsinhalte benennen');
     expect(ULC_U12_SCRIPT).not.toMatch(/localStorage|sessionStorage|indexedDB|innerHTML/);
+    expect(ULC_U12_CSS).toContain('position:sticky; left:0;');
+    expect(ULC_U12_CSS).toContain('overflow-x:auto');
   });
 
   it("guards unsaved rows on navigation, date changes, reload and sign-out", () => {
