@@ -510,6 +510,7 @@ function openU12ContentAssignments(athleteId) {
 function renderU12Attendance() {
   if (!u12Ui.days || !u12Ui.week) return;
   u12Ui.days.replaceChildren();
+  renderU12ContentRows();
   const groupId = u12Ui.group?.value || "";
   const date = u12Ui.date?.value || "";
   u12Ui.week.hidden = !u12Ready || !groupId || !date;
@@ -577,6 +578,17 @@ function renderU12Attendance() {
         person.firstName + " " + person.lastName + " anzeigen");
       row.append(info);
     }
+    if (u12ContentTitles.length > 0) {
+      const assign = document.createElement("button");
+      assign.type = "button";
+      assign.className = "u12-person__assignment";
+      assign.dataset.u12AssignId = person.athleteId;
+      const assigned = u12ContentAssignments.get(person.athleteId)?.size ?? 0;
+      assign.textContent = "Inhalte " + assigned + " / " + u12ContentTitles.length;
+      assign.setAttribute("aria-label", "Trainingsinhalte zu " +
+        person.firstName + " " + person.lastName + " zuordnen");
+      row.append(assign);
+    }
     roster.append(row);
   }
   u12Ui.days.append(roster);
@@ -598,6 +610,11 @@ async function loadU12Attendance() {
   u12Ui.detailsContent?.replaceChildren();
   u12Snapshot = null;
   u12Present = new Map();
+  u12ContentTitles = [];
+  u12ContentAssignments = new Map();
+  u12AssignmentAthleteId = null;
+  if (u12Ui.assignDialog?.open) u12Ui.assignDialog.close();
+  u12Ui.assignOptions?.replaceChildren();
   u12DirtyDates.clear();
   u12Conflict = false;
   u12Loading = true;
@@ -614,6 +631,9 @@ async function loadU12Attendance() {
     u12Snapshot = payload.snapshot;
     u12Present = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, person.status === "present"]));
+    u12ContentTitles = [...u12Snapshot.contentTitles];
+    u12ContentAssignments = new Map(u12Snapshot.participants.map((person) =>
+      [person.athleteId, new Set(person.contentSlots)]));
   } catch (error) {
     if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return;
     if (error?.status === 401 || error?.status === 403) {
@@ -668,6 +688,9 @@ async function saveU12Attendance() {
     u12Snapshot = payload.snapshot;
     u12Present = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, person.status === "present"]));
+    u12ContentTitles = [...u12Snapshot.contentTitles];
+    u12ContentAssignments = new Map(u12Snapshot.participants.map((person) =>
+      [person.athleteId, new Set(person.contentSlots)]));
     u12DirtyDates.clear();
     showMessage(u12Ui.success, "Namensliste für " + germanDate(date) + " gespeichert.");
     return true;
