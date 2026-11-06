@@ -518,7 +518,7 @@ describe("ULC U12 service", () => {
               athleteId: entry.athleteId,
               status: entry.status,
             })),
-            trainingContentTitles: titles,
+            trainingContentTitles: titles ?? [],
             trainingContentAssignments: attendance.map((entry) => ({
               athleteId: entry.athleteId,
               slots: entry.contentSlots ?? [],
