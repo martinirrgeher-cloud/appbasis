@@ -39,6 +39,7 @@ describe("ULC attendance: group overlay instead of an intermediate page", () => 
     expect(ULC_LINZ_APP_CSS).toContain("width: min(320px, calc(100vw - 16px))");
     expect(ULC_LINZ_APP_SCRIPT).toContain('setAppNavAttendanceOpen(!appNavAttendanceOpen)');
     expect(ULC_LINZ_APP_SCRIPT).toContain('if (appNavAttendanceOpen) setAppNavAttendanceOpen(false)');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('event.target?.closest?.("[data-open-attendance-menu]")');
     expect(ULC_LINZ_APP_SCRIPT).toContain('if (open) setAppNavAttendanceOpen(false);');
     expect(ULC_LINZ_APP_SCRIPT).toContain('if (attendanceWasOpen) elements.appNavAttendance?.focus();');
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
