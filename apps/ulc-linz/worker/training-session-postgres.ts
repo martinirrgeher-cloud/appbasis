@@ -26,6 +26,12 @@ export interface UlcTrainingSessionSnapshot {
   readonly revision: string;
   readonly attendance: readonly UlcTrainingAttendance[];
   readonly registrations: readonly UlcTrainingRegistration[];
+  /** Only U12 currently consumes these app-owned youth documentation fields. */
+  readonly trainingContentTitles?: readonly string[];
+  readonly trainingContentAssignments?: readonly Readonly<{
+    athleteId: string;
+    slots: readonly number[];
+  }>[];
 }
 
 export interface UlcTrainingAttendanceSummary {
@@ -50,6 +56,58 @@ export class UlcTrainingSessionPersistenceError extends Error {
     super(message);
     this.name = "UlcTrainingSessionPersistenceError";
   }
+}
+
+function readTrainingContentTitles(value: unknown): readonly string[] {
+  if (value === undefined) return Object.freeze([]); // legacy test fixture
+  if (!Array.isArray(value) || value.length > 5 ||
+      !value.every((title) => typeof title === "string" &&
+        title.length > 0 && title.length <= 120 &&
+        title.trim() === title &&
+        [...title].every((character) => {
+          const code = character.charCodeAt(0);
+          return code >= 32 && code !== 127;
+        }))) {
+    throw new UlcTrainingSessionPersistenceError("Invalid training content titles.");
+  }
+  return Object.freeze([...value]);
+}
+
+function readTrainingContentSlots(value: unknown): readonly number[] {
+  if (value === undefined) return Object.freeze([]); // legacy test fixture
+  if (!Array.isArray(value) || value.length > 5 ||
+      new Set(value).size !== value.length ||
+      !value.every((slot) => Number.isInteger(slot) && slot >= 1 && slot <= 5)) {
+    throw new UlcTrainingSessionPersistenceError("Invalid attendee content slots.");
+  }
+  return Object.freeze([...value].sort((a, b) => a - b));
+}
+
+function normalizeTrainingContentTitles(value: readonly string[]): readonly string[] {
+  if (!Array.isArray(value) || value.length > 5 ||
+      !value.every((title) => typeof title === "string" &&
+        title.length > 0 && title.length <= 120 &&
+        title.trim() === title &&
+        [...title].every((character) => {
+          const code = character.charCodeAt(0);
+          return code >= 32 && code !== 127;
+        }))) {
+    throw new UlcTrainingValidationError("Training content titles must be 1–120 characters, maximum five.");
+  }
+  return Object.freeze([...value]);
+}
+
+function normalizeTrainingContentSlots(
+  slots: readonly number[] | undefined,
+  contentCount: number,
+): readonly number[] {
+  if (!Array.isArray(slots) || slots.length > 5 ||
+      new Set(slots).size !== slots.length ||
+      !slots.every((slot) => Number.isInteger(slot) &&
+        slot >= 1 && slot <= contentCount)) {
+    throw new UlcTrainingValidationError("Invalid athlete training content assignment.");
+  }
+  return Object.freeze([...slots].sort((a, b) => a - b));
 }
 
 export class PostgresUlcTrainingSessionRepository {
@@ -90,6 +148,7 @@ export class PostgresUlcTrainingSessionRepository {
               session_date::text AS session_date,
               state,
               note,
+              training_content_titles,
               xmin::text AS revision
        FROM ulc_linz_training_session
        WHERE organization_id = $1
@@ -108,7 +167,7 @@ export class PostgresUlcTrainingSessionRepository {
 
     const session = sessionFromRow(rows[0], expected.organizationId);
     const attendanceRows = await this.#sql.unsafe(
-      `SELECT organization_id, session_id, athlete_id, status
+      `SELECT organization_id, session_id, athlete_id, status, training_content_slots
        FROM ulc_linz_training_attendance
        WHERE organization_id = $1
          AND session_id = $2
@@ -145,6 +204,19 @@ export class PostgresUlcTrainingSessionRepository {
       revision: rowRevision(rows[0]),
       attendance,
       registrations,
+      ...(moduleId === "u12"
+        ? {
+            trainingContentTitles: readTrainingContentTitles(
+              rows[0].training_content_titles,
+            ),
+            trainingContentAssignments: Object.freeze(attendanceRows.map((row) =>
+              Object.freeze({
+                athleteId: String(row.athlete_id),
+                slots: readTrainingContentSlots(row.training_content_slots),
+              }),
+            )),
+          }
+        : {}),
     });
   }
 
@@ -246,8 +318,10 @@ export class PostgresUlcTrainingSessionRepository {
     attendanceInput: readonly {
       readonly athleteId: string;
       readonly status: UlcTrainingAttendance["status"];
+      readonly contentSlots?: readonly number[];
     }[],
     expectedRevision: string | null,
+    trainingContentTitles?: readonly string[],
   ): Promise<UlcTrainingSessionSnapshot> {
     const proposed = createUlcTrainingSession(input, {
       id: requiredGeneratedId(this.#createId()),
@@ -261,10 +335,30 @@ export class PostgresUlcTrainingSessionRepository {
         status: entry.status,
       })),
     );
+    const titles = trainingContentTitles === undefined
+      ? null : normalizeTrainingContentTitles(trainingContentTitles);
+    const slotsByAthlete = new Map<string, readonly number[]>();
+    if (titles !== null) {
+      for (const entry of attendanceInput) {
+        const slots = normalizeTrainingContentSlots(entry.contentSlots, titles.length);
+        if (entry.status !== "present" && slots.length !== 0) {
+          throw new UlcTrainingValidationError(
+            "Only present athletes can be assigned training contents.",
+          );
+        }
+        slotsByAthlete.set(entry.athleteId, slots);
+      }
+    } else if (attendanceInput.some((entry) => entry.contentSlots !== undefined)) {
+      throw new UlcTrainingValidationError(
+        "Content assignments require the full training content list.",
+      );
+    }
     const payload = JSON.stringify(
       normalizedAttendance.map((entry) => ({
         athlete_id: entry.athleteId,
         status: entry.status,
+        ...(titles === null ? {} :
+          { content_slots: slotsByAthlete.get(entry.athleteId) ?? [] }),
       })),
     );
     const revision =
@@ -275,6 +369,10 @@ export class PostgresUlcTrainingSessionRepository {
          UPDATE ulc_linz_training_session
          SET state = $6,
              note = $7,
+             training_content_titles = CASE
+               WHEN $10::jsonb IS NULL THEN training_content_titles
+               ELSE ARRAY(SELECT jsonb_array_elements_text($10::jsonb))
+             END,
              updated_at = now()
          WHERE organization_id = $2
            AND module_id = $3
@@ -289,6 +387,7 @@ export class PostgresUlcTrainingSessionRepository {
                    session_date::text AS session_date,
                    state,
                    note,
+                   training_content_titles,
                    xmin::text AS revision
        ),
        inserted_session AS (
@@ -299,9 +398,11 @@ export class PostgresUlcTrainingSessionRepository {
            group_id,
            session_date,
            state,
-           note
+           note,
+           training_content_titles
          )
-         SELECT $1, $2, $3, $4, $5::date, $6, $7
+         SELECT $1, $2, $3, $4, $5::date, $6, $7,
+                ARRAY(SELECT jsonb_array_elements_text($10::jsonb))
          WHERE $9::text IS NULL
          ON CONFLICT (organization_id, module_id, group_id, session_date)
          DO NOTHING
@@ -312,6 +413,7 @@ export class PostgresUlcTrainingSessionRepository {
                    session_date::text AS session_date,
                    state,
                    note,
+                   training_content_titles,
                    xmin::text AS revision
        ),
        saved_session AS MATERIALIZED (
@@ -320,24 +422,33 @@ export class PostgresUlcTrainingSessionRepository {
          SELECT * FROM inserted_session
        ),
        input_attendance AS MATERIALIZED (
-         SELECT athlete_id, status
+         SELECT athlete_id, status, content_slots
          FROM jsonb_to_recordset($8::jsonb)
-           AS entry(athlete_id text, status text)
+           AS entry(athlete_id text, status text, content_slots smallint[])
        ),
        saved_attendance AS (
          INSERT INTO ulc_linz_training_attendance (
            organization_id,
            session_id,
            athlete_id,
-           status
+           status,
+           training_content_slots
          )
-         SELECT $2, session.id, input.athlete_id, input.status
+         SELECT $2, session.id, input.athlete_id, input.status,
+                CASE WHEN input.status = 'present'
+                  THEN COALESCE(input.content_slots, ARRAY[]::smallint[])
+                  ELSE ARRAY[]::smallint[] END
          FROM saved_session session
          CROSS JOIN input_attendance input
          ON CONFLICT (session_id, athlete_id)
          DO UPDATE SET
            organization_id = EXCLUDED.organization_id,
            status = EXCLUDED.status,
+           training_content_slots = CASE
+             WHEN EXCLUDED.status <> 'present' THEN ARRAY[]::smallint[]
+             WHEN $10::jsonb IS NULL THEN ulc_linz_training_attendance.training_content_slots
+             ELSE EXCLUDED.training_content_slots
+           END,
            updated_at = now()
          RETURNING athlete_id
        ),
@@ -360,6 +471,7 @@ export class PostgresUlcTrainingSessionRepository {
               session.session_date,
               session.state,
               session.note,
+              session.training_content_titles,
               session.revision,
               (SELECT count(*)::int FROM saved_attendance)
                 AS saved_attendance_count,
@@ -376,6 +488,7 @@ export class PostgresUlcTrainingSessionRepository {
         proposed.note,
         payload,
         revision,
+        titles === null ? null : JSON.stringify(titles),
       ],
     );
 
@@ -426,6 +539,15 @@ export class PostgresUlcTrainingSessionRepository {
         ),
       ),
       registrations,
+      ...(titles === null ? {} : {
+        trainingContentTitles: titles,
+        trainingContentAssignments: Object.freeze(
+          normalizedAttendance.map((entry) => Object.freeze({
+            athleteId: entry.athleteId,
+            slots: slotsByAthlete.get(entry.athleteId) ?? Object.freeze([]),
+          })),
+        ),
+      }),
     });
   }
 

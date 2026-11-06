@@ -40,6 +40,7 @@ export interface UlcU12Participant {
   readonly notes: string | null;
   readonly contacts: readonly UlcU12ParticipantContact[];
   readonly status: UlcTrainingAttendanceStatus;
+  readonly contentSlots: readonly number[];
 }
 
 export interface UlcU12Snapshot {
@@ -56,6 +57,7 @@ export interface UlcU12Snapshot {
     note: string | null;
   }> | null;
   readonly participants: readonly UlcU12Participant[];
+  readonly contentTitles: readonly string[];
 }
 
 export interface UlcU12MasterdataReader {
@@ -83,8 +85,10 @@ export interface UlcU12SessionStore {
     attendance: readonly {
       readonly athleteId: string;
       readonly status: UlcTrainingAttendanceStatus;
+      readonly contentSlots?: readonly number[];
     }[],
     expectedRevision: string | null,
+    trainingContentTitles?: readonly string[],
   ): Promise<UlcTrainingSessionSnapshot>;
 }
 
@@ -191,7 +195,9 @@ export function createUlcU12Service({
         readonly attendance: readonly {
           readonly athleteId: string;
           readonly status: UlcTrainingAttendanceStatus;
+          readonly contentSlots?: readonly number[];
         }[];
+        readonly contentTitles?: readonly string[];
       },
     ): Promise<UlcU12Snapshot> {
       if (!Array.isArray(input.attendance)) {
@@ -220,6 +226,7 @@ export function createUlcU12Service({
         true,
       );
       assertExactParticipantSet(context.participants, input.attendance);
+      validateU12ContentDraft(input.contentTitles, input.attendance);
       const expectedRevision = revisionToken(input.expectedRevision);
 
       const stored = await sessions.saveSession(
@@ -233,6 +240,7 @@ export function createUlcU12Service({
         },
         input.attendance,
         expectedRevision,
+        input.contentTitles,
       );
       return presentSnapshot(context, stored);
     },
@@ -435,6 +443,24 @@ function presentSnapshot(
     }
   }
 
+  const contentTitles = stored?.trainingContentTitles ?? [];
+  const assignedSlots = new Map<string, readonly number[]>();
+  if (!Array.isArray(contentTitles) || contentTitles.length > 5) {
+    throw new UlcU12ConsistencyError();
+  }
+  for (const assignment of stored?.trainingContentAssignments ?? []) {
+    if (!participantIds.has(assignment.athleteId) ||
+        assignedSlots.has(assignment.athleteId) ||
+        !Array.isArray(assignment.slots) ||
+        assignment.slots.some((slot) => !Number.isInteger(slot) ||
+          slot < 1 || slot > contentTitles.length) ||
+        (statusByAthlete.get(assignment.athleteId) !== "present" &&
+          assignment.slots.length > 0)) {
+      throw new UlcU12ConsistencyError();
+    }
+    assignedSlots.set(assignment.athleteId, Object.freeze([...assignment.slots]));
+  }
+
   return Object.freeze({
     group: Object.freeze({
       id: context.group.id,
@@ -442,6 +468,7 @@ function presentSnapshot(
       shortName: context.group.shortName,
     }),
     sessionDate: context.sessionDate,
+    contentTitles: Object.freeze([...contentTitles]),
     session:
       stored === null
         ? null
@@ -456,10 +483,52 @@ function presentSnapshot(
         Object.freeze({
           ...participant,
           status: statusByAthlete.get(participant.athleteId) ?? "open",
+          contentSlots: assignedSlots.get(participant.athleteId) ?? Object.freeze([]),
         }),
       ),
     ),
   });
+}
+
+function validateU12ContentDraft(
+  titles: readonly string[] | undefined,
+  attendance: readonly {
+    readonly athleteId: string;
+    readonly status: UlcTrainingAttendanceStatus;
+    readonly contentSlots?: readonly number[];
+  }[],
+): void {
+  if (titles === undefined) {
+    if (attendance.some((entry) => entry.contentSlots !== undefined)) {
+      throw new UlcTrainingValidationError(
+        "Content slots require the complete training content list.",
+      );
+    }
+    return; // Backwards-compatible attendance-only updates.
+  }
+  if (!Array.isArray(titles) || titles.length > 5 ||
+      !titles.every((title) => typeof title === "string" &&
+        title.length >= 1 && title.length <= 120 && title.trim() === title &&
+        [...title].every((character) => {
+          const code = character.charCodeAt(0);
+          return code >= 32 && code !== 127;
+        }))) {
+    throw new UlcTrainingValidationError(
+      "A training may contain up to five short content titles.",
+    );
+  }
+  for (const attendee of attendance) {
+    const slots = attendee.contentSlots;
+    if (!Array.isArray(slots) || slots.length > 5 ||
+        new Set(slots).size !== slots.length ||
+        !slots.every((slot) => Number.isInteger(slot) &&
+          slot >= 1 && slot <= titles.length) ||
+        (attendee.status !== "present" && slots.length !== 0)) {
+      throw new UlcTrainingValidationError(
+        "Content assignments must match the present athletes and titles.",
+      );
+    }
+  }
 }
 
 function assertExactParticipantSet(

@@ -165,6 +165,9 @@ jobs:
       - name: Test ULC central release assistant safety
         run: node --test ./tooling/ulc-linz-release-assistant.test.mjs
 
+      - name: Test U12 preview schema-v12 migration guard
+        run: node --test ./tooling/ulc-linz-u12-preview.test.mjs
+
       - name: Typecheck
         run: pnpm run typecheck
 

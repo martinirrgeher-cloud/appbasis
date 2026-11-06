@@ -448,6 +448,7 @@ function runtime(
         group: { id: groupId, name: "U12", shortName: "U12" },
         sessionDate,
         session: null,
+        contentTitles: [],
         participants: [],
       };
     },
@@ -455,6 +456,7 @@ function runtime(
       return {
         group: { id: input.groupId, name: "U12", shortName: "U12" },
         sessionDate: input.sessionDate,
+        contentTitles: input.contentTitles ?? [],
         session: {
           id: "session-u12-test",
           revision: "1",
@@ -469,6 +471,7 @@ function runtime(
           notes: null,
           contacts: [],
           status: entry.status,
+          contentSlots: entry.contentSlots ?? [],
         })),
       };
     },
@@ -5332,6 +5335,7 @@ describe("U12 runtime API", () => {
               group: { id: groupId, name: "U12", shortName: "KT" },
               sessionDate,
               session: null,
+              contentTitles: [],
               participants: [],
             };
           },
@@ -5378,6 +5382,7 @@ describe("U12 runtime API", () => {
                 shortName: "KT",
               },
               sessionDate: input.sessionDate,
+              contentTitles: input.contentTitles ?? [],
               session: {
                 id: "session-1",
                 revision: "42",

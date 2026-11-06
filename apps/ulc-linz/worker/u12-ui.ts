@@ -33,10 +33,29 @@ export const ULC_U12_HTML = `
                   <strong id="u12-count">0 von 0 anwesend</strong>
                   <small id="u12-save-state" role="status">Training auswählen</small>
                 </div>
-                <button class="button button--primary" type="button" id="u12-save" disabled>Liste speichern</button>
+                <button class="button button--primary" type="button" id="u12-save" disabled>Training speichern</button>
               </div>
+              <details class="u12-content-card" id="u12-content-card">
+                <summary class="u12-content-summary">
+                  <span>Trainingsinhalte <small id="u12-content-count">0 / 5</small></span>
+                  <span aria-hidden="true">⌄</span>
+                </summary>
+                <div class="u12-content-body">
+                  <p>Bis zu fünf kurze Inhalte je Training. Ordne sie anschließend den anwesenden Kindern zu.</p>
+                  <div id="u12-content-rows" class="u12-content-rows"></div>
+                  <button type="button" class="u12-content-add" id="u12-content-add">＋ Inhalt</button>
+                </div>
+              </details>
               <div id="u12-days" class="u12-days" aria-live="polite"></div>
             </section>
+            <dialog class="u12-details-dialog" id="u12-assign-dialog" aria-labelledby="u12-assign-title">
+              <header class="u12-details-header">
+                <h2 id="u12-assign-title">Trainingsinhalte</h2>
+                <button class="button button--secondary" type="button" id="u12-assign-close" aria-label="Zuordnung schließen">✕</button>
+              </header>
+              <p>Wähle aus, welche Inhalte das Kind absolviert hat.</p>
+              <div id="u12-assign-options" class="u12-assign-options"></div>
+            </dialog>
             <dialog class="u12-details-dialog" id="u12-details-dialog" aria-labelledby="u12-details-title">
               <header class="u12-details-header">
                 <h2 id="u12-details-title">Athletenhinweise</h2>
@@ -76,7 +95,29 @@ export const ULC_U12_CSS = `
 .u12-contact-entry { padding: 10px 0; border-top: 1px solid var(--border); display: grid; gap: 3px; }
 .u12-contact-entry small { color: var(--secondary); }
 .u12-details-section p { overflow-wrap: anywhere; white-space: pre-wrap; }
-.u12-roster { isolation: isolate; }
+ .u12-roster { isolation: isolate; }
+.u12-content-card { border:1px solid var(--border); border-radius:14px; background:var(--card); padding:0; min-width:0; }
+.u12-content-summary { display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; padding:13px 14px; font-size:.95rem; font-weight:800; min-height:50px; }
+.u12-content-summary::marker { content:""; }
+.u12-content-summary small { font-size:.75rem; color:var(--secondary); margin-left:7px; }
+.u12-content-body { display:grid; gap:12px; padding:0 12px 14px; }
+.u12-content-body p { margin:0; font-size:.79rem; line-height:1.4; color:var(--secondary); }
+.u12-content-rows { display:grid; gap:8px; }
+.u12-content-row { display:grid; grid-template-columns:24px minmax(0,1fr) 38px; gap:8px; align-items:center; }
+.u12-content-row > strong { font-size:.84rem; color:var(--secondary); text-align:center; }
+.u12-content-row input { min-width:0; width:100%; min-height:42px; border:1px solid var(--border-strong); border-radius:9px; padding:8px 10px; background:var(--card); color:var(--text); }
+.u12-content-remove { width:38px; height:42px; border:0; background:var(--muted); color:var(--text); border-radius:9px; font-size:1.15rem; cursor:pointer; }
+.u12-content-add { justify-self:start; min-height:42px; padding:0 11px; border:1px solid var(--border-strong); border-radius:9px; background:var(--muted); color:var(--text); font-weight:750; cursor:pointer; }
+.u12-person { display:grid !important; grid-template-columns:minmax(0,1fr) 44px; column-gap:8px; }
+.u12-person__toggle { grid-column:1; }
+.u12-person:not(:has(.u12-info)) > .u12-person__toggle { grid-column:1 / -1; }
+.u12-person__assignment { grid-column:1 / -1; justify-self:start; border:0; border-radius:8px; padding:5px 9px; min-height:34px; background:var(--muted); color:var(--accent); font-weight:700; font-size:.77rem; cursor:pointer; }
+.u12-person__assignment:disabled { opacity:.55; cursor:default; }
+.u12-assign-options { display:grid; gap:8px; margin-top:12px; }
+.u12-assign-option { display:flex; align-items:center; gap:12px; min-height:48px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; cursor:pointer; }
+.u12-assign-option input { width:22px; height:22px; flex:0 0 22px; accent-color:var(--accent); }
+.u12-assign-option span { overflow-wrap:anywhere; }
+
 .u12-savebar { position: sticky; top: 57px; z-index: 8; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .u12-savebar > div { display: grid; gap: 3px; min-width: 0; }
 .u12-savebar strong { font-size: .9rem; }
@@ -111,6 +152,14 @@ const u12Ui = {
   reload: document.querySelector("#u12-reload"),
   today: document.querySelector("#u12-today"),
   addAthlete: document.querySelector("#u12-add-athlete"),
+  contentCard: document.querySelector("#u12-content-card"),
+  contentCount: document.querySelector("#u12-content-count"),
+  contentRows: document.querySelector("#u12-content-rows"),
+  contentAdd: document.querySelector("#u12-content-add"),
+  assignDialog: document.querySelector("#u12-assign-dialog"),
+  assignTitle: document.querySelector("#u12-assign-title"),
+  assignOptions: document.querySelector("#u12-assign-options"),
+  assignClose: document.querySelector("#u12-assign-close"),
   detailsDialog: document.querySelector("#u12-details-dialog"),
   detailsTitle: document.querySelector("#u12-details-title"),
   detailsContent: document.querySelector("#u12-details-content"),
@@ -131,6 +180,9 @@ let u12LoadedGroupId = "";
 let u12LoadedDate = "";
 let u12Snapshot = null;
 let u12Present = new Map();
+let u12ContentTitles = [];
+let u12ContentAssignments = new Map();
+let u12AssignmentAthleteId = null;
 let u12DirtyDates = new Set();
 let u12Loading = false;
 let u12Saving = false;
@@ -146,6 +198,13 @@ function resetU12SessionState() {
   u12LoadedDate = "";
   u12Snapshot = null;
   u12Present = new Map();
+  u12ContentTitles = [];
+  u12ContentAssignments = new Map();
+  u12AssignmentAthleteId = null;
+  if (u12Ui.assignDialog?.open) u12Ui.assignDialog.close();
+  u12Ui.assignOptions?.replaceChildren();
+  u12Ui.contentRows?.replaceChildren();
+  if (u12Ui.contentCard) u12Ui.contentCard.open = false;
   u12DirtyDates = new Set();
   u12Loading = false;
   u12Saving = false;
@@ -175,7 +234,11 @@ function u12ValidGroup(group) {
 function u12ValidSnapshot(snapshot, date, groupId) {
   if (!snapshot || typeof snapshot !== "object" ||
       snapshot.sessionDate !== date || !u12ValidGroup(snapshot.group) ||
-      snapshot.group.id !== groupId || !Array.isArray(snapshot.participants)) return false;
+      snapshot.group.id !== groupId || !Array.isArray(snapshot.participants) ||
+      !Array.isArray(snapshot.contentTitles) || snapshot.contentTitles.length > 5 ||
+      !snapshot.contentTitles.every((title) =>
+        typeof title === "string" && title.length > 0 &&
+        title.length <= 120 && title.trim() === title)) return false;
   if (snapshot.session !== null && (
       typeof snapshot.session !== "object" ||
       typeof snapshot.session.revision !== "string" ||
@@ -186,6 +249,12 @@ function u12ValidSnapshot(snapshot, date, groupId) {
     if (!person || typeof person.athleteId !== "string" || !person.athleteId ||
         typeof person.firstName !== "string" || typeof person.lastName !== "string" ||
         !U12_SERVER_STATUSES.includes(person.status) ||
+        !Array.isArray(person.contentSlots) ||
+        person.contentSlots.length > snapshot.contentTitles.length ||
+        new Set(person.contentSlots).size !== person.contentSlots.length ||
+        !person.contentSlots.every((slot) => Number.isInteger(slot) &&
+          slot >= 1 && slot <= snapshot.contentTitles.length) ||
+        (person.status !== "present" && person.contentSlots.length > 0) ||
         (person.notes !== null && typeof person.notes !== "string") ||
         !Array.isArray(person.contacts) ||
         !person.contacts.every((contact) =>
@@ -263,9 +332,16 @@ async function bootstrapU12() {
 // as "Nein" must not claim that the binary answer has already been saved.
 function u12HasUnconfirmedAnswers() {
   if (!u12Snapshot) return false;
-  return u12Snapshot.participants.some((person) =>
-    person.status !==
-      (u12Present.get(person.athleteId) === true ? "present" : "absent"));
+  if (JSON.stringify(u12Snapshot.contentTitles) !==
+      JSON.stringify(u12ContentTitles.map((title) => title.trim()))) return true;
+  return u12Snapshot.participants.some((person) => {
+    const present = u12Present.get(person.athleteId) === true;
+    if (person.status !== (present ? "present" : "absent")) return true;
+    const slots = present
+      ? [...(u12ContentAssignments.get(person.athleteId) ?? new Set())].sort((a, b) => a - b)
+      : [];
+    return JSON.stringify(person.contentSlots) !== JSON.stringify(slots);
+  });
 }
 
 function groupIdOrValidU12Group() {
@@ -282,6 +358,25 @@ function refreshU12Controls() {
     u12WriteAllowed && !u12Conflict;
   for (const input of u12Ui.days?.querySelectorAll("[data-u12-athlete-id]") ?? []) {
     input.disabled = !editable;
+  }
+  for (const input of u12Ui.contentRows?.querySelectorAll("input, button") ?? []) {
+    input.disabled = !editable;
+  }
+  if (u12Ui.contentAdd) {
+    u12Ui.contentAdd.disabled = !editable || u12ContentTitles.length >= 5;
+    u12Ui.contentAdd.hidden = u12ContentTitles.length >= 5;
+  }
+  if (u12Ui.contentCount) {
+    u12Ui.contentCount.textContent = u12ContentTitles.length + " / 5";
+  }
+  for (const control of u12Ui.days?.querySelectorAll("[data-u12-assign-id]") ?? []) {
+    const id = control.dataset.u12AssignId;
+    const assigned = u12ContentAssignments.get(id)?.size ?? 0;
+    control.textContent = "Inhalte " + assigned + " / " + u12ContentTitles.length;
+    control.disabled = !editable || !u12Present.get(id) || u12ContentTitles.length === 0;
+  }
+  for (const input of u12Ui.assignOptions?.querySelectorAll("input") ?? []) {
+    input.disabled = !editable || !u12Present.get(u12AssignmentAthleteId);
   }
   if (u12Ui.addAthlete) {
     const canCreate = masterdataReady && masterdataCanEdit && u12Ready;
@@ -318,9 +413,106 @@ function refreshU12Controls() {
   }
 }
 
+
+function markU12DraftDirty() {
+  u12DirtyDates.add(u12LoadedDate);
+  showMessage(u12Ui.success, "");
+  refreshU12Controls();
+}
+
+function renderU12ContentRows() {
+  if (!u12Ui.contentRows) return;
+  u12Ui.contentRows.replaceChildren();
+  if (u12Ui.contentCard) u12Ui.contentCard.hidden = !u12Snapshot;
+  if (!u12Snapshot) return;
+  if (u12ContentTitles.length === 0) {
+    const empty = document.createElement("small");
+    empty.textContent = "Noch keine Trainingsinhalte erfasst.";
+    u12Ui.contentRows.append(empty);
+  }
+  for (const [index, title] of u12ContentTitles.entries()) {
+    const row = document.createElement("div");
+    row.className = "u12-content-row";
+    const number = document.createElement("strong");
+    number.textContent = String(index + 1);
+    const input = document.createElement("input");
+    input.type = "text";
+    input.required = true;
+    input.maxLength = 120;
+    input.placeholder = "z. B. Koordination oder Sprint";
+    input.value = title;
+    input.dataset.u12TitleIndex = String(index);
+    input.setAttribute("aria-label", "Trainingsinhalt " + (index + 1));
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "u12-content-remove";
+    remove.dataset.u12RemoveIndex = String(index);
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", "Inhalt " + (index + 1) + " entfernen");
+    row.append(number, input, remove);
+    u12Ui.contentRows.append(row);
+  }
+}
+
+function addU12Content() {
+  if (!u12Snapshot || u12ContentTitles.length >= 5 || u12Loading ||
+      u12Saving || !u12WriteAllowed || u12Conflict ||
+      u12Snapshot.session?.state === "cancelled") return;
+  u12ContentTitles.push("");
+  if (u12Ui.contentCard) u12Ui.contentCard.open = true;
+  renderU12Attendance();
+  markU12DraftDirty();
+  u12Ui.contentRows?.querySelectorAll("[data-u12-title-index]")[u12ContentTitles.length - 1]?.focus();
+}
+
+function removeU12Content(index) {
+  if (!u12Snapshot || !Number.isInteger(index) ||
+      index < 0 || index >= u12ContentTitles.length ||
+      u12Loading || u12Saving || !u12WriteAllowed || u12Conflict ||
+      u12Snapshot.session?.state === "cancelled") return;
+  u12ContentTitles.splice(index, 1);
+  for (const [id, slots] of u12ContentAssignments) {
+    u12ContentAssignments.set(id, new Set(
+      [...slots].filter((slot) => slot !== index + 1)
+        .map((slot) => slot > index + 1 ? slot - 1 : slot),
+    ));
+  }
+  u12AssignmentAthleteId = null;
+  if (u12Ui.assignDialog?.open) u12Ui.assignDialog.close();
+  renderU12Attendance();
+  markU12DraftDirty();
+}
+
+function openU12ContentAssignments(athleteId) {
+  const person = u12Snapshot?.participants.find((item) => item.athleteId === athleteId);
+  if (!person || !u12Present.get(athleteId) || u12ContentTitles.length === 0 ||
+      !u12Ui.assignDialog || !u12Ui.assignOptions || u12Loading || u12Saving ||
+      !u12WriteAllowed || u12Conflict ||
+      u12Snapshot.session?.state === "cancelled") return;
+  u12AssignmentAthleteId = athleteId;
+  u12Ui.assignTitle.textContent = "Inhalte: " + person.firstName + " " + person.lastName;
+  u12Ui.assignOptions.replaceChildren();
+  const selected = u12ContentAssignments.get(athleteId) ?? new Set();
+  for (const [index, title] of u12ContentTitles.entries()) {
+    const label = document.createElement("label");
+    label.className = "u12-assign-option";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.dataset.u12AssignSlot = String(index + 1);
+    input.checked = selected.has(index + 1);
+    const name = document.createElement("span");
+    name.textContent = String(index + 1) + ". " + (title.trim() || "Inhalt ohne Bezeichnung");
+    label.append(input, name);
+    u12Ui.assignOptions.append(label);
+  }
+  u12Ui.assignDialog.showModal();
+  refreshU12Controls();
+}
+
 function renderU12Attendance() {
   if (!u12Ui.days || !u12Ui.week) return;
   u12Ui.days.replaceChildren();
+  renderU12ContentRows();
   const groupId = u12Ui.group?.value || "";
   const date = u12Ui.date?.value || "";
   u12Ui.week.hidden = !u12Ready || !groupId || !date;
@@ -388,6 +580,17 @@ function renderU12Attendance() {
         person.firstName + " " + person.lastName + " anzeigen");
       row.append(info);
     }
+    if (u12ContentTitles.length > 0) {
+      const assign = document.createElement("button");
+      assign.type = "button";
+      assign.className = "u12-person__assignment";
+      assign.dataset.u12AssignId = person.athleteId;
+      const assigned = u12ContentAssignments.get(person.athleteId)?.size ?? 0;
+      assign.textContent = "Inhalte " + assigned + " / " + u12ContentTitles.length;
+      assign.setAttribute("aria-label", "Trainingsinhalte zu " +
+        person.firstName + " " + person.lastName + " zuordnen");
+      row.append(assign);
+    }
     roster.append(row);
   }
   u12Ui.days.append(roster);
@@ -409,6 +612,11 @@ async function loadU12Attendance() {
   u12Ui.detailsContent?.replaceChildren();
   u12Snapshot = null;
   u12Present = new Map();
+  u12ContentTitles = [];
+  u12ContentAssignments = new Map();
+  u12AssignmentAthleteId = null;
+  if (u12Ui.assignDialog?.open) u12Ui.assignDialog.close();
+  u12Ui.assignOptions?.replaceChildren();
   u12DirtyDates.clear();
   u12Conflict = false;
   u12Loading = true;
@@ -425,6 +633,9 @@ async function loadU12Attendance() {
     u12Snapshot = payload.snapshot;
     u12Present = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, person.status === "present"]));
+    u12ContentTitles = [...u12Snapshot.contentTitles];
+    u12ContentAssignments = new Map(u12Snapshot.participants.map((person) =>
+      [person.athleteId, new Set(person.contentSlots)]));
   } catch (error) {
     if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return;
     if (error?.status === 401 || error?.status === 403) {
@@ -448,6 +659,14 @@ async function saveU12Attendance() {
       u12Snapshot.session?.state === "cancelled") return false;
   if (u12DirtyDates.size === 0 && u12Snapshot.session !== null &&
       !u12HasUnconfirmedAnswers()) return true;
+  const titles = u12ContentTitles.map((title) => title.trim());
+  const invalidTitleIndex = titles.findIndex((title) => title.length === 0 || title.length > 120);
+  if (invalidTitleIndex !== -1) {
+    if (u12Ui.contentCard) u12Ui.contentCard.open = true;
+    showMessage(u12Ui.message, "Bitte alle Trainingsinhalte benennen (maximal 120 Zeichen).");
+    u12Ui.contentRows?.querySelector('[data-u12-title-index="' + invalidTitleIndex + '"]')?.focus();
+    return false;
+  }
   const generation = attendanceSessionGeneration;
   const loadId = u12LoadId;
   const groupId = u12LoadedGroupId;
@@ -469,7 +688,11 @@ async function saveU12Attendance() {
         attendance: u12Snapshot.participants.map((person) => ({
           athleteId: person.athleteId,
           status: u12Present.get(person.athleteId) === true ? "present" : "absent",
+          contentSlots: u12Present.get(person.athleteId) === true
+            ? [...(u12ContentAssignments.get(person.athleteId) ?? new Set())].sort((a, b) => a - b)
+            : [],
         })),
+        contentTitles: titles,
       }),
     });
     if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return false;
@@ -479,6 +702,9 @@ async function saveU12Attendance() {
     u12Snapshot = payload.snapshot;
     u12Present = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, person.status === "present"]));
+    u12ContentTitles = [...u12Snapshot.contentTitles];
+    u12ContentAssignments = new Map(u12Snapshot.participants.map((person) =>
+      [person.athleteId, new Set(person.contentSlots)]));
     u12DirtyDates.clear();
     showMessage(u12Ui.success, "Namensliste für " + germanDate(date) + " gespeichert.");
     return true;
@@ -548,7 +774,7 @@ async function u12ChangeGroup() {
 async function u12ReloadAttendance() {
   if (u12Saving || u12Loading) return;
   if (u12DirtyDates.size > 0 &&
-      !window.confirm("Ungespeicherte U12-Häkchen verwerfen und Liste neu laden?")) return;
+      !window.confirm("Ungespeicherte Anwesenheit und Trainingsinhalte verwerfen und neu laden?")) return;
   u12DirtyDates.clear();
   u12Conflict = false;
   await loadU12Attendance();
@@ -647,6 +873,45 @@ u12Ui.days?.addEventListener("click", (event) => {
 u12Ui.date?.addEventListener("change", () => void u12ChangeDate());
 u12Ui.group?.addEventListener("change", () => void u12ChangeGroup());
 u12Ui.save?.addEventListener("click", () => void saveU12Attendance());
+u12Ui.contentAdd?.addEventListener("click", () => addU12Content());
+u12Ui.contentRows?.addEventListener("click", (event) => {
+  const remove = event.target?.closest?.("[data-u12-remove-index]");
+  if (remove && u12Ui.contentRows.contains(remove)) {
+    removeU12Content(Number(remove.dataset.u12RemoveIndex));
+  }
+});
+u12Ui.contentRows?.addEventListener("input", (event) => {
+  const input = event.target;
+  const index = Number(input?.dataset?.u12TitleIndex);
+  if (!input || !Object.prototype.hasOwnProperty.call(input.dataset, "u12TitleIndex") ||
+      !Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
+      u12Loading || u12Saving || !u12WriteAllowed || u12Conflict ||
+      u12Snapshot?.session?.state === "cancelled") return;
+  u12ContentTitles[index] = input.value;
+  if (u12Ui.assignDialog?.open) u12Ui.assignDialog.close();
+  markU12DraftDirty();
+});
+u12Ui.assignClose?.addEventListener("click", () => u12Ui.assignDialog?.close());
+u12Ui.assignOptions?.addEventListener("change", (event) => {
+  const input = event.target;
+  const index = Number(input?.dataset?.u12AssignSlot);
+  const id = u12AssignmentAthleteId;
+  if (!input || !Object.prototype.hasOwnProperty.call(input.dataset, "u12AssignSlot") ||
+      !Number.isInteger(index) || index < 1 || index > u12ContentTitles.length ||
+      !id || !u12Present.get(id) || !u12WriteAllowed || u12Conflict ||
+      u12Loading || u12Saving || u12Snapshot?.session?.state === "cancelled") return;
+  const selected = new Set(u12ContentAssignments.get(id) ?? []);
+  if (input.checked) selected.add(index);
+  else selected.delete(index);
+  u12ContentAssignments.set(id, selected);
+  markU12DraftDirty();
+});
+u12Ui.days?.addEventListener("click", (event) => {
+  const assign = event.target?.closest?.("[data-u12-assign-id]");
+  if (assign && u12Ui.days.contains(assign)) {
+    openU12ContentAssignments(assign.dataset.u12AssignId);
+  }
+});
 u12Ui.reload?.addEventListener("click", () => void u12ReloadAttendance());
 u12Ui.days?.addEventListener("change", (event) => {
   const input = event.target;
@@ -656,6 +921,10 @@ u12Ui.days?.addEventListener("change", (event) => {
       u12Snapshot.session?.state === "cancelled" ||
       !u12Snapshot.participants.some((person) => person.athleteId === athleteId)) return;
   u12Present.set(athleteId, input.checked === true);
+  if (!input.checked) u12ContentAssignments.set(athleteId, new Set());
+  if (!input.checked && u12AssignmentAthleteId === athleteId && u12Ui.assignDialog?.open) {
+    u12Ui.assignDialog.close();
+  }
   u12DirtyDates.add(u12LoadedDate);
   showMessage(u12Ui.success, "");
   // Update just the count/status: no DOM rebuild and no lost checkbox focus.
