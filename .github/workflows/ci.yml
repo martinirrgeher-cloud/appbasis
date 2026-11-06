@@ -171,6 +171,9 @@ jobs:
       - name: Test youth-content preview schema-v13 migration and refresh guards
         run: node --test ./tooling/ulc-linz-youth-content-preview.test.mjs
 
+      - name: Test shared youth categories schema-v14 preview migration and guards
+        run: node --test ./tooling/ulc-linz-youth-categories-preview.test.mjs
+
       - name: Typecheck
         run: pnpm run typecheck
 
