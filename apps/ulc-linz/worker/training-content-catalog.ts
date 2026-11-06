@@ -15,18 +15,14 @@ export const ULC_YOUTH_CONTENT_CATALOG = Object.freeze([
   Object.freeze({ code: "other", label: "Sonstiges" }),
 ] as const);
 
-export type UlcYouthContentCode =
-  (typeof ULC_YOUTH_CONTENT_CATALOG)[number]["code"] | "";
+/** Stable organization-owned code; empty means uncategorized legacy text. */
+export type UlcYouthContentCode = string;
 
 export interface UlcYouthContentItem {
   readonly code: UlcYouthContentCode;
   /** Optional contextual detail; not used as a statistical category. */
   readonly detail: string;
 }
-
-const CONTENT_LABELS: ReadonlyMap<string, string> = new Map(
-  ULC_YOUTH_CONTENT_CATALOG.map((entry) => [entry.code, entry.label]),
-);
 
 export function normalizeUlcYouthContentItems(
   titles: readonly string[],
@@ -44,7 +40,7 @@ export function normalizeUlcYouthContentItems(
         typeof entry.detail !== "string" ||
         entry.detail.length > 200 || entry.detail.trim() !== entry.detail ||
         [...entry.detail].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127) ||
-        (entry.code !== "" && CONTENT_LABELS.get(entry.code) !== titles[index])) {
+        (entry.code !== "" && !/^[a-z][a-z0-9_]{0,79}$/.test(entry.code))) {
       throw new UlcTrainingValidationError("Invalid training content category or detail.");
     }
     return Object.freeze({ code: entry.code as UlcYouthContentCode, detail: entry.detail });
