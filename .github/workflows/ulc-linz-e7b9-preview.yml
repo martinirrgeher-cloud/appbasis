@@ -237,6 +237,32 @@ jobs:
           APPBASIS_APPLY_TRAINING_PLANS_PREVIEW: "1"
         run: node ./tooling/ulc-linz-training-plans-preview.mjs apply
 
+      - name: Inspect existing U12 schema-v12 preview state
+        if: inputs.operation == 'inspect' || inputs.operation == 'migrate'
+        id: u12_schema
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="$(node ./tooling/ulc-linz-u12-preview.mjs inspect)"
+          echo "$RESULT"
+          STATE="$(jq -r '.state' <<<"$RESULT")"
+          test "$STATE" = "current" || test "$STATE" = "migration-required"
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+
+      - name: Apply additive U12 schema-v12 preview migration
+        if: inputs.operation == 'migrate' && steps.u12_schema.outputs.state == 'migration-required'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_MIGRATIONS: "1"
+          APPBASIS_APPLY_U12_PREVIEW: "1"
+        run: node ./tooling/ulc-linz-u12-preview.mjs apply
+
       - name: Reconcile preview runtime database access after migration
         if: inputs.operation == 'migrate'
         env:
@@ -262,6 +288,14 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-training-documentation-preview.mjs verify
 
+      - name: Verify U12 schema-v12 after migration
+        if: inputs.operation == 'migrate'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-u12-preview.mjs verify
+
       - name: Verify exact preview runtime database access
         if: inputs.operation != 'inspect'
         env:
@@ -285,6 +319,14 @@ jobs:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-training-documentation-preview.mjs verify
+
+      - name: Require current U12 schema-v12 before preview deployment or acceptance
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-u12-preview.mjs verify
 
       - name: Validate and mask preview runtime inputs
         if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
