@@ -14,9 +14,9 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
   it("keeps the existing navigation and module permission gate", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-app-section="u12"');
     expect(ULC_LINZ_APP_HTML).toContain('data-dashboard-view="attendance" hidden');
-    expect(ULC_LINZ_APP_HTML).toContain('data-open-view="u12" data-attendance-view="u12"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-attendance-target="u12"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
-    expect(ULC_LINZ_APP_HTML).toContain('data-open-view="kindertraining" data-attendance-view="kindertraining"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-attendance-target="kindertraining" data-attendance-group="kindertraining"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-documentation"');
     expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-save"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('if (section === "u12") return u12Ready;');
@@ -28,10 +28,12 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
 
   it("moves attendance to the fixed navigation and hides the redundant U12 group picker", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="attendance"');
-    expect(ULC_LINZ_APP_HTML).toContain('data-app-section="attendance"');
+    expect(ULC_LINZ_APP_HTML).not.toContain('data-app-section="attendance"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="app-nav-attendance-menu"');
     expect(ULC_LINZ_APP_HTML).not.toContain('data-nav-view="u12"');
     expect(ULC_LINZ_APP_HTML).not.toContain('data-nav-view="kindertraining"');
-    expect(ULC_LINZ_APP_SCRIPT).toContain('if (section === "attendance") return kindertrainingReady || u12Ready;');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('if (section === "attendance") return u12Ready ||');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('findAttendanceTrainingGroup("irrgeher")');
     expect(ULC_LINZ_APP_SCRIPT).toContain('choice.disabled = !available;');
     expect(ULC_LINZ_APP_SCRIPT).toContain('current = document.querySelector("[data-app-section]:not([hidden])")');
     expect(ULC_LINZ_APP_SCRIPT).toContain('section === "u12" || section === "kindertraining"');
@@ -43,7 +45,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_SCRIPT).toContain('u12Ui.groupLabel.textContent = active ? active.name');
     expect(ULC_U12_CSS).toContain('.u12-head');
     expect(ULC_U12_CSS).toContain('.u12-date-toolbar');
-    expect(ULC_LINZ_APP_CSS).toContain('.attendance-group-choice');
+    expect(ULC_LINZ_APP_CSS).toContain('.app-nav__attendance-menu');
   });
 
   it("shows only date, name, anwesenheit checkbox and save; no week or 4-state editor", () => {
