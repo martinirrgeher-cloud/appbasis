@@ -136,6 +136,8 @@ describe("ULC E6A exercise catalog schema", () => {
     );
     expect(owner?.migrations?.[12]).toBe(
       "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql",
+    );
+    expect(owner?.migrations?.[13]).toBe(
       "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
     );
   });
