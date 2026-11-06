@@ -165,7 +165,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                   <h2>Anwesenheit</h2>
                   <p>Wähle deine Gruppe und erfasse die Anwesenheit direkt im Training.</p>
                 </div>
-                <button class="button button--primary dashboard-action" type="button" data-open-view="attendance" disabled>Anwesenheit öffnen</button>
+                <button class="button button--primary dashboard-action" id="attendance-quick-action" type="button" data-open-view="attendance" disabled>Anwesenheit öffnen</button>
               </article>
 
               <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="training-plans" hidden>
@@ -4882,6 +4882,9 @@ function refreshAppAvailability() {
     choice.hidden = !available;
     choice.disabled = !available;
   }
+  const attendanceQuickAction = document.querySelector("#attendance-quick-action");
+  if (attendanceQuickAction) attendanceQuickAction.disabled =
+    !isAppNavigationAvailable("attendance");
   for (const control of [
     elements.registrationWeekPrev,
     elements.registrationWeekNext,
