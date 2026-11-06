@@ -202,6 +202,7 @@ describe("ULC U12 service", () => {
         shortName: "KT",
       },
       sessionDate: DATE,
+      contentTitles: [],
       session: {
         id: "session-1",
         revision: "41",
@@ -217,6 +218,7 @@ describe("ULC U12 service", () => {
           notes: null,
           contacts: [],
           status: "present",
+          contentSlots: [],
         },
         {
           athleteId: "athlete-2",
@@ -226,6 +228,7 @@ describe("ULC U12 service", () => {
           notes: null,
           contacts: [],
           status: "excused",
+          contentSlots: [],
         },
       ],
     });
@@ -492,4 +495,86 @@ describe("ULC U12 service", () => {
       }),
     ).rejects.toBeInstanceOf(UlcU12NotFoundError);
   });
+  it("saves a bounded content list with assignments and restores it for the same group", async () => {
+    let observedTitles: readonly string[] | undefined;
+    let observedSlots: readonly number[] | undefined;
+    const service = createUlcU12Service({
+      masterdata: {
+        async readOrganizationSnapshot() { return masterdataSnapshot(); },
+      },
+      moduleGroups: moduleGroups(),
+      sessions: {
+        async readSession() { return null; },
+        async saveSession(organizationId, input, attendance, expectedRevision, titles) {
+          expect(expectedRevision).toBe("41");
+          expect(input.moduleId).toBe("u12");
+          observedTitles = titles;
+          observedSlots = attendance[0]?.contentSlots;
+          return {
+            ...storedSession(),
+            attendance: attendance.map((entry) => ({
+              organizationId,
+              sessionId: "session-1",
+              athleteId: entry.athleteId,
+              status: entry.status,
+            })),
+            trainingContentTitles: titles,
+            trainingContentAssignments: attendance.map((entry) => ({
+              athleteId: entry.athleteId,
+              slots: entry.contentSlots ?? [],
+            })),
+          };
+        },
+      },
+    });
+    const saved = await service.saveSession(ORGANIZATION_ID, {
+      groupId: GROUP_ID,
+      sessionDate: DATE,
+      expectedRevision: "41",
+      contentTitles: ["Sprint", "Koordination"],
+      attendance: [
+        { athleteId: "athlete-1", status: "present", contentSlots: [1, 2] },
+        { athleteId: "athlete-2", status: "absent", contentSlots: [] },
+      ],
+    });
+    expect(observedTitles).toEqual(["Sprint", "Koordination"]);
+    expect(observedSlots).toEqual([1, 2]);
+    expect(saved.contentTitles).toEqual(["Sprint", "Koordination"]);
+    expect(saved.participants.map(({ contentSlots }) => contentSlots)).toEqual([[1, 2], []]);
+  });
+
+  it("rejects blank, excessive and wrongly assigned contents before touching the store", async () => {
+    let calls = 0;
+    const service = createUlcU12Service({
+      masterdata: {
+        async readOrganizationSnapshot() { return masterdataSnapshot(); },
+      },
+      moduleGroups: moduleGroups(),
+      sessions: {
+        async readSession() { return null; },
+        async saveSession() { calls++; throw new Error("invalid input must not reach storage"); },
+      },
+    });
+    const testCases = [
+      { contentTitles: ["  "], firstSlots: [1], secondSlots: [] },
+      { contentTitles: ["1", "2", "3", "4", "5", "6"], firstSlots: [], secondSlots: [] },
+      { contentTitles: ["Sprint"], firstSlots: [2], secondSlots: [] },
+      { contentTitles: ["Sprint"], firstSlots: [1, 1], secondSlots: [] },
+      { contentTitles: ["Sprint"], firstSlots: [1], secondSlots: [1] },
+    ];
+    for (const item of testCases) {
+      await expect(service.saveSession(ORGANIZATION_ID, {
+        groupId: GROUP_ID,
+        sessionDate: DATE,
+        expectedRevision: null,
+        contentTitles: item.contentTitles,
+        attendance: [
+          { athleteId: "athlete-1", status: "present", contentSlots: item.firstSlots },
+          { athleteId: "athlete-2", status: "absent", contentSlots: item.secondSlots },
+        ],
+      })).rejects.toBeInstanceOf(UlcTrainingValidationError);
+    }
+    expect(calls).toBe(0);
+  });
+
 });
