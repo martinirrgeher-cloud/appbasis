@@ -236,15 +236,9 @@ function u12MakeButton(label, action, value, disabled) {
   return button;
 }
 
-function renderU12Week() {
-  if (!u12Ui.days || !u12Ui.week) return;
-  u12Ui.days.replaceChildren();
-  const groupId = u12Ui.group?.value || "";
-  u12Ui.week.hidden = !u12Ready || !groupId;
-  if (u12Ui.label) {
-    const start = u12WeekStart || localWeekStart(new Date());
-    u12Ui.label.textContent = germanDate(start) + " – " + germanDate(shiftIsoDate(start, 6));
-  }
+// Refresh controls in place while saving. Rebuilding the textarea would close
+// the mobile keyboard and silently discard edits made during the request.
+function refreshU12Controls() {
   const busy = u12Loading || u12Saving;
   for (const button of [u12Ui.prev, u12Ui.next, u12Ui.today, u12Ui.reload]) {
     if (button) button.disabled = busy || !u12Ready;
@@ -257,6 +251,40 @@ function renderU12Week() {
   }
   if (u12Ui.save) u12Ui.save.disabled = busy || !u12WriteAllowed ||
     u12Conflict || u12DirtyDates.size === 0;
+  for (const toggle of u12Ui.days?.querySelectorAll("[data-u12-toggle-date]") ?? []) {
+    toggle.disabled = busy;
+  }
+  for (const control of u12Ui.days?.querySelectorAll("[data-u12-status], [data-u12-state-date]") ?? []) {
+    control.disabled = busy || !u12WriteAllowed || u12Conflict;
+  }
+  // Notes remain editable while an autosave request is in flight.
+  for (const note of u12Ui.days?.querySelectorAll("[data-u12-note-date]") ?? []) {
+    note.disabled = !u12WriteAllowed || u12Conflict;
+  }
+  for (const summary of u12Ui.days?.querySelectorAll("[data-u12-summary-date]") ?? []) {
+    const date = summary.dataset.u12SummaryDate;
+    const entry = u12Days.find((item) => item.snapshot.sessionDate === date);
+    if (entry) {
+      const present = entry.draft.participants.filter((p) => p.status === "present").length;
+      summary.textContent = present + "/" + entry.draft.participants.length +
+        " da · " + (entry.draft.state === "cancelled" ? "Abgesagt" : "Geplant") +
+        (u12DirtyDates.has(date) ? " · Ungespeichert" : "") +
+        (u12ExpandedDates.has(date) ? " ▴" : " ▾");
+    }
+  }
+}
+
+function renderU12Week() {
+  if (!u12Ui.days || !u12Ui.week) return;
+  u12Ui.days.replaceChildren();
+  const groupId = u12Ui.group?.value || "";
+  u12Ui.week.hidden = !u12Ready || !groupId;
+  if (u12Ui.label) {
+    const start = u12WeekStart || localWeekStart(new Date());
+    u12Ui.label.textContent = germanDate(start) + " – " + germanDate(shiftIsoDate(start, 6));
+  }
+  refreshU12Controls();
+  const busy = u12Loading || u12Saving;
   if (!u12Ready || !groupId) return;
   if (u12Loading) {
     const loading = document.createElement("div");
@@ -290,6 +318,7 @@ function renderU12Week() {
     d.textContent = germanDate(date);
     title.append(name, d);
     const summary = document.createElement("small");
+    summary.dataset.u12SummaryDate = date;
     const present = entry.draft.participants.filter((p) => p.status === "present").length;
     summary.textContent = present + "/" + entry.draft.participants.length +
       " da · " + (entry.draft.state === "cancelled" ? "Abgesagt" : "Geplant") +
@@ -436,7 +465,7 @@ async function saveU12Week() {
   const generation = attendanceSessionGeneration;
   const groupId = u12LoadedGroupId;
   u12Saving = true;
-  renderU12Week();
+  refreshU12Controls();
   let savedAll = true;
   try {
     for (const date of [...u12DirtyDates]) {
@@ -446,6 +475,7 @@ async function saveU12Week() {
         break;
       }
       try {
+        const outgoingDraft = JSON.stringify(entry.draft);
         const payload = await requestJson("/api/modules/u12/session", {
           method: "POST",
           body: JSON.stringify({
@@ -465,8 +495,14 @@ async function saveU12Week() {
           throw new Error("U12_SAVED_INVALID");
         }
         entry.snapshot = payload.snapshot;
-        entry.draft = u12Draft(payload.snapshot);
-        u12DirtyDates.delete(date);
+        if (JSON.stringify(entry.draft) === outgoingDraft) {
+          // Only clear saved fields if the trainer did not continue typing.
+          entry.draft = u12Draft(payload.snapshot);
+          u12DirtyDates.delete(date);
+        } else {
+          // New edits will be retried against the just-returned revision.
+          u12DirtyDates.add(date);
+        }
       } catch (error) {
         if (generation !== attendanceSessionGeneration) return false;
         savedAll = false;
@@ -485,12 +521,18 @@ async function saveU12Week() {
         break;
       }
     }
-    if (savedAll) showMessage(u12Ui.success, "U12-Anwesenheit gespeichert.");
+    if (savedAll && u12DirtyDates.size === 0) {
+      showMessage(u12Ui.success, "U12-Anwesenheit gespeichert.");
+    }
     return savedAll && u12DirtyDates.size === 0;
   } finally {
     if (generation === attendanceSessionGeneration) {
       u12Saving = false;
-      renderU12Week();
+      refreshU12Controls();
+      if (u12DirtyDates.size > 0 && u12WriteAllowed && !u12Conflict) {
+        u12ClearAutosave();
+        u12AutoTimer = window.setTimeout(() => { void saveU12Week(); }, 1200);
+      }
     }
   }
 }
@@ -587,7 +629,7 @@ u12Ui.days?.addEventListener("change", (event) => {
 u12Ui.days?.addEventListener("input", (event) => {
   const input = event.target;
   const date = input?.dataset?.u12NoteDate;
-  if (!date || !u12WriteAllowed || u12Saving || u12Conflict) return;
+  if (!date || !u12WriteAllowed || u12Conflict) return;
   const entry = u12Days.find((day) => day.snapshot.sessionDate === date);
   if (!entry) return;
   entry.draft.note = input.value.slice(0, 3000);
