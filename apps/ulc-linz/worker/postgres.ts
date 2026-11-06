@@ -59,6 +59,7 @@ import {
   type UlcLinzU12AccessService,
 } from "./u12-access";
 import { createUlcU12Service } from "./u12-service";
+import { PostgresUlcYouthCategoryRepository } from "./youth-category-postgres";
 import {
   createUlcLinzTrainingBlocksAccessService,
   type UlcLinzTrainingBlocksAccessService,
@@ -167,6 +168,7 @@ export interface GeneratedPostgresApplicationRuntime {
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
   selfRegistration: ReturnType<typeof createUlcSelfRegistrationService>;
   u12: ReturnType<typeof createUlcU12Service>;
+  youthCategories: PostgresUlcYouthCategoryRepository;
   exerciseCatalog: ReturnType<typeof createUlcExerciseCatalogService>;
   trainingBlocks: UlcTrainingBlockService;
   trainingPlans: UlcTrainingPlanService;
@@ -537,10 +539,12 @@ export async function createGeneratedPostgresApplicationRuntime(
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
     });
+    const youthCategories = new PostgresUlcYouthCategoryRepository(applicationSql);
     const u12 = createUlcU12Service({
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
       moduleGroups: trainingModuleGroups,
+      categories: youthCategories,
     });
     const exerciseCatalog = createUlcExerciseCatalogService({
       repository: createUlcExerciseCatalogRuntimeRepository({
@@ -593,6 +597,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       kindertraining,
       selfRegistration,
       u12,
+      youthCategories,
       exerciseCatalog,
       trainingBlocks,
       trainingPlans,
