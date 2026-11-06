@@ -96,10 +96,14 @@ export function classifyU12PreviewSchema({ tables, columns, constraints } = {}) 
   }
   for (let index = 0; index < EXPECTED_COLUMNS.length; index += 1) {
     const column = foundColumns[index];
+    const expectedType = EXPECTED_COLUMNS[index].udt === "_text" ? "text" : "smallint";
+    const allowedDefaults = [
+      "ARRAY[]::" + expectedType + "[]",
+      "'{}'::" + expectedType + "[]",
+    ];
     if (column.udt_name !== EXPECTED_COLUMNS[index].udt ||
         column.data_type !== "ARRAY" || column.is_nullable !== "NO" ||
-        typeof column.column_default !== "string" ||
-        !/ARRAY\[\]::(?:text|smallint)\[\]/.test(column.column_default)) {
+        !allowedDefaults.includes(column.column_default)) {
       throw new UlcU12PreviewSchemaError("U12 preview content column definition drifted.");
     }
   }
