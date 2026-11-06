@@ -168,6 +168,9 @@ jobs:
       - name: Test U12 preview schema-v12 migration guard
         run: node --test ./tooling/ulc-linz-u12-preview.test.mjs
 
+      - name: Test youth-content preview schema-v13 migration and refresh guards
+        run: node --test ./tooling/ulc-linz-youth-content-preview.test.mjs
+
       - name: Typecheck
         run: pnpm run typecheck
 
