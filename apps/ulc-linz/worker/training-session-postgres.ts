@@ -11,6 +11,10 @@ import {
   type UlcTrainingRegistrationIntention,
   type UlcTrainingSession,
 } from "./training-session-domain";
+import {
+  normalizeUlcYouthContentItems,
+  type UlcYouthContentItem,
+} from "./training-content-catalog";
 
 type SqlParameter = string | number | boolean | null;
 
@@ -28,6 +32,7 @@ export interface UlcTrainingSessionSnapshot {
   readonly registrations: readonly UlcTrainingRegistration[];
   /** Only U12 currently consumes these app-owned youth documentation fields. */
   readonly trainingContentTitles?: readonly string[];
+  readonly trainingContentItems?: readonly UlcYouthContentItem[];
   readonly trainingContentAssignments?: readonly Readonly<{
     athleteId: string;
     slots: readonly number[];
@@ -71,6 +76,21 @@ function readTrainingContentTitles(value: unknown): readonly string[] {
     throw new UlcTrainingSessionPersistenceError("Invalid training content titles.");
   }
   return Object.freeze([...value]);
+}
+
+function readTrainingContentItems(
+  value: unknown,
+  titles: readonly string[],
+): readonly UlcYouthContentItem[] {
+  // Legacy session rows have titles but no categorization metadata.
+  if (value === undefined || (Array.isArray(value) && value.length === 0)) {
+    return Object.freeze([]);
+  }
+  try {
+    return normalizeUlcYouthContentItems(titles, value as readonly UlcYouthContentItem[]);
+  } catch {
+    throw new UlcTrainingSessionPersistenceError("Invalid training content metadata.");
+  }
 }
 
 function readTrainingContentSlots(value: unknown): readonly number[] {
@@ -149,6 +169,7 @@ export class PostgresUlcTrainingSessionRepository {
               state,
               note,
               training_content_titles,
+              training_content_items,
               xmin::text AS revision
        FROM ulc_linz_training_session
        WHERE organization_id = $1
@@ -208,6 +229,10 @@ export class PostgresUlcTrainingSessionRepository {
         ? {
             trainingContentTitles: readTrainingContentTitles(
               rows[0].training_content_titles,
+            ),
+            trainingContentItems: readTrainingContentItems(
+              rows[0].training_content_items,
+              readTrainingContentTitles(rows[0].training_content_titles),
             ),
             trainingContentAssignments: Object.freeze(attendanceRows.map((row) =>
               Object.freeze({
@@ -322,6 +347,7 @@ export class PostgresUlcTrainingSessionRepository {
     }[],
     expectedRevision: string | null,
     trainingContentTitles?: readonly string[],
+    trainingContentItems?: readonly UlcYouthContentItem[],
   ): Promise<UlcTrainingSessionSnapshot> {
     const proposed = createUlcTrainingSession(input, {
       id: requiredGeneratedId(this.#createId()),
@@ -337,6 +363,11 @@ export class PostgresUlcTrainingSessionRepository {
     );
     const titles = trainingContentTitles === undefined
       ? null : normalizeTrainingContentTitles(trainingContentTitles);
+    if (trainingContentItems !== undefined && titles === null) {
+      throw new UlcTrainingValidationError("Training content metadata requires titles.");
+    }
+    const contentItems = trainingContentItems === undefined
+      ? null : normalizeUlcYouthContentItems(titles ?? [], trainingContentItems);
     const slotsByAthlete = new Map<string, readonly number[]>();
     if (titles !== null) {
       for (const entry of attendanceInput) {
@@ -373,6 +404,13 @@ export class PostgresUlcTrainingSessionRepository {
                WHEN $10::jsonb IS NULL THEN training_content_titles
                ELSE ARRAY(SELECT jsonb_array_elements_text($10::jsonb))
              END,
+             training_content_items = CASE
+               WHEN $11::jsonb IS NOT NULL THEN $11::jsonb
+               WHEN $10::jsonb IS NULL OR training_content_titles =
+                 ARRAY(SELECT jsonb_array_elements_text($10::jsonb))
+                 THEN training_content_items
+               ELSE '[]'::jsonb
+             END,
              updated_at = now()
          WHERE organization_id = $2
            AND module_id = $3
@@ -388,6 +426,7 @@ export class PostgresUlcTrainingSessionRepository {
                    state,
                    note,
                    training_content_titles,
+                   training_content_items,
                    xmin::text AS revision
        ),
        inserted_session AS (
@@ -399,10 +438,12 @@ export class PostgresUlcTrainingSessionRepository {
            session_date,
            state,
            note,
-           training_content_titles
+           training_content_titles,
+           training_content_items
          )
          SELECT $1, $2, $3, $4, $5::date, $6, $7,
-                ARRAY(SELECT jsonb_array_elements_text($10::jsonb))
+                ARRAY(SELECT jsonb_array_elements_text($10::jsonb)),
+                COALESCE($11::jsonb, '[]'::jsonb)
          WHERE $9::text IS NULL
          ON CONFLICT (organization_id, module_id, group_id, session_date)
          DO NOTHING
@@ -414,6 +455,7 @@ export class PostgresUlcTrainingSessionRepository {
                    state,
                    note,
                    training_content_titles,
+                   training_content_items,
                    xmin::text AS revision
        ),
        saved_session AS MATERIALIZED (
@@ -472,6 +514,7 @@ export class PostgresUlcTrainingSessionRepository {
               session.state,
               session.note,
               session.training_content_titles,
+              session.training_content_items,
               session.revision,
               (SELECT count(*)::int FROM saved_attendance)
                 AS saved_attendance_count,
@@ -489,6 +532,7 @@ export class PostgresUlcTrainingSessionRepository {
         payload,
         revision,
         titles === null ? null : JSON.stringify(titles),
+        contentItems === null ? null : JSON.stringify(contentItems),
       ],
     );
 
@@ -541,6 +585,7 @@ export class PostgresUlcTrainingSessionRepository {
       registrations,
       ...(titles === null ? {} : {
         trainingContentTitles: titles,
+        trainingContentItems: readTrainingContentItems(rows[0].training_content_items, titles),
         trainingContentAssignments: Object.freeze(
           normalizedAttendance.map((entry) => Object.freeze({
             athleteId: entry.athleteId,

@@ -1,3 +1,5 @@
+import { ULC_YOUTH_CONTENT_CATALOG } from "./training-content-catalog";
+
 export const ULC_U12_HTML = `
           <section class="app-section" data-app-section="u12" id="u12" hidden>
             <header class="u12-head">
@@ -41,7 +43,7 @@ export const ULC_U12_HTML = `
                   <span aria-hidden="true">⌄</span>
                 </summary>
                 <div class="u12-content-body">
-                  <p>Bis zu fünf kurze Inhalte je Training. Ordne sie anschließend den anwesenden Kindern zu.</p>
+                  <p>Pro Training bis zu fünf Inhalte. Wähle eine standardisierte Kategorie und ergänze bei Bedarf Zusatzinfos. Vorhandene freie Inhalte bleiben erhalten.</p>
                   <div id="u12-content-rows" class="u12-content-rows"></div>
                   <div class="u12-content-actions">
                     <button type="button" class="u12-content-add" id="u12-content-add">＋ Inhalt</button>
@@ -118,7 +120,10 @@ export const ULC_U12_CSS = `
 .u12-content-rows { display:grid; gap:8px; }
 .u12-content-row { display:grid; grid-template-columns:24px minmax(0,1fr) 38px; gap:8px; align-items:center; }
 .u12-content-row > strong { font-size:.84rem; color:var(--secondary); text-align:center; }
-.u12-content-row input { min-width:0; width:100%; min-height:42px; border:1px solid var(--border-strong); border-radius:9px; padding:8px 10px; background:var(--card); color:var(--text); }
+.u12-content-fields { display:grid; gap:6px; min-width:0; }
+.u12-content-fields input, .u12-content-fields select { min-width:0; width:100%; min-height:42px; border:1px solid var(--border-strong); border-radius:9px; padding:8px 10px; background:var(--card); color:var(--text); }
+.u12-content-fields input[hidden] { display:none; }
+.u12-content-fields .u12-content-detail { font-size:.85rem; }
 .u12-content-remove { width:38px; height:42px; border:0; background:var(--muted); color:var(--text); border-radius:9px; font-size:1.15rem; cursor:pointer; }
 .u12-content-add { justify-self:start; min-height:42px; padding:0 11px; border:1px solid var(--border-strong); border-radius:9px; background:var(--muted); color:var(--text); font-weight:750; cursor:pointer; }
 .u12-content-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
@@ -227,6 +232,7 @@ const u12Ui = {
   success: document.querySelector("#u12-success"),
 };
 const U12_SERVER_STATUSES = Object.freeze(["open", "present", "excused", "absent"]);
+const U12_STANDARD_CONTENT_CATALOG = ${JSON.stringify(ULC_YOUTH_CONTENT_CATALOG)};
 let u12Ready = false;
 let u12WriteAllowed = true;
 let u12Groups = [];
@@ -235,6 +241,7 @@ let u12LoadedDate = "";
 let u12Snapshot = null;
 let u12Present = new Map();
 let u12ContentTitles = [];
+let u12ContentItems = [];
 let u12ContentAssignments = new Map();
 let u12DirtyDates = new Set();
 let u12Loading = false;
@@ -252,6 +259,7 @@ function resetU12SessionState() {
   u12Snapshot = null;
   u12Present = new Map();
   u12ContentTitles = [];
+  u12ContentItems = [];
   u12ContentAssignments = new Map();
   u12Ui.contentRows?.replaceChildren();
   if (u12Ui.matrixSection?.open) u12Ui.matrixSection.close();
@@ -289,7 +297,15 @@ function u12ValidSnapshot(snapshot, date, groupId) {
       !Array.isArray(snapshot.contentTitles) || snapshot.contentTitles.length > 5 ||
       !snapshot.contentTitles.every((title) =>
         typeof title === "string" && title.length > 0 &&
-        title.length <= 120 && title.trim() === title)) return false;
+        title.length <= 120 && title.trim() === title) ||
+      !Array.isArray(snapshot.contentItems) ||
+      snapshot.contentItems.length !== snapshot.contentTitles.length ||
+      !snapshot.contentItems.every((meta, i) =>
+        meta && typeof meta === "object" &&
+        typeof meta.code === "string" && typeof meta.detail === "string" &&
+        meta.detail.length <= 200 && meta.detail.trim() === meta.detail &&
+        (meta.code === "" || U12_STANDARD_CONTENT_CATALOG.some((entry) =>
+          entry.code === meta.code && entry.label === snapshot.contentTitles[i])))) return false;
   if (snapshot.session !== null && (
       typeof snapshot.session !== "object" ||
       typeof snapshot.session.revision !== "string" ||
@@ -410,7 +426,7 @@ function refreshU12Controls() {
   for (const input of u12Ui.days?.querySelectorAll("[data-u12-athlete-id]") ?? []) {
     input.disabled = !editable;
   }
-  for (const input of u12Ui.contentRows?.querySelectorAll("input, button") ?? []) {
+  for (const input of u12Ui.contentRows?.querySelectorAll("input, select, button") ?? []) {
     input.disabled = !editable;
   }
   if (u12Ui.contentAdd) {
@@ -478,25 +494,57 @@ function renderU12ContentRows() {
     u12Ui.contentRows.append(empty);
   }
   for (const [index, title] of u12ContentTitles.entries()) {
+    const meta = u12ContentItems[index] ?? { code: "", detail: "" };
     const row = document.createElement("div");
     row.className = "u12-content-row";
     const number = document.createElement("strong");
     number.textContent = String(index + 1);
+    const fields = document.createElement("div");
+    fields.className = "u12-content-fields";
+
+    const category = document.createElement("select");
+    category.dataset.u12CodeIndex = String(index);
+    category.setAttribute("aria-label", "Kategorie für Inhalt " + (index + 1));
+    const freeOption = document.createElement("option");
+    freeOption.value = "";
+    freeOption.textContent = "Freie Bezeichnung (nicht standardisiert)";
+    category.append(freeOption);
+    for (const standard of U12_STANDARD_CONTENT_CATALOG) {
+      const option = document.createElement("option");
+      option.value = standard.code;
+      option.textContent = standard.label;
+      category.append(option);
+    }
+    category.value = meta.code;
+
     const input = document.createElement("input");
     input.type = "text";
     input.required = true;
     input.maxLength = 120;
-    input.placeholder = "z. B. Koordination oder Sprint";
+    input.placeholder = "Freien Inhalt benennen";
     input.value = title;
+    input.hidden = !!meta.code;
+    input.readOnly = !!meta.code;
     input.dataset.u12TitleIndex = String(index);
     input.setAttribute("aria-label", "Trainingsinhalt " + (index + 1));
+
+    const detail = document.createElement("input");
+    detail.type = "text";
+    detail.maxLength = 200;
+    detail.className = "u12-content-detail";
+    detail.placeholder = "Zusatzinfo (optional), z. B. 4 × 30 m";
+    detail.value = meta.detail;
+    detail.dataset.u12DetailIndex = String(index);
+    detail.setAttribute("aria-label", "Zusatzinfo für Inhalt " + (index + 1));
+    fields.append(category, input, detail);
+
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "u12-content-remove";
     remove.dataset.u12RemoveIndex = String(index);
     remove.textContent = "×";
     remove.setAttribute("aria-label", "Inhalt " + (index + 1) + " entfernen");
-    row.append(number, input, remove);
+    row.append(number, fields, remove);
     u12Ui.contentRows.append(row);
   }
 }
@@ -506,6 +554,7 @@ function addU12Content() {
       u12Saving || !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return;
   u12ContentTitles.push("");
+  u12ContentItems.push({ code: "", detail: "" });
   if (u12Ui.contentCard) u12Ui.contentCard.open = true;
   renderU12Attendance();
   markU12DraftDirty();
@@ -518,6 +567,7 @@ function removeU12Content(index) {
       u12Loading || u12Saving || !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return;
   u12ContentTitles.splice(index, 1);
+  u12ContentItems.splice(index, 1);
   for (const [id, slots] of u12ContentAssignments) {
     u12ContentAssignments.set(id, new Set(
       [...slots].filter((slot) => slot !== index + 1)
@@ -584,7 +634,9 @@ function refreshU12AssignmentSummaries() {
     for (const slot of slots) {
       const chip = document.createElement("span");
       chip.className = "u12-person__content-chip";
-      chip.textContent = slot + ". " + (u12ContentTitles[slot - 1]?.trim() || "Ohne Bezeichnung");
+      const detail = u12ContentItems[slot - 1]?.detail?.trim();
+      chip.textContent = slot + ". " + (u12ContentTitles[slot - 1]?.trim() || "Ohne Bezeichnung") +
+        (detail ? " · " + detail : "");
       container.append(chip);
     }
   }
@@ -614,7 +666,10 @@ function renderU12AssignmentMatrix() {
     const number = document.createElement("strong");
     number.textContent = String(index + 1) + ". ";
     legend.dataset.u12MatrixLegend = String(index);
-    legend.append(number, document.createTextNode(title.trim() || "Inhalt ohne Bezeichnung"));
+    const detail = u12ContentItems[index]?.detail?.trim();
+    legend.append(number, document.createTextNode(
+      (title.trim() || "Inhalt ohne Bezeichnung") + (detail ? " · " + detail : ""),
+    ));
     u12Ui.matrixLegend?.append(legend);
   }
   const head = document.createElement("thead");
@@ -809,6 +864,7 @@ async function loadU12Attendance() {
   u12Snapshot = null;
   u12Present = new Map();
   u12ContentTitles = [];
+  u12ContentItems = [];
   u12ContentAssignments = new Map();
   u12DirtyDates.clear();
   u12Conflict = false;
@@ -827,6 +883,7 @@ async function loadU12Attendance() {
     u12Present = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, person.status === "present"]));
     u12ContentTitles = [...u12Snapshot.contentTitles];
+    u12ContentItems = u12Snapshot.contentItems.map((meta) => ({ ...meta }));
     u12ContentAssignments = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, new Set(person.contentSlots)]));
   } catch (error) {
@@ -886,6 +943,10 @@ async function saveU12Attendance() {
             : [],
         })),
         contentTitles: titles,
+        contentItems: u12ContentItems.map((meta) => ({
+          code: meta.code,
+          detail: meta.detail.trim(),
+        })),
       }),
     });
     if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return false;
@@ -896,6 +957,7 @@ async function saveU12Attendance() {
     u12Present = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, person.status === "present"]));
     u12ContentTitles = [...u12Snapshot.contentTitles];
+    u12ContentItems = u12Snapshot.contentItems.map((meta) => ({ ...meta }));
     u12ContentAssignments = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, new Set(person.contentSlots)]));
     u12DirtyDates.clear();
@@ -1076,13 +1138,48 @@ u12Ui.contentRows?.addEventListener("click", (event) => {
     removeU12Content(Number(remove.dataset.u12RemoveIndex));
   }
 });
+u12Ui.contentRows?.addEventListener("change", (event) => {
+  const select = event.target;
+  if (!select || !Object.prototype.hasOwnProperty.call(select.dataset, "u12CodeIndex")) return;
+  const index = Number(select.dataset.u12CodeIndex);
+  const item = u12ContentItems[index];
+  if (!Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
+      !item || !u12EditableDraft()) return;
+  const standard = U12_STANDARD_CONTENT_CATALOG.find((entry) => entry.code === select.value);
+  if (select.value !== "" && !standard) return;
+  if (standard) {
+    const oldTitle = u12ContentTitles[index]?.trim() || "";
+    // Reclassifying a legacy free-text content must not discard its description.
+    if (!item.code && oldTitle && !item.detail) {
+      item.detail = oldTitle.slice(0, 200);
+    }
+    item.code = standard.code;
+    u12ContentTitles[index] = standard.label;
+  } else {
+    item.code = "";
+    if (U12_STANDARD_CONTENT_CATALOG.some((entry) => entry.label === u12ContentTitles[index])) {
+      u12ContentTitles[index] = "";
+    }
+  }
+  renderU12ContentRows();
+  renderU12AssignmentMatrix();
+  markU12DraftDirty();
+});
 u12Ui.contentRows?.addEventListener("input", (event) => {
   const input = event.target;
-  const index = Number(input?.dataset?.u12TitleIndex);
-  if (!input || !Object.prototype.hasOwnProperty.call(input.dataset, "u12TitleIndex") ||
+  const isDetail = !!input &&
+    Object.prototype.hasOwnProperty.call(input.dataset, "u12DetailIndex");
+  const index = Number(isDetail ? input?.dataset?.u12DetailIndex : input?.dataset?.u12TitleIndex);
+  if (!input || !(isDetail || Object.prototype.hasOwnProperty.call(input.dataset, "u12TitleIndex")) ||
       !Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
       u12Loading || u12Saving || !u12WriteAllowed || u12Conflict ||
       u12Snapshot?.session?.state === "cancelled") return;
+  if (isDetail) {
+    u12ContentItems[index].detail = input.value;
+    markU12DraftDirty();
+    return;
+  }
+  if (u12ContentItems[index]?.code) return;
   u12ContentTitles[index] = input.value;
   for (const heading of u12Ui.matrix?.querySelectorAll("[data-u12-matrix-heading]") ?? []) {
     if (Number(heading.dataset.u12MatrixHeading) === index) {

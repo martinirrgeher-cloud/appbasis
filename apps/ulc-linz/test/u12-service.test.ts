@@ -203,6 +203,7 @@ describe("ULC U12 service", () => {
       },
       sessionDate: DATE,
       contentTitles: [],
+      contentItems: [],
       session: {
         id: "session-1",
         revision: "41",
