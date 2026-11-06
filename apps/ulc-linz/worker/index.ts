@@ -4281,6 +4281,67 @@ async function athletesMasterdataMutationResponse(
       return Response.json({ trainingGroup }, { status: 201 });
     }
 
+    if (route === "athletes/create-complete") {
+      const body = await athletesJsonBody(request, [
+        "firstName", "lastName", "birthYear", "notes",
+        "groupId", "startedOn", "contacts",
+      ], ["firstName", "lastName", "groupId", "startedOn", "contacts"]);
+      if (
+        typeof body.firstName !== "string" ||
+        typeof body.lastName !== "string" ||
+        (body.birthYear !== undefined && body.birthYear !== null &&
+          (typeof body.birthYear !== "number" || !Number.isInteger(body.birthYear))) ||
+        (body.notes !== undefined && body.notes !== null &&
+          typeof body.notes !== "string") ||
+        (body.groupId !== null &&
+          (typeof body.groupId !== "string" || !validRequestIdentifier(body.groupId))) ||
+        (body.startedOn !== null &&
+          (typeof body.startedOn !== "string" ||
+            !/^\\d{4}-\\d{2}-\\d{2}$/.test(body.startedOn))) ||
+        (body.groupId === null) !== (body.startedOn === null) ||
+        !Array.isArray(body.contacts) || body.contacts.length > 6 ||
+        !body.contacts.every((entry: unknown) => {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+          const contact = entry as Record<string, unknown>;
+          const keys = Object.keys(contact);
+          return keys.every((key) => [
+            "contactName", "relationship", "phone", "isEmergency", "priority", "notes",
+          ].includes(key)) &&
+            typeof contact.contactName === "string" &&
+            typeof contact.phone === "string" &&
+            (contact.relationship === undefined || contact.relationship === null ||
+              typeof contact.relationship === "string") &&
+            (contact.notes === undefined || contact.notes === null ||
+              typeof contact.notes === "string") &&
+            (contact.isEmergency === undefined || typeof contact.isEmergency === "boolean") &&
+            (contact.priority === undefined ||
+              (typeof contact.priority === "number" && Number.isInteger(contact.priority)));
+        })
+      ) throw new InvalidAthletesRequestError();
+      const athlete = await runtime.athleteMasterdata.createAthleteComplete(
+        access.organizationId,
+        {
+          athlete: {
+            firstName: body.firstName,
+            lastName: body.lastName,
+            ...(body.birthYear === undefined ? {} : { birthYear: body.birthYear as number | null }),
+            ...(body.notes === undefined ? {} : { notes: body.notes as string | null }),
+          },
+          groupId: body.groupId as string | null,
+          startedOn: body.startedOn as string | null,
+          contacts: body.contacts as {
+            contactName: string;
+            relationship?: string | null;
+            phone: string;
+            isEmergency?: boolean;
+            priority?: number;
+            notes?: string | null;
+          }[],
+        },
+      );
+      return Response.json(athlete, { status: 201 });
+    }
+
     if (route === "athletes") {
       const body = await athletesJsonBody(request, [
         "firstName",
