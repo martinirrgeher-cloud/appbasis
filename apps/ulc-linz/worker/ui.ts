@@ -174,7 +174,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>U12-Anwesenheit</h2>
-                  <p>U12-Wochenansicht für berechtigte Trainer.</p>
+                  <p>Namensliste pro Training: Anwesend ja oder nein.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="u12-quick-action" type="button" data-open-view="u12" disabled>U12 öffnen</button>
                 <small>Nur für freigeschaltete U12-Gruppen.</small>
