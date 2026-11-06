@@ -41,7 +41,8 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_SCRIPT).toContain('input.type = "checkbox"');
     expect(ULC_U12_SCRIPT).toContain('input.dataset.u12AthleteId = person.athleteId');
     expect(ULC_U12_SCRIPT).toContain('status.textContent = input.checked ? "Ja" : "Nein"');
-    expect(ULC_U12_SCRIPT).toContain('label.className = "u12-person"');
+    expect(ULC_U12_SCRIPT).toContain('row.className = "u12-person"');
+    expect(ULC_U12_SCRIPT).toContain('label.className = "u12-person__toggle"');
     expect(ULC_U12_SCRIPT).not.toContain('registrationWeekDates(');
     expect(ULC_U12_SCRIPT).not.toContain('u12AutoTimer');
     expect(ULC_U12_SCRIPT).not.toContain("Promise.allSettled(");
