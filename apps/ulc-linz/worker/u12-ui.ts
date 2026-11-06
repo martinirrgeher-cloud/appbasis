@@ -43,22 +43,32 @@ export const ULC_U12_HTML = `
                 <div class="u12-content-body">
                   <p>Bis zu fünf kurze Inhalte je Training. Ordne sie anschließend den anwesenden Kindern zu.</p>
                   <div id="u12-content-rows" class="u12-content-rows"></div>
-                  <button type="button" class="u12-content-add" id="u12-content-add">＋ Inhalt</button>
+                  <div class="u12-content-actions">
+                    <button type="button" class="u12-content-add" id="u12-content-add">＋ Inhalt</button>
+                    <button type="button" class="button button--secondary u12-content-assign" id="u12-content-assign" aria-haspopup="dialog" aria-controls="u12-assignment-section" disabled>Inhalte zuordnen</button>
+                  </div>
                 </div>
               </details>
               <div id="u12-days" class="u12-days" aria-live="polite"></div>
-              <section class="card u12-matrix-card" id="u12-assignment-section" aria-labelledby="u12-assignment-heading" hidden>
+            </section>
+            <dialog class="u12-details-dialog u12-matrix-dialog" id="u12-assignment-section" aria-labelledby="u12-assignment-heading" aria-describedby="u12-assignment-help">
+              <header class="u12-details-header u12-matrix-dialog__header">
                 <div class="u12-matrix-heading">
                   <h2 id="u12-assignment-heading">Trainingsinhalte zuordnen</h2>
                   <small id="u12-assignment-summary" role="status">Nur anwesende Athleten</small>
                 </div>
-                <p class="u12-matrix-help">Häkchen pro Kind setzen oder oben „Alle“ wählen. Die Spaltenbezeichnungen stehen hier:</p>
-                <div class="u12-matrix-legend" id="u12-assignment-legend"></div>
-                <div class="u12-matrix-scroll" role="region" aria-label="Trainingsinhalte-Matrix" tabindex="0">
-                  <table class="u12-matrix-table" id="u12-assignment-matrix"></table>
-                </div>
-              </section>
-            </section>
+                <button type="button" class="button button--secondary u12-matrix-dialog__close" id="u12-assignment-close" aria-label="Zuordnung schließen">✕</button>
+              </header>
+              <p class="u12-matrix-help" id="u12-assignment-help">Häkchen pro Kind setzen oder oben „Alle“ wählen. Die Zuordnung erscheint sofort in der Anwesenheitsliste.</p>
+              <div class="u12-matrix-legend" id="u12-assignment-legend"></div>
+              <div class="u12-matrix-scroll" role="region" aria-label="Trainingsinhalte-Matrix" tabindex="0">
+                <table class="u12-matrix-table" id="u12-assignment-matrix"></table>
+              </div>
+              <footer class="u12-matrix-dialog__footer">
+                <small>Die Änderungen werden mit „Training speichern“ gesichert.</small>
+                <button type="button" class="button button--primary" id="u12-assignment-done">Fertig</button>
+              </footer>
+            </dialog>
             <dialog class="u12-details-dialog" id="u12-details-dialog" aria-labelledby="u12-details-title">
               <header class="u12-details-header">
                 <h2 id="u12-details-title">Athletenhinweise</h2>
@@ -111,22 +121,30 @@ export const ULC_U12_CSS = `
 .u12-content-row input { min-width:0; width:100%; min-height:42px; border:1px solid var(--border-strong); border-radius:9px; padding:8px 10px; background:var(--card); color:var(--text); }
 .u12-content-remove { width:38px; height:42px; border:0; background:var(--muted); color:var(--text); border-radius:9px; font-size:1.15rem; cursor:pointer; }
 .u12-content-add { justify-self:start; min-height:42px; padding:0 11px; border:1px solid var(--border-strong); border-radius:9px; background:var(--muted); color:var(--text); font-weight:750; cursor:pointer; }
+.u12-content-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.u12-content-assign { min-height:42px; font-size:.82rem; }
+.u12-content-assign:disabled { opacity:.5; cursor:not-allowed; }
 .u12-person { display:grid !important; grid-template-columns:minmax(0,1fr) 44px; column-gap:8px; }
 .u12-person__toggle { grid-column:1; }
 .u12-person:not(:has(.u12-info)) > .u12-person__toggle { grid-column:1 / -1; }
-.u12-person__assignment { grid-column:1 / -1; justify-self:start; border:0; border-radius:8px; padding:5px 9px; min-height:34px; background:var(--muted); color:var(--accent); font-weight:700; font-size:.77rem; cursor:pointer; }
-.u12-person__assignment:disabled { opacity:.55; cursor:default; }
-.u12-assign-options { display:grid; gap:8px; margin-top:12px; }
-.u12-assign-option { display:flex; align-items:center; gap:12px; min-height:48px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; cursor:pointer; }
-.u12-assign-option input { width:22px; height:22px; flex:0 0 22px; accent-color:var(--accent); }
-.u12-assign-option span { overflow-wrap:anywhere; }
+.u12-person__contents { grid-column:1 / -1; min-width:0; display:flex; align-items:center; flex-wrap:wrap; gap:4px 6px; padding:0 2px 7px; font-size:.75rem; color:var(--secondary); }
+.u12-person__contents[hidden] { display:none !important; }
+.u12-person__contents-label { flex:0 0 auto; font-weight:700; }
+.u12-person__content-chip { display:inline-flex; max-width:100%; padding:3px 6px; border-radius:7px; background:var(--muted); color:var(--text); overflow-wrap:anywhere; }
+.u12-person__content-empty { font-style:italic; }
 
 /* Mobile matrix: fixed athlete names and horizontal scrolling across up to five slots. */
-.u12-matrix-card { min-width:0; max-width:100%; padding:12px 0; overflow:hidden; }
-.u12-matrix-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 12px; }
+.u12-matrix-dialog { box-sizing:border-box; width:min(96vw,580px); max-width:580px; max-height:calc(100dvh - 24px); padding:0; overflow-y:auto; overscroll-behavior:contain; }
+.u12-matrix-dialog__header { position:sticky; top:0; z-index:3; padding:12px; background:var(--surface, #fff); border-bottom:1px solid var(--border); }
+.u12-matrix-dialog__close { flex:0 0 42px; width:42px; min-height:42px; padding:0; }
+.u12-matrix-dialog__footer { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; padding:12px; border-top:1px solid var(--border); }
+.u12-matrix-dialog__footer small { font-size:.75rem; color:var(--secondary); max-width:290px; }
+.u12-matrix-dialog__footer button { min-height:44px; }
+.u12-matrix-dialog .u12-matrix-scroll { padding-bottom:10px; }
+.u12-matrix-heading { display:grid; gap:2px; min-width:0; flex:1 1 auto; }
 .u12-matrix-heading h2 { font-size:.94rem; margin:0; }
 .u12-matrix-heading small { font-size:.72rem; color:var(--secondary); text-align:right; }
-.u12-matrix-help { margin:8px 12px; font-size:.76rem; color:var(--secondary); line-height:1.4; }
+.u12-matrix-help { margin:10px 12px; font-size:.76rem; color:var(--secondary); line-height:1.4; }
 .u12-matrix-legend { display:flex; flex-wrap:wrap; gap:5px 10px; margin:0 12px 10px; }
 .u12-matrix-legend span { font-size:.73rem; color:var(--text); overflow-wrap:anywhere; }
 .u12-matrix-legend strong { color:var(--accent); }
