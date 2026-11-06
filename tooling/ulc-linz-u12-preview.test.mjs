@@ -66,6 +66,13 @@ test("U12 preview accepts only both new columns, defaults and constraints", () =
   assert.equal(classifyU12PreviewSchema({
     tables, columns: [...notes, ...v12columns], constraints,
   }), "current");
+  assert.equal(classifyU12PreviewSchema({
+    tables,
+    columns: [...notes,
+      { ...v12columns[0], column_default: "'{}'::text[]" },
+      { ...v12columns[1], column_default: "'{}'::smallint[]" }],
+    constraints,
+  }), "current");
   assert.throws(() => classifyU12PreviewSchema({
     tables, columns: [...notes, v12columns[0]], constraints,
   }), UlcU12PreviewSchemaError);
