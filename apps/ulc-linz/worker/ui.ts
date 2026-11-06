@@ -2779,7 +2779,8 @@ elements.appNavMore?.addEventListener("click", () => {
   setAppNavMoreOpen(!appNavMoreOpen);
 });
 document.addEventListener("click", (event) => {
-  if (event.target?.closest?.(".app-nav")) return;
+  if (event.target?.closest?.(".app-nav") ||
+      event.target?.closest?.("[data-open-attendance-menu]")) return;
   if (appNavMoreOpen) setAppNavMoreOpen(false);
   if (appNavAttendanceOpen) setAppNavAttendanceOpen(false);
 });
