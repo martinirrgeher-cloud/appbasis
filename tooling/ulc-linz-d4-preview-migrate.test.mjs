@@ -35,7 +35,7 @@ test("rejects the generic preview environment as ULC migration target", async ()
 test("appends the preview-only security isolation after the canonical ULC migrations", async () => {
   const { plan } = await loadUlcLinzD4PreviewMigrationPlan();
 
-  assert.equal(plan.length, 39);
+  assert.equal(plan.length, 40);
   assert.ok(
     plan.some(
       ({ relativePath }) =>
@@ -82,6 +82,7 @@ test("appends the preview-only security isolation after the canonical ULC migrat
   assert.equal(
     plan.at(-2)?.relativePath,
     "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql",
+      "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
   );
   assert.equal(
     plan.at(-1)?.relativePath,
@@ -150,7 +151,7 @@ test("executes canonical migrations and preview isolation in one transaction", a
   );
 
   assert.equal(beginCount, 1);
-  assert.equal(result.migrationCount, 39);
+  assert.equal(result.migrationCount, 40);
   const canonicalIndex = statements.findIndex((sql) =>
     sql.includes("GRANT INSERT (") &&
     sql.includes("TO ulc_linz_security_event_ingest"),
