@@ -114,7 +114,7 @@ export class PostgresUlcYouthCategoryRepository {
         [org, code, name],
       );
       if (rows.length !== 1) throw new UlcYouthCategoryConflictError();
-      return parseCategory(rows[0]);
+      return parseCategory(rows[0]!);
     } catch (error) {
       if ((error as { code?: string })?.code === "23505") {
         throw new UlcYouthCategoryConflictError();
@@ -147,7 +147,7 @@ export class PostgresUlcYouthCategoryRepository {
         [org, categoryCode, label, input.isActive, expectedRevision],
       );
       if (rows.length !== 1) throw new UlcYouthCategoryConflictError();
-      return parseCategory(rows[0]);
+      return parseCategory(rows[0]!);
     } catch (error) {
       if ((error as { code?: string })?.code === "23505") {
         throw new UlcYouthCategoryConflictError();
