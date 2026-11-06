@@ -5335,6 +5335,7 @@ describe("U12 runtime API", () => {
               group: { id: groupId, name: "U12", shortName: "KT" },
               sessionDate,
               session: null,
+              contentTitles: [],
               participants: [],
             };
           },
@@ -5381,6 +5382,7 @@ describe("U12 runtime API", () => {
                 shortName: "KT",
               },
               sessionDate: input.sessionDate,
+              contentTitles: input.contentTitles ?? [],
               session: {
                 id: "session-1",
                 revision: "42",
