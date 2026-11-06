@@ -4865,7 +4865,7 @@ function findAttendanceTrainingGroup(kind) {
     const name = group.name.trim().toLocaleLowerCase("de-AT");
     if (kind === "kindertraining") return name === "kindertraining";
     if (kind === "irrgeher") return group.attendanceMode === "trainer_roll_call" &&
-      /\b(?:irrgeher|irge)\b/i.test(name);
+      /\\b(?:irrgeher|irge)\\b/i.test(name);
     return false;
   }) || null;
 }
