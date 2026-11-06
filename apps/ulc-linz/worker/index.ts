@@ -81,6 +81,7 @@ import { trainingDocumentationHttpResponse } from "./training-documentation-http
 import type { UlcLinzU12AccessScope } from "./u12-access";
 import { UlcU12NotFoundError } from "./u12-service";
 import { UlcTrainingValidationError } from "./training-session-domain";
+import type { UlcYouthContentItem } from "./training-content-catalog";
 import { UlcTrainingSessionConflictError } from "./training-session-postgres";
 import {
   UlcLinzTrainerIdentityConflictError,
@@ -1827,6 +1828,8 @@ async function u12SessionResponse(
         expectedRevision: body.expectedRevision as string | null,
         ...(body.contentTitles === undefined
           ? {} : { contentTitles: body.contentTitles as string[] }),
+        ...(body.contentItems === undefined
+          ? {} : { contentItems: body.contentItems as UlcYouthContentItem[] }),
         attendance: body.attendance as Array<{
           athleteId: string;
           status: "open" | "present" | "excused" | "absent";
@@ -1977,6 +1980,7 @@ async function u12JsonBody(
     "expectedRevision",
     "attendance",
     "contentTitles",
+    "contentItems",
   ];
   if (
     Object.keys(body).some((key) => !allowed.includes(key)) ||
@@ -1993,6 +1997,10 @@ async function u12JsonBody(
     (body.contentTitles !== undefined &&
       (!Array.isArray(body.contentTitles) ||
         body.contentTitles.length > 5)) ||
+    (body.contentItems !== undefined &&
+      (!Array.isArray(body.contentItems) ||
+        body.contentTitles === undefined ||
+        body.contentItems.length !== (body.contentTitles as unknown[]).length)) ||
     !(
       body.expectedRevision === null ||
       (typeof body.expectedRevision === "string" &&
