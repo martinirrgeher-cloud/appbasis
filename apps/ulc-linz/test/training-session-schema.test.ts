@@ -20,6 +20,11 @@ const noteMigrationPath = resolve(
   "migrations",
   "0010_ulc_linz_registration_notes.sql",
 );
+const youthContentMigrationPath = resolve(
+  appRoot,
+  "migrations",
+  "0011_ulc_linz_youth_training_content.sql",
+);
 
 describe("ULC shared training schema", () => {
   it("adds optional bounded notes to current registration and append-only actor history", async () => {
@@ -33,6 +38,19 @@ describe("ULC shared training schema", () => {
     expect(sql).not.toContain("CREATE TABLE");
   });
 
+
+  it("adds bounded youth-session content and per-attendee slots without new personal-data tables", async () => {
+    const sql = await readFile(youthContentMigrationPath, "utf8");
+    expect(sql).toContain("ALTER TABLE ulc_linz_training_session");
+    expect(sql).toContain("ADD COLUMN training_content_titles text[] NOT NULL DEFAULT ARRAY[]::text[]");
+    expect(sql).toContain("cardinality(training_content_titles) <= 5");
+    expect(sql).toContain("ALTER TABLE ulc_linz_training_attendance");
+    expect(sql).toContain("ADD COLUMN training_content_slots smallint[] NOT NULL DEFAULT ARRAY[]::smallint[]");
+    expect(sql).toContain("cardinality(training_content_slots) <= 5");
+    expect(sql).toContain("status = 'present' OR cardinality(training_content_slots) = 0");
+    expect(sql).not.toMatch(/\\b(?:DROP|TRUNCATE|DELETE)\\b/i);
+    expect(sql).not.toContain("CREATE TABLE");
+  });
 
   it("keeps Kindertraining, U12 and U14 in one app-owned persistence contract", async () => {
     const sql = await readFile(migrationPath, "utf8");
