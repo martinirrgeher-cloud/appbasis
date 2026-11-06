@@ -168,7 +168,7 @@ export interface GeneratedPostgresApplicationRuntime {
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
   selfRegistration: ReturnType<typeof createUlcSelfRegistrationService>;
   u12: ReturnType<typeof createUlcU12Service>;
-  youthCategories: PostgresUlcYouthCategoryRepository;
+  youthCategories: Pick<PostgresUlcYouthCategoryRepository, "list" | "create" | "update">;
   exerciseCatalog: ReturnType<typeof createUlcExerciseCatalogService>;
   trainingBlocks: UlcTrainingBlockService;
   trainingPlans: UlcTrainingPlanService;
