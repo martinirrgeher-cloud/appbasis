@@ -207,7 +207,10 @@ const u12Ui = {
   contentCount: document.querySelector("#u12-content-count"),
   contentRows: document.querySelector("#u12-content-rows"),
   contentAdd: document.querySelector("#u12-content-add"),
+  contentAssign: document.querySelector("#u12-content-assign"),
   matrixSection: document.querySelector("#u12-assignment-section"),
+  assignmentClose: document.querySelector("#u12-assignment-close"),
+  assignmentDone: document.querySelector("#u12-assignment-done"),
   matrix: document.querySelector("#u12-assignment-matrix"),
   matrixLegend: document.querySelector("#u12-assignment-legend"),
   matrixSummary: document.querySelector("#u12-assignment-summary"),
@@ -251,6 +254,7 @@ function resetU12SessionState() {
   u12ContentTitles = [];
   u12ContentAssignments = new Map();
   u12Ui.contentRows?.replaceChildren();
+  if (u12Ui.matrixSection?.open) u12Ui.matrixSection.close();
   if (u12Ui.contentCard) u12Ui.contentCard.open = false;
   u12DirtyDates = new Set();
   u12Loading = false;
@@ -416,7 +420,11 @@ function refreshU12Controls() {
   if (u12Ui.contentCount) {
     u12Ui.contentCount.textContent = u12ContentTitles.length + " / 5";
   }
+  if (u12Ui.contentAssign) {
+    u12Ui.contentAssign.disabled = !u12Snapshot || busy || u12ContentTitles.length === 0;
+  }
   refreshU12MatrixControls(editable);
+  refreshU12AssignmentSummaries();
   if (u12Ui.addAthlete) {
     const canCreate = masterdataReady && masterdataCanEdit && u12Ready;
     u12Ui.addAthlete.hidden = !canCreate;
@@ -551,12 +559,53 @@ function refreshU12MatrixControls(editable = u12EditableDraft()) {
   }
 }
 
+
+function refreshU12AssignmentSummaries() {
+  for (const container of u12Ui.days?.querySelectorAll("[data-u12-summary-id]") ?? []) {
+    const athleteId = container.dataset.u12SummaryId;
+    container.replaceChildren();
+    const present = u12Present.get(athleteId) === true;
+    container.hidden = !present || u12ContentTitles.length === 0;
+    if (container.hidden) continue;
+
+    const prefix = document.createElement("span");
+    prefix.className = "u12-person__contents-label";
+    prefix.textContent = "Inhalte:";
+    container.append(prefix);
+    const slots = [...(u12ContentAssignments.get(athleteId) ?? new Set())]
+      .filter((slot) => Number.isInteger(slot) && slot > 0 && slot <= u12ContentTitles.length)
+      .sort((a, b) => a - b);
+    if (slots.length === 0) {
+      const empty = document.createElement("span");
+      empty.className = "u12-person__content-empty";
+      empty.textContent = "keine zugeordnet";
+      container.append(empty);
+    }
+    for (const slot of slots) {
+      const chip = document.createElement("span");
+      chip.className = "u12-person__content-chip";
+      chip.textContent = slot + ". " + (u12ContentTitles[slot - 1]?.trim() || "Ohne Bezeichnung");
+      container.append(chip);
+    }
+  }
+}
+
+function openU12AssignmentDialog() {
+  if (!u12Ui.matrixSection || !u12Snapshot || !u12Ready || u12Loading || u12Saving ||
+      u12ContentTitles.length === 0 || u12Ui.matrixSection.open) return;
+  renderU12AssignmentMatrix();
+  u12Ui.matrixSection.showModal();
+  refreshU12MatrixControls();
+}
+
 function renderU12AssignmentMatrix() {
   if (!u12Ui.matrix || !u12Ui.matrixSection) return;
   u12Ui.matrix.replaceChildren();
   u12Ui.matrixLegend?.replaceChildren();
-  u12Ui.matrixSection.hidden = !u12Snapshot || u12ContentTitles.length === 0;
-  if (u12Ui.matrixSection.hidden) return;
+  if (!u12Snapshot || u12ContentTitles.length === 0) {
+    if (u12Ui.matrixSection.open) u12Ui.matrixSection.close();
+    return;
+  }
   const athletes = u12PresentAthletes();
   if (u12Ui.matrixSummary) u12Ui.matrixSummary.textContent =
     athletes.length + " anwesend · " + u12ContentTitles.length + " Inhalte";
@@ -732,6 +781,11 @@ function renderU12Attendance() {
         person.firstName + " " + person.lastName + " anzeigen");
       row.append(info);
     }
+    const summary = document.createElement("div");
+    summary.className = "u12-person__contents";
+    summary.dataset.u12SummaryId = person.athleteId;
+    summary.hidden = true;
+    row.append(summary);
     roster.append(row);
   }
   u12Ui.days.append(roster);
@@ -750,6 +804,7 @@ async function loadU12Attendance() {
   u12LoadedGroupId = groupId;
   u12LoadedDate = date;
   if (u12Ui.detailsDialog?.open) u12Ui.detailsDialog.close();
+  if (u12Ui.matrixSection?.open) u12Ui.matrixSection.close();
   u12Ui.detailsContent?.replaceChildren();
   u12Snapshot = null;
   u12Present = new Map();
@@ -1012,6 +1067,9 @@ u12Ui.date?.addEventListener("change", () => void u12ChangeDate());
 u12Ui.group?.addEventListener("change", () => void u12ChangeGroup());
 u12Ui.save?.addEventListener("click", () => void saveU12Attendance());
 u12Ui.contentAdd?.addEventListener("click", () => addU12Content());
+u12Ui.contentAssign?.addEventListener("click", () => openU12AssignmentDialog());
+u12Ui.assignmentClose?.addEventListener("click", () => u12Ui.matrixSection?.close());
+u12Ui.assignmentDone?.addEventListener("click", () => u12Ui.matrixSection?.close());
 u12Ui.contentRows?.addEventListener("click", (event) => {
   const remove = event.target?.closest?.("[data-u12-remove-index]");
   if (remove && u12Ui.contentRows.contains(remove)) {
