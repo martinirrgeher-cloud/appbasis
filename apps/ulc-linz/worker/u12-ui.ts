@@ -297,7 +297,15 @@ function u12ValidSnapshot(snapshot, date, groupId) {
       !Array.isArray(snapshot.contentTitles) || snapshot.contentTitles.length > 5 ||
       !snapshot.contentTitles.every((title) =>
         typeof title === "string" && title.length > 0 &&
-        title.length <= 120 && title.trim() === title)) return false;
+        title.length <= 120 && title.trim() === title) ||
+      !Array.isArray(snapshot.contentItems) ||
+      snapshot.contentItems.length !== snapshot.contentTitles.length ||
+      !snapshot.contentItems.every((meta, i) =>
+        meta && typeof meta === "object" &&
+        typeof meta.code === "string" && typeof meta.detail === "string" &&
+        meta.detail.length <= 200 && meta.detail.trim() === meta.detail &&
+        (meta.code === "" || U12_STANDARD_CONTENT_CATALOG.some((entry) =>
+          entry.code === meta.code && entry.label === snapshot.contentTitles[i])))) return false;
   if (snapshot.session !== null && (
       typeof snapshot.session !== "object" ||
       typeof snapshot.session.revision !== "string" ||
@@ -870,6 +878,7 @@ async function loadU12Attendance() {
     u12Present = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, person.status === "present"]));
     u12ContentTitles = [...u12Snapshot.contentTitles];
+    u12ContentItems = u12Snapshot.contentItems.map((meta) => ({ ...meta }));
     u12ContentAssignments = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, new Set(person.contentSlots)]));
   } catch (error) {
@@ -929,6 +938,10 @@ async function saveU12Attendance() {
             : [],
         })),
         contentTitles: titles,
+        contentItems: u12ContentItems.map((meta) => ({
+          code: meta.code,
+          detail: meta.detail.trim(),
+        })),
       }),
     });
     if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return false;
@@ -939,6 +952,7 @@ async function saveU12Attendance() {
     u12Present = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, person.status === "present"]));
     u12ContentTitles = [...u12Snapshot.contentTitles];
+    u12ContentItems = u12Snapshot.contentItems.map((meta) => ({ ...meta }));
     u12ContentAssignments = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, new Set(person.contentSlots)]));
     u12DirtyDates.clear();
