@@ -203,6 +203,15 @@ async function bootstrapU12() {
   }
 }
 
+// Older U12 sessions can still contain open/excused states. Displaying these
+// as "Nein" must not claim that the binary answer has already been saved.
+function u12HasUnconfirmedAnswers() {
+  if (!u12Snapshot) return false;
+  return u12Snapshot.participants.some((person) =>
+    person.status !==
+      (u12Present.get(person.athleteId) === true ? "present" : "absent"));
+}
+
 function refreshU12Controls() {
   const busy = u12Loading || u12Saving;
   for (const control of [u12Ui.group, u12Ui.date, u12Ui.prev, u12Ui.next, u12Ui.reload]) {
@@ -216,7 +225,8 @@ function refreshU12Controls() {
   }
   if (u12Ui.save) {
     u12Ui.save.disabled = !editable ||
-      (u12DirtyDates.size === 0 && u12Snapshot?.session !== null);
+      (u12DirtyDates.size === 0 && u12Snapshot?.session !== null &&
+       !u12HasUnconfirmedAnswers());
   }
   if (u12Ui.count) {
     const total = u12Snapshot?.participants.length ?? 0;
@@ -232,6 +242,7 @@ function refreshU12Controls() {
       !u12Snapshot ? "Training auswählen" :
       u12DirtyDates.size > 0 ? "Änderungen noch nicht gespeichert" :
       u12Snapshot.session === null ? "Noch nicht erfasst – erst Speichern übernimmt Ja/Nein" :
+      u12HasUnconfirmedAnswers() ? "Ja/Nein noch nicht bestätigt – bitte speichern" :
       "Gespeichert";
   }
   for (const mark of u12Ui.days?.querySelectorAll("[data-u12-answer-id]") ?? []) {
@@ -352,7 +363,8 @@ async function saveU12Attendance() {
   if (!u12Snapshot || u12Loading || u12Saving || !u12Ready ||
       !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return false;
-  if (u12DirtyDates.size === 0 && u12Snapshot.session !== null) return true;
+  if (u12DirtyDates.size === 0 && u12Snapshot.session !== null &&
+      !u12HasUnconfirmedAnswers()) return true;
   const generation = attendanceSessionGeneration;
   const loadId = u12LoadId;
   const groupId = u12LoadedGroupId;
