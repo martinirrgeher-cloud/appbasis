@@ -14,7 +14,7 @@ const row = (code: string, label: string, isActive = true, revision = 1) => ({
 
 describe("ULC shared training category repository", () => {
   it("reads only the authorized organization and seeds defaults idempotently", async () => {
-    const calls: Array<{ query: string; params?: readonly unknown[] }> = [];
+    const calls: Array<{ query: string; params: readonly unknown[] | undefined }> = [];
     const repository = new PostgresUlcYouthCategoryRepository({
       async unsafe(query, parameters) {
         calls.push({ query, params: parameters });
@@ -29,10 +29,10 @@ describe("ULC shared training category repository", () => {
       { code: "games", label: "Spiel / Staffel", isActive: false, revision: 1 },
     ]);
     expect(calls).toHaveLength(2);
-    expect(calls[0].query).toContain("ON CONFLICT DO NOTHING");
-    expect(calls[0].params?.[0]).toBe("verein-a");
-    expect(calls[1].query).toContain("WHERE organization_id = $1");
-    expect(calls[1].params).toEqual(["verein-a"]);
+    expect(calls[0]!.query).toContain("ON CONFLICT DO NOTHING");
+    expect(calls[0]!.params?.[0]).toBe("verein-a");
+    expect(calls[1]!.query).toContain("WHERE organization_id = $1");
+    expect(calls[1]!.params).toEqual(["verein-a"]);
   });
 
   it("creates stable custom category codes and blocks duplicates", async () => {
