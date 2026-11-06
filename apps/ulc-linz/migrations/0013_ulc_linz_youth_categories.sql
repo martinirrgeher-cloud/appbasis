@@ -22,7 +22,3 @@ CREATE UNIQUE INDEX ulc_linz_youth_category_name_unique
 --> statement-breakpoint
 CREATE INDEX ulc_linz_youth_category_active_idx
   ON ulc_linz_youth_content_category (organization_id, is_active, label);
---> statement-breakpoint
--- Initial default categories are seeded idempotently per organization by
--- the shared repository on first access, not as an unreviewed data write
--- inside the schema migration.
