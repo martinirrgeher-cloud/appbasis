@@ -6,7 +6,7 @@ import {
 } from "../worker/ui";
 
 const DASHBOARD_VIEWS = Object.freeze([
-  "masterdata", "registration", "users", "kindertraining",
+  "masterdata", "registration", "users", "kindertraining", "u12",
   "training-plans", "training-documentation",
   "exercise-catalog", "training-blocks", "countdown",
 ]);
