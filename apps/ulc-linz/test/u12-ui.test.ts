@@ -194,7 +194,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(changeHandler).toContain("refreshU12Controls()");
     expect(changeHandler).not.toContain("renderU12Attendance()");
     expect(ULC_U12_CSS).toContain("min-height: 44px");
-    expect(ULC_U12_CSS).toContain("max-width: 100%");
+    expect(ULC_U12_CSS).toContain("max-width:100%");
     expect(ULC_U12_CSS).not.toContain("grid-template-columns: repeat(4");
     expect(ULC_LINZ_APP_CSS).toContain(ULC_U12_CSS);
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
