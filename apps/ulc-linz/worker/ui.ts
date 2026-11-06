@@ -7432,7 +7432,7 @@ async function createMasterdataAthlete(event) {
   const contacts = readMasterdataNewAthleteContacts();
   if (groupId && (!masterdataSnapshot?.trainingGroups.some(
       (group) => group.id === groupId && group.isActive !== false,
-    ) || !/^\d{4}-\d{2}-\d{2}$/.test(startedOn))) {
+    ) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(startedOn))) {
     showMessage(elements.athleteCreateMessage,
       "Bitte eine gültige aktive Trainingsgruppe und ein Startdatum wählen.");
     return;
