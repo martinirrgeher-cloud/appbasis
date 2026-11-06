@@ -150,7 +150,7 @@ function resetU12SessionState() {
     u12Ui.group.append(placeholder);
   }
   if (u12Ui.date) u12Ui.date.value = localIsoDate(new Date());
-  u12Ui.detailsDialog?.close();
+  if (u12Ui.detailsDialog?.open) u12Ui.detailsDialog.close();
   u12Ui.detailsContent?.replaceChildren();
   showMessage(u12Ui.message, "");
   showMessage(u12Ui.success, "");
@@ -391,7 +391,7 @@ async function loadU12Attendance() {
   const loadId = ++u12LoadId;
   u12LoadedGroupId = groupId;
   u12LoadedDate = date;
-  u12Ui.detailsDialog?.close();
+  if (u12Ui.detailsDialog?.open) u12Ui.detailsDialog.close();
   u12Ui.detailsContent?.replaceChildren();
   u12Snapshot = null;
   u12Present = new Map();
