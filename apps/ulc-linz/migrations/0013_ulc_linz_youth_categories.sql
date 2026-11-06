@@ -23,21 +23,6 @@ CREATE UNIQUE INDEX ulc_linz_youth_category_name_unique
 CREATE INDEX ulc_linz_youth_category_active_idx
   ON ulc_linz_youth_content_category (organization_id, is_active, label);
 --> statement-breakpoint
--- Seed existing organizations; inactive categories must never be reactivated by seeding.
-INSERT INTO ulc_linz_youth_content_category (organization_id, code, label)
-SELECT org.organization_id, category.code, category.label
-  FROM (SELECT DISTINCT organization_id FROM ulc_linz_membership) AS org
- CROSS JOIN (VALUES
-    ('warmup', 'Aufwärmen'),
-    ('coordination', 'Koordination'),
-    ('sprint', 'Sprint / Schnelligkeit'),
-    ('jump', 'Sprung'),
-    ('throw', 'Wurf / Stoß'),
-    ('technique', 'Technik'),
-    ('strength', 'Kraft'),
-    ('endurance', 'Ausdauer'),
-    ('mobility', 'Beweglichkeit'),
-    ('games', 'Spiel / Staffel'),
-    ('other', 'Sonstiges')
- ) AS category(code, label)
-ON CONFLICT (organization_id, code) DO NOTHING;
+-- Initial default categories are seeded idempotently per organization by
+-- the shared repository on first access, not as an unreviewed data write
+-- inside the schema migration.
