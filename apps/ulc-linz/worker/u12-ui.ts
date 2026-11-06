@@ -58,14 +58,6 @@ export const ULC_U12_HTML = `
                 </div>
               </section>
             </section>
-            <dialog class="u12-details-dialog" id="u12-assign-dialog" aria-labelledby="u12-assign-title">
-              <header class="u12-details-header">
-                <h2 id="u12-assign-title">Trainingsinhalte</h2>
-                <button class="button button--secondary" type="button" id="u12-assign-close" aria-label="Zuordnung schließen">✕</button>
-              </header>
-              <p>Wähle aus, welche Inhalte das Kind absolviert hat.</p>
-              <div id="u12-assign-options" class="u12-assign-options"></div>
-            </dialog>
             <dialog class="u12-details-dialog" id="u12-details-dialog" aria-labelledby="u12-details-title">
               <header class="u12-details-header">
                 <h2 id="u12-details-title">Athletenhinweise</h2>
@@ -196,10 +188,6 @@ const u12Ui = {
   matrixSection: document.querySelector("#u12-assignment-section"),
   matrix: document.querySelector("#u12-assignment-matrix"),
   matrixSummary: document.querySelector("#u12-assignment-summary"),
-  assignDialog: document.querySelector("#u12-assign-dialog"),
-  assignTitle: document.querySelector("#u12-assign-title"),
-  assignOptions: document.querySelector("#u12-assign-options"),
-  assignClose: document.querySelector("#u12-assign-close"),
   detailsDialog: document.querySelector("#u12-details-dialog"),
   detailsTitle: document.querySelector("#u12-details-title"),
   detailsContent: document.querySelector("#u12-details-content"),
@@ -222,7 +210,6 @@ let u12Snapshot = null;
 let u12Present = new Map();
 let u12ContentTitles = [];
 let u12ContentAssignments = new Map();
-let u12AssignmentAthleteId = null;
 let u12DirtyDates = new Set();
 let u12Loading = false;
 let u12Saving = false;
@@ -240,9 +227,6 @@ function resetU12SessionState() {
   u12Present = new Map();
   u12ContentTitles = [];
   u12ContentAssignments = new Map();
-  u12AssignmentAthleteId = null;
-  if (u12Ui.assignDialog?.open) u12Ui.assignDialog.close();
-  u12Ui.assignOptions?.replaceChildren();
   u12Ui.contentRows?.replaceChildren();
   if (u12Ui.contentCard) u12Ui.contentCard.open = false;
   u12DirtyDates = new Set();
@@ -410,9 +394,6 @@ function refreshU12Controls() {
     u12Ui.contentCount.textContent = u12ContentTitles.length + " / 5";
   }
   refreshU12MatrixControls(editable);
-  for (const input of u12Ui.assignOptions?.querySelectorAll("input") ?? []) {
-    input.disabled = !editable || !u12Present.get(u12AssignmentAthleteId);
-  }
   if (u12Ui.addAthlete) {
     const canCreate = masterdataReady && masterdataCanEdit && u12Ready;
     u12Ui.addAthlete.hidden = !canCreate;
@@ -512,38 +493,9 @@ function removeU12Content(index) {
         .map((slot) => slot > index + 1 ? slot - 1 : slot),
     ));
   }
-  u12AssignmentAthleteId = null;
-  if (u12Ui.assignDialog?.open) u12Ui.assignDialog.close();
   renderU12Attendance();
   markU12DraftDirty();
 }
-
-function openU12ContentAssignments(athleteId) {
-  const person = u12Snapshot?.participants.find((item) => item.athleteId === athleteId);
-  if (!person || !u12Present.get(athleteId) || u12ContentTitles.length === 0 ||
-      !u12Ui.assignDialog || !u12Ui.assignOptions || u12Loading || u12Saving ||
-      !u12WriteAllowed || u12Conflict ||
-      u12Snapshot.session?.state === "cancelled") return;
-  u12AssignmentAthleteId = athleteId;
-  u12Ui.assignTitle.textContent = "Inhalte: " + person.firstName + " " + person.lastName;
-  u12Ui.assignOptions.replaceChildren();
-  const selected = u12ContentAssignments.get(athleteId) ?? new Set();
-  for (const [index, title] of u12ContentTitles.entries()) {
-    const label = document.createElement("label");
-    label.className = "u12-assign-option";
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.dataset.u12AssignSlot = String(index + 1);
-    input.checked = selected.has(index + 1);
-    const name = document.createElement("span");
-    name.textContent = String(index + 1) + ". " + (title.trim() || "Inhalt ohne Bezeichnung");
-    label.append(input, name);
-    u12Ui.assignOptions.append(label);
-  }
-  u12Ui.assignDialog.showModal();
-  refreshU12Controls();
-}
-
 
 function u12PresentAthletes() {
   return (u12Snapshot?.participants ?? []).filter((person) =>
@@ -680,6 +632,7 @@ function renderU12Attendance() {
   if (!u12Ui.days || !u12Ui.week) return;
   u12Ui.days.replaceChildren();
   renderU12ContentRows();
+  renderU12AssignmentMatrix();
   const groupId = u12Ui.group?.value || "";
   const date = u12Ui.date?.value || "";
   u12Ui.week.hidden = !u12Ready || !groupId || !date;
@@ -750,7 +703,6 @@ function renderU12Attendance() {
     roster.append(row);
   }
   u12Ui.days.append(roster);
-  renderU12AssignmentMatrix();
   refreshU12Controls();
 }
 
@@ -771,9 +723,6 @@ async function loadU12Attendance() {
   u12Present = new Map();
   u12ContentTitles = [];
   u12ContentAssignments = new Map();
-  u12AssignmentAthleteId = null;
-  if (u12Ui.assignDialog?.open) u12Ui.assignDialog.close();
-  u12Ui.assignOptions?.replaceChildren();
   u12DirtyDates.clear();
   u12Conflict = false;
   u12Loading = true;
@@ -1053,26 +1002,19 @@ u12Ui.contentRows?.addEventListener("input", (event) => {
   }
   markU12DraftDirty();
 });
-u12Ui.assignClose?.addEventListener("click", () => u12Ui.assignDialog?.close());
-u12Ui.assignOptions?.addEventListener("change", (event) => {
+u12Ui.matrix?.addEventListener("change", (event) => {
   const input = event.target;
-  const index = Number(input?.dataset?.u12AssignSlot);
-  const id = u12AssignmentAthleteId;
-  if (!input || !Object.prototype.hasOwnProperty.call(input.dataset, "u12AssignSlot") ||
-      !Number.isInteger(index) || index < 1 || index > u12ContentTitles.length ||
-      !id || !u12Present.get(id) || !u12WriteAllowed || u12Conflict ||
-      u12Loading || u12Saving || u12Snapshot?.session?.state === "cancelled") return;
-  const selected = new Set(u12ContentAssignments.get(id) ?? []);
-  if (input.checked) selected.add(index);
-  else selected.delete(index);
-  u12ContentAssignments.set(id, selected);
-  markU12DraftDirty();
-});
-u12Ui.days?.addEventListener("click", (event) => {
-  const assign = event.target?.closest?.("[data-u12-assign-id]");
-  if (assign && u12Ui.days.contains(assign)) {
-    openU12ContentAssignments(assign.dataset.u12AssignId);
+  if (!input || input.type !== "checkbox") return;
+  if (Object.prototype.hasOwnProperty.call(input.dataset, "u12MatrixAll")) {
+    changeU12MatrixColumn(Number(input.dataset.u12MatrixAll), input.checked === true);
+  } else if (Object.prototype.hasOwnProperty.call(input.dataset, "u12MatrixAthlete")) {
+    changeU12MatrixAssignment(
+      input.dataset.u12MatrixAthlete,
+      Number(input.dataset.u12MatrixSlot),
+      input.checked === true,
+    );
   }
+  refreshU12MatrixControls();
 });
 u12Ui.reload?.addEventListener("click", () => void u12ReloadAttendance());
 u12Ui.days?.addEventListener("change", (event) => {
