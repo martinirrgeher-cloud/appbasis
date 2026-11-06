@@ -19,6 +19,30 @@ Bereits bestätigte Teilstände: Anmeldung/Anwesenheit als Wochenansicht und sep
 
 **Bewusste Trennung:** Neue komplexe Anmelde-/Trainingstage-Erweiterungen aus Issue #509 können auf einem eigenen Draft-Branch mit Schema-/Datenschutz-Gates stehen. Deren fehlende produktive Schema-/Export-/Retention-Freigabe blockiert **nicht** unabhängige schemafreie UI-/Funktionsverbesserungen auf einem frischen Branch von `main`. Unsichere Draft-Schemaänderungen weder in neue App-PRs einbeziehen noch vorzeitig mergen; Preview-/Produktionsmigration erfordert weiterhin eigene Betreiberfreigabe. Die abgeschlossene Funktionärsrolle und die alte mobile-Formatierungs-Vorlage sollen nicht nochmals als offene PRs bearbeitet werden (siehe Issue #505).
 
+**Read-only Befund vom 05.11.2026:** In der isolierten Neon-ULC-Preview
+fehlen beide `note`-Spalten aus der bereits auf `main` enthaltenen
+App-Schema-v11-Migration `0010_ulc_linz_registration_notes.sql`.
+Ein rein migrationsfreier Runtime-Refresh muss deshalb **vor jedem
+Provider-Write fail-closed** abbrechen, bis die separate v11-Preview-
+Migration ausdrücklich freigegeben, angewendet und geprüft wurde.
+CI-PASS für den Workflow allein ist keine Freigabe. Keine stillschweigende
+Migration oder Aktivierung der A02.4-Draft-v12-Funktionen.
+
+**ULC Preview-UI-Updates ohne Datenbankänderungen:** Der operative Weg für
+reine Frontend-/Runtime-Änderungen ist
+`.github/workflows/ulc-linz-e6h-preview-runtime-refresh.yml`
+(Anzeigename: „ULC Linz Preview – Aktuelle App aktualisieren“, `main`,
+explizites `apply`). Dieser Workflow verwendet den bestehenden
+Standardmodul-Worker, **keine Migration, keine R2-Bucket-Anlage**,
+verifiziert nach dem Deploy den exakten Git-Head sowie die Startseiten-
+und API-Sicherheitsgrenzen. Historische `ulc-linz-d4-preview.yml`-
+und `ulc-linz-e7b9-preview.yml`-Deploys sind **keine** generischen
+Aktualisierungswege: Sie enthalten jeweils einen veralteten R2-
+beziehungsweise Schema-v4-Gate. Weder M6-Produktions-Release-Assistent
+noch Produktions-Refresh-Chain für diese isolierte App-Preview verwenden.
+Vor einem neuen mutierenden Workflow-Start immer den aktuellen
+Betreiberfreigabe-Scope und das aktuelle `main` prüfen.
+
 **Abnahmestatus:** Repo-Code und frühere PASS belegen zahlreiche geprüfte Nutzerabläufe. Das ist keine Behauptung, jeder neue Head sei live ausgeliefert oder alle neuen Funktionen seien abgenommen. Neue oder geänderte Funktionen brauchen nur risikobasierte passende Regressionen. Bestehende Preview-/Produktions-/Testdaten-Mutationsgrenzen gelten unverändert.
 
 **Eigenständiges Sicherheits-Backlog:** Issue #483 bleibt offen; `status=blocked`, alle Datenschutz-/M5-/M6-/Production-/Public-Ingress- und Restore-Promotion-Sperren bleiben unverändert. Sicherheitsrelevante neue UI-/API-Änderungen benötigen weiterhin die regulären Auth-/DB-Tests. Das Backlog #483 ist jedoch **nicht** die aktive tägliche Entwicklungsschleife, solange nicht ausdrücklich eine Produktionsfreigabe beauftragt wird.
