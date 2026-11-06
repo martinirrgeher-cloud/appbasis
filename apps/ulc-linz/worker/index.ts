@@ -1825,9 +1825,12 @@ async function u12SessionResponse(
           ? {}
           : { note: body.note as string | null }),
         expectedRevision: body.expectedRevision as string | null,
+        ...(body.contentTitles === undefined
+          ? {} : { contentTitles: body.contentTitles as string[] }),
         attendance: body.attendance as Array<{
           athleteId: string;
           status: "open" | "present" | "excused" | "absent";
+          contentSlots?: number[];
         }>,
       },
     );
@@ -1973,6 +1976,7 @@ async function u12JsonBody(
     "note",
     "expectedRevision",
     "attendance",
+    "contentTitles",
   ];
   if (
     Object.keys(body).some((key) => !allowed.includes(key)) ||
@@ -1986,6 +1990,9 @@ async function u12JsonBody(
     body.groupId.length > 200 ||
     body.groupId.trim() !== body.groupId ||
     !Array.isArray(body.attendance) ||
+    (body.contentTitles !== undefined &&
+      (!Array.isArray(body.contentTitles) ||
+        body.contentTitles.length > 5)) ||
     !(
       body.expectedRevision === null ||
       (typeof body.expectedRevision === "string" &&
@@ -2002,7 +2009,11 @@ async function u12JsonBody(
       Array.isArray(entry) ||
       Object.getPrototypeOf(entry) !== Object.prototype ||
       JSON.stringify(Object.keys(entry).sort()) !==
-        JSON.stringify(["athleteId", "status"])
+        JSON.stringify(body.contentTitles === undefined
+          ? ["athleteId", "status"]
+          : ["athleteId", "contentSlots", "status"]) ||
+      (body.contentTitles !== undefined &&
+        !Array.isArray((entry as Record<string, unknown>).contentSlots))
     ) {
       throw new InvalidU12RequestError();
     }
