@@ -1,5 +1,3 @@
-import { ULC_YOUTH_CONTENT_CATALOG } from "./training-content-catalog";
-
 export const ULC_U12_HTML = `
           <section class="app-section" data-app-section="u12" id="u12" hidden>
             <header class="u12-head">
@@ -232,7 +230,14 @@ const u12Ui = {
   success: document.querySelector("#u12-success"),
 };
 const U12_SERVER_STATUSES = Object.freeze(["open", "present", "excused", "absent"]);
-const U12_STANDARD_CONTENT_CATALOG = ${JSON.stringify(ULC_YOUTH_CONTENT_CATALOG)};
+let U12_STANDARD_CONTENT_CATALOG = [];
+
+function updateU12CategoryCatalog(categories) {
+  U12_STANDARD_CONTENT_CATALOG = categories.filter((category) => category.isActive)
+    .map((category) => ({ code: category.code, label: category.label }));
+  if (u12Snapshot && !u12Loading && !u12Saving) renderU12ContentRows();
+}
+
 let u12Ready = false;
 let u12WriteAllowed = true;
 let u12Groups = [];
@@ -304,8 +309,7 @@ function u12ValidSnapshot(snapshot, date, groupId) {
         meta && typeof meta === "object" &&
         typeof meta.code === "string" && typeof meta.detail === "string" &&
         meta.detail.length <= 200 && meta.detail.trim() === meta.detail &&
-        (meta.code === "" || U12_STANDARD_CONTENT_CATALOG.some((entry) =>
-          entry.code === meta.code && entry.label === snapshot.contentTitles[i])))) return false;
+        (meta.code === "" || /^[a-z][a-z0-9_]{0,79}$/.test(meta.code)))) return false;
   if (snapshot.session !== null && (
       typeof snapshot.session !== "object" ||
       typeof snapshot.session.revision !== "string" ||
@@ -514,6 +518,17 @@ function renderU12ContentRows() {
       option.value = standard.code;
       option.textContent = standard.label;
       category.append(option);
+    }
+    // A saved session retains its original category label even after a
+    // catalog rename/deactivation. Never overwrite historical content titles.
+    const activeEntry = U12_STANDARD_CONTENT_CATALOG.find((entry) => entry.code === meta.code);
+    if (meta.code && (!activeEntry || activeEntry.label !== title)) {
+      const savedOption = document.createElement("option");
+      savedOption.value = meta.code;
+      savedOption.textContent = title + " (im Training gespeichert)";
+      savedOption.disabled = true;
+      savedOption.selected = true;
+      category.append(savedOption);
     }
     category.value = meta.code;
 
@@ -873,6 +888,8 @@ async function loadU12Attendance() {
   showMessage(u12Ui.success, "");
   renderU12Attendance();
   try {
+    await refreshYouthCategoryCatalog();
+    if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return;
     const payload = await requestJson("/api/modules/u12/session?groupId=" +
       encodeURIComponent(groupId) + "&sessionDate=" + encodeURIComponent(date));
     if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return;
