@@ -33,8 +33,8 @@ export const ULC_U12_HTML = `
                 </div>
                 <button class="button button--primary" type="button" id="u12-save" disabled>Liste speichern</button>
               </div>
-              <div id="u12-days" class="u12-days" aria-live="polite"></div>
               <button class="button button--secondary u12-athlete-new" type="button" id="u12-add-athlete" hidden>＋ Neues Kind anlegen</button>
+              <div id="u12-days" class="u12-days" aria-live="polite"></div>
             </section>
             <dialog class="u12-details-dialog" id="u12-details-dialog" aria-labelledby="u12-details-title">
               <header class="u12-details-header">
