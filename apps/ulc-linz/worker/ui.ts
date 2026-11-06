@@ -93,7 +93,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
         <nav class="app-nav" aria-label="Hauptnavigation">
           <div class="app-nav__primary" id="app-nav-primary">
             <button class="app-nav__link is-active" type="button" data-nav-view="home" data-nav-priority="0">Start</button>
-            <button class="app-nav__link" type="button" data-nav-view="kindertraining" data-nav-priority="2" disabled>Anwesenheit</button>
+            <button class="app-nav__link" type="button" data-nav-view="attendance" data-nav-priority="2" disabled>Anwesenheit</button>
             <button class="app-nav__link" type="button" data-nav-view="training-documentation" data-nav-priority="4" disabled>Doku</button>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" aria-haspopup="true">Mehr</button>
           </div>
@@ -105,7 +105,6 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <div class="app-nav__group-list">
                 <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="5" hidden disabled>Übungen</button>
                 <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="6" hidden disabled>Blöcke</button>
-                <button class="app-nav__link" type="button" data-nav-view="u12" data-nav-priority="10" hidden disabled>U12-Anwesenheit</button>
               </div>
             </details>
             <details class="app-nav__group" data-nav-group="administration" hidden>
@@ -2464,7 +2463,7 @@ document.addEventListener("reset", (event) => {
 
 const APP_NAV_FIXED = Object.freeze([
   "home",
-  "kindertraining",
+  "attendance",
   "training-documentation",
 ]);
 
@@ -2763,7 +2762,7 @@ document.addEventListener("keydown", (event) => {
   if (!elements.masterdataImportPreview?.hidden) closeMasterdataImportPreview();
 });
 async function navigateAppSection(section) {
-  const current = document.querySelector("[data-nav-view].is-active")?.dataset.navView || "home";
+  const current = document.querySelector("[data-app-section]:not([hidden])")?.dataset.appSection || "home";
   if (current === "u12" && section !== "u12" &&
       !(await u12FlushChanges())) return;
   if (
@@ -4758,6 +4757,7 @@ function isAppNavigationAvailable(section) {
   if (section === "masterdata") return masterdataReady;
   if (section === "users") return userAdminReady;
   if (section === "registration") return selfRegistrationReady;
+  if (section === "attendance") return kindertrainingReady || u12Ready;
   if (section === "kindertraining") return kindertrainingReady;
   if (section === "u12") return u12Ready;
   if (section === "exercise-catalog") return exerciseCatalogReady;
@@ -4825,7 +4825,8 @@ function setAppNavMoreOpen(open) {
 }
 
 function syncAppNavigationActive(section) {
-  const navigationSection = section === "countdown" ? "useful" : section;
+  const navigationSection = section === "countdown" ? "useful" :
+    (section === "u12" || section === "kindertraining") ? "attendance" : section;
   for (const control of document.querySelectorAll("[data-nav-view]")) {
     control.classList.toggle(
       "is-active",
@@ -4850,6 +4851,11 @@ function refreshAppAvailability() {
   // permission or backend decision is introduced by this presentation.
   for (const card of document.querySelectorAll("[data-dashboard-view]")) {
     card.hidden = !isAppNavigationAvailable(card.dataset.dashboardView || "");
+  }
+  for (const choice of document.querySelectorAll("[data-attendance-view]")) {
+    const available = isAppNavigationAvailable(choice.dataset.attendanceView || "");
+    choice.hidden = !available;
+    choice.disabled = !available;
   }
   for (const control of [
     elements.registrationWeekPrev,
@@ -4965,6 +4971,7 @@ function showAppSection(section) {
     (section === "masterdata" && masterdataReady) ||
     (section === "users" && userAdminReady) ||
     (section === "registration" && selfRegistrationReady) ||
+    (section === "attendance" && (kindertrainingReady || u12Ready)) ||
     (section === "kindertraining" && kindertrainingReady) ||
     (section === "u12" && u12Ready) ||
     (section === "exercise-catalog" && exerciseCatalogReady) ||
