@@ -6,7 +6,7 @@ import {
 } from "../worker/ui";
 
 const DASHBOARD_VIEWS = Object.freeze([
-  "masterdata", "registration", "users", "kindertraining", "u12",
+  "masterdata", "registration", "users", "attendance",
   "training-plans", "training-documentation",
   "exercise-catalog", "training-blocks", "countdown",
 ]);
@@ -67,7 +67,7 @@ describe("ULC A10: role-aware home without altering server permissions", () => {
 
   it("keeps existing navigation and sign-out while removing developer branding", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
-    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="kindertraining"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="attendance"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-documentation"');
     expect(ULC_LINZ_APP_HTML).toContain('id="app-sign-out"');
     expect(ULC_LINZ_APP_HTML).toContain('id="app-install"');
