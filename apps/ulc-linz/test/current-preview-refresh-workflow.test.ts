@@ -38,7 +38,10 @@ describe("ULC current UI preview refresh: no historical schema rollback", () => 
     expect(workflow).toContain('.gitSha == $sha');
     expect(workflow).toContain('data-dashboard-view="registration" hidden');
     expect(workflow).toContain('data-dashboard-view="users"');
-    expect(workflow).toContain('data-dashboard-view="kindertraining" hidden');
+    expect(workflow).toContain('data-dashboard-view="attendance" hidden');
+    expect(workflow).toContain('data-nav-view="attendance"');
+    expect(workflow).toContain('id="u12-content-card"');
+    expect(workflow).not.toContain('data-dashboard-view="kindertraining" hidden');
     expect(workflow).toContain('! grep -F \'<span class="app-badge">AppBasis</span>\'');
     expect(workflow).toContain('401|403) ;;');
     expect(workflow).toContain("Verify preview application database binding");

@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import {
   ULC_LINZ_APP_HTML,
@@ -63,6 +64,28 @@ describe("ULC A10: role-aware home without altering server permissions", () => {
       "elements.userAdminDashboard.hidden = !userAdminReady",
     );
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
+  });
+
+  it("keeps the deployed preview smoke selectors aligned with attendance and U12", async () => {
+    const workflow = await readFile(
+      new URL("../../../.github/workflows/ulc-linz-e6h-preview-runtime-refresh.yml", import.meta.url),
+      "utf8",
+    );
+    const markers = [
+      'id="registration-dashboard" data-dashboard-view="registration" hidden',
+      'id="user-admin-dashboard" hidden data-dashboard-view="users"',
+      'data-dashboard-view="attendance" hidden',
+      'data-nav-view="attendance"',
+      'id="u12-content-card"',
+    ];
+    for (const marker of markers) {
+      expect(ULC_LINZ_APP_HTML).toContain(marker);
+      expect(workflow).toContain(`grep -F '${marker}'`);
+    }
+    expect(ULC_LINZ_APP_HTML).not.toContain('data-dashboard-view="kindertraining"');
+    expect(workflow).not.toContain('data-dashboard-view="kindertraining"');
+    expect(workflow).toContain("Verify exact deployed ULC app build");
+    expect(workflow).toContain("Unauthenticated preview API access unexpectedly returned HTTP");
   });
 
   it("keeps existing navigation and sign-out while removing developer branding", () => {

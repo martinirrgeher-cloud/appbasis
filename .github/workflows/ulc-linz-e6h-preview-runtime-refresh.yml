@@ -337,7 +337,7 @@ jobs:
             exit 1
           }
 
-      - name: Verify A10 start dashboard and protected training APIs
+      - name: Verify A10 home, U12 contents and protected training APIs
         shell: bash
         env:
           APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
@@ -349,7 +349,9 @@ jobs:
               "$APPBASIS_GENERATED_PREVIEW_URL/" 2>/dev/null)"; then
               if grep -F 'id="registration-dashboard" data-dashboard-view="registration" hidden' <<<"$HTML" >/dev/null \
                 && grep -F 'id="user-admin-dashboard" hidden data-dashboard-view="users"' <<<"$HTML" >/dev/null \
-                && grep -F 'data-dashboard-view="kindertraining" hidden' <<<"$HTML" >/dev/null \
+                && grep -F 'data-dashboard-view="attendance" hidden' <<<"$HTML" >/dev/null \
+                && grep -F 'data-nav-view="attendance"' <<<"$HTML" >/dev/null \
+                && grep -F 'id="u12-content-card"' <<<"$HTML" >/dev/null \
                 && ! grep -F '<span class="app-badge">AppBasis</span>' <<<"$HTML" >/dev/null; then
                 READY=1
                 break
@@ -358,7 +360,7 @@ jobs:
             if [ "$attempt" -lt 20 ]; then sleep 2; fi
           done
           test "$READY" = '1' || {
-            echo 'Preview does not contain the current A10 role-aware start page.' >&2
+            echo 'Preview is missing the current role-aware attendance dashboard or U12 content editor.' >&2
             exit 1
           }
           for path in /api/modules/training-plans /api/modules/training-documentation; do
@@ -379,7 +381,7 @@ jobs:
         run: |
           {
             echo 'ULC preview refreshed to the exact current main commit.'
-            echo 'A10 role-aware start page and private API guards verified.'
+            echo 'A10 role-aware attendance dashboard, U12 content editor and private API guards verified.'
             echo 'Standard-module entrypoint preserved.'
             echo 'No database migration or R2 provisioning was executed.'
             echo 'Production was not changed.'
