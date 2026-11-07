@@ -1162,7 +1162,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 }
 .masterdata-tab.is-active {
   border-color: var(--accent);
-  background: #dbeafe;
+  background: var(--ulc-brand-soft);
   color: var(--accent);
 }
 .masterdata-panel { display: grid; gap: 10px; }
@@ -1393,7 +1393,7 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 }
 .registration-action[aria-pressed="true"] {
   border-color: var(--accent);
-  background: #dbeafe;
+  background: var(--ulc-brand-soft);
   color: var(--accent);
 }
 .registration-action[data-intention="attending"][aria-pressed="true"] {
@@ -1522,7 +1522,7 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 }
 .kindertraining-status[aria-pressed="true"] {
   border-color: var(--accent);
-  background: #dbeafe;
+  background: var(--ulc-brand-soft);
   color: var(--accent);
 }
 .kindertraining-status[data-status="present"][aria-pressed="true"] {
