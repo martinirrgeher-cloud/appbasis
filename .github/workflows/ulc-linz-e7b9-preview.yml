@@ -422,6 +422,14 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-youth-areas-preview.mjs verify
 
+      - name: Require trainer attendance schema-v16 before preview deployment or acceptance
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-youth-trainers-preview.mjs verify
+
 
       - name: Validate and mask preview runtime inputs
         if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
