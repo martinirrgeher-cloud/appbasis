@@ -2001,7 +2001,7 @@ async function u12StatisticsResponse(
     const report = await runtime.u12Statistics.read(
       access.organizationId, groupId, interval.from, interval.to, roster,
     );
-    return Response.json({ report });
+    return Response.json({ report }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     if (error instanceof UlcTrainingValidationError) {
       return Response.json({ error: { code: "INVALID_U12_STATISTICS_RANGE" } }, { status: 400 });
