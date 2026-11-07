@@ -1,0 +1,130 @@
+name: ULC Nachwuchs v15 Gruppen-Kategorien Preview Migration
+
+run-name: Nachwuchs v15 - ${{ inputs.operation }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Inspect or migrate only U14/Kindertraining schema v15 in isolated preview
+        required: true
+        type: choice
+        options: [inspect, migrate]
+      apply:
+        description: Explicit authorization for migrate
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-preview-ulc-linz
+  cancel-in-progress: false
+
+jobs:
+  youth:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: generated-preview-ulc-linz
+    env:
+      APPBASIS_GENERATED_APP_ID: ulc-linz
+      APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+      APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+      APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+    steps:
+      - name: Require exact main and explicit authorization
+        env:
+          EXPECTED_REF: ${{ github.ref }}
+          OPERATION: ${{ inputs.operation }}
+          APPROVED: ${{ inputs.apply && '1' || '0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EXPECTED_REF" = "refs/heads/main"
+          test "$OPERATION" = "inspect" || test "$OPERATION" = "migrate"
+          if [ "$OPERATION" = "migrate" ]; then
+            test "$APPROVED" = "1" || { echo "Explicit approval required" >&2; exit 1; }
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Verify protected preview target
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in APPBASIS_MIGRATION_DATABASE_URL APPBASIS_DATABASE_URL APPBASIS_SECURITY_LOG_DATABASE_URL; do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing preview credential: $name" >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+          node --input-type=module <<'NODE'
+          import { validateUlcLinzD4PreviewDatabaseCredentials } from "./tooling/ulc-linz-d4-preview-hyperdrive.mjs";
+          const c = validateUlcLinzD4PreviewDatabaseCredentials({
+            migrationDatabaseUrl: process.env.APPBASIS_MIGRATION_DATABASE_URL,
+            applicationDatabaseUrl: process.env.APPBASIS_DATABASE_URL,
+            securityLogDatabaseUrl: process.env.APPBASIS_SECURITY_LOG_DATABASE_URL
+          });
+          if (c.migration.database !== "appbasis_ulc_linz_preview" ||
+              c.migration.user !== "appbasis_ulc_linz_preview_migration")
+            throw new Error("Refusing non-preview target");
+          NODE
+
+      - name: Verify U12 categories schema-v14 prerequisite
+        run: node ./tooling/ulc-linz-youth-categories-preview.mjs verify
+
+      - name: Inspect independent group categories schema-v15
+        id: v15
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="$(node ./tooling/ulc-linz-youth-areas-preview.mjs inspect)"
+          echo "$RESULT"
+          STATE="$(jq -r '.state' <<< "$RESULT")"
+          test "$STATE" = "current" || test "$STATE" = "migration-required"
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+
+      - name: Apply schema-v15 when required
+        if: ${{ inputs.operation == 'migrate' && steps.v15.outputs.state == 'migration-required' }}
+        env:
+          APPBASIS_APPLY_MIGRATIONS: "1"
+          APPBASIS_APPLY_YOUTH_AREAS_PREVIEW: "1"
+        run: node ./tooling/ulc-linz-youth-areas-preview.mjs apply
+
+      - name: Reconcile preview runtime database access
+        if: ${{ inputs.operation == 'migrate' }}
+        env:
+          APPBASIS_APPLY_DATABASE_ACCESS: "1"
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs reconcile
+
+      - name: Verify independent group categories schema-v15
+        if: ${{ inputs.operation == 'migrate' }}
+        run: node ./tooling/ulc-linz-youth-areas-preview.mjs verify
+
+      - name: Verify runtime database permissions
+        if: ${{ inputs.operation == 'migrate' }}
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs preflight-existing
