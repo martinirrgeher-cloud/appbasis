@@ -217,7 +217,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
 
   it("renders clearly separated mobile cards with a category selection and an optional detail", () => {
     expect(ULC_U12_CSS).toContain(".u12-content-row { display:grid;");
-    expect(ULC_U12_CSS).toContain("border-left:4px solid");
+    expect(ULC_U12_CSS).toContain("border-left:3px solid");
     expect(ULC_U12_CSS).toContain(".u12-content-row:nth-child(even)");
     expect(ULC_U12_CSS).toContain(".u12-content-row__header");
     expect(ULC_U12_CSS).toContain("min-height:42px");
@@ -308,7 +308,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     );
     expect(changeHandler).toContain("refreshU12Controls()");
     expect(changeHandler).not.toContain("renderU12Attendance()");
-    expect(ULC_U12_CSS).toContain("min-height: 44px");
+    expect(ULC_U12_CSS).toContain("min-height:42px");
     expect(ULC_U12_CSS).toContain("max-width:100%");
     expect(ULC_U12_CSS).not.toContain("grid-template-columns: repeat(4");
     expect(ULC_LINZ_APP_CSS).toContain(ULC_U12_CSS);
