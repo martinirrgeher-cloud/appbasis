@@ -59,6 +59,11 @@ import {
   type UlcLinzU12AccessService,
 } from "./u12-access";
 import { createUlcU12Service } from "./u12-service";
+import { createUlcYouthAreaService } from "./youth-area-service";
+import {
+  createUlcLinzU14AccessService,
+  type UlcLinzU14AccessService,
+} from "./u14-access";
 import { PostgresUlcU12StatisticsRepository } from "./u12-statistics-postgres";
 import { PostgresUlcYouthCategoryRepository } from "./youth-category-postgres";
 import {
@@ -113,6 +118,8 @@ export interface GeneratedPostgresApplicationRuntime {
   kindertrainingAccess: UlcLinzKindertrainingAccessService;
   selfRegistrationAccess: UlcLinzSelfRegistrationAccessService;
   u12Access: UlcLinzU12AccessService;
+  /** Optional for legacy test runtimes, required by new U14 endpoints. */
+  u14Access?: UlcLinzU14AccessService;
   trainerIdentityAccess: UlcLinzTrainerIdentityAdminAccessService;
   userAdminOverview: Pick<PostgresUlcLinzUserAdminOverview, "listUsers">;
   userAdminAccounts: Pick<UlcLinzUserAccountService, "resetTemporaryPassword" | "changeStatus">;
@@ -169,8 +176,12 @@ export interface GeneratedPostgresApplicationRuntime {
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
   selfRegistration: ReturnType<typeof createUlcSelfRegistrationService>;
   u12: ReturnType<typeof createUlcU12Service>;
-  /** Optional for legacy fixture runtimes; always enabled for the production Postgres runtime. */
+  /** Separate detailed youth modules; optional only for historical test fixture runtimes. */
+  u14?: ReturnType<typeof createUlcYouthAreaService>;
+  kids?: ReturnType<typeof createUlcYouthAreaService>;
   u12Statistics?: Pick<PostgresUlcU12StatisticsRepository, "read">;
+  u14Statistics?: Pick<PostgresUlcU12StatisticsRepository, "read">;
+  kidsStatistics?: Pick<PostgresUlcU12StatisticsRepository, "read">;
   youthCategories: Pick<PostgresUlcYouthCategoryRepository, "list" | "create" | "update">;
   exerciseCatalog: ReturnType<typeof createUlcExerciseCatalogService>;
   trainingBlocks: UlcTrainingBlockService;
@@ -287,6 +298,13 @@ export async function createGeneratedPostgresApplicationRuntime(
         securityEvents,
       });
     const u12Access = createUlcLinzU12AccessService({
+      sql: applicationSql,
+      permissions,
+      memberships: scopes,
+      subjectScopes: scopes,
+      securityEvents,
+    });
+    const u14Access = createUlcLinzU14AccessService({
       sql: applicationSql,
       permissions,
       memberships: scopes,
@@ -550,6 +568,18 @@ export async function createGeneratedPostgresApplicationRuntime(
       categories: youthCategories,
     });
     const u12Statistics = new PostgresUlcU12StatisticsRepository(applicationSql);
+    const u14 = createUlcYouthAreaService({
+      area: "u14", masterdata: athleteMasterdata,
+      sessions: trainingSessions, moduleGroups: trainingModuleGroups,
+      categories: youthCategories,
+    });
+    const kids = createUlcYouthAreaService({
+      area: "kindertraining", masterdata: athleteMasterdata,
+      sessions: trainingSessions, moduleGroups: trainingModuleGroups,
+      categories: youthCategories,
+    });
+    const u14Statistics = new PostgresUlcU12StatisticsRepository(applicationSql, "u14");
+    const kidsStatistics = new PostgresUlcU12StatisticsRepository(applicationSql, "kindertraining");
     const exerciseCatalog = createUlcExerciseCatalogService({
       repository: createUlcExerciseCatalogRuntimeRepository({
         mode: options.exerciseCatalogRuntimeMode ?? "legacy",
@@ -589,6 +619,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       kindertrainingAccess,
       selfRegistrationAccess,
       u12Access,
+      u14Access,
       trainerIdentityAccess,
       userAdminOverview: new PostgresUlcLinzUserAdminOverview(applicationSql),
       userAdminAccounts: new UlcLinzUserAccountService(applicationSql, identityRuntime.hashTemporaryPassword),
@@ -602,6 +633,8 @@ export async function createGeneratedPostgresApplicationRuntime(
       selfRegistration,
       u12,
       u12Statistics,
+      u14, kids,
+      u14Statistics, kidsStatistics,
       youthCategories,
       exerciseCatalog,
       trainingBlocks,

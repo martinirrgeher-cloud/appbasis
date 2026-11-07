@@ -55,11 +55,11 @@ describe("U12 quick-create return navigation", () => {
 
   it("portals only the U12 dialog and restores its original parent and focus on X/Zurück", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("let masterdataAthleteOverlayHome = null;");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("if (fromU12 && elements.athleteOverlay && !masterdataAthleteOverlayHome)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("if (fromYouth && elements.athleteOverlay && !masterdataAthleteOverlayHome)");
     expect(ULC_LINZ_APP_SCRIPT).toContain("document.body.append(elements.athleteOverlay);");
     expect(ULC_LINZ_APP_SCRIPT).toContain("parent.insertBefore(");
-    expect(ULC_LINZ_APP_SCRIPT).toContain('if (fromU12 && document.querySelector(\'[data-app-section="u12"]:not([hidden])\'))');
-    expect(ULC_LINZ_APP_SCRIPT).toContain("u12Ui.addAthlete?.focus();");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('document.querySelector(\'[data-app-section="' + "'" + ' + youthSource + ' + "'" + '"]:not([hidden])\')');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("add?.focus();");
     expect(ULC_LINZ_APP_SCRIPT).toContain('elements.athleteOverlayClose?.addEventListener("click", closeMasterdataAthleteOverlay)');
     expect(ULC_LINZ_APP_SCRIPT).toContain("else closeMasterdataAthleteOverlay();");
     expect(ULC_LINZ_APP_SCRIPT).toContain("await loadU12Attendance();");

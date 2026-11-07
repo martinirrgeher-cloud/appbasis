@@ -40,14 +40,15 @@ describe("ULC: full one-step athlete creation", () => {
   it("preserves accepted edit route and returns new U12 athlete with the chosen group", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('source: "u12"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("groupId: context.groupId, startedOn: context.startedOn");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("elements.athleteCreateGroup.disabled = fromU12;");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("elements.athleteCreateStartedOn.disabled = fromU12;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("elements.athleteCreateGroup.disabled = fromYouth;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("elements.athleteCreateStartedOn.disabled = fromYouth;");
     expect(ULC_LINZ_APP_SCRIPT).toContain('"/api/modules/athletes/masterdata/athletes/create-complete"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("u12Snapshot = null;");
     expect(ULC_LINZ_APP_SCRIPT).toContain("await loadU12Attendance();");
     expect(ULC_LINZ_APP_SCRIPT).toContain("document.body.append(elements.athleteOverlay);");
     expect(ULC_LINZ_APP_SCRIPT).toContain("parent.insertBefore(");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("u12Ui.addAthlete?.focus();");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("add?.focus();");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('youthSource === "u14" ? u14Ui.addAthlete');
     const create = ULC_LINZ_APP_SCRIPT.slice(
       ULC_LINZ_APP_SCRIPT.indexOf("async function createMasterdataAthlete(event)"),
       ULC_LINZ_APP_SCRIPT.indexOf("async function createMasterdataTrainer(event)"),

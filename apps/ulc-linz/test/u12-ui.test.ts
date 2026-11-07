@@ -16,7 +16,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-dashboard-view="attendance" hidden');
     expect(ULC_LINZ_APP_HTML).toContain('data-attendance-target="u12"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="home"');
-    expect(ULC_LINZ_APP_HTML).toContain('data-attendance-target="kindertraining" data-attendance-group="kindertraining"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-attendance-target="kids"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-documentation"');
     expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-week-save"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('if (section === "u12") return u12Ready;');
@@ -36,7 +36,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('findAttendanceTrainingGroup("irrgeher")');
     expect(ULC_LINZ_APP_SCRIPT).toContain('choice.disabled = !available;');
     expect(ULC_LINZ_APP_SCRIPT).toContain('current = document.querySelector("[data-app-section]:not([hidden])")');
-    expect(ULC_LINZ_APP_SCRIPT).toContain('section === "u12" || section === "kindertraining"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('["u12", "u14", "kids", "kindertraining"].includes(section)');
     expect(ULC_U12_HTML).toContain('id="u12-group" aria-label="Zugeordnete U12-Gruppe" hidden');
     expect(ULC_U12_HTML).toContain('id="u12-group-label"');
     expect(ULC_U12_HTML).toContain('id="u12-add-athlete" hidden');

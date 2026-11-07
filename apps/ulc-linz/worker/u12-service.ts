@@ -7,6 +7,7 @@ import {
   UlcTrainingValidationError,
   type UlcTrainingAttendanceStatus,
   type UlcTrainingSessionState,
+  type UlcTrainingModule,
 } from "./training-session-domain";
 import type {
   UlcTrainingSessionSnapshot,
@@ -76,14 +77,14 @@ export interface UlcU12MasterdataReader {
 export interface UlcU12SessionStore {
   readSession(
     organizationId: string,
-    moduleId: typeof MODULE_ID,
+    moduleId: UlcTrainingModule,
     groupId: string,
     sessionDate: string,
   ): Promise<UlcTrainingSessionSnapshot | null>;
   saveSession(
     organizationId: string,
     input: {
-      readonly moduleId: typeof MODULE_ID;
+      readonly moduleId: UlcTrainingModule;
       readonly groupId: string;
       readonly sessionDate: string;
       readonly state?: UlcTrainingSessionState;
@@ -123,13 +124,16 @@ export function createUlcU12Service({
   sessions,
   moduleGroups,
   categories,
+  moduleId = MODULE_ID,
 }: {
   masterdata: UlcU12MasterdataReader;
   sessions: UlcU12SessionStore;
   moduleGroups: UlcLinzTrainingModuleGroupReader;
-  /** Shared for U12, future U14 and Kindertraining; optional only for legacy unit fixtures. */
   categories?: Pick<PostgresUlcYouthCategoryRepository, "validateSessionContents">;
+  /** U12 remains the default; other youth areas share the exact same validations. */
+  moduleId?: UlcTrainingModule;
 }) {
+  const area = moduleId;
   return Object.freeze({
     async listGroups(
       organizationId: string,
@@ -140,7 +144,7 @@ export function createUlcU12Service({
       );
       const configuredGroupId = await moduleGroups.readGroupId(
         normalizedOrganizationId,
-        MODULE_ID,
+        area,
       );
       if (configuredGroupId === null) return Object.freeze([]);
 
@@ -178,6 +182,7 @@ export function createUlcU12Service({
         moduleGroups,
         normalizedOrganizationId,
         normalizedGroupId,
+        area,
       );
       const context = await resolveContext(
         masterdata,
@@ -188,11 +193,11 @@ export function createUlcU12Service({
       );
       const stored = await sessions.readSession(
         context.organizationId,
-        MODULE_ID,
+        area,
         context.group.id,
         context.sessionDate,
       );
-      return presentSnapshot(context, stored);
+      return presentSnapshot(context, stored, area);
     },
 
     async saveSession(
@@ -229,6 +234,7 @@ export function createUlcU12Service({
         moduleGroups,
         normalizedOrganizationId,
         normalizedGroupId,
+        area,
       );
       const context = await resolveContext(
         masterdata,
@@ -246,11 +252,11 @@ export function createUlcU12Service({
         normalizeUlcYouthContentItems(input.contentTitles, input.contentItems);
         if (categories) {
           const previous = await sessions.readSession(
-            context.organizationId, MODULE_ID, context.group.id, context.sessionDate,
+            context.organizationId, area, context.group.id, context.sessionDate,
           );
           await categories.validateSessionContents(
             context.organizationId,
-            "u12",
+            area,
             input.contentTitles,
             input.contentItems,
             previous === null ? null : {
@@ -265,7 +271,7 @@ export function createUlcU12Service({
       const stored = await sessions.saveSession(
         context.organizationId,
         {
-          moduleId: MODULE_ID,
+          moduleId: area,
           groupId: context.group.id,
           sessionDate: context.sessionDate,
           ...(input.state === undefined ? {} : { state: input.state }),
@@ -276,7 +282,7 @@ export function createUlcU12Service({
         input.contentTitles,
         input.contentItems,
       );
-      return presentSnapshot(context, stored);
+      return presentSnapshot(context, stored, area);
     },
   });
 }
@@ -285,10 +291,11 @@ async function requireConfiguredGroup(
   moduleGroups: UlcLinzTrainingModuleGroupReader,
   organizationId: string,
   groupId: string,
+  moduleId: UlcTrainingModule,
 ): Promise<void> {
   const configuredGroupId = await moduleGroups.readGroupId(
     organizationId,
-    MODULE_ID,
+    moduleId,
   );
   if (configuredGroupId !== groupId) {
     throw new UlcU12NotFoundError();
@@ -443,11 +450,12 @@ async function resolveContext(
 function presentSnapshot(
   context: ResolvedContext,
   stored: UlcTrainingSessionSnapshot | null,
+  moduleId: UlcTrainingModule = MODULE_ID,
 ): UlcU12Snapshot {
   if (
     stored !== null &&
     (stored.session.organizationId !== context.organizationId ||
-      stored.session.moduleId !== MODULE_ID ||
+      stored.session.moduleId !== moduleId ||
       stored.session.groupId !== context.group.id ||
       stored.session.sessionDate !== context.sessionDate)
   ) {

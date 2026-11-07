@@ -105,8 +105,8 @@ describe("U12 statistics and mobile navigation", () => {
     );
     expect(nav).not.toContain("⚙");
     expect(nav).not.toContain("app-nav__attendance-category");
-    expect(nav).toContain('data-attendance-target="categories" data-youth-category-area="u14"');
-    expect(ULC_LINZ_APP_SCRIPT).toContain('void openYouthCategoryManagement("u14")');
+    expect(nav).toContain('data-attendance-target="u14"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain('void navigateAppSection("u14")');
   });
 
   it("moves U12 category settings into content panel and the plus action beside attendance", () => {
