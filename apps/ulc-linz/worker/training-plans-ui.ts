@@ -90,12 +90,6 @@ export const ULC_TRAINING_PLANS_HTML = `
                     <button class="button button--secondary" id="training-plan-retry" type="button" hidden>Erneut speichern</button>
                   </div>
 
-                  <section class="card training-plan-note-card">
-                    <label>Notiz zum Training
-                      <textarea id="training-plan-note" maxlength="3000" rows="3" placeholder="Optional"></textarea>
-                    </label>
-                  </section>
-
                   <section class="card training-plan-items-card">
                     <div class="section-heading">
                       <div><p class="eyebrow">Inhalt</p><h3>Blöcke & Übungen</h3></div>
@@ -112,6 +106,12 @@ export const ULC_TRAINING_PLANS_HTML = `
                       <button class="button button--secondary" id="training-plan-add-template" type="button">Vorlage übernehmen</button>
                     </div>
                     <div class="training-plan-items" id="training-plan-items"></div>
+                  </section>
+
+                  <section class="card training-plan-note-card">
+                    <label>Notiz zum Training
+                      <textarea id="training-plan-note" maxlength="3000" rows="3" placeholder="Optional"></textarea>
+                    </label>
                   </section>
                 </div>
 
@@ -804,7 +804,7 @@ body.training-plan-picker-open { overflow: hidden; }
   .training-plan-toolbar > label:first-child { grid-column: 1 / -1; }
   .training-plan-toolbar > strong { margin-top: -2px; font-size: .78rem; }
   .training-plan-week-nav { justify-content: end; gap: 4px; }
-  .training-plan-week-nav .button { min-width: 40px; min-height: 40px; padding: 7px 9px; }
+  .training-plan-week-nav .button { min-width: var(--touch); min-height: var(--touch); padding: 7px 9px; }
   .training-plan-week { grid-auto-columns: minmax(124px, 42vw); gap: 7px; }
   .training-plan-day,
   .training-plan-day__button { min-height: 128px; }
@@ -827,14 +827,17 @@ body.training-plan-picker-open { overflow: hidden; }
   .training-plan-item { gap: 7px; padding: 8px; }
   .training-plan-child { gap: 6px; padding: 7px; }
   .training-plan-child-list { gap: 6px; padding-left: 5px; border-left-width: 2px; }
-  .training-plan-mini { min-width: 38px; width: 38px; min-height: 38px; }
+  .training-plan-mini { min-width: var(--touch); width: var(--touch); min-height: var(--touch); }
   .training-plan-item__actions { flex-wrap: nowrap; }
   .training-plan-close-label { display: none; }
-  .training-plan-icon-close { min-width: 40px; width: 40px; padding-inline: 0; }
+  .training-plan-icon-close { min-width: var(--touch); width: var(--touch); min-height: var(--touch); padding-inline: 0; }
   .training-plan-header-actions { flex-wrap: nowrap; }
   .training-plan-distribute-button { padding-inline: 9px; }
-  .training-plan-save-icon { min-width: 40px; width: 40px; min-height: 40px; }
+  .training-plan-save-icon { min-width: var(--touch); width: var(--touch); min-height: var(--touch); }
   .training-plan-shell { padding: 8px; gap: 8px; }
+  .training-plan-mode-tabs button,
+  .training-plan-day-tab,
+  .training-plan-add-button { min-height: var(--touch); }
   .training-plan-weekbar { align-items: stretch; flex-direction: column-reverse; }
   .training-plan-weekbar > strong { text-align: left; }
   .training-plan-week-nav { justify-content: space-between; }
@@ -868,16 +871,16 @@ body.training-plan-picker-open { overflow: hidden; }
   .training-plan-distribute-button,
   .training-plan-document-button {
     display: inline-flex;
-    min-width: 40px;
-    width: 40px;
-    min-height: 40px;
+    min-width: var(--touch);
+    width: var(--touch);
+    min-height: var(--touch);
     padding: 0;
     align-items: center;
     justify-content: center;
   }
   .training-plan-distribute-button span:last-child,
   .training-plan-document-button span:last-child { display: none; }
-  .training-plan-mini { min-width: 40px; width: 40px; min-height: 40px; }
+  .training-plan-mini { min-width: var(--touch); width: var(--touch); min-height: var(--touch); }
   .training-plan-header > div,
   .training-plan-body > *,
   .training-plan-group-controls > *,
