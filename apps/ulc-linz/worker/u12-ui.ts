@@ -78,6 +78,46 @@ export const ULC_U12_HTML = `
                 <button type="button" class="button button--primary" id="u12-assignment-done">Fertig</button>
               </footer>
             </dialog>
+            <dialog class="u12-statistics-dialog" id="u12-statistics-dialog" aria-labelledby="u12-statistics-title">
+              <header class="u12-statistics-header">
+                <div>
+                  <small>U12 · Anwesenheit</small>
+                  <h2 id="u12-statistics-title">Statistik</h2>
+                </div>
+                <button type="button" class="button button--secondary u12-statistics-close" id="u12-statistics-close" aria-label="Statistik schließen">✕</button>
+              </header>
+              <form class="u12-statistics-filter" id="u12-statistics-filter">
+                <label for="u12-statistics-from">Von
+                  <input id="u12-statistics-from" type="date" required />
+                </label>
+                <label for="u12-statistics-to">Bis
+                  <input id="u12-statistics-to" type="date" required />
+                </label>
+                <button type="submit" class="button button--primary">Anwenden</button>
+              </form>
+              <p class="message message--error" id="u12-statistics-error" role="alert" hidden></p>
+              <p class="u12-statistics-state" id="u12-statistics-state" role="status"></p>
+              <div class="u12-statistics-summary" id="u12-statistics-summary"></div>
+              <div class="u12-statistics-tabs" aria-label="Statistiken auswählen">
+                <button type="button" data-u12-stats-tab="trainings" aria-pressed="true">Trainings</button>
+                <button type="button" data-u12-stats-tab="athletes" aria-pressed="false">Athleten</button>
+                <button type="button" data-u12-stats-tab="categories" aria-pressed="false">Kategorien</button>
+              </div>
+              <div class="u12-statistics-results">
+                <section data-u12-stats-panel="trainings" aria-label="Anwesende pro Training">
+                  <h3>Anwesende pro Training</h3>
+                  <div id="u12-statistics-trainings" class="u12-statistics-list"></div>
+                </section>
+                <section data-u12-stats-panel="athletes" aria-label="Anwesenheit pro Athlet" hidden>
+                  <h3>Anwesenheit pro Athlet <small>aufsteigend</small></h3>
+                  <div id="u12-statistics-athletes" class="u12-statistics-list"></div>
+                </section>
+                <section data-u12-stats-panel="categories" aria-label="Trainingskategorien" hidden>
+                  <h3>Trainingskategorien</h3>
+                  <div id="u12-statistics-categories" class="u12-statistics-list"></div>
+                </section>
+              </div>
+            </dialog>
             <dialog class="u12-details-dialog" id="u12-details-dialog" aria-labelledby="u12-details-title">
               <header class="u12-details-header">
                 <h2 id="u12-details-title">Athletenhinweise</h2>
@@ -147,6 +187,41 @@ export const ULC_U12_CSS = `
 .u12-content-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .u12-content-assign { min-height:42px; font-size:.82rem; }
 .u12-content-assign:disabled { opacity:.5; cursor:not-allowed; }
+/* Compact header/controls follow the common 42px touch-target layout. */
+.u12-statistics-dialog { box-sizing:border-box; width:min(96vw,640px); max-width:640px; max-height:calc(100dvh - 20px); padding:0; border:1px solid var(--border); border-radius:14px; color:var(--text); background:var(--card); overflow-y:auto; overscroll-behavior:contain; }
+.u12-statistics-dialog::backdrop { background:rgba(0,0,0,.55); }
+.u12-statistics-header { position:sticky; top:0; z-index:3; display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border-bottom:1px solid var(--border); background:var(--card); }
+.u12-statistics-header h2 { margin:0; font-size:1.1rem; line-height:1.3; }
+.u12-statistics-header small { font-size:.74rem; color:var(--secondary); }
+.u12-statistics-close { min-width:42px; min-height:42px; padding:0; }
+.u12-statistics-filter { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)) 42px; gap:6px; align-items:end; margin:0; padding:8px 10px; }
+.u12-statistics-filter label { display:grid; gap:3px; min-width:0; font-size:.73rem; font-weight:700; color:var(--secondary); }
+.u12-statistics-filter input { box-sizing:border-box; display:block; width:100%; min-width:0; min-height:42px; padding:5px 4px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:.8rem; }
+.u12-statistics-filter button { min-height:42px; padding:0 5px; font-size:.68rem; }
+.u12-statistics-state { margin:0 10px 5px; font-size:.75rem; color:var(--secondary); }
+.u12-statistics-dialog .message { margin:5px 10px; }
+.u12-statistics-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin:4px 10px 8px; }
+.u12-statistics-kpi { display:grid; gap:3px; padding:9px 5px; border:1px solid var(--border); border-radius:9px; text-align:center; background:var(--muted); min-width:0; }
+.u12-statistics-kpi strong { font-size:1.15rem; line-height:1.2; }
+.u12-statistics-kpi small { font-size:.68rem; color:var(--secondary); overflow-wrap:anywhere; }
+.u12-statistics-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; padding:0 10px 8px; }
+.u12-statistics-tabs button { min-width:0; min-height:42px; padding:5px 3px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font:inherit; font-size:.8rem; font-weight:650; cursor:pointer; }
+.u12-statistics-tabs button[aria-pressed="true"] { border-color:var(--accent); background:var(--muted); }
+.u12-statistics-results { padding:0 10px 12px; }
+.u12-statistics-results section[hidden] { display:none !important; }
+.u12-statistics-results h3 { display:flex; gap:6px; align-items:baseline; margin:3px 0 8px; font-size:.95rem; }
+.u12-statistics-results h3 small { font-size:.7rem; color:var(--secondary); }
+.u12-statistics-list { display:grid; gap:5px; min-width:0; }
+.u12-statistics-line { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; padding:8px 10px; border:1px solid var(--border); border-radius:9px; font-size:.82rem; }
+.u12-statistics-line span { min-width:0; overflow-wrap:anywhere; }
+.u12-statistics-line > strong { white-space:nowrap; font-size:.88rem; }
+.u12-statistics-line small { font-size:.71rem; color:var(--secondary); }
+.u12-statistics-athlete { border:1px solid var(--border); border-radius:9px; }
+.u12-statistics-athlete summary { display:flex; gap:8px; align-items:center; justify-content:space-between; min-height:42px; padding:6px 10px; cursor:pointer; font-size:.83rem; }
+.u12-statistics-athlete summary strong { white-space:nowrap; }
+.u12-statistics-athlete__detail { padding:3px 10px 9px; border-top:1px solid var(--border); display:grid; gap:5px; font-size:.75rem; }
+.u12-statistics-athlete__detail > div { display:flex; justify-content:space-between; gap:6px; }
+@media(max-width:370px) { .u12-statistics-filter { grid-template-columns:repeat(2,minmax(0,1fr)); } .u12-statistics-filter button { grid-column:1/-1; font-size:.8rem; } .u12-statistics-tabs button { font-size:.75rem; } }
 .u12-person { display:grid !important; grid-template-columns:minmax(0,1fr) 44px; column-gap:8px; }
 .u12-person__toggle { grid-column:1; }
 .u12-person:not(:has(.u12-info)) > .u12-person__toggle { grid-column:1 / -1; }
