@@ -174,7 +174,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
       );
       return {
         ...owner,
-        schemaVersion: 15,
+        schemaVersion: 16,
         migrations: [
           ...owner.migrations,
           "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
@@ -183,6 +183,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
           "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql",
           "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
           "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
+          "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
         ],
       };
     });
@@ -327,7 +328,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(63);
+    expect(inventory.persistentTables).toHaveLength(64);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
