@@ -15,13 +15,13 @@ const to = "2026-11-07";
 describe("A04 youth trainer-presence statistics", () => {
   it("counts each trainer once per saved training even with multiple athlete rows", () => {
     const report = aggregateU12Statistics([
-      { session_id: "a", session_date: "2026-11-06", trainer_count: 3,
+      { session_id: "a", session_date: "2026-11-06", trainer_count: 3, trainer_ids: ["trainer-1", "trainer-2", "trainer-3"],
         content_titles: [], content_items: [], athlete_id: "athlete-a",
         status: "present", content_slots: [] },
-      { session_id: "a", session_date: "2026-11-06", trainer_count: 3,
+      { session_id: "a", session_date: "2026-11-06", trainer_count: 3, trainer_ids: ["trainer-1", "trainer-2", "trainer-3"],
         content_titles: [], content_items: [], athlete_id: "athlete-b",
         status: "present", content_slots: [] },
-      { session_id: "b", session_date: "2026-10-30", trainer_count: 0,
+      { session_id: "b", session_date: "2026-10-30", trainer_count: 0, trainer_ids: [],
         content_titles: [], content_items: [], athlete_id: null,
         status: null, content_slots: null },
     ], [
@@ -29,7 +29,8 @@ describe("A04 youth trainer-presence statistics", () => {
       { athleteId: "athlete-b", firstName: "B", lastName: "Binder" },
     ], from, to);
     expect(report.summary).toEqual({
-      trainings: 2, attendance: 2, trainerAttendances: 3, categories: 0,
+      trainings: 2, attendance: 2, trainerAttendances: 3,
+      unidentifiedTrainerAttendances: 3, categories: 0,
     });
     expect(report.trainings.map(({ trainerPresentCount }) => trainerPresentCount))
       .toEqual([3, 0]);
@@ -64,6 +65,9 @@ describe("A04 youth trainer-presence statistics", () => {
     for (const { html, script, prefix } of pages) {
       expect(html).toContain('id="' + prefix + '-statistics-dialog"');
       expect(html).toContain('id="' + prefix + '-statistics-summary"');
+      expect(html).toContain('id="' + prefix + '-statistics-months"');
+      expect(html).toContain('id="' + prefix + '-statistics-trainers"');
+      expect(html).toContain('data-' + prefix + '-stats-tab="trainers"');
       expect(script).toContain('["Trainer-Einsätze", report.summary.trainerAttendances]');
       expect(script).toContain('training.trainerPresentCount + " Trainer"');
       expect(script).toContain('requestJson("/api/modules/' + prefix + '/statistics?groupId="');
