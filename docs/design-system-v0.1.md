@@ -142,3 +142,34 @@ Für die bereits bestehende Reference-Preview gibt es vor dem ersten Deploy mit 
 Der separate Demo-Bootstrap provisioniert die bekannten Demo-Rollen und ordnet dem Demo-Benutzer idempotent `demo:member` zu. Provisioning und Migrationen bleiben damit weiterhin strikt außerhalb des normalen Worker-Request-Pfads.
 
 Der Rolleneditor bleibt dennoch zunächst ohne persistentes `Speichern`: Rollenadministration ist eine privilegierte Control-Plane-Funktion und wird nicht in den normalen App-Worker eingebaut. Die spätere Aktivierung des Editors benötigt einen getrennten, authentisierten Admin-Weg, der den bestehenden `PostgresRoleAdministration`-Vertrag mit verpflichtendem Actor/Reason und transaktionalem Audit verwendet.
+
+## UI-01: Factory-weite Gestaltung für bereits bestehende Worker-Apps
+
+**AppFactory ist die Eigentümerin der Designregeln.** `packages/ui/tokens.css` und
+`packages/ui/foundation.css` bleiben die zentrale Standard-Stylesheet-Basis für Apps,
+die CSS-Dateien direkt einbinden. Für bestehende Apps, deren Worker `/app.css` aus
+einem TypeScript-String ausliefert, stellt `packages/ui/embedded-foundation.ts`
+eine kompakte, isoliert testbare Darstellung derselben semantischen Tokens und
+Grundmuster bereit. Der Adapter darf keine Fachlogik und keine individuellen
+Benutzerrechte enthalten.
+
+App-spezifische Werte stehen weiterhin im vorhandenen **Factory-Vertrag
+`apps/<appId>/appbasis.theme.json`** (Schema v1: `brandMark`, `accentColor`).
+Bei ULC Linz ist die Akzentfarbe `#147a46`. Der ULC-Worker liest das Manifest
+zur Buildzeit über `worker/design-system.ts`, statt die Vereinsfarbe an
+zahlreichen Stellen zu duplizieren. Der globale CSS-Verbraucher und der
+eingebettete Worker-Verbraucher verwenden dieselbe `--ab-*`-Benennung für
+Branding, Surface, Text, Abstände, Radien, Status und Touchziele.
+
+Die bisherige ULC-App übernimmt die gemeinsamen `ab-page-header`,
+`ab-surface` und `ab-icon-button`-Grundmuster zuerst ausschließlich in
+U12/U14/Kindertraining. Sie überschreibt deren Fachlogik und bestehende
+Speicher-/Dialogmuster dabei nicht. Der vorhandene PWA-Icon-Pfad bleibt
+vereinseigenes Artwork; ein generischer URL-/Logo-Upload ist **nicht**
+Bestandteil dieses ersten Slices.
+
+**Späterer eigenständiger Factory-Slice:** visuelle Konfiguration mit
+Live-Vorschau, optionalen Logos/Typografievarianten und barrierefreien
+Kontrastprüfungen. Eine Erweiterung des Theme-Manifests erfordert eine
+separate Schema-Version, Validierung und Migrationsstrategie, nicht
+ungeprüft zusätzliche Felder im v1-Manifest.
