@@ -216,7 +216,7 @@ export const ULC_U12_CSS = `
 .u12-statistics-filter button { min-height:42px; padding:0; font-size:1.15rem; }
 .u12-statistics-state { margin:0 10px 5px; font-size:.75rem; color:var(--secondary); }
 .u12-statistics-dialog .message { margin:5px 10px; }
-.u12-statistics-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin:4px 10px 8px; }
+.u12-statistics-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin:4px 10px 8px; }
 .u12-statistics-kpi { display:grid; gap:3px; padding:9px 5px; border:1px solid var(--border); border-radius:9px; text-align:center; background:var(--muted); min-width:0; }
 .u12-statistics-kpi strong { font-size:1.15rem; line-height:1.2; }
 .u12-statistics-kpi small { font-size:.68rem; color:var(--secondary); overflow-wrap:anywhere; }
@@ -1060,6 +1060,7 @@ function renderU12Statistics(report) {
   const kpis = [
     ["Trainings", report.summary.trainings],
     ["Anwesenheiten", report.summary.attendance],
+    ["Trainer-Einsätze", report.summary.trainerAttendances],
     ["Kategorien", report.summary.categories],
   ];
   for (const [label, count] of kpis) {
@@ -1079,7 +1080,8 @@ function renderU12Statistics(report) {
     appendU12StatisticsLine(
       u12Ui.statsTrainings, germanDate(training.date),
       training.presentCount + " anwesend",
-      training.categoryCount + " Kategorien · " + training.registeredCount + " erfasst",
+      training.categoryCount + " Kategorien · " + training.registeredCount + " erfasst · " +
+        training.trainerPresentCount + " Trainer",
     );
   }
   for (const athlete of report.athletes) {
