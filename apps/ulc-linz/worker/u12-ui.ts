@@ -1,7 +1,7 @@
 export const ULC_U12_HTML = `
           <section class="app-section" data-app-section="u12" id="u12" hidden>
-            <header class="u12-head">
-              <div class="u12-head__title">
+            <header class="u12-head ulc-page-header">
+              <div class="u12-head__title ulc-page-header__title">
                 <h1>U12 · Anwesenheit</h1>
                 <small id="u12-group-label">Trainingsgruppe wird geladen</small>
               </div>
@@ -11,7 +11,7 @@ export const ULC_U12_HTML = `
             <select id="u12-group" aria-label="Zugeordnete U12-Gruppe" hidden>
               <option value="">Gruppe wird geladen</option>
             </select>
-            <div class="u12-date-toolbar" aria-label="Trainingstermin">
+            <div class="u12-date-toolbar ulc-ui-panel" aria-label="Trainingstermin">
               <div class="u12-date-nav">
                 <button class="u12-date-arrow" type="button" id="u12-prev" aria-label="Vorheriger Tag">‹</button>
                 <label class="u12-date-field" for="u12-date">
@@ -22,11 +22,11 @@ export const ULC_U12_HTML = `
               </div>
               <div class="u12-date-shortcuts">
                 <button class="u12-date-today" type="button" id="u12-today">Heute</button>
-                <button class="u12-date-reload" type="button" id="u12-reload" title="Anwesenheit neu laden" aria-label="Liste neu laden">↻</button>
+                <button class="u12-date-reload ulc-ui-icon-action" type="button" id="u12-reload" title="Anwesenheit neu laden" aria-label="Liste neu laden">↻</button>
               </div>
             </div>
             <section id="u12-week" class="u12-week" hidden>
-              <div class="card u12-savebar">
+              <div class="card u12-savebar ulc-ui-panel">
                 <div>
                   <strong id="u12-count">0 von 0 anwesend</strong>
                   <small id="u12-save-state" role="status">Training auswählen</small>
@@ -34,7 +34,7 @@ export const ULC_U12_HTML = `
                 <button class="button button--secondary" type="button" id="u12-save" aria-label="Speichern erneut versuchen" hidden disabled>Erneut versuchen</button>
               </div>
               <div class="u12-content-shell">
-                <details class="u12-content-card" id="u12-content-card">
+                <details class="u12-content-card ulc-ui-panel" id="u12-content-card">
                 <summary class="u12-content-summary">
                   <span>Trainingsinhalte <small id="u12-content-count">0 / 5</small></span>
                   <span aria-hidden="true">⌄</span>
@@ -47,10 +47,10 @@ export const ULC_U12_HTML = `
                   </div>
                 </div>
                 </details>
-                <button class="u12-category-shortcut" type="button" data-youth-category-area="u12" hidden disabled
+                <button class="u12-category-shortcut ulc-ui-icon-action" type="button" data-youth-category-area="u12" hidden disabled
                   aria-label="U12-Trainingskategorien bearbeiten" title="Trainingskategorien bearbeiten">⚙</button>
               </div>
-              <details class="u12-notes-card" id="u12-notes-card">
+              <details class="u12-notes-card ulc-ui-panel" id="u12-notes-card">
                 <summary>Notizen zum Training <small>optional</small></summary>
                 <div class="u12-notes-body">
                   <label for="u12-note">Besondere Vorkommnisse und Informationen</label>
@@ -58,7 +58,7 @@ export const ULC_U12_HTML = `
                     placeholder="z. B. Wetter, Änderungen, Besonderheiten"></textarea>
                 </div>
               </details>
-              <details class="u12-trainers-card" id="u12-trainers-card">
+              <details class="u12-trainers-card ulc-ui-panel" id="u12-trainers-card">
                 <summary class="u12-trainers-summary" aria-label="Traineranwesenheit">
                   <span>Trainer</span>
                   <span class="u12-trainers-summary-status">
@@ -73,7 +73,7 @@ export const ULC_U12_HTML = `
                 <div class="u12-attendance-toolbar__actions">
                   <button class="button button--secondary u12-statistics-open" type="button" id="u12-statistics-open"
                     aria-haspopup="dialog" aria-controls="u12-statistics-dialog">Statistik</button>
-                  <button class="button button--secondary u12-athlete-new" type="button" id="u12-add-athlete" hidden
+                  <button class="button button--secondary u12-athlete-new ulc-ui-icon-action" type="button" id="u12-add-athlete" hidden
                     title="Kind direkt der U12-Gruppe zuordnen" aria-label="Neues Kind anlegen">＋</button>
                 </div>
               </div>
@@ -149,10 +149,10 @@ export const ULC_U12_HTML = `
 
 export const ULC_U12_CSS = `
 /* Compact U12: single configured group, date picker, context action. */
-.u12-head { display:flex; justify-content:space-between; align-items:center; gap:7px; margin:0 0 8px; min-width:0; }
+.u12-head { display:flex; justify-content:space-between; align-items:center; gap:var(--ulc-space-2); margin:0 0 var(--ulc-space-2); min-width:0; }
 .u12-head__title { min-width:0; }
-.u12-head h1 { margin:0; line-height:1.22; font-size:1.36rem; font-weight:800; letter-spacing:-.025em; }
-.u12-head small { display:block; color:var(--secondary); margin-top:2px; overflow-wrap:anywhere; font-size:.72rem; }
+.u12-head h1 { margin:0; line-height:1.2; font-size:var(--ulc-page-title-size); font-weight:800; letter-spacing:-.025em; }
+.u12-head small { display:block; color:var(--secondary); margin-top:2px; overflow-wrap:anywhere; font-size:.75rem; }
 .u12-athlete-new { flex:0 0 42px; align-self:center; width:42px; min-height:42px; border-radius:9px; font-size:1.35rem; padding:0; font-weight:800; }
 .u12-attendance-toolbar { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:3px 1px 0; min-width:0; }
 .u12-attendance-toolbar > strong { font-size:1rem; font-weight:800; letter-spacing:-.015em; }
@@ -162,7 +162,7 @@ export const ULC_U12_CSS = `
 .u12-category-shortcut { position:absolute; top:3px; right:38px; width:40px; min-width:40px; height:40px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--text); font-size:1.1rem; cursor:pointer; z-index:1; }
 .u12-category-shortcut[hidden] { display:none !important; }
 .u12-category-shortcut:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.u12-date-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:5px; padding:6px 8px; border-radius:12px; background:var(--card); border:1px solid var(--border); min-width:0; box-shadow:0 2px 8px rgba(15,23,42,.035); }
+.u12-date-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:5px; padding:6px var(--ulc-space-2); border-radius:var(--ulc-radius-card); background:var(--card); border:1px solid var(--border); min-width:0; box-shadow:0 2px 8px rgba(15,23,42,.035); }
 .u12-date-nav { display:grid; grid-template-columns:36px minmax(0,1fr) 36px; align-items:center; gap:3px; min-width:0; }
 .u12-date-arrow { min-width:36px; height:42px; border:0; border-radius:9px; background:var(--muted); color:var(--text); font-size:1.2rem; font-weight:800; cursor:pointer; }
 .u12-date-field { display:grid; gap:0; min-width:0; text-align:center; }
@@ -302,7 +302,7 @@ export const ULC_U12_CSS = `
 .u12-trainer-row:focus-within { outline:2px solid var(--accent); outline-offset:1px; }
 /* Visible only for an attended session with unfinished training documentation. */
 .u12-content-card.u12-reminder-pending,
-.u12-trainers-card.u12-reminder-pending { border-color:#d4a017; background:color-mix(in srgb, #facc15 23%, var(--card)); box-shadow:inset 3px 0 0 #eab308; }
+.u12-trainers-card.u12-reminder-pending { border-color:var(--ulc-warning-border); background:color-mix(in srgb, var(--ulc-warning-tint) 23%, var(--card)); box-shadow:inset 3px 0 0 var(--ulc-warning-edge); }
 .u12-reminder-pending > summary small { color:var(--text); }
 .u12-notes-card { margin-top:8px; background:var(--card); border:1px solid var(--border); border-radius:11px; overflow:hidden; }
 .u12-notes-card summary { padding:11px 12px; font-weight:750; cursor:pointer; }
@@ -310,7 +310,7 @@ export const ULC_U12_CSS = `
 .u12-notes-body { padding:0 11px 11px; display:grid; gap:5px; }
 .u12-notes-body label { font-size:.78rem; color:var(--secondary); }
 .u12-notes-body textarea { display:block; width:100%; max-width:100%; box-sizing:border-box; min-height:86px; resize:vertical; border-radius:8px; border:1px solid var(--border); padding:9px; font:inherit; background:var(--card); color:var(--text); }
-.u12-savebar { position:sticky; top:56px; z-index:8; display:flex; gap:8px; align-items:center; justify-content:space-between; padding:7px 9px; border-radius:11px; box-shadow:0 5px 18px rgba(15,23,42,.09); }
+.u12-savebar { position:sticky; top:56px; z-index:8; display:flex; gap:var(--ulc-space-2); align-items:center; justify-content:space-between; padding:7px 9px; border-radius:var(--ulc-radius-card); box-shadow:0 5px 18px rgba(15,23,42,.09); }
 .u12-savebar > div { display:grid; gap:1px; min-width:0; }
 .u12-savebar strong { font-size:.82rem; }
 .u12-savebar small { font-size:.68rem; color:var(--secondary); line-height:1.2; }
