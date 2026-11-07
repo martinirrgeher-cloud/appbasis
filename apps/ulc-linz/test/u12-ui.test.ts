@@ -160,8 +160,22 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_SCRIPT).toContain("async function openU12NewAthlete()");
     expect(ULC_U12_SCRIPT).toContain("if (!(await u12FlushChanges())) return;");
     expect(ULC_U12_SCRIPT).toContain("await loadMasterdata()");
-    expect(ULC_U12_SCRIPT).toContain('showAppSection("masterdata");');
+    expect(ULC_U12_SCRIPT).not.toContain('showAppSection("masterdata");');
+    expect(ULC_U12_SCRIPT).toContain('openNewMasterdataAthlete({\n    source: "u12", groupId, startedOn,');
     expect(ULC_U12_SCRIPT).toContain('source: "u12", groupId, startedOn');
+  });
+
+  it("keeps compact date, save, content cards and roster without changing U12 semantics", () => {
+    expect(ULC_U12_CSS).toContain(".u12-date-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto;");
+    expect(ULC_U12_CSS).toContain(".u12-savebar { position:sticky; top:56px;");
+    expect(ULC_U12_CSS).toContain(".u12-content-row { display:grid; gap:5px;");
+    expect(ULC_U12_CSS).toContain(".u12-person { display:grid; align-items:center;");
+    expect(ULC_U12_CSS).toContain(".u12-roster-hint { display:block; padding:2px 4px 6px;");
+    expect(ULC_U12_HTML).toContain('aria-label="Training speichern" disabled>Speichern</button>');
+    expect(ULC_U12_SCRIPT).toContain('"✓ = anwesend · leer = nicht anwesend"');
+    expect(ULC_U12_SCRIPT).toContain('input.dataset.u12AthleteId = person.athleteId');
+    expect(ULC_U12_SCRIPT).toContain('row.append(summary)');
+    expect(ULC_U12_SCRIPT).toContain("u12DirtyDates.clear()");
   });
 
   it("shows scoped notes/contacts on demand without rendering them in roster rows", () => {
