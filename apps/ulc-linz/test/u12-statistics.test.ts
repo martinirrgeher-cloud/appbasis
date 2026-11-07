@@ -119,7 +119,7 @@ describe("U12 statistics and mobile navigation", () => {
     expect(settingsIndex).toBeLessThan(attendanceIndex);
     expect(plusIndex).toBeGreaterThan(attendanceIndex);
     expect(ULC_U12_HTML).toContain('aria-label="Neues Kind anlegen">＋</button>');
-    expect(ULC_U12_CSS).toContain(".u12-content-card { position:relative; }");
+    expect(ULC_U12_CSS).toContain(".u12-content-shell { position:relative; min-width:0; }");
     expect(ULC_U12_CSS).toContain(".u12-attendance-toolbar");
     expect(ULC_U12_HTML).toContain("<h1>U12 · Anwesenheit</h1>");
   });
