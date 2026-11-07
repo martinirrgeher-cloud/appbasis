@@ -48,7 +48,11 @@ describe("ULC: full one-step athlete creation", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("document.body.append(elements.athleteOverlay);");
     expect(ULC_LINZ_APP_SCRIPT).toContain("parent.insertBefore(");
     expect(ULC_LINZ_APP_SCRIPT).toContain("u12Ui.addAthlete?.focus();");
-    expect(ULC_LINZ_APP_SCRIPT).not.toContain('      showAppSection("u12");\\n      showMessage(u12Ui.success, refreshed');
+    const create = ULC_LINZ_APP_SCRIPT.slice(
+      ULC_LINZ_APP_SCRIPT.indexOf("async function createMasterdataAthlete(event)"),
+      ULC_LINZ_APP_SCRIPT.indexOf("async function createMasterdataTrainer(event)"),
+    );
+    expect(create).not.toContain('showAppSection("u12")');
     expect(ULC_LINZ_APP_SCRIPT).toContain('encodeURIComponent(editId) + "/update"');
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
   });
