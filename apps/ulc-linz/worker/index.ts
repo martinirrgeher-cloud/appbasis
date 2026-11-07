@@ -252,7 +252,7 @@ export function createGeneratedWorker(
           response = await u12SessionResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/u12/statistics") {
           response = await u12StatisticsResponse(request, runtime, url);
-        } else if (/^\\/api\\/modules\\/(u14|kids)(?:\\/(?:session|statistics))?$/.test(url.pathname)) {
+        } else if (/^\/api\/modules\/(u14|kids)(?:\/(?:session|statistics))?$/.test(url.pathname)) {
           response = await detailedYouthAreaResponse(request, runtime, url);
         } else if (url.pathname === "/api/auth/sign-out") {
           response = await identitySignOutResponse(request, runtime, url);
