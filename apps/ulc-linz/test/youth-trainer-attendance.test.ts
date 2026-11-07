@@ -63,7 +63,7 @@ describe("group scoped youth trainer attendance", () => {
   });
 
   it("rejects foreign, unassigned, duplicate and inactive trainer IDs before any write", async () => {
-    const save = vi.fn(async () => session(["trainer-a"]));
+    const save = vi.fn(async (..._args: unknown[]) => session(["trainer-a"]));
     const service = createUlcU12Service({
       masterdata: { async readOrganizationSnapshot() { return masterdata(); } },
       moduleGroups: { async readGroupId() { return groupId; } },
