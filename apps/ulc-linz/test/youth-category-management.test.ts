@@ -116,7 +116,7 @@ describe("ULC cross-group category isolation", () => {
   });
 
   it("seeds and loads independent U14 and Kindertraining catalogs without writing to U12", async () => {
-    const calls: Array<{ sql: string; params?: unknown[] }> = [];
+    const calls: Array<{ sql: string; params: readonly unknown[] | undefined }> = [];
     const repository = new PostgresUlcYouthCategoryRepository({
       async unsafe(sql, params) {
         calls.push({ sql, params });
@@ -138,7 +138,7 @@ describe("ULC cross-group category isolation", () => {
   });
 
   it("creates and updates group categories with mandatory organization and area predicates", async () => {
-    const calls: Array<{ sql: string; params?: unknown[] }> = [];
+    const calls: Array<{ sql: string; params: readonly unknown[] | undefined }> = [];
     const repository = new PostgresUlcYouthCategoryRepository({
       async unsafe(sql, params) {
         calls.push({ sql, params });
