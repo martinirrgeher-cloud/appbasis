@@ -76,7 +76,8 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_SCRIPT).toContain('encodeURIComponent(groupId) + "&sessionDate=" + encodeURIComponent(date)');
     expect(ULC_U12_SCRIPT).toContain('requestJson("/api/modules/u12/session", {');
     expect(ULC_U12_SCRIPT).toContain('expectedRevision: u12Snapshot.session?.revision ?? null');
-    expect(ULC_U12_SCRIPT).toContain('status: u12Present.get(person.athleteId) === true ? "present" : "absent"');
+    expect(ULC_U12_SCRIPT).toContain('status: u12TouchedAthletes.has(person.athleteId)');
+    expect(ULC_U12_SCRIPT).toContain(': person.status,');
     expect(ULC_U12_SCRIPT).toContain('state: u12Snapshot.session?.state ?? "scheduled"');
     expect(ULC_U12_SCRIPT).toContain('note: u12Note.trim() || null');
     expect(ULC_U12_SCRIPT).toContain('error?.status === 409');
