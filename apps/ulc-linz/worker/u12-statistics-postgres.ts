@@ -25,6 +25,7 @@ export interface UlcU12AthleteStatistics {
 export interface UlcU12TrainingStatistics {
   readonly date: string;
   readonly presentCount: number;
+  readonly trainerPresentCount: number;
   readonly registeredCount: number;
   readonly categoryCount: number;
 }
@@ -37,6 +38,7 @@ export interface UlcU12StatisticsReport {
   readonly summary: Readonly<{
     trainings: number;
     attendance: number;
+    trainerAttendances: number;
     categories: number;
   }>;
 }
@@ -71,6 +73,7 @@ interface RawRow {
   session_date?: unknown;
   content_titles?: unknown;
   content_items?: unknown;
+  trainer_count?: unknown;
   athlete_id?: unknown;
   status?: unknown;
   content_slots?: unknown;
@@ -94,8 +97,8 @@ export function aggregateU12Statistics(
       attended: 0, categories: new Map(),
     });
   }
-  const sessions = new Map<string, { date: string; present: Set<string>; registered: Set<string>;
-    categories: Set<string> }>();
+  const sessions = new Map<string, { date: string; trainerPresentCount: number;
+    present: Set<string>; registered: Set<string>; categories: Set<string> }>();
   const categoryTotals = new Map<string, { code: string; label: string; trainings: Set<string>; assignments: number }>();
   for (const row of rows) {
     const sessionId = identifier(row.session_id as string);
@@ -108,12 +111,20 @@ export function aggregateU12Statistics(
         (items.length !== 0 && items.length !== titles.length)) {
       throw new UlcTrainingValidationError("Malformed stored U12 category metadata.");
     }
+    // The database returns one trainer total per scoped training session, repeated
+    // for its athlete rows. Reject corrupt or inconsistent aggregates.
+    const trainerCount = row.trainer_count;
+    if (typeof trainerCount !== "number" || !Number.isSafeInteger(trainerCount) ||
+        trainerCount < 0) {
+      throw new UlcTrainingValidationError("Invalid stored trainer attendance count.");
+    }
     let session = sessions.get(sessionId);
     if (!session) {
-      session = { date, present: new Set(), registered: new Set(), categories: new Set() };
+      session = { date, trainerPresentCount: trainerCount,
+        present: new Set(), registered: new Set(), categories: new Set() };
       sessions.set(sessionId, session);
-    } else if (session.date !== date) {
-      throw new UlcTrainingValidationError("Inconsistent U12 session date.");
+    } else if (session.date !== date || session.trainerPresentCount !== trainerCount) {
+      throw new UlcTrainingValidationError("Inconsistent training session statistics.");
     }
     const selectedCategories = new Map<number, string>();
     for (const [index, entry] of items.entries()) {
@@ -163,6 +174,7 @@ export function aggregateU12Statistics(
   const trainings = [...sessions.values()].map((session) => Object.freeze({
     date: session.date,
     presentCount: session.present.size,
+    trainerPresentCount: session.trainerPresentCount,
     registeredCount: session.registered.size,
     categoryCount: session.categories.size,
   })).sort((a,b) => b.date.localeCompare(a.date));
@@ -189,6 +201,7 @@ export function aggregateU12Statistics(
     summary: Object.freeze({
       trainings: trainings.length,
       attendance: trainings.reduce((sum,session)=>sum+session.presentCount,0),
+      trainerAttendances: trainings.reduce((sum,session)=>sum+session.trainerPresentCount,0),
       categories: categories.length,
     }),
   });
@@ -214,6 +227,10 @@ export class PostgresUlcU12StatisticsRepository {
               session.session_date::text AS session_date,
               session.training_content_titles AS content_titles,
               session.training_content_items AS content_items,
+              (SELECT COUNT(*)::int
+                 FROM ulc_linz_training_trainer_attendance AS trainer
+                WHERE trainer.organization_id = session.organization_id
+                  AND trainer.session_id = session.id) AS trainer_count,
               attendance.athlete_id,
               attendance.status,
               attendance.training_content_slots AS content_slots
