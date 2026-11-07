@@ -33,13 +33,12 @@ export const ULC_U12_HTML = `
                 </div>
                 <button class="button button--primary" type="button" id="u12-save" disabled>Training speichern</button>
               </div>
-              <details class="u12-content-card" id="u12-content-card">
+              <div class="u12-content-shell">
+                <details class="u12-content-card" id="u12-content-card">
                 <summary class="u12-content-summary">
                   <span>Trainingsinhalte <small id="u12-content-count">0 / 5</small></span>
                   <span aria-hidden="true">⌄</span>
                 </summary>
-                <button class="u12-category-shortcut" type="button" data-youth-category-area="u12" hidden disabled
-                  aria-label="U12-Trainingskategorien bearbeiten" title="Trainingskategorien bearbeiten">⚙</button>
                 <div class="u12-content-body">
                   <div id="u12-content-rows" class="u12-content-rows"></div>
                   <div class="u12-content-actions">
@@ -47,7 +46,10 @@ export const ULC_U12_HTML = `
                     <button type="button" class="button button--secondary u12-content-assign" id="u12-content-assign" aria-haspopup="dialog" aria-controls="u12-assignment-section" disabled>Inhalte zuordnen</button>
                   </div>
                 </div>
-              </details>
+                </details>
+                <button class="u12-category-shortcut" type="button" data-youth-category-area="u12" hidden disabled
+                  aria-label="U12-Trainingskategorien bearbeiten" title="Trainingskategorien bearbeiten">⚙</button>
+              </div>
               <div class="u12-attendance-toolbar">
                 <strong>Anwesenheit</strong>
                 <div class="u12-attendance-toolbar__actions">
@@ -138,7 +140,7 @@ export const ULC_U12_CSS = `
 .u12-attendance-toolbar > strong { font-size:.92rem; }
 .u12-attendance-toolbar__actions { display:flex; align-items:center; gap:5px; }
 .u12-statistics-open { min-height:42px; padding:0 10px; font-size:.82rem; }
-.u12-content-card { position:relative; }
+.u12-content-shell { position:relative; min-width:0; }
 .u12-category-shortcut { position:absolute; top:3px; right:38px; width:40px; min-width:40px; height:40px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--text); font-size:1.1rem; cursor:pointer; z-index:1; }
 .u12-category-shortcut[hidden] { display:none !important; }
 .u12-category-shortcut:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
