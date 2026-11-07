@@ -33,6 +33,10 @@ import {
   ULC_U12_CSS,
   ULC_U12_SCRIPT,
 } from "./u12-ui";
+import {
+  ULC_U14_HTML, ULC_U14_CSS, ULC_U14_SCRIPT,
+  ULC_KIDS_HTML, ULC_KIDS_CSS, ULC_KIDS_SCRIPT,
+} from "./youth-attendance-ui";
 import { generatedPwaResponse } from "./pwa";
 
 export const ULC_LINZ_APP_HTML = `<!doctype html>
@@ -106,11 +110,11 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <button class="app-nav__attendance-item" type="button" data-attendance-target="u12" hidden disabled>
               <strong>U12</strong><small>Anwesenheit und Inhalte</small>
             </button>
-            <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="kindertraining" hidden disabled>
-              <strong>Kindertraining</strong><small>Anwesenheit</small>
+            <button class="app-nav__attendance-item" type="button" data-attendance-target="kids" hidden disabled>
+              <strong>Kindertraining</strong><small>Anwesenheit, Inhalte und Statistik</small>
             </button>
-            <button class="app-nav__attendance-item" type="button" data-attendance-target="categories" data-youth-category-area="u14" hidden disabled title="U14-Kategorien bearbeiten">
-              <strong>U14</strong><small>Kategorien bearbeiten · Anwesenheit folgt</small>
+            <button class="app-nav__attendance-item" type="button" data-attendance-target="u14" hidden disabled>
+              <strong>U14</strong><small>Anwesenheit, Inhalte und Statistik</small>
             </button>
             <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="irrgeher" hidden disabled>
               <strong>Gruppe Irrgeher</strong><small>Anwesenheit</small>
@@ -624,6 +628,8 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
           </section>
 
 ${ULC_U12_HTML}
+${ULC_U14_HTML}
+${ULC_KIDS_HTML}
           <section class="app-section" data-app-section="kindertraining" id="kindertraining" hidden>
             <header class="kindertraining-head">
               <h1>Anwesenheit</h1>
@@ -2174,6 +2180,8 @@ ${ULC_USER_ADMIN_CSS}
 
 #app-nav-attendance[aria-expanded="true"] { background: #dbeafe; color: #1d4ed8; }
 ${ULC_U12_CSS}
+${ULC_U14_CSS}
+${ULC_KIDS_CSS}
 ${ULC_YOUTH_CATEGORY_CSS}
 `;
 
@@ -2868,6 +2876,10 @@ for (const control of document.querySelectorAll("[data-attendance-target]")) {
     setAppNavAttendanceOpen(false);
     if (control.dataset.attendanceTarget === "u12") {
       void navigateAppSection("u12");
+    } else if (control.dataset.attendanceTarget === "u14") {
+      void navigateAppSection("u14");
+    } else if (control.dataset.attendanceTarget === "kids") {
+      void navigateAppSection("kids");
     } else if (control.dataset.attendanceTarget === "kindertraining") {
       void navigateToAttendanceGroup(control.dataset.attendanceGroup || "");
     } else if (control.dataset.attendanceTarget === "categories") {
@@ -2902,6 +2914,8 @@ ${ULC_USER_ADMIN_SCRIPT}
 ${ULC_YOUTH_CATEGORY_SCRIPT}
 
 ${ULC_U12_SCRIPT}
+${ULC_U14_SCRIPT}
+${ULC_KIDS_SCRIPT}
 
 void restoreSession();
 
@@ -2999,6 +3013,8 @@ function resetAttendanceSessionState() {
   renderSelfRegistration();
 
   resetU12SessionState();
+  resetU14SessionState();
+  resetKidsSessionState();
   kindertrainingReady = false;
   kindertrainingLoading = false;
   kindertrainingGroups = [];
@@ -3210,6 +3226,8 @@ async function acceptSession(next) {
     bootstrapSelfRegistration(),
     bootstrapKindertraining(),
     bootstrapU12(),
+    bootstrapU14(),
+    bootstrapKids(),
     bootstrapExerciseCatalog(),
     bootstrapTrainingBlocks(),
     bootstrapTrainingPlans(),
@@ -4851,12 +4869,14 @@ function isAppNavigationAvailable(section) {
   if (section === "masterdata") return masterdataReady;
   if (section === "users") return userAdminReady;
   if (section === "registration") return selfRegistrationReady;
-  if (section === "attendance") return u12Ready ||
+  if (section === "attendance") return u12Ready || u14Ready || kidsReady ||
     (kindertrainingReady &&
       (findAttendanceTrainingGroup("kindertraining") !== null ||
        findAttendanceTrainingGroup("irrgeher") !== null));
   if (section === "kindertraining") return kindertrainingReady;
   if (section === "u12") return u12Ready;
+  if (section === "u14") return u14Ready;
+  if (section === "kids") return kidsReady;
   if (section === "exercise-catalog") return exerciseCatalogReady;
   if (section === "training-blocks") return trainingBlocksReady;
   if (section === "training-plans") return trainingPlansReady;
@@ -4967,7 +4987,7 @@ function setAppNavMoreOpen(open) {
 
 function syncAppNavigationActive(section) {
   const navigationSection = section === "countdown" ? "useful" :
-    (section === "u12" || section === "kindertraining") ? "attendance" : section;
+    (["u12", "u14", "kids", "kindertraining"].includes(section)) ? "attendance" : section;
   for (const control of document.querySelectorAll("[data-nav-view]")) {
     control.classList.toggle(
       "is-active",
@@ -4996,7 +5016,9 @@ function refreshAppAvailability() {
   for (const choice of document.querySelectorAll("[data-attendance-target]")) {
     const target = choice.dataset.attendanceTarget || "";
     const available = target === "u12" ? u12Ready :
-      target === "categories" ? (u12Ready || kindertrainingReady) :
+      target === "u14" ? u14Ready :
+      target === "kids" ? kidsReady :
+      target === "categories" ? (u12Ready || kindertrainingReady || u14Ready) :
       target === "kindertraining" &&
       findAttendanceTrainingGroup(choice.dataset.attendanceGroup || "") !== null;
     choice.hidden = !available;
@@ -5005,8 +5027,8 @@ function refreshAppAvailability() {
   for (const control of document.querySelectorAll("[data-youth-category-area]")) {
     const area = control.dataset.youthCategoryArea;
     const available = area === "u12" ? u12Ready :
-      area === "kindertraining" ? kindertrainingReady :
-      area === "u14" && (u12Ready || kindertrainingReady);
+      area === "kindertraining" ? (kidsReady || kindertrainingReady) :
+      area === "u14" && u14Ready;
     control.disabled = !available;
     control.hidden = !available;
   }
@@ -5130,6 +5152,8 @@ function showAppSection(section) {
     (section === "registration" && selfRegistrationReady) ||
     (section === "kindertraining" && kindertrainingReady) ||
     (section === "u12" && u12Ready) ||
+    (section === "u14" && u14Ready) ||
+    (section === "kids" && kidsReady) ||
     (section === "exercise-catalog" && exerciseCatalogReady) ||
     (section === "training-blocks" && trainingBlocksReady) ||
     (section === "training-plans" && trainingPlansReady) ||
@@ -5156,6 +5180,8 @@ function showAppSection(section) {
   if (target === "registration") prepareSelfRegistrationView();
   if (target === "kindertraining") prepareKindertrainingView();
   if (target === "u12") prepareU12View();
+  if (target === "u14") prepareU14View();
+  if (target === "kids") prepareKidsView();
   if (target === "exercise-catalog") prepareExerciseCatalogView();
   if (target === "training-blocks") prepareTrainingBlocksView();
   if (target === "training-plans") prepareTrainingPlansView();
