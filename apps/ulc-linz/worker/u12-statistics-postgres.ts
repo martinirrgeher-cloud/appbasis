@@ -1,4 +1,4 @@
-import { UlcTrainingValidationError } from "./training-session-domain";
+import { UlcTrainingValidationError, type UlcTrainingModule } from "./training-session-domain";
 
 type Parameter = string | number | boolean | null;
 export interface UlcU12StatisticsSqlClient {
@@ -195,7 +195,10 @@ export function aggregateU12Statistics(
 }
 
 export class PostgresUlcU12StatisticsRepository {
-  constructor(private readonly sql: UlcU12StatisticsSqlClient) {}
+  constructor(
+    private readonly sql: UlcU12StatisticsSqlClient,
+    private readonly moduleId: UlcTrainingModule = "u12",
+  ) {}
   async read(
     organizationId: string,
     groupId: string,
@@ -205,6 +208,7 @@ export class PostgresUlcU12StatisticsRepository {
   ): Promise<UlcU12StatisticsReport> {
     const scope = [identifier(organizationId), identifier(groupId)];
     const interval = validateU12StatisticsDateRange(from, to);
+    const areaPredicate = this.moduleId === "u12" ? "'u12'" : "$5";
     const rows = await this.sql.unsafe(
       `SELECT session.id AS session_id,
               session.session_date::text AS session_date,
@@ -219,12 +223,13 @@ export class PostgresUlcU12StatisticsRepository {
           AND attendance.session_id = session.id
         WHERE session.organization_id = $1
           AND session.group_id = $2
-          AND session.module_id = 'u12'
+          AND session.module_id = ${areaPredicate}
           AND session.state = 'scheduled'
           AND session.session_date >= $3::date
           AND session.session_date <= $4::date
         ORDER BY session.session_date DESC, session.id, attendance.athlete_id`,
-      [...scope, interval.from, interval.to],
+      [...scope, interval.from, interval.to,
+        ...(this.moduleId === "u12" ? [] : [this.moduleId])],
     );
     return aggregateU12Statistics(rows, roster, interval.from, interval.to);
   }
