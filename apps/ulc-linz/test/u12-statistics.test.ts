@@ -111,7 +111,7 @@ describe("U12 statistics and mobile navigation", () => {
 
   it("moves U12 category settings into content panel and the plus action beside attendance", () => {
     const contentIndex = ULC_U12_HTML.indexOf('id="u12-content-card"');
-    const settingsIndex = ULC_U12_HTML.indexOf('class="u12-category-shortcut"');
+    const settingsIndex = ULC_U12_HTML.indexOf('class="u12-category-shortcut ab-icon-button"');
     const attendanceIndex = ULC_U12_HTML.indexOf('class="u12-attendance-toolbar"');
     const plusIndex = ULC_U12_HTML.indexOf('id="u12-add-athlete"');
     expect(contentIndex).toBeGreaterThan(0);
