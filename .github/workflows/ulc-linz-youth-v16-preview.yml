@@ -94,8 +94,8 @@ jobs:
             throw new Error("Refusing non-preview target");
           NODE
 
-      - name: Verify trainer attendance schema-v15 prerequisite
-        run: node ./tooling/ulc-linz-youth-trainers-preview.mjs verify
+      - name: Verify group categories schema-v15 prerequisite
+        run: node ./tooling/ulc-linz-youth-areas-preview.mjs verify
 
       - name: Inspect trainer attendance schema-v16
         id: v16
