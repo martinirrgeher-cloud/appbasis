@@ -1966,7 +1966,7 @@ async function u12StatisticsResponse(
   const groupId = url.searchParams.get("groupId");
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
-  if (!groupId || !from || !to || url.searchParams.keys().some(
+  if (!groupId || !from || !to || [...url.searchParams.keys()].some(
     (key) => !["groupId", "from", "to"].includes(key),
   )) {
     return Response.json({ error: { code: "INVALID_U12_STATISTICS_RANGE" } }, { status: 400 });
