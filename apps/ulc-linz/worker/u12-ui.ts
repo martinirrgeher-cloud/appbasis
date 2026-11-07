@@ -301,6 +301,18 @@ const u12Ui = {
   reload: document.querySelector("#u12-reload"),
   today: document.querySelector("#u12-today"),
   addAthlete: document.querySelector("#u12-add-athlete"),
+  statsOpen: document.querySelector("#u12-statistics-open"),
+  statsDialog: document.querySelector("#u12-statistics-dialog"),
+  statsClose: document.querySelector("#u12-statistics-close"),
+  statsFilter: document.querySelector("#u12-statistics-filter"),
+  statsFrom: document.querySelector("#u12-statistics-from"),
+  statsTo: document.querySelector("#u12-statistics-to"),
+  statsError: document.querySelector("#u12-statistics-error"),
+  statsState: document.querySelector("#u12-statistics-state"),
+  statsSummary: document.querySelector("#u12-statistics-summary"),
+  statsTrainings: document.querySelector("#u12-statistics-trainings"),
+  statsAthletes: document.querySelector("#u12-statistics-athletes"),
+  statsCategories: document.querySelector("#u12-statistics-categories"),
   contentCard: document.querySelector("#u12-content-card"),
   contentCount: document.querySelector("#u12-content-count"),
   contentRows: document.querySelector("#u12-content-rows"),
@@ -350,6 +362,7 @@ let u12DirtyDates = new Set();
 let u12Loading = false;
 let u12Saving = false;
 let u12Conflict = false;
+let u12StatisticsLoadId = 0;
 let u12LoadId = 0;
 
 function resetU12SessionState() {
@@ -542,6 +555,8 @@ function refreshU12Controls() {
   if (u12Ui.contentAssign) {
     u12Ui.contentAssign.disabled = !u12Snapshot || busy || u12ContentTitles.length === 0;
   }
+  if (u12Ui.statsOpen) u12Ui.statsOpen.disabled = !u12Ready || busy ||
+    !u12Ui.group?.value || !u12Snapshot;
   refreshU12MatrixControls(editable);
   refreshU12AssignmentSummaries();
   if (u12Ui.addAthlete) {
@@ -891,6 +906,165 @@ function changeU12MatrixColumn(slot, checked) {
     u12ContentAssignments.set(person.athleteId, selected);
   }
   markU12DraftDirty();
+}
+
+function u12StatisticsDefaultRange() {
+  const today = new Date();
+  const day = today.getDate();
+  const start = new Date(today.getFullYear(), today.getMonth() - 3, 1);
+  const endOfMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+  start.setDate(Math.min(day, endOfMonth));
+  return { from: localIsoDate(start), to: localIsoDate(today) };
+}
+
+function selectU12StatisticsTab(tab) {
+  if (!["trainings", "athletes", "categories"].includes(tab)) return;
+  for (const button of u12Ui.statsDialog?.querySelectorAll("[data-u12-stats-tab]") ?? []) {
+    button.setAttribute("aria-pressed", String(button.dataset.u12StatsTab === tab));
+  }
+  for (const panel of u12Ui.statsDialog?.querySelectorAll("[data-u12-stats-panel]") ?? []) {
+    panel.hidden = panel.dataset.u12StatsPanel !== tab;
+  }
+}
+
+function appendU12StatisticsLine(container, left, right, helper = "") {
+  if (!container) return;
+  const row = document.createElement("div");
+  row.className = "u12-statistics-line";
+  const body = document.createElement("span");
+  body.textContent = left;
+  if (helper) {
+    const note = document.createElement("small");
+    note.textContent = helper;
+    body.append(document.createElement("br"), note);
+  }
+  const value = document.createElement("strong");
+  value.textContent = String(right);
+  row.append(body, value);
+  container.append(row);
+}
+
+function renderU12Statistics(report) {
+  if (!report || !report.summary || !Array.isArray(report.trainings) ||
+      !Array.isArray(report.athletes) || !Array.isArray(report.categories)) {
+    throw new Error("U12_STATISTICS_INVALID");
+  }
+  u12Ui.statsSummary?.replaceChildren();
+  const kpis = [
+    ["Trainings", report.summary.trainings],
+    ["Anwesenheiten", report.summary.attendance],
+    ["Kategorien", report.summary.categories],
+  ];
+  for (const [label, count] of kpis) {
+    const card = document.createElement("div");
+    card.className = "u12-statistics-kpi";
+    const strong = document.createElement("strong");
+    strong.textContent = String(count);
+    const small = document.createElement("small");
+    small.textContent = label;
+    card.append(strong, small);
+    u12Ui.statsSummary?.append(card);
+  }
+  u12Ui.statsTrainings?.replaceChildren();
+  u12Ui.statsAthletes?.replaceChildren();
+  u12Ui.statsCategories?.replaceChildren();
+  for (const training of report.trainings) {
+    appendU12StatisticsLine(
+      u12Ui.statsTrainings, germanDate(training.date),
+      training.presentCount + " anwesend",
+      training.categoryCount + " Kategorien · " + training.registeredCount + " erfasst",
+    );
+  }
+  for (const athlete of report.athletes) {
+    const details = document.createElement("details");
+    details.className = "u12-statistics-athlete";
+    const summary = document.createElement("summary");
+    const name = document.createElement("span");
+    name.textContent = athlete.lastName + " " + athlete.firstName;
+    const count = document.createElement("strong");
+    count.textContent = athlete.attended + " ×";
+    summary.append(name, count);
+    const contents = document.createElement("div");
+    contents.className = "u12-statistics-athlete__detail";
+    if (!Array.isArray(athlete.categories) || athlete.categories.length === 0) {
+      contents.textContent = "Keine standardisierten Trainingsinhalte zugeordnet.";
+    } else {
+      for (const category of athlete.categories) {
+        const row = document.createElement("div");
+        const label = document.createElement("span");
+        label.textContent = category.label;
+        const value = document.createElement("strong");
+        value.textContent = category.count + " ×";
+        row.append(label, value);
+        contents.append(row);
+      }
+    }
+    details.append(summary, contents);
+    u12Ui.statsAthletes?.append(details);
+  }
+  for (const category of report.categories) {
+    appendU12StatisticsLine(
+      u12Ui.statsCategories, category.label, category.trainings + " Trainings",
+      category.assignments + " Athleten-Zuordnungen",
+    );
+  }
+  for (const [list, hasEntries, emptyText] of [
+    [u12Ui.statsTrainings, report.trainings.length > 0, "Keine gespeicherten U12-Trainings im Zeitraum."],
+    [u12Ui.statsAthletes, report.athletes.length > 0, "Keine U12-Athleten im Zeitraum."],
+    [u12Ui.statsCategories, report.categories.length > 0, "Keine standardisierten Kategorien verwendet."],
+  ]) {
+    if (!hasEntries && list) {
+      const empty = document.createElement("p");
+      empty.className = "u12-statistics-state";
+      empty.textContent = emptyText;
+      list.append(empty);
+    }
+  }
+}
+
+async function loadU12Statistics() {
+  const groupId = u12Ui.group?.value || "";
+  const from = u12Ui.statsFrom?.value || "";
+  const to = u12Ui.statsTo?.value || "";
+  const id = ++u12StatisticsLoadId;
+  if (!groupId || !u12Ui.statsDialog?.open) return;
+  showMessage(u12Ui.statsError, "");
+  u12Ui.statsState.textContent = "Statistik wird geladen …";
+  u12Ui.statsSummary?.replaceChildren();
+  u12Ui.statsTrainings?.replaceChildren();
+  u12Ui.statsAthletes?.replaceChildren();
+  u12Ui.statsCategories?.replaceChildren();
+  for (const input of [u12Ui.statsFrom, u12Ui.statsTo]) input.disabled = true;
+  try {
+    if (!from || !to || from > to) throw new Error("INVALID_RANGE");
+    const payload = await requestJson("/api/modules/u12/statistics?groupId=" +
+      encodeURIComponent(groupId) + "&from=" + encodeURIComponent(from) +
+      "&to=" + encodeURIComponent(to));
+    if (id !== u12StatisticsLoadId || !u12Ui.statsDialog.open ||
+        groupId !== u12Ui.group?.value) return;
+    renderU12Statistics(payload?.report);
+    u12Ui.statsState.textContent = "Nur gespeicherte Anwesenheiten · " +
+      germanDate(from) + " – " + germanDate(to) + ".";
+  } catch {
+    if (id === u12StatisticsLoadId && u12Ui.statsDialog.open) {
+      u12Ui.statsState.textContent = "";
+      showMessage(u12Ui.statsError, "Statistik konnte nicht geladen werden. Zeitraum prüfen und erneut versuchen.");
+    }
+  } finally {
+    if (id === u12StatisticsLoadId) {
+      for (const input of [u12Ui.statsFrom, u12Ui.statsTo]) input.disabled = false;
+    }
+  }
+}
+
+function openU12Statistics() {
+  if (!u12Ui.statsDialog || u12Ui.statsDialog.open || !u12Ready || !u12Snapshot) return;
+  const range = u12StatisticsDefaultRange();
+  u12Ui.statsFrom.value = range.from;
+  u12Ui.statsTo.value = range.to;
+  selectU12StatisticsTab("trainings");
+  u12Ui.statsDialog.showModal();
+  void loadU12Statistics();
 }
 
 function renderU12Attendance() {
@@ -1251,6 +1425,17 @@ u12Ui.prev?.addEventListener("click", () => void u12MoveDate(-1));
 u12Ui.next?.addEventListener("click", () => void u12MoveDate(1));
 u12Ui.today?.addEventListener("click", () => void u12GoToday());
 u12Ui.addAthlete?.addEventListener("click", () => void openU12NewAthlete());
+u12Ui.statsOpen?.addEventListener("click", () => openU12Statistics());
+u12Ui.statsClose?.addEventListener("click", () => u12Ui.statsDialog?.close());
+u12Ui.statsDialog?.addEventListener("close", () => { u12StatisticsLoadId += 1; });
+u12Ui.statsFilter?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void loadU12Statistics();
+});
+u12Ui.statsDialog?.addEventListener("click", (event) => {
+  const tab = event.target?.closest?.("[data-u12-stats-tab]");
+  if (tab) selectU12StatisticsTab(tab.dataset.u12StatsTab || "");
+});
 u12Ui.detailsClose?.addEventListener("click", () => u12Ui.detailsDialog?.close());
 u12Ui.days?.addEventListener("click", (event) => {
   const info = event.target?.closest?.("[data-u12-info-id]");
