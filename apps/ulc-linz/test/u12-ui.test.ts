@@ -172,7 +172,9 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_CSS).toContain(".u12-person { display:grid; align-items:center;");
     expect(ULC_U12_CSS).toContain(".u12-roster-hint { display:block; padding:2px 4px 6px;");
     expect(ULC_U12_HTML).toContain('aria-label="Speichern erneut versuchen" hidden disabled>Erneut versuchen</button>');
-    expect(ULC_U12_SCRIPT).toContain('"✓ = anwesend · leer = nicht anwesend"');
+    expect(ULC_U12_SCRIPT).not.toContain('"✓ = anwesend · leer = nicht anwesend"');
+    expect(ULC_U12_CSS).toContain('.u12-person__answer:has(input:checked)');
+    expect(ULC_U12_SCRIPT).toContain('Dieser Trainingstermin ist abgesagt.');
     expect(ULC_U12_SCRIPT).toContain('input.dataset.u12AthleteId = person.athleteId');
     expect(ULC_U12_SCRIPT).toContain('row.append(summary)');
     expect(ULC_U12_SCRIPT).toContain("u12DirtyDates.clear()");
