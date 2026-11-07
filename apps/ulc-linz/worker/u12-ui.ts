@@ -87,7 +87,7 @@ export const ULC_U12_HTML = `
                 <table class="u12-matrix-table" id="u12-assignment-matrix"></table>
               </div>
               <footer class="u12-matrix-dialog__footer">
-                <small>Die Änderungen werden mit „Training speichern“ gesichert.</small>
+                <small>Die Zuordnungen werden automatisch gespeichert.</small>
                 <button type="button" class="button button--primary" id="u12-assignment-done">Fertig</button>
               </footer>
             </dialog>
