@@ -170,7 +170,7 @@ jobs:
           APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
-        run: node ./tooling/ulc-linz-youth-categories-preview.mjs verify
+        run: node ./tooling/ulc-linz-youth-areas-preview.mjs verify
 
 
       - name: Resolve preview worker and URL
