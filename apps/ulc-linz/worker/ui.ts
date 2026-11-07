@@ -109,9 +109,9 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="kindertraining" hidden disabled>
               <strong>Kindertraining</strong><small>Anwesenheit</small>
             </button>
-            <div class="app-nav__attendance-item app-nav__attendance-item--pending" aria-disabled="true">
-              <strong>U14</strong><small>Anwesenheit in Vorbereitung</small>
-            </div>
+            <button class="app-nav__attendance-item" type="button" data-attendance-target="categories" data-youth-category-area="u14" hidden disabled title="U14-Kategorien bearbeiten">
+              <strong>U14</strong><small>Kategorien bearbeiten · Anwesenheit folgt</small>
+            </button>
             <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="irrgeher" hidden disabled>
               <strong>Gruppe Irrgeher</strong><small>Anwesenheit</small>
             </button>
@@ -2869,6 +2869,8 @@ for (const control of document.querySelectorAll("[data-attendance-target]")) {
       void navigateAppSection("u12");
     } else if (control.dataset.attendanceTarget === "kindertraining") {
       void navigateToAttendanceGroup(control.dataset.attendanceGroup || "");
+    } else if (control.dataset.attendanceTarget === "categories") {
+      void openYouthCategoryManagement("u14");
     }
   });
 }
@@ -4993,6 +4995,7 @@ function refreshAppAvailability() {
   for (const choice of document.querySelectorAll("[data-attendance-target]")) {
     const target = choice.dataset.attendanceTarget || "";
     const available = target === "u12" ? u12Ready :
+      target === "categories" ? (u12Ready || kindertrainingReady) :
       target === "kindertraining" &&
       findAttendanceTrainingGroup(choice.dataset.attendanceGroup || "") !== null;
     choice.hidden = !available;
