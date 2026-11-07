@@ -94,7 +94,7 @@ export const ULC_U12_HTML = `
                 <label for="u12-statistics-to">Bis
                   <input id="u12-statistics-to" type="date" required />
                 </label>
-                <button type="submit" class="button button--primary">Anwenden</button>
+                <button type="submit" class="button button--primary" aria-label="Zeitraum auswerten" title="Zeitraum auswerten">↻</button>
               </form>
               <p class="message message--error" id="u12-statistics-error" role="alert" hidden></p>
               <p class="u12-statistics-state" id="u12-statistics-state" role="status"></p>
@@ -197,7 +197,7 @@ export const ULC_U12_CSS = `
 .u12-statistics-filter { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)) 42px; gap:6px; align-items:end; margin:0; padding:8px 10px; }
 .u12-statistics-filter label { display:grid; gap:3px; min-width:0; font-size:.73rem; font-weight:700; color:var(--secondary); }
 .u12-statistics-filter input { box-sizing:border-box; display:block; width:100%; min-width:0; min-height:42px; padding:5px 4px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:.8rem; }
-.u12-statistics-filter button { min-height:42px; padding:0 5px; font-size:.68rem; }
+.u12-statistics-filter button { min-height:42px; padding:0; font-size:1.15rem; }
 .u12-statistics-state { margin:0 10px 5px; font-size:.75rem; color:var(--secondary); }
 .u12-statistics-dialog .message { margin:5px 10px; }
 .u12-statistics-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin:4px 10px 8px; }
@@ -221,7 +221,7 @@ export const ULC_U12_CSS = `
 .u12-statistics-athlete summary strong { white-space:nowrap; }
 .u12-statistics-athlete__detail { padding:3px 10px 9px; border-top:1px solid var(--border); display:grid; gap:5px; font-size:.75rem; }
 .u12-statistics-athlete__detail > div { display:flex; justify-content:space-between; gap:6px; }
-@media(max-width:370px) { .u12-statistics-filter { grid-template-columns:repeat(2,minmax(0,1fr)); } .u12-statistics-filter button { grid-column:1/-1; font-size:.8rem; } .u12-statistics-tabs button { font-size:.75rem; } }
+@media(max-width:370px) { .u12-statistics-filter input { font-size:.76rem; } .u12-statistics-tabs button { font-size:.75rem; } }
 .u12-person { display:grid !important; grid-template-columns:minmax(0,1fr) 44px; column-gap:8px; }
 .u12-person__toggle { grid-column:1; }
 .u12-person:not(:has(.u12-info)) > .u12-person__toggle { grid-column:1 / -1; }
