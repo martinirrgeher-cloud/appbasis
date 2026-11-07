@@ -13,8 +13,11 @@ function areaUi(source: string, prefix: "u14" | "kids", area: "u14" | "kindertra
   // The UI prefix for Kindertraining intentionally differs from the canonical
   // area key to avoid colliding with the existing Irrgeher weekly module.
   if (area === "kindertraining") {
-    output = output.replaceAll("KIDS · Anwesenheit", "Kindertraining · Anwesenheit")
-      .replaceAll("KIDS-Gruppe", "Kindertraining-Gruppe");
+    // Transform uppercase U12 identifiers into the camel-case Kids prefix,
+    // matching the shared runtime lifecycle and category callback.
+    output = output.replaceAll("KIDS", "Kids")
+      .replaceAll("Kids · Anwesenheit", "Kindertraining · Anwesenheit")
+      .replaceAll("Kids-Gruppe", "Kindertraining-Gruppe");
   }
   if (source === ULC_U12_SCRIPT) {
     output = output.replaceAll(
