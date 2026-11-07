@@ -45,7 +45,6 @@ export const ULC_U12_HTML = `
                   <span aria-hidden="true">⌄</span>
                 </summary>
                 <div class="u12-content-body">
-                  <p>Bis zu fünf Inhalte mit optionaler Zusatzinfo.</p>
                   <div id="u12-content-rows" class="u12-content-rows"></div>
                   <div class="u12-content-actions">
                     <button type="button" class="u12-content-add" id="u12-content-add">＋ Inhalt</button>
@@ -444,7 +443,8 @@ function refreshU12Controls() {
     input.disabled = !editable;
   }
   if (u12Ui.contentAdd) {
-    u12Ui.contentAdd.disabled = !editable || u12ContentTitles.length >= 5;
+    u12Ui.contentAdd.disabled = !editable || u12ContentTitles.length >= 5 ||
+      U12_STANDARD_CONTENT_CATALOG.length === 0;
     u12Ui.contentAdd.hidden = u12ContentTitles.length >= 5;
   }
   if (u12Ui.contentCount) {
@@ -578,12 +578,17 @@ function addU12Content() {
   if (!u12Snapshot || u12ContentTitles.length >= 5 || u12Loading ||
       u12Saving || !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return;
-  u12ContentTitles.push("");
-  u12ContentItems.push({ code: "", detail: "" });
+  const initial = U12_STANDARD_CONTENT_CATALOG[0];
+  if (!initial) {
+    showMessage(u12Ui.message, "Bitte zuerst eine U12-Kategorie über ⚙ anlegen oder aktivieren.");
+    return;
+  }
+  u12ContentTitles.push(initial.label);
+  u12ContentItems.push({ code: initial.code, detail: "" });
   if (u12Ui.contentCard) u12Ui.contentCard.open = true;
   renderU12Attendance();
   markU12DraftDirty();
-  u12Ui.contentRows?.querySelectorAll("[data-u12-title-index]")[u12ContentTitles.length - 1]?.focus();
+  u12Ui.contentRows?.querySelectorAll("[data-u12-code-index]")[u12ContentTitles.length - 1]?.focus();
 }
 
 function removeU12Content(index) {
@@ -941,7 +946,7 @@ async function saveU12Attendance() {
   if (invalidTitleIndex !== -1) {
     if (u12Ui.contentCard) u12Ui.contentCard.open = true;
     showMessage(u12Ui.message, "Bitte alle Trainingsinhalte benennen (maximal 120 Zeichen).");
-    u12Ui.contentRows?.querySelector('[data-u12-title-index="' + invalidTitleIndex + '"]')?.focus();
+    u12Ui.contentRows?.querySelector('[data-u12-code-index="' + invalidTitleIndex + '"]')?.focus();
     return false;
   }
   const generation = attendanceSessionGeneration;
@@ -1173,55 +1178,29 @@ u12Ui.contentRows?.addEventListener("change", (event) => {
   if (!Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
       !item || !u12EditableDraft()) return;
   const standard = U12_STANDARD_CONTENT_CATALOG.find((entry) => entry.code === select.value);
-  if (select.value !== "" && !standard) return;
-  if (standard) {
-    const oldTitle = u12ContentTitles[index]?.trim() || "";
-    // Reclassifying a legacy free-text content must not discard its description.
-    if (!item.code && oldTitle && !item.detail) {
-      item.detail = oldTitle.slice(0, 200);
-    }
-    item.code = standard.code;
-    u12ContentTitles[index] = standard.label;
-  } else {
-    item.code = "";
-    if (U12_STANDARD_CONTENT_CATALOG.some((entry) => entry.label === u12ContentTitles[index])) {
-      u12ContentTitles[index] = "";
-    }
+  if (!standard) return;
+  const oldTitle = u12ContentTitles[index]?.trim() || "";
+  // When reclassifying legacy free text, keep its former title as part of
+  // the optional detail and retain any existing detail too.
+  if (!item.code && oldTitle) {
+    const previousDetail = item.detail.trim();
+    item.detail = (previousDetail && previousDetail !== oldTitle
+      ? oldTitle + " · " + previousDetail : oldTitle).slice(0, 200);
   }
+  item.code = standard.code;
+  u12ContentTitles[index] = standard.label;
   renderU12ContentRows();
   renderU12AssignmentMatrix();
   markU12DraftDirty();
 });
 u12Ui.contentRows?.addEventListener("input", (event) => {
   const input = event.target;
-  const isDetail = !!input &&
-    Object.prototype.hasOwnProperty.call(input.dataset, "u12DetailIndex");
-  const index = Number(isDetail ? input?.dataset?.u12DetailIndex : input?.dataset?.u12TitleIndex);
-  if (!input || !(isDetail || Object.prototype.hasOwnProperty.call(input.dataset, "u12TitleIndex")) ||
-      !Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
+  if (!input || !Object.prototype.hasOwnProperty.call(input.dataset, "u12DetailIndex")) return;
+  const index = Number(input.dataset.u12DetailIndex);
+  if (!Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
       u12Loading || u12Saving || !u12WriteAllowed || u12Conflict ||
       u12Snapshot?.session?.state === "cancelled") return;
-  if (isDetail) {
-    u12ContentItems[index].detail = input.value;
-    markU12DraftDirty();
-    return;
-  }
-  if (u12ContentItems[index]?.code) return;
-  u12ContentTitles[index] = input.value;
-  for (const heading of u12Ui.matrix?.querySelectorAll("[data-u12-matrix-heading]") ?? []) {
-    if (Number(heading.dataset.u12MatrixHeading) === index) {
-      heading.textContent = String(index + 1);
-      heading.title = input.value.trim() || "Inhalt " + (index + 1);
-    }
-  }
-  for (const legend of u12Ui.matrixLegend?.querySelectorAll("[data-u12-matrix-legend]") ?? []) {
-    if (Number(legend.dataset.u12MatrixLegend) === index) {
-      const number = legend.querySelector("strong");
-      legend.replaceChildren();
-      if (number) legend.append(number);
-      legend.append(document.createTextNode(input.value.trim() || "Inhalt ohne Bezeichnung"));
-    }
-  }
+  u12ContentItems[index].detail = input.value;
   markU12DraftDirty();
 });
 u12Ui.matrix?.addEventListener("change", (event) => {
