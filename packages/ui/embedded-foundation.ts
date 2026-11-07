@@ -107,7 +107,8 @@ export function renderAppBasisEmbeddedFoundationCss(theme: AppBasisEmbeddedTheme
 }
 .ab-disclosure::marker { content: ""; }
 .ab-disclosure::-webkit-details-marker { display: none; }
-.ab-disclosure::before {
+.ab-disclosure::before,
+.ab-disclosure-toggle::before {
   content: "";
   display: inline-block;
   flex: 0 0 9px;
@@ -119,9 +120,10 @@ export function renderAppBasisEmbeddedFoundationCss(theme: AppBasisEmbeddedTheme
   transform: rotate(-45deg);
   transition: transform 120ms ease;
 }
-details[open] > .ab-disclosure::before { transform: rotate(45deg); }
+details[open] > .ab-disclosure::before,
+.ab-disclosure-toggle[aria-expanded="true"]::before { transform: rotate(45deg); }
 @media (prefers-reduced-motion: reduce) {
-  .ab-icon-button, .ab-disclosure::before { transition: none; }
+  .ab-icon-button, .ab-disclosure::before, .ab-disclosure-toggle::before { transition: none; }
 }
 `;
 }
