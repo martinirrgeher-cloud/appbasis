@@ -291,6 +291,32 @@ jobs:
           APPBASIS_APPLY_YOUTH_CONTENT_PREVIEW: "1"
         run: node ./tooling/ulc-linz-youth-content-preview.mjs apply
 
+      - name: Inspect shared youth categories schema-v14 preview state
+        if: inputs.operation == 'migrate' || (inputs.operation == 'inspect' && steps.youth_content_schema.outputs.state == 'current')
+        id: youth_categories_schema
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="$(node ./tooling/ulc-linz-youth-categories-preview.mjs inspect)"
+          echo "$RESULT"
+          STATE="$(jq -r '.state' <<<"$RESULT")"
+          test "$STATE" = "current" || test "$STATE" = "migration-required"
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+
+      - name: Apply shared youth categories schema-v14 preview migration
+        if: inputs.operation == 'migrate' && steps.youth_categories_schema.outputs.state == 'migration-required'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+          APPBASIS_APPLY_MIGRATIONS: "1"
+          APPBASIS_APPLY_YOUTH_CATEGORIES_PREVIEW: "1"
+        run: node ./tooling/ulc-linz-youth-categories-preview.mjs apply
+
       - name: Reconcile preview runtime database access after migration
         if: inputs.operation == 'migrate'
         env:
@@ -332,6 +358,14 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-youth-content-preview.mjs verify
 
+      - name: Verify shared youth categories schema-v14 after migration
+        if: inputs.operation == 'migrate'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-youth-categories-preview.mjs verify
+
       - name: Verify exact preview runtime database access
         if: inputs.operation != 'inspect'
         env:
@@ -371,6 +405,14 @@ jobs:
           APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-youth-content-preview.mjs verify
+
+      - name: Require shared youth categories schema-v14 before preview deployment or acceptance
+        if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-youth-categories-preview.mjs verify
 
       - name: Validate and mask preview runtime inputs
         if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'

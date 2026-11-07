@@ -25,7 +25,7 @@ describe("ULC youth training category catalog v13", () => {
     expect(ULC_YOUTH_CONTENT_CATALOG).toContainEqual({ code: "sprint", label: "Sprint / Schnelligkeit" });
   });
 
-  it("validates content metadata with fixed labels and optional bounded details", () => {
+  it("validates stable identifiers independent from later renamed labels", () => {
     const titles = ["Sprint / Schnelligkeit", "Freies Alttraining"];
     const valid = normalizeUlcYouthContentItems(titles, [
       { code: "sprint", detail: "4 × 30 m" },
@@ -38,8 +38,8 @@ describe("ULC youth training category catalog v13", () => {
     expect(Object.isFrozen(valid)).toBe(true);
     for (const bad of [
       [{ code: "sprint", detail: " 4 × 30 m" }, { code: "", detail: "" }],
-      [{ code: "invented", detail: "" }, { code: "", detail: "" }],
-      [{ code: "jump", detail: "" }, { code: "", detail: "" }],
+      [{ code: "Bad id", detail: "" }, { code: "", detail: "" }],
+      [{ code: "x".repeat(81), detail: "" }, { code: "", detail: "" }],
       [{ code: "sprint", detail: "x".repeat(201) }, { code: "", detail: "" }],
       [{ code: "sprint", detail: "\n" }, { code: "", detail: "" }],
       [{ code: "sprint", detail: "", injected: 1 }, { code: "", detail: "" }],
@@ -72,7 +72,7 @@ describe("ULC youth training category catalog v13", () => {
   it("keeps classification and notes in the existing U12 editor, overlay and save payload", () => {
     expect(ULC_U12_HTML).toContain('id="u12-content-card"');
     expect(ULC_U12_HTML).toContain('id="u12-content-assign"');
-    expect(ULC_U12_SCRIPT).toContain("const U12_STANDARD_CONTENT_CATALOG =");
+    expect(ULC_U12_SCRIPT).toContain("let U12_STANDARD_CONTENT_CATALOG = [];");
     expect(ULC_U12_SCRIPT).toContain('category.dataset.u12CodeIndex = String(index)');
     expect(ULC_U12_SCRIPT).toContain('detail.dataset.u12DetailIndex = String(index)');
     expect(ULC_U12_SCRIPT).toContain('detail.maxLength = 200');

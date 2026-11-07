@@ -349,6 +349,11 @@
       "owner": "training-documentation",
       "table": "appbasis_training_documentation_subject_deletion",
       "privacyClass": "minimal-delete-reconciliation-state"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_youth_content_category",
+      "privacyClass": "youth-training-category-configuration"
     }
   ],
   "excludedPrivacyClasses": [
@@ -383,7 +388,8 @@
     "training-block-training-usage-metadata",
     "personal-training-plan-subject-attribution",
     "training-documentation-data",
-    "training-plan-data"
+    "training-plan-data",
+    "youth-training-category-configuration"
   ],
   "credentialFieldNames": [
     "password",
