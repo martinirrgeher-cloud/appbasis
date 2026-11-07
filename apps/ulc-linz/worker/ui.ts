@@ -7067,7 +7067,7 @@ function openNewMasterdataAthlete(context = null) {
     masterdataSnapshot.trainingGroups.some((group) =>
       group.id === context.groupId && group.isActive !== false);
   if (context?.source === "u12" && !fromU12) {
-    showMessage(elements.masterdataMessage,
+    showMessage(u12Ui.message,
       "Die U12-Gruppe ist in den Stammdaten nicht verfügbar.");
     return;
   }
