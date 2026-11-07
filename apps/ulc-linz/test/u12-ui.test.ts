@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ULC_LINZ_APP_HTML,
   ULC_LINZ_APP_CSS,
@@ -195,10 +195,80 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_SCRIPT).toContain('contentSlots: u12Present.get(person.athleteId) === true');
     expect(ULC_U12_SCRIPT).toContain('if (!input.checked) u12ContentAssignments.set(athleteId, new Set());');
     expect(ULC_U12_SCRIPT).toContain('u12ContentTitles.length >= 5');
-    expect(ULC_U12_SCRIPT).toContain('Bitte alle Trainingsinhalte benennen');
+    expect(ULC_U12_SCRIPT).toContain("Bitte für jeden neuen Trainingsinhalt eine Kategorie auswählen.");
     expect(ULC_U12_SCRIPT).not.toMatch(/localStorage|sessionStorage|indexedDB|innerHTML/);
     expect(ULC_U12_CSS).toContain('position:sticky; left:0;');
     expect(ULC_U12_CSS).toContain('overflow-x:auto');
+  });
+
+  it("renders clearly separated mobile cards with a category selection and an optional detail", () => {
+    expect(ULC_U12_CSS).toContain(".u12-content-row { display:grid;");
+    expect(ULC_U12_CSS).toContain("border-left:4px solid");
+    expect(ULC_U12_CSS).toContain(".u12-content-row:nth-child(even)");
+    expect(ULC_U12_CSS).toContain(".u12-content-row__header");
+    expect(ULC_U12_CSS).toContain("min-height:42px");
+    expect(ULC_U12_SCRIPT).toContain('row.className = "u12-content-row"');
+    expect(ULC_U12_SCRIPT).toContain('number.textContent = "Inhalt " + (index + 1)');
+    expect(ULC_U12_SCRIPT).toContain('header.append(number, remove)');
+    expect(ULC_U12_SCRIPT).toContain('fields.append(detail)');
+    expect(ULC_U12_SCRIPT).toContain('category.dataset.u12CodeIndex = String(index)');
+    expect(ULC_U12_SCRIPT).toContain('detail.dataset.u12DetailIndex = String(index)');
+    expect(ULC_U12_SCRIPT).toContain('placeholder.textContent = "Kategorie auswählen"');
+    expect(ULC_U12_SCRIPT).toContain('placeholder.disabled = true');
+    expect(ULC_U12_SCRIPT).not.toContain("Freie Bezeichnung (nicht standardisiert)");
+    expect(ULC_U12_SCRIPT).not.toContain("Freien Inhalt benennen");
+    expect(ULC_U12_SCRIPT).not.toContain("u12TitleIndex");
+    expect(ULC_U12_SCRIPT).toContain("u12ContentTitles.length >= 5");
+    expect(ULC_U12_SCRIPT).toContain("U12_STANDARD_CONTENT_CATALOG.length === 0");
+  });
+
+  it("adds an unselected standard-category row, never an arbitrary free-text category", () => {
+    const source = ULC_U12_SCRIPT.match(/function addU12Content\\(\\) \\{[\\s\\S]*?\\n\\}/)?.[0];
+    expect(source).toBeDefined();
+    const construct = new Function(
+      "u12Snapshot", "u12ContentTitles", "u12ContentItems",
+      "U12_STANDARD_CONTENT_CATALOG", "u12Loading", "u12Saving",
+      "u12WriteAllowed", "u12Conflict", "u12Ui",
+      "renderU12Attendance", "markU12DraftDirty", "showMessage",
+      source + "\\nreturn addU12Content;",
+    );
+    const titles: string[] = [];
+    const items: Array<{ code: string; detail: string }> = [];
+    const focused = vi.fn();
+    const render = vi.fn();
+    const markDirty = vi.fn();
+    const ui = {
+      contentCard: { open: false },
+      contentRows: { querySelectorAll: () => [{ focus: focused }] },
+    };
+    const add = construct(
+      { session: { state: "scheduled" } }, titles, items,
+      [{ code: "sprint", label: "Sprint / Schnelligkeit" }],
+      false, false, true, false, ui, render, markDirty, vi.fn(),
+    ) as () => void;
+    add();
+    expect(titles).toEqual([""]);
+    expect(items).toEqual([{ code: "", detail: "" }]);
+    expect(ui.contentCard.open).toBe(true);
+    expect(render).toHaveBeenCalledOnce();
+    expect(markDirty).toHaveBeenCalledOnce();
+    expect(focused).toHaveBeenCalledOnce();
+    expect(ULC_U12_SCRIPT).toContain(
+      'const standard = U12_STANDARD_CONTENT_CATALOG.find((entry) => entry.code === select.value)',
+    );
+    expect(ULC_U12_SCRIPT).toContain("if (!standard) return;");
+  });
+
+  it("preserves historical free-text labels instead of wiping old sessions", () => {
+    expect(ULC_U12_SCRIPT).toContain('savedOption.value = "__historical__"');
+    expect(ULC_U12_SCRIPT).toContain("savedOption.disabled = true;");
+    expect(ULC_U12_SCRIPT).toContain('"Bisheriger Inhalt (Altbestand)"');
+    expect(ULC_U12_SCRIPT).toContain("Bisher erfasst: ");
+    expect(ULC_U12_SCRIPT).toContain("const previousDetail = item.detail.trim()");
+    expect(ULC_U12_SCRIPT).toContain('oldTitle + " · " + previousDetail');
+    expect(ULC_U12_SCRIPT).toContain("u12ContentTitles[index] = standard.label;");
+    expect(ULC_U12_SCRIPT).not.toContain('input.dataset.u12TitleIndex');
+    expect(ULC_U12_SCRIPT).toContain("contentItems: u12ContentItems.map((meta) => ({");
   });
 
   it("guards unsaved rows on navigation, date changes, reload and sign-out", () => {
