@@ -665,6 +665,14 @@
       "retentionPolicy": "configuration-lifecycle-not-personal",
       "deletionEvidence": "not-personal",
       "retentionEvidence": "not-personal"
+    },
+    {
+      "id": "ulc_linz_youth_group_category",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "youth-training-category-configuration",
+      "retentionPolicy": "configuration-lifecycle-not-personal",
+      "deletionEvidence": "not-personal",
+      "retentionEvidence": "not-personal"
     }
   ],
   "runtimeModules": [
