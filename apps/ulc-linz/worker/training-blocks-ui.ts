@@ -335,7 +335,19 @@ export const ULC_TRAINING_BLOCKS_CSS = `
   background: var(--page);
   box-shadow: 0 -20px 50px rgb(15 23 42 / 22%);
 }
-.training-block-info-dialog { max-height: 84vh; }
+.training-block-info-dialog {
+  display: flex;
+  flex-direction: column;
+  height: min(84dvh, 820px);
+  max-height: min(84dvh, 820px);
+  overflow: hidden;
+}
+.training-block-info-dialog > .training-block-header {
+  position: relative;
+  top: auto;
+  flex: 0 0 auto;
+}
+
 .training-block-header {
   position: sticky;
   top: 0;
@@ -487,12 +499,17 @@ export const ULC_TRAINING_BLOCKS_CSS = `
 .training-block-history-list { display: grid; gap: 6px; }
 .training-block-history-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--border);
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--card);
 }
+.training-block-history-row > div { min-width: 0; overflow-wrap: anywhere; }
+.training-block-history-row > button { min-height: 44px; }
 .training-block-compare-controls {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
@@ -527,16 +544,40 @@ export const ULC_TRAINING_BLOCKS_CSS = `
 .training-block-version-exercise small { display: block; margin-top: 3px; color: var(--secondary); }
 .training-block-comparison-list { display: grid; gap: 7px; }
 .training-block-comparison-row {
-  padding: 9px;
+  min-width: 0;
+  padding: 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: white;
 }
-.training-block-comparison-row strong { display: block; margin-bottom: 3px; }
-.training-block-comparison-row span { display: block; color: var(--secondary); font-size: .78rem; }
+.training-block-comparison-row strong { display: block; margin-bottom: 7px; overflow-wrap: anywhere; }
+.training-block-comparison-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.training-block-comparison-values > span {
+  display: block;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: .8rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.training-block-comparison-before { background: var(--muted); }
+.training-block-comparison-after { background: var(--card); }
+.training-block-change-count {
+  color: var(--secondary);
+  font-size: .8rem;
+  font-weight: 750;
+}
 .training-block-info-tabs {
-  position: sticky;
-  top: 73px;
+  position: relative;
+  flex: 0 0 auto;
   z-index: 3;
   display: flex;
   gap: 5px;
@@ -563,9 +604,14 @@ export const ULC_TRAINING_BLOCKS_CSS = `
   color: #1d4ed8;
 }
 .training-block-info-body {
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
   margin: 0;
-  padding: 12px;
+  padding: 12px 12px max(18px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   border-radius: 0;
   background: var(--page);
 }
@@ -615,6 +661,7 @@ body.training-block-editor-open { overflow: hidden; }
   }
   .training-block-info-dialog {
     width: 100vw;
+    height: 92dvh;
     max-height: 92dvh;
   }
   .training-block-header { padding: 10px 11px; }
@@ -623,7 +670,6 @@ body.training-block-editor-open { overflow: hidden; }
   .training-block-form-card,
   .training-block-exercises-card,
   .training-block-history-card { padding: 10px; }
-  .training-block-info-tabs { top: 62px; }
   .training-block-commandbar {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
@@ -646,7 +692,8 @@ body.training-block-editor-open { overflow: hidden; }
   .training-block-footer__meta { font-size: .68rem; }
   .training-block-save-button { min-width: 92px; min-height: 40px; padding-inline: 10px; }
   .training-block-compare-controls { grid-template-columns: 1fr 1fr; }
-  .training-block-compare-controls .button { grid-column: 1 / -1; }
+  .training-block-compare-controls .button { grid-column: 1 / -1; min-height: 44px; }
+  .training-block-comparison-values { grid-template-columns: minmax(0, 1fr); }
 }
 /* Compact block editor and info-dialog actions remain visible on small screens. */
 @media (max-width: 480px) {
@@ -2709,6 +2756,7 @@ function setTrainingBlockInfoTab(tab) {
     );
   }
   renderTrainingBlockExerciseInfo();
+  if (trainingBlockElements.infoBody) trainingBlockElements.infoBody.scrollTop = 0;
 }
 
 function appendTrainingBlockInfoCard(container, title, value) {
@@ -3459,10 +3507,15 @@ function addTrainingBlockComparisonRow(container, title, before, after) {
   const strong = document.createElement("strong");
   strong.textContent = title;
   const oldValue = document.createElement("span");
+  oldValue.className = "training-block-comparison-before";
   oldValue.textContent = "Vorher: " + (before || "—");
   const newValue = document.createElement("span");
+  newValue.className = "training-block-comparison-after";
   newValue.textContent = "Nachher: " + (after || "—");
-  row.append(strong, oldValue, newValue);
+  const values = document.createElement("div");
+  values.className = "training-block-comparison-values";
+  values.append(oldValue, newValue);
+  row.append(strong, values);
   container.append(row);
 }
 
@@ -3618,6 +3671,13 @@ function renderTrainingBlockComparison(fromRevision, toRevision) {
       );
     }
   }
+
+  const count = document.createElement("span");
+  count.className = "training-block-change-count";
+  count.textContent = changes === 0
+    ? "Keine Änderungen"
+    : String(changes) + (changes === 1 ? " Änderung" : " Änderungen");
+  title.append(count);
 
   if (changes === 0) {
     const empty = document.createElement("div");
