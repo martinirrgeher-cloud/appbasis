@@ -1,6 +1,10 @@
 import { UlcTrainingValidationError } from "./training-session-domain";
-import { ULC_YOUTH_CONTENT_CATALOG } from "./training-content-catalog";
-import type { UlcYouthContentItem } from "./training-content-catalog";
+import {
+  ULC_YOUTH_CONTENT_CATALOG,
+  ULC_U14_CONTENT_CATALOG,
+  ULC_KINDERTRAINING_CONTENT_CATALOG,
+} from "./training-content-catalog";
+import type { UlcYouthContentItem, UlcYouthTrainingArea } from "./training-content-catalog";
 
 type Parameter = string | number | boolean | null;
 export interface UlcYouthCategorySqlClient {
@@ -28,6 +32,13 @@ export class UlcYouthCategoryConflictError extends Error {
     super("Training category changed or name already exists.");
     this.name = "UlcYouthCategoryConflictError";
   }
+}
+
+export function safeYouthTrainingArea(area: unknown): UlcYouthTrainingArea {
+  if (area !== "u12" && area !== "u14" && area !== "kindertraining") {
+    throw new UlcYouthCategoryValidationError();
+  }
+  return area;
 }
 
 const safeOrganization = (id: string) => {
@@ -64,13 +75,20 @@ function parseCategory(row: Record<string, unknown>): UlcYouthCategory {
   if (typeof row.is_active !== "boolean") {
     throw new UlcYouthCategoryValidationError();
   }
-  const revision = Number(row.revision);
   return Object.freeze({
-    code, label, isActive: row.is_active, revision: safeRevision(revision),
+    code, label, isActive: row.is_active, revision: safeRevision(Number(row.revision)),
   });
 }
 
-/** Same organization-wide data source for U12, U14 and Kindertraining. */
+const defaultsForArea = (area: UlcYouthTrainingArea) =>
+  area === "u12" ? ULC_YOUTH_CONTENT_CATALOG :
+  area === "u14" ? ULC_U14_CONTENT_CATALOG : ULC_KINDERTRAINING_CONTENT_CATALOG;
+
+/**
+ * U12 intentionally keeps the populated schema-v14 table unchanged.
+ * U14 and Kindertraining are independent catalogs stored in schema-v15,
+ * isolated by both organization and training area.
+ */
 export class PostgresUlcYouthCategoryRepository {
   constructor(
     private readonly sql: UlcYouthCategorySqlClient,
@@ -78,40 +96,64 @@ export class PostgresUlcYouthCategoryRepository {
       () => "custom_" + crypto.randomUUID().replaceAll("-", ""),
   ) {}
 
-  async list(organizationId: string): Promise<readonly UlcYouthCategory[]> {
+  async list(organizationId: string, requestedArea: UlcYouthTrainingArea): Promise<readonly UlcYouthCategory[]> {
     const org = safeOrganization(organizationId);
-    // New organizations receive defaults lazily, without restoring inactive items.
-    const defaults = ULC_YOUTH_CONTENT_CATALOG.map((x) => ({
-      code: x.code, label: x.label,
-    }));
+    const area = safeYouthTrainingArea(requestedArea);
+    const defaults = JSON.stringify(defaultsForArea(area));
+    if (area === "u12") {
+      await this.sql.unsafe(
+        `INSERT INTO ulc_linz_youth_content_category (organization_id, code, label)
+         SELECT $1, defaults.code, defaults.label
+           FROM jsonb_to_recordset($2::jsonb) AS defaults(code text, label text)
+         ON CONFLICT DO NOTHING`,
+        [org, defaults],
+      );
+      const rows = await this.sql.unsafe(
+        `SELECT code, label, is_active, revision
+           FROM ulc_linz_youth_content_category
+          WHERE organization_id = $1
+          ORDER BY is_active DESC, lower(label) ASC, code ASC`,
+        [org],
+      );
+      return Object.freeze(rows.map(parseCategory));
+    }
+
     await this.sql.unsafe(
-      `INSERT INTO ulc_linz_youth_content_category (organization_id, code, label)
-       SELECT $1, defaults.code, defaults.label
-         FROM jsonb_to_recordset($2::jsonb) AS defaults(code text, label text)
+      `INSERT INTO ulc_linz_youth_group_category (organization_id, training_area, code, label)
+       SELECT $1, $2, defaults.code, defaults.label
+         FROM jsonb_to_recordset($3::jsonb) AS defaults(code text, label text)
        ON CONFLICT DO NOTHING`,
-      [org, JSON.stringify(defaults)],
+      [org, area, defaults],
     );
     const rows = await this.sql.unsafe(
       `SELECT code, label, is_active, revision
-         FROM ulc_linz_youth_content_category
-        WHERE organization_id = $1
+         FROM ulc_linz_youth_group_category
+        WHERE organization_id = $1 AND training_area = $2
         ORDER BY is_active DESC, lower(label) ASC, code ASC`,
-      [org],
+      [org, area],
     );
     return Object.freeze(rows.map(parseCategory));
   }
 
-  async create(organizationId: string, label: string): Promise<UlcYouthCategory> {
+  async create(
+    organizationId: string, requestedArea: UlcYouthTrainingArea, label: string,
+  ): Promise<UlcYouthCategory> {
     const org = safeOrganization(organizationId);
+    const area = safeYouthTrainingArea(requestedArea);
     const name = safeLabel(label);
     const code = safeCode(this.createCode());
     try {
-      const rows = await this.sql.unsafe(
-        `INSERT INTO ulc_linz_youth_content_category
-           (organization_id, code, label)
+      const rows = area === "u12" ? await this.sql.unsafe(
+        `INSERT INTO ulc_linz_youth_content_category (organization_id, code, label)
          VALUES ($1, $2, $3)
          RETURNING code, label, is_active, revision`,
         [org, code, name],
+      ) : await this.sql.unsafe(
+        `INSERT INTO ulc_linz_youth_group_category
+           (organization_id, training_area, code, label)
+         VALUES ($1, $2, $3, $4)
+         RETURNING code, label, is_active, revision`,
+        [org, area, code, name],
       );
       if (rows.length !== 1) throw new UlcYouthCategoryConflictError();
       return parseCategory(rows[0]!);
@@ -125,26 +167,30 @@ export class PostgresUlcYouthCategoryRepository {
 
   async update(
     organizationId: string,
+    requestedArea: UlcYouthTrainingArea,
     code: string,
     input: { label: string; isActive: boolean; expectedRevision: number },
   ): Promise<UlcYouthCategory> {
     const org = safeOrganization(organizationId);
+    const area = safeYouthTrainingArea(requestedArea);
     const categoryCode = safeCode(code);
     const label = safeLabel(input.label);
     if (typeof input.isActive !== "boolean") throw new UlcYouthCategoryValidationError();
     const expectedRevision = safeRevision(input.expectedRevision);
     try {
-      const rows = await this.sql.unsafe(
+      const rows = area === "u12" ? await this.sql.unsafe(
         `UPDATE ulc_linz_youth_content_category
-            SET label = $3,
-                is_active = $4,
-                revision = revision + 1,
-                updated_at = now()
-          WHERE organization_id = $1
-            AND code = $2
-            AND revision = $5
+            SET label = $3, is_active = $4, revision = revision + 1, updated_at = now()
+          WHERE organization_id = $1 AND code = $2 AND revision = $5
          RETURNING code, label, is_active, revision`,
         [org, categoryCode, label, input.isActive, expectedRevision],
+      ) : await this.sql.unsafe(
+        `UPDATE ulc_linz_youth_group_category
+            SET label = $4, is_active = $5, revision = revision + 1, updated_at = now()
+          WHERE organization_id = $1 AND training_area = $2
+            AND code = $3 AND revision = $6
+         RETURNING code, label, is_active, revision`,
+        [org, area, categoryCode, label, input.isActive, expectedRevision],
       );
       if (rows.length !== 1) throw new UlcYouthCategoryConflictError();
       return parseCategory(rows[0]!);
@@ -156,14 +202,15 @@ export class PostgresUlcYouthCategoryRepository {
     }
   }
 
-  /** Existing saved labels never change when catalog entries are renamed. */
+  /** Existing U12 labels are preserved even if renamed/deactivated in the catalog. */
   async validateSessionContents(
     organizationId: string,
+    requestedArea: UlcYouthTrainingArea,
     titles: readonly string[],
     items: readonly UlcYouthContentItem[],
     previous: Readonly<{ titles: readonly string[]; items: readonly UlcYouthContentItem[] }> | null,
   ): Promise<void> {
-    const categories = await this.list(organizationId);
+    const categories = await this.list(organizationId, safeYouthTrainingArea(requestedArea));
     const byCode = new Map(categories.map((category) => [category.code, category]));
     for (const [index, item] of items.entries()) {
       if (!item.code) continue;
