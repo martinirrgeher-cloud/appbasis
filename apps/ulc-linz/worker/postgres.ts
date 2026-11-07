@@ -59,6 +59,7 @@ import {
   type UlcLinzU12AccessService,
 } from "./u12-access";
 import { createUlcU12Service } from "./u12-service";
+import { PostgresUlcU12StatisticsRepository } from "./u12-statistics-postgres";
 import { PostgresUlcYouthCategoryRepository } from "./youth-category-postgres";
 import {
   createUlcLinzTrainingBlocksAccessService,
@@ -168,6 +169,8 @@ export interface GeneratedPostgresApplicationRuntime {
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
   selfRegistration: ReturnType<typeof createUlcSelfRegistrationService>;
   u12: ReturnType<typeof createUlcU12Service>;
+  /** Optional for legacy fixture runtimes; always enabled for the production Postgres runtime. */
+  u12Statistics?: Pick<PostgresUlcU12StatisticsRepository, "read">;
   youthCategories: Pick<PostgresUlcYouthCategoryRepository, "list" | "create" | "update">;
   exerciseCatalog: ReturnType<typeof createUlcExerciseCatalogService>;
   trainingBlocks: UlcTrainingBlockService;
@@ -546,6 +549,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       moduleGroups: trainingModuleGroups,
       categories: youthCategories,
     });
+    const u12Statistics = new PostgresUlcU12StatisticsRepository(applicationSql);
     const exerciseCatalog = createUlcExerciseCatalogService({
       repository: createUlcExerciseCatalogRuntimeRepository({
         mode: options.exerciseCatalogRuntimeMode ?? "legacy",
@@ -597,6 +601,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       kindertraining,
       selfRegistration,
       u12,
+      u12Statistics,
       youthCategories,
       exerciseCatalog,
       trainingBlocks,
