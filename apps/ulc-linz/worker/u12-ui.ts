@@ -2,8 +2,7 @@ export const ULC_U12_HTML = `
           <section class="app-section" data-app-section="u12" id="u12" hidden>
             <header class="u12-head">
               <div class="u12-head__title">
-                <p class="eyebrow">Anwesenheit · Nachwuchs</p>
-                <h1>U12</h1>
+                <h1>U12 · Anwesenheit</h1>
                 <small id="u12-group-label">Trainingsgruppe wird geladen</small>
               </div>
             </header>
@@ -130,11 +129,10 @@ export const ULC_U12_HTML = `
 
 export const ULC_U12_CSS = `
 /* Compact U12: single configured group, date picker, context action. */
-.u12-head { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; min-width:0; }
+.u12-head { display:flex; justify-content:space-between; align-items:center; gap:7px; margin:0 0 8px; min-width:0; }
 .u12-head__title { min-width:0; }
-.u12-head__title .eyebrow { margin:0 0 2px; }
-.u12-head h1 { margin:0; line-height:1.2; font-size:1.55rem; }
-.u12-head small { display:block; color:var(--secondary); margin-top:3px; overflow-wrap:anywhere; font-size:.75rem; }
+.u12-head h1 { margin:0; line-height:1.25; font-size:1.45rem; }
+.u12-head small { display:block; color:var(--secondary); margin-top:2px; overflow-wrap:anywhere; font-size:.75rem; }
 .u12-athlete-new { flex:0 0 42px; align-self:center; width:42px; min-height:42px; border-radius:9px; font-size:1.35rem; padding:0; font-weight:800; }
 .u12-attendance-toolbar { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:0 3px; min-width:0; }
 .u12-attendance-toolbar > strong { font-size:.92rem; }
@@ -144,14 +142,14 @@ export const ULC_U12_CSS = `
 .u12-category-shortcut { position:absolute; top:3px; right:38px; width:40px; min-width:40px; height:40px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--text); font-size:1.1rem; cursor:pointer; z-index:1; }
 .u12-category-shortcut[hidden] { display:none !important; }
 .u12-category-shortcut:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.u12-date-toolbar { display:grid; gap:4px; padding:7px 8px 6px; border-radius:14px; background:var(--card); border:1px solid var(--border); min-width:0; }
+.u12-date-toolbar { display:grid; gap:5px; padding:8px 9px; border-radius:12px; background:var(--card); border:1px solid var(--border); min-width:0; }
 .u12-date-nav { display:grid; grid-template-columns:40px minmax(0,1fr) 40px; align-items:center; gap:6px; }
 .u12-date-arrow { height:44px; border:0; border-radius:10px; background:var(--muted); color:var(--text); font-size:1.4rem; font-weight:800; cursor:pointer; }
 .u12-date-field { display:grid; gap:1px; min-width:0; text-align:center; }
 .u12-date-field span { font-size:.68rem; font-weight:800; color:var(--secondary); letter-spacing:.03em; }
 .u12-date-field input { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:38px; padding:3px 5px; text-align:center; font-size:.96rem; font-weight:700; background:transparent; border:0; color:var(--text); }
 .u12-date-shortcuts { display:flex; justify-content:center; gap:10px; align-items:center; }
-.u12-date-shortcuts button { min-height:32px; border:0; background:transparent; color:var(--accent); padding:3px 9px; font-size:.82rem; font-weight:800; border-radius:8px; cursor:pointer; }
+.u12-date-shortcuts button { min-height:40px; border:0; background:transparent; color:var(--accent); padding:5px 9px; font-size:.8rem; font-weight:750; border-radius:8px; cursor:pointer; }
 .u12-date-shortcuts button[aria-pressed="true"] { background:var(--muted); color:var(--secondary); }
 .u12-week, .u12-days { display:grid; gap:10px; min-width:0; max-width:100%; }
 .u12-info { flex: 0 0 40px; height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: transparent; color: inherit; font-size: 1.2rem; font-weight: 750; }
