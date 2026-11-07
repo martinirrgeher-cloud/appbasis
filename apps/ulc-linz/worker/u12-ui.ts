@@ -3,7 +3,7 @@ export const ULC_U12_HTML = `
             <header class="u12-head ab-page-header">
               <div class="u12-head__title ab-page-header__copy">
                 <h1>U12 · Anwesenheit</h1>
-                <small id="u12-group-label">Trainingsgruppe wird geladen</small>
+                <small id="u12-group-label" hidden>Trainingsgruppe wird geladen</small>
               </div>
             </header>
             <p class="message message--error" id="u12-message" role="alert" hidden></p>
@@ -58,6 +58,14 @@ export const ULC_U12_HTML = `
                 </summary>
                 <div class="u12-trainers-list" id="u12-trainers-rows"></div>
               </details>
+              <details class="u12-notes-card ab-surface" id="u12-notes-card">
+                <summary class="ab-disclosure">Notizen zum Training <small>optional</small></summary>
+                <div class="u12-notes-body">
+                  <label for="u12-note">Besondere Vorkommnisse und Informationen</label>
+                  <textarea id="u12-note" maxlength="3000" rows="3"
+                    placeholder="z. B. Wetter, Änderungen, Besonderheiten"></textarea>
+                </div>
+              </details>
               <div class="u12-attendance-toolbar">
                 <strong>Anwesenheit</strong>
                 <div class="u12-attendance-toolbar__actions">
@@ -68,14 +76,6 @@ export const ULC_U12_HTML = `
                 </div>
               </div>
               <div id="u12-days" class="u12-days" aria-live="polite"></div>
-              <details class="u12-notes-card ab-surface" id="u12-notes-card">
-                <summary class="ab-disclosure">Notizen zum Training <small>optional</small></summary>
-                <div class="u12-notes-body">
-                  <label for="u12-note">Besondere Vorkommnisse und Informationen</label>
-                  <textarea id="u12-note" maxlength="3000" rows="3"
-                    placeholder="z. B. Wetter, Änderungen, Besonderheiten"></textarea>
-                </div>
-              </details>
             </section>
             <dialog class="u12-details-dialog u12-matrix-dialog" id="u12-assignment-section" aria-labelledby="u12-assignment-heading" aria-describedby="u12-assignment-help">
               <header class="u12-details-header u12-matrix-dialog__header">
@@ -85,13 +85,12 @@ export const ULC_U12_HTML = `
                 </div>
                 <button type="button" class="button button--secondary u12-matrix-dialog__close" id="u12-assignment-close" aria-label="Zuordnung schließen">✕</button>
               </header>
-              <p class="u12-matrix-help" id="u12-assignment-help">Häkchen pro Kind setzen oder oben „Alle“ wählen. Die Zuordnung erscheint sofort in der Anwesenheitsliste.</p>
+              <p class="u12-matrix-help" id="u12-assignment-help">Häkchen pro Kind setzen oder oben „Alle“ wählen.</p>
               <div class="u12-matrix-legend" id="u12-assignment-legend"></div>
               <div class="u12-matrix-scroll" role="region" aria-label="Trainingsinhalte-Matrix" tabindex="0">
                 <table class="u12-matrix-table" id="u12-assignment-matrix"></table>
               </div>
               <footer class="u12-matrix-dialog__footer">
-                <small>Die Zuordnungen werden automatisch gespeichert.</small>
                 <button type="button" class="button button--primary" id="u12-assignment-done">Fertig</button>
               </footer>
             </dialog>
@@ -119,19 +118,26 @@ export const ULC_U12_HTML = `
                 <button type="button" data-u12-stats-tab="trainings" aria-pressed="true">Trainings</button>
                 <button type="button" data-u12-stats-tab="athletes" aria-pressed="false">Athleten</button>
                 <button type="button" data-u12-stats-tab="categories" aria-pressed="false">Kategorien</button>
+                <button type="button" data-u12-stats-tab="trainers" aria-pressed="false">Trainer</button>
               </div>
               <div class="u12-statistics-results">
                 <section data-u12-stats-panel="trainings" aria-label="Anwesende pro Training">
-                  <h3>Anwesende pro Training</h3>
+                  <h3>Monatsübersicht</h3>
+                  <div id="u12-statistics-months" class="u12-statistics-list"></div>
+                  <h3 class="u12-statistics-subheading">Einzelne Trainings</h3>
                   <div id="u12-statistics-trainings" class="u12-statistics-list"></div>
                 </section>
                 <section data-u12-stats-panel="athletes" aria-label="Anwesenheit pro Athlet" hidden>
-                  <h3>Anwesenheit pro Athlet <small>aufsteigend</small></h3>
+                  <h3>Anwesenheit pro Athlet <small>anwesend / erfasst · Quote</small></h3>
                   <div id="u12-statistics-athletes" class="u12-statistics-list"></div>
                 </section>
                 <section data-u12-stats-panel="categories" aria-label="Trainingskategorien" hidden>
                   <h3>Trainingskategorien</h3>
                   <div id="u12-statistics-categories" class="u12-statistics-list"></div>
+                </section>
+                <section data-u12-stats-panel="trainers" aria-label="Trainer-Einsätze" hidden>
+                  <h3>Trainer-Einsätze <small>absteigend</small></h3>
+                  <div id="u12-statistics-trainers" class="u12-statistics-list"></div>
                 </section>
               </div>
             </dialog>
@@ -220,12 +226,14 @@ export const ULC_U12_CSS = `
 .u12-statistics-kpi { display:grid; gap:3px; padding:9px 5px; border:1px solid var(--border); border-radius:9px; text-align:center; background:var(--muted); min-width:0; }
 .u12-statistics-kpi strong { font-size:1.15rem; line-height:1.2; }
 .u12-statistics-kpi small { font-size:.68rem; color:var(--secondary); overflow-wrap:anywhere; }
-.u12-statistics-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; padding:0 10px 8px; }
-.u12-statistics-tabs button { min-width:0; min-height:42px; padding:5px 3px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font:inherit; font-size:.8rem; font-weight:650; cursor:pointer; }
+.u12-statistics-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; padding:0 10px 8px; }
+@media(min-width:560px) { .u12-statistics-tabs { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+.u12-statistics-tabs button { min-width:0; min-height:var(--ab-touch-target); padding:5px 3px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font:inherit; font-size:.8rem; font-weight:650; cursor:pointer; }
 .u12-statistics-tabs button[aria-pressed="true"] { border-color:var(--accent); background:var(--muted); }
 .u12-statistics-results { padding:0 10px 12px; }
 .u12-statistics-results section[hidden] { display:none !important; }
 .u12-statistics-results h3 { display:flex; gap:6px; align-items:baseline; margin:3px 0 8px; font-size:.95rem; }
+.u12-statistics-results h3.u12-statistics-subheading { margin-top:16px; }
 .u12-statistics-results h3 small { font-size:.7rem; color:var(--secondary); }
 .u12-statistics-list { display:grid; gap:5px; min-width:0; }
 .u12-statistics-line { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; padding:8px 10px; border:1px solid var(--border); border-radius:9px; font-size:.82rem; }
@@ -251,7 +259,7 @@ export const ULC_U12_CSS = `
 .u12-matrix-dialog { box-sizing:border-box; width:min(96vw,580px); max-width:580px; max-height:calc(100dvh - 24px); padding:0; overflow-y:auto; overscroll-behavior:contain; }
 .u12-matrix-dialog__header { position:sticky; top:0; z-index:3; padding:12px; background:var(--surface, #fff); border-bottom:1px solid var(--border); }
 .u12-matrix-dialog__close { flex:0 0 42px; width:42px; min-height:42px; padding:0; }
-.u12-matrix-dialog__footer { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; padding:12px; border-top:1px solid var(--border); }
+.u12-matrix-dialog__footer { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:flex-end; padding:12px; border-top:1px solid var(--border); }
 .u12-matrix-dialog__footer small { font-size:.75rem; color:var(--secondary); max-width:290px; }
 .u12-matrix-dialog__footer button { min-height:44px; }
 .u12-matrix-dialog .u12-matrix-scroll { padding-bottom:10px; }
@@ -316,10 +324,13 @@ export const ULC_U12_CSS = `
 .u12-person { display:grid; align-items:center; grid-template-columns:minmax(0,1fr) 40px; gap:2px 6px; min-height:50px; padding:7px 4px; border-bottom:1px solid var(--border); cursor:default; }
 .u12-person:last-child { border-bottom: 0; }
 .u12-person__name { min-width:0; font-size:.84rem; font-weight:750; overflow-wrap:anywhere; }
-.u12-person__answer { display:inline-flex; flex:0 0 auto; align-items:center; justify-content:center; gap:5px; min-width:64px; min-height:42px; border:1px solid var(--border-strong); border-radius:9px; padding:0 7px; font-weight:750; transition:background .15s ease; }
-.u12-person__answer input { width:21px; height:21px; margin:0; accent-color:var(--accent); }
-.u12-person__answer span { font-size:.76rem; min-width:24px; text-align:center; }
-.u12-person__answer:has(input:checked) { background:color-mix(in srgb, var(--accent) 8%, var(--card)); border-color:var(--accent); color:var(--accent); }
+.u12-person__answer { position:relative; display:inline-flex; flex:0 0 auto; align-items:center; justify-content:center; gap:7px; min-width:90px; min-height:44px; box-sizing:border-box; border:1px solid var(--border-strong); border-radius:999px; padding:0 12px; background:var(--muted); color:var(--text); font-weight:750; cursor:pointer; transition:background .15s ease, border-color .15s ease; }
+.u12-person__answer::before { content:"–"; display:grid; place-items:center; width:20px; height:20px; border-radius:50%; background:var(--card); color:var(--secondary); font-size:.85rem; }
+.u12-person__answer input { position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; }
+.u12-person__answer span { font-size:.8rem; min-width:26px; text-align:left; }
+.u12-person__answer:has(input:checked) { background:var(--ab-brand-soft); border-color:var(--accent); color:var(--accent); }
+.u12-person__answer:has(input:checked)::before { content:"✓"; background:var(--accent); color:var(--ab-brand-contrast); }
+.u12-person__answer:has(input:focus-visible) { outline:3px solid var(--accent); outline-offset:2px; }
 .u12-person:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 7px; }
 @media (max-width: 370px) {
   .u12-date-nav { gap: 5px; }
@@ -349,9 +360,11 @@ const u12Ui = {
   statsError: document.querySelector("#u12-statistics-error"),
   statsState: document.querySelector("#u12-statistics-state"),
   statsSummary: document.querySelector("#u12-statistics-summary"),
+  statsMonths: document.querySelector("#u12-statistics-months"),
   statsTrainings: document.querySelector("#u12-statistics-trainings"),
   statsAthletes: document.querySelector("#u12-statistics-athletes"),
   statsCategories: document.querySelector("#u12-statistics-categories"),
+  statsTrainers: document.querySelector("#u12-statistics-trainers"),
   note: document.querySelector("#u12-note"),
   notesCard: document.querySelector("#u12-notes-card"),
   trainersCard: document.querySelector("#u12-trainers-card"),
@@ -542,6 +555,11 @@ function u12GroupOptions() {
     u12Ui.groupLabel.textContent = active ? active.name :
       u12Groups.length === 0 ? "Keine U12-Gruppe freigeschaltet" :
       "Trainingsgruppe nicht zugeordnet";
+    const heading = u12Ui.groupLabel.closest(".u12-head")?.querySelector("h1")
+      ?.textContent?.split("·")[0]?.trim().toLocaleLowerCase("de-AT") || "";
+    // Suppress the repeated page name; preserve genuine distinct group names.
+    u12Ui.groupLabel.hidden = !active ||
+      active.name.trim().toLocaleLowerCase("de-AT") === heading;
   }
 }
 
@@ -677,6 +695,8 @@ function refreshU12Controls() {
       u12Loading ? "Namensliste wird geladen …" :
       !u12Snapshot ? "Training auswählen" :
       u12AutoSaveFailed ? "Automatisches Speichern fehlgeschlagen – erneut versuchen" :
+      u12DirtyDates.size > 0 && u12ContentTitles.some((title) => !title.trim())
+        ? "Kategorie auswählen · Speichern pausiert" :
       u12DirtyDates.size > 0 ? "Änderungen werden automatisch gespeichert …" :
       u12Snapshot.session === null ? "Noch kein Training erfasst" :
       u12HasUnconfirmedAnswers() ? "Alte Antworten – beim Ändern automatisch übernehmen" :
@@ -692,7 +712,8 @@ function scheduleU12AutoSave() {
   if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
   u12AutoSaveTimer = null;
   if (!u12DirtyDates.size || u12AutoSaveFailed || !u12Ready || u12Conflict ||
-      !u12WriteAllowed || u12Loading) return;
+      !u12WriteAllowed || u12Loading ||
+      u12ContentTitles.some((title) => !title.trim())) return;
   u12AutoSaveTimer = setTimeout(() => {
     u12AutoSaveTimer = null;
     if (u12Saving) return; // In-flight save will queue the next draft.
@@ -1025,7 +1046,7 @@ function u12StatisticsDefaultRange() {
 }
 
 function selectU12StatisticsTab(tab) {
-  if (!["trainings", "athletes", "categories"].includes(tab)) return;
+  if (!["trainings", "athletes", "categories", "trainers"].includes(tab)) return;
   for (const button of u12Ui.statsDialog?.querySelectorAll("[data-u12-stats-tab]") ?? []) {
     button.setAttribute("aria-pressed", String(button.dataset.u12StatsTab === tab));
   }
@@ -1053,7 +1074,8 @@ function appendU12StatisticsLine(container, left, right, helper = "") {
 
 function renderU12Statistics(report) {
   if (!report || !report.summary || !Array.isArray(report.trainings) ||
-      !Array.isArray(report.athletes) || !Array.isArray(report.categories)) {
+      !Array.isArray(report.months) || !Array.isArray(report.athletes) ||
+      !Array.isArray(report.categories) || !Array.isArray(report.trainers)) {
     throw new Error("U12_STATISTICS_INVALID");
   }
   u12Ui.statsSummary?.replaceChildren();
@@ -1073,9 +1095,22 @@ function renderU12Statistics(report) {
     card.append(strong, small);
     u12Ui.statsSummary?.append(card);
   }
+  u12Ui.statsMonths?.replaceChildren();
   u12Ui.statsTrainings?.replaceChildren();
   u12Ui.statsAthletes?.replaceChildren();
   u12Ui.statsCategories?.replaceChildren();
+  u12Ui.statsTrainers?.replaceChildren();
+  for (const month of report.months) {
+    const label = month.month.slice(5) + "." + month.month.slice(0, 4);
+    const average = month.trainings === 0 ? "–" :
+      (month.attendance / month.trainings).toLocaleString("de-AT", {
+        maximumFractionDigits: 1,
+      });
+    appendU12StatisticsLine(u12Ui.statsMonths, label,
+      month.attendance + " Anwesenheiten",
+      month.trainings + " Trainings · Ø " + average + " anwesend · " +
+        month.trainerAttendances + " Trainer-Einsätze");
+  }
   for (const training of report.trainings) {
     appendU12StatisticsLine(
       u12Ui.statsTrainings, germanDate(training.date),
@@ -1092,12 +1127,18 @@ function renderU12Statistics(report) {
     const name = document.createElement("span");
     name.textContent = athlete.lastName + " " + athlete.firstName;
     const count = document.createElement("strong");
-    count.textContent = athlete.attended + " ×";
+    count.textContent = athlete.attended + " / " + athlete.evaluated +
+      (athlete.attendancePercent === null ? " · –" : " · " + athlete.attendancePercent + " %");
     summary.append(name, count);
     const contents = document.createElement("div");
     contents.className = "u12-statistics-athlete__detail";
+    const explanation = document.createElement("small");
+    explanation.textContent = "Anwesend / erfasst · offen zählt nicht als Fehlzeit";
+    contents.append(explanation);
     if (!Array.isArray(athlete.categories) || athlete.categories.length === 0) {
-      contents.textContent = "Keine standardisierten Trainingsinhalte zugeordnet.";
+      const empty = document.createElement("small");
+      empty.textContent = "Keine standardisierten Trainingsinhalte zugeordnet.";
+      contents.append(empty);
     } else {
       for (const category of athlete.categories) {
         const row = document.createElement("div");
@@ -1118,10 +1159,23 @@ function renderU12Statistics(report) {
       category.assignments + " Athleten-Zuordnungen",
     );
   }
+  for (const trainer of report.trainers) {
+    appendU12StatisticsLine(u12Ui.statsTrainers,
+      trainer.lastName + " " + trainer.firstName,
+      trainer.attended + " Trainings");
+  }
+  if (report.summary.unidentifiedTrainerAttendances > 0) {
+    appendU12StatisticsLine(u12Ui.statsTrainers, "Nicht mehr zuordenbar",
+      report.summary.unidentifiedTrainerAttendances + " Einsätze",
+      "Trainer ist nicht mehr in den Stammdaten vorhanden");
+  }
   for (const [list, hasEntries, emptyText] of [
+    [u12Ui.statsMonths, report.months.length > 0, "Keine Monatsdaten im Zeitraum."],
     [u12Ui.statsTrainings, report.trainings.length > 0, "Keine gespeicherten U12-Trainings im Zeitraum."],
     [u12Ui.statsAthletes, report.athletes.length > 0, "Keine U12-Athleten im Zeitraum."],
     [u12Ui.statsCategories, report.categories.length > 0, "Keine standardisierten Kategorien verwendet."],
+    [u12Ui.statsTrainers, report.trainers.length > 0 ||
+      report.summary.unidentifiedTrainerAttendances > 0, "Keine Trainer-Einsätze im Zeitraum."],
   ]) {
     if (!hasEntries && list) {
       const empty = document.createElement("p");
@@ -1141,9 +1195,11 @@ async function loadU12Statistics() {
   showMessage(u12Ui.statsError, "");
   u12Ui.statsState.textContent = "Statistik wird geladen …";
   u12Ui.statsSummary?.replaceChildren();
+  u12Ui.statsMonths?.replaceChildren();
   u12Ui.statsTrainings?.replaceChildren();
   u12Ui.statsAthletes?.replaceChildren();
   u12Ui.statsCategories?.replaceChildren();
+  u12Ui.statsTrainers?.replaceChildren();
   for (const input of [u12Ui.statsFrom, u12Ui.statsTo]) input.disabled = true;
   try {
     if (!from || !to || from > to) throw new Error("INVALID_RANGE");
@@ -1235,12 +1291,12 @@ function renderU12Attendance() {
   }
   const roster = document.createElement("div");
   roster.className = "card u12-roster";
-  const hint = document.createElement("small");
-  hint.className = "u12-roster-hint";
-  hint.textContent = u12Snapshot.session?.state === "cancelled"
-    ? "Dieser Trainingstermin ist abgesagt. Die Anwesenheit kann nicht geändert werden."
-    : "✓ = anwesend · leer = nicht anwesend";
-  roster.append(hint);
+  if (u12Snapshot.session?.state === "cancelled") {
+    const hint = document.createElement("small");
+    hint.className = "u12-roster-hint";
+    hint.textContent = "Dieser Trainingstermin ist abgesagt. Die Anwesenheit kann nicht geändert werden.";
+    roster.append(hint);
+  }
   if (u12Snapshot.participants.length === 0) {
     const empty = document.createElement("p");
     empty.textContent = "Für diesen Trainingstermin sind keine Athleten zugeordnet.";

@@ -29,7 +29,7 @@ describe("UI-02.1: shared leading disclosure arrows", () => {
     }
   });
 
-  it("uses the left arrow and places notes after the roster for all youth areas", () => {
+  it("uses the left arrow and places notes directly after the trainers for all youth areas", () => {
     for (const [prefix, html, css, script] of [
       ["u12", ULC_U12_HTML, ULC_U12_CSS, ULC_U12_SCRIPT],
       ["u14", ULC_U14_HTML, ULC_U14_CSS, ULC_U14_SCRIPT],
@@ -40,8 +40,8 @@ describe("UI-02.1: shared leading disclosure arrows", () => {
         html.indexOf('id="' + prefix + '-save-state"'),
         html.indexOf('id="' + prefix + '-content-card"'),
         html.indexOf('id="' + prefix + '-trainers-card"'),
-        html.indexOf('id="' + prefix + '-days"'),
         html.indexOf('id="' + prefix + '-notes-card"'),
+        html.indexOf('id="' + prefix + '-days"'),
       ];
       expect(positions.every((i) => i > 0)).toBe(true);
       expect(positions).toEqual([...positions].sort((a, b) => a - b));
@@ -60,9 +60,10 @@ describe("UI-02.1: shared leading disclosure arrows", () => {
   });
 
   it("puts the group-navigation and legacy weekly expand arrows on the left", () => {
-    expect(ULC_LINZ_APP_HTML).toContain('<summary class="ab-disclosure">Trainingsinhalte</summary>');
-    expect(ULC_LINZ_APP_HTML).toContain('<summary class="ab-disclosure">Verwaltung</summary>');
-    expect(ULC_LINZ_APP_CSS).not.toContain('.app-nav__group summary::after');
+    expect(ULC_LINZ_APP_HTML).toContain('<h3 class="app-nav__group-title">Trainingsinhalte</h3>');
+    expect(ULC_LINZ_APP_HTML).toContain('<h3 class="app-nav__group-title">Verwaltung</h3>');
+    expect(ULC_LINZ_APP_HTML).not.toContain('<details class="app-nav__group"');
+    expect(ULC_LINZ_APP_CSS).toContain(".app-nav__group-list { display:grid;");
     expect(ULC_LINZ_APP_SCRIPT).toContain('toggle.className = "kindertraining-day-toggle ab-disclosure-toggle"');
     expect(ULC_LINZ_APP_SCRIPT).toContain('toggle.setAttribute("aria-expanded", expanded ? "true" : "false")');
     expect(ULC_LINZ_APP_SCRIPT).toContain('toggle.append(title, registrationSummary);');

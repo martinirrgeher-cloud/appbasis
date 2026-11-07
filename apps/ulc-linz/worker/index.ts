@@ -1975,8 +1975,15 @@ async function detailedYouthAreaResponse(
     ).map((athlete) => ({
       athleteId: athlete.id, firstName: athlete.firstName, lastName: athlete.lastName,
     }));
+    // Resolve names only for trainer IDs actually observed in the authorized
+    // group/module/date-scoped roll-call. The report never enumerates all org trainers.
+    const trainerRoster = masterdata.trainers
+      .filter((trainer) => trainer.organizationId === access.organizationId)
+      .map((trainer) => ({
+        trainerId: trainer.id, firstName: trainer.firstName, lastName: trainer.lastName,
+      }));
     const report = await statistics.read(
-      access.organizationId, groupId, interval.from, interval.to, roster,
+      access.organizationId, groupId, interval.from, interval.to, roster, trainerRoster,
     );
     return Response.json({ report }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
@@ -2150,8 +2157,15 @@ async function u12StatisticsResponse(
     if (!runtime.u12Statistics) {
       return Response.json({ error: { code: "U12_STATISTICS_UNAVAILABLE" } }, { status: 503 });
     }
+    // Trainer names are mapped only after the read has selected the exact
+    // authorized session roll-call; no organization-wide trainer list is returned.
+    const trainerRoster = masterdata.trainers
+      .filter((trainer) => trainer.organizationId === access.organizationId)
+      .map((trainer) => ({
+        trainerId: trainer.id, firstName: trainer.firstName, lastName: trainer.lastName,
+      }));
     const report = await runtime.u12Statistics.read(
-      access.organizationId, groupId, interval.from, interval.to, roster,
+      access.organizationId, groupId, interval.from, interval.to, roster, trainerRoster,
     );
     return Response.json({ report }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

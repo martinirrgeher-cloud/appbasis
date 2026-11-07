@@ -112,7 +112,7 @@ describe("ULC UI-01: shared brand foundation with isolated youth-page pilot", ()
     }
   });
 
-  it("does not touch the existing page order or client-side navigation/saving functions", () => {
+  it("moves only youth notes immediately after trainers while preserving save/navigation", () => {
     const html = ULC_U12_HTML;
     const date = html.indexOf('id="u12-date"');
     const savebar = html.indexOf('id="u12-save-state"');
@@ -120,7 +120,7 @@ describe("ULC UI-01: shared brand foundation with isolated youth-page pilot", ()
     const trainers = html.indexOf('id="u12-trainers-card"');
     const roster = html.indexOf('id="u12-days"');
     const notes = html.indexOf('id="u12-notes-card"');
-    const sections = [date, savebar, content, trainers, roster, notes];
+    const sections = [date, savebar, content, trainers, notes, roster];
     expect(sections.every((index) => index > 0)).toBe(true);
     expect(sections).toEqual([...sections].sort((a, b) => a - b));
     expect(ULC_U12_SCRIPT).toContain("function scheduleU12AutoSave()");
