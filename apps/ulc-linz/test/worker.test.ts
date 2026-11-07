@@ -6673,3 +6673,114 @@ describe("U12 runtime API", () => {
   });
 
 });
+
+
+describe("U14 and Kindertraining detailed attendance API scopes", () => {
+  it("enforces U14 permissions and trainer group scope before touching any U14 session", async () => {
+    let reads = 0;
+    let writes = 0;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        u14Access: {
+          async assertViewAccess() {
+            return u12TrainerAccess("verein-1", "trainer-1", ["group-u14"]);
+          },
+          async assertEditAccess() {
+            return u12TrainerAccess("verein-1", "trainer-1", ["group-u14"]);
+          },
+        },
+        u14: {
+          ...base.u12,
+          async listGroups() {
+            return [
+              { id: "group-u14", name: "U14", shortName: "U14" },
+              { id: "group-unrelated", name: "Other", shortName: "Other" },
+            ];
+          },
+          async readSnapshot() {
+            reads++;
+            throw Error("unauthorized U14 read reached session storage");
+          },
+          async saveSession() {
+            writes++;
+            throw Error("unauthorized U14 write reached session storage");
+          },
+        },
+      };
+    });
+    const baseUrl = "https://ulc.example.test/api/modules/u14";
+    const headers = { cookie: currentIdentity.sessionToken };
+    const moduleResponse = await worker.fetch(new Request(baseUrl, { headers }), validEnv);
+    expect(moduleResponse.status).toBe(200);
+    await expect(moduleResponse.json()).resolves.toMatchObject({
+      module: { moduleId: "u14" },
+      trainingGroups: [{ id: "group-u14", name: "U14" }],
+    });
+    expect(moduleResponse.headers.get("cache-control")).toBe("private, no-store");
+    const unauthorizedRead = await worker.fetch(new Request(
+      baseUrl + "/session?groupId=group-unrelated&sessionDate=2026-11-07",
+      { headers },
+    ), validEnv);
+    expect(unauthorizedRead.status).toBe(404);
+    const unauthorizedWrite = await worker.fetch(new Request(baseUrl + "/session", {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({
+        groupId: "group-unrelated", sessionDate: "2026-11-07",
+        expectedRevision: null, attendance: [],
+      }),
+    }), validEnv);
+    expect(unauthorizedWrite.status).toBe(404);
+    expect(reads).toBe(0);
+    expect(writes).toBe(0);
+  });
+
+  it("separates Kids detailed endpoint from Irrgeher and the existing legacy route", async () => {
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        kindertrainingAccess: {
+          async assertViewAccess() {
+            return kindertrainingTrainerAccess("verein-1", "trainer-1", ["group-kids"]);
+          },
+          async assertEditAccess() {
+            return kindertrainingTrainerAccess("verein-1", "trainer-1", ["group-kids"]);
+          },
+        },
+        kids: {
+          ...base.u12,
+          async listGroups() {
+            return [
+              { id: "group-kids", name: "Kindertraining", shortName: null },
+              { id: "group-irrgeher", name: "Gruppe Irrgeher", shortName: null },
+            ];
+          },
+        },
+      };
+    });
+    const headers = { cookie: currentIdentity.sessionToken };
+    const response = await worker.fetch(new Request(
+      "https://ulc.example.test/api/modules/kids", { headers },
+    ), validEnv);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      module: { moduleId: "kids" },
+      trainingGroups: [{ id: "group-kids", name: "Kindertraining" }],
+    });
+    const noIrrgeher = await worker.fetch(new Request(
+      "https://ulc.example.test/api/modules/kids/session?groupId=group-irrgeher&sessionDate=2026-11-07",
+      { headers },
+    ), validEnv);
+    expect(noIrrgeher.status).toBe(404);
+    const legacy = await worker.fetch(new Request(
+      "https://ulc.example.test/api/modules/kindertraining", { headers },
+    ), validEnv);
+    expect(legacy.status).toBe(200);
+    await expect(legacy.json()).resolves.toMatchObject({
+      module: { moduleId: "kindertraining" },
+    });
+  });
+});
