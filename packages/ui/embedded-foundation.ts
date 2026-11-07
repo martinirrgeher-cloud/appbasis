@@ -18,10 +18,16 @@ export function renderAppBasisEmbeddedFoundationCss(theme: AppBasisEmbeddedTheme
     throw new Error("AppBasis theme accentColor must be a 6-digit hex color.");
   }
   const brand = theme.accentColor.toLowerCase();
+  const channels = [1, 3, 5].map((index) =>
+    Number.parseInt(brand.slice(index, index + 2), 16) / 255);
+  const linear = channels.map((value) =>
+    value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+  const luminance = 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+  const foreground = (luminance + 0.05) / 0.05 >= 4.5 ? "#000000" : "#ffffff";
   return `:root {
   --ab-brand-primary: ${brand};
   --ab-brand-soft: color-mix(in srgb, var(--ab-brand-primary) 12%, #ffffff);
-  --ab-brand-contrast: #ffffff;
+  --ab-brand-contrast: ${foreground};
   --ab-surface-page: #f8fafc;
   --ab-surface-card: #ffffff;
   --ab-text-primary: #0f172a;
