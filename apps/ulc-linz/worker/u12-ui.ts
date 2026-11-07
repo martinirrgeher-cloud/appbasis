@@ -31,7 +31,7 @@ export const ULC_U12_HTML = `
                   <strong id="u12-count">0 von 0 anwesend</strong>
                   <small id="u12-save-state" role="status">Training auswählen</small>
                 </div>
-                <button class="button button--primary" type="button" id="u12-save" aria-label="Training speichern" disabled>Speichern</button>
+                <button class="button button--secondary" type="button" id="u12-save" aria-label="Speichern erneut versuchen" hidden disabled>Erneut versuchen</button>
               </div>
               <div class="u12-content-shell">
                 <details class="u12-content-card" id="u12-content-card">
@@ -50,6 +50,14 @@ export const ULC_U12_HTML = `
                 <button class="u12-category-shortcut" type="button" data-youth-category-area="u12" hidden disabled
                   aria-label="U12-Trainingskategorien bearbeiten" title="Trainingskategorien bearbeiten">⚙</button>
               </div>
+              <details class="u12-notes-card" id="u12-notes-card">
+                <summary>Notizen zum Training <small>optional</small></summary>
+                <div class="u12-notes-body">
+                  <label for="u12-note">Besondere Vorkommnisse und Informationen</label>
+                  <textarea id="u12-note" maxlength="3000" rows="3"
+                    placeholder="z. B. Wetter, Änderungen, Besonderheiten"></textarea>
+                </div>
+              </details>
               <div class="u12-attendance-toolbar">
                 <strong>Anwesenheit</strong>
                 <div class="u12-attendance-toolbar__actions">
@@ -267,6 +275,12 @@ export const ULC_U12_CSS = `
 .u12-matrix-table input:disabled { cursor:not-allowed; opacity:.5; }
 .u12-matrix-empty { padding:12px 8px; color:var(--secondary); font-size:.8rem; }
 
+.u12-notes-card { margin-top:8px; background:var(--card); border:1px solid var(--border); border-radius:11px; overflow:hidden; }
+.u12-notes-card summary { padding:11px 12px; font-weight:750; cursor:pointer; }
+.u12-notes-card summary small { font-weight:400; color:var(--secondary); margin-left:6px; }
+.u12-notes-body { padding:0 11px 11px; display:grid; gap:5px; }
+.u12-notes-body label { font-size:.78rem; color:var(--secondary); }
+.u12-notes-body textarea { display:block; width:100%; max-width:100%; box-sizing:border-box; min-height:86px; resize:vertical; border-radius:8px; border:1px solid var(--border); padding:9px; font:inherit; background:var(--card); color:var(--text); }
 .u12-savebar { position:sticky; top:56px; z-index:8; display:flex; gap:8px; align-items:center; justify-content:space-between; padding:7px 9px; border-radius:11px; box-shadow:0 5px 18px rgba(15,23,42,.09); }
 .u12-savebar > div { display:grid; gap:1px; min-width:0; }
 .u12-savebar strong { font-size:.82rem; }
@@ -313,6 +327,8 @@ const u12Ui = {
   statsTrainings: document.querySelector("#u12-statistics-trainings"),
   statsAthletes: document.querySelector("#u12-statistics-athletes"),
   statsCategories: document.querySelector("#u12-statistics-categories"),
+  note: document.querySelector("#u12-note"),
+  notesCard: document.querySelector("#u12-notes-card"),
   contentCard: document.querySelector("#u12-content-card"),
   contentCount: document.querySelector("#u12-content-count"),
   contentRows: document.querySelector("#u12-content-rows"),
@@ -362,10 +378,23 @@ let u12DirtyDates = new Set();
 let u12Loading = false;
 let u12Saving = false;
 let u12Conflict = false;
+let u12Note = "";
+let u12EditVersion = 0;
+let u12AutoSaveTimer = null;
+let u12AutoSaveFailed = false;
+let u12SaveInFlight = null;
 let u12StatisticsLoadId = 0;
 let u12LoadId = 0;
 
 function resetU12SessionState() {
+  if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
+  u12AutoSaveTimer = null;
+  u12EditVersion = 0;
+  u12Note = "";
+  u12AutoSaveFailed = false;
+  u12SaveInFlight = null;
+  if (u12Ui.note) u12Ui.note.value = "";
+  if (u12Ui.notesCard) u12Ui.notesCard.open = false;
   u12LoadId += 1;
   u12Ready = false;
   u12WriteAllowed = true;
@@ -425,7 +454,7 @@ function u12ValidSnapshot(snapshot, date, groupId) {
       typeof snapshot.session !== "object" ||
       typeof snapshot.session.revision !== "string" ||
       !["scheduled", "cancelled"].includes(snapshot.session.state) ||
-      (snapshot.session.note !== null && typeof snapshot.session.note !== "string"))) return false;
+      (snapshot.session.note !== null && (typeof snapshot.session.note !== "string" || snapshot.session.note.length > 3000)))) return false;
   const ids = new Set();
   for (const person of snapshot.participants) {
     if (!person || typeof person.athleteId !== "string" || !person.athleteId ||
@@ -514,6 +543,7 @@ async function bootstrapU12() {
 // as "Nein" must not claim that the binary answer has already been saved.
 function u12HasUnconfirmedAnswers() {
   if (!u12Snapshot) return false;
+  if (u12Note.trim() !== (u12Snapshot.session?.note ?? "")) return true;
   if (JSON.stringify(u12Snapshot.contentTitles) !==
       JSON.stringify(u12ContentTitles.map((title) => title.trim()))) return true;
   return u12Snapshot.participants.some((person) => {
@@ -538,6 +568,7 @@ function refreshU12Controls() {
   const cancelled = u12Snapshot?.session?.state === "cancelled";
   const editable = !!u12Snapshot && !busy && !cancelled &&
     u12WriteAllowed && !u12Conflict;
+  if (u12Ui.note) u12Ui.note.disabled = !editable;
   for (const input of u12Ui.days?.querySelectorAll("[data-u12-athlete-id]") ?? []) {
     input.disabled = !editable;
   }
@@ -584,10 +615,11 @@ function refreshU12Controls() {
       cancelled ? "Training wurde abgesagt" :
       u12Loading ? "Namensliste wird geladen …" :
       !u12Snapshot ? "Training auswählen" :
-      u12DirtyDates.size > 0 ? "Änderungen noch nicht gespeichert" :
-      u12Snapshot.session === null ? "Noch nicht erfasst – erst Speichern übernimmt Ja/Nein" :
-      u12HasUnconfirmedAnswers() ? "Ja/Nein noch nicht bestätigt – bitte speichern" :
-      "Gespeichert";
+      u12AutoSaveFailed ? "Automatisches Speichern fehlgeschlagen – erneut versuchen" :
+      u12DirtyDates.size > 0 ? "Änderungen werden automatisch gespeichert …" :
+      u12Snapshot.session === null ? "Noch kein Training erfasst" :
+      u12HasUnconfirmedAnswers() ? "Änderungen werden automatisch gespeichert …" :
+      "Automatisch gespeichert";
   }
   for (const mark of u12Ui.days?.querySelectorAll("[data-u12-answer-id]") ?? []) {
     mark.textContent = u12Present.get(mark.dataset.u12AnswerId) ? "Ja" : "Nein";
@@ -595,9 +627,23 @@ function refreshU12Controls() {
 }
 
 
+function scheduleU12AutoSave() {
+  if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
+  u12AutoSaveTimer = null;
+  if (!u12DirtyDates.size || u12AutoSaveFailed || !u12Ready || u12Conflict ||
+      !u12WriteAllowed || u12Loading) return;
+  u12AutoSaveTimer = setTimeout(() => {
+    u12AutoSaveTimer = null;
+    if (u12Saving) return; // In-flight save will queue the next draft.
+    void saveU12Attendance();
+  }, 850);
+}
 function markU12DraftDirty() {
   u12DirtyDates.add(u12LoadedDate);
+  u12EditVersion += 1;
+  u12AutoSaveFailed = false;
   showMessage(u12Ui.success, "");
+  scheduleU12AutoSave();
   refreshU12Controls();
 }
 
@@ -1169,6 +1215,11 @@ async function loadU12Attendance() {
   u12ContentTitles = [];
   u12ContentItems = [];
   u12ContentAssignments = new Map();
+  if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
+  u12AutoSaveTimer = null;
+  u12Note = "";
+  u12EditVersion = 0;
+  u12AutoSaveFailed = false;
   u12DirtyDates.clear();
   u12Conflict = false;
   u12Loading = true;
@@ -1185,6 +1236,9 @@ async function loadU12Attendance() {
       throw new Error("U12_SESSION_INVALID");
     }
     u12Snapshot = payload.snapshot;
+    u12Note = u12Snapshot.session?.note ?? "";
+    if (u12Ui.note) u12Ui.note.value = u12Note;
+    if (u12Ui.notesCard) u12Ui.notesCard.open = u12Note.length > 0;
     u12Present = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, person.status === "present"]));
     u12ContentTitles = [...u12Snapshot.contentTitles];
