@@ -296,7 +296,8 @@ async function applyManifestMigrations(
       migration !== "apps/ulc-linz/migrations/0010_ulc_linz_registration_notes.sql" &&
       migration !== "apps/ulc-linz/migrations/0011_ulc_linz_youth_training_content.sql" &&
       migration !== "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql" &&
-      migration !== "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql"
+      migration !== "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql" &&
+      migration !== "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql"
     ) {
       throw new Error("ULC lifecycle E2E encountered an unexpected migration owner.");
     }
