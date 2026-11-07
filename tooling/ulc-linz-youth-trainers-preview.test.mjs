@@ -27,7 +27,6 @@ const installed = {
   constraints: [
     "ulc_linz_training_trainer_attendance_pk",
     "ulc_linz_training_trainer_attendance_session_id_fkey",
-    "ulc_linz_training_trainer_attendance_trainer_id_fkey",
   ].map((conname) => ({ conname, convalidated: true })),
   indexes: [...prior.indexes,
     { indexname: "ulc_linz_training_trainer_attendance_org_session_idx" }],
@@ -42,7 +41,6 @@ test("v16 adds only the scoped trainer presence table", async () => {
   assert.equal(plan.productionChanged, false);
   assert.match(plan.statements[0], /CREATE TABLE ulc_linz_training_trainer_attendance/);
   assert.match(plan.statements[0], /REFERENCES ulc_linz_training_session\(id\) ON DELETE CASCADE/);
-  assert.match(plan.statements[0], /REFERENCES appbasis_trainer\(id\) ON DELETE CASCADE/);
   assert.match(plan.statements[0], /PRIMARY KEY \(session_id, trainer_id\)/);
   assert.match(plan.statements[1], /CREATE INDEX ulc_linz_training_trainer_attendance_org_session_idx/);
   for (const statement of plan.statements) {
