@@ -174,6 +174,12 @@ jobs:
       - name: Test shared youth categories schema-v14 preview migration and guards
         run: node --test ./tooling/ulc-linz-youth-categories-preview.test.mjs
 
+      - name: Test group categories schema-v15 preview migration and guards
+        run: node --test ./tooling/ulc-linz-youth-areas-preview.test.mjs
+
+      - name: Test trainer presence schema-v16 protected Preview migration and guards
+        run: node --test ./tooling/ulc-linz-youth-trainers-preview.test.mjs
+
       - name: Typecheck
         run: pnpm run typecheck
 
