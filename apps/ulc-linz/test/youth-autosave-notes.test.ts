@@ -43,10 +43,10 @@ describe("U12, U14 and Kindertraining autosave with per-training notes", () => {
     const save = vi.fn();
     const schedule = new Function(
       "u12AutoSaveTimer", "u12DirtyDates", "u12AutoSaveFailed", "u12Ready",
-      "u12Conflict", "u12WriteAllowed", "u12Loading", "u12Saving", "saveU12Attendance",
+      "u12Conflict", "u12WriteAllowed", "u12Loading", "u12Saving", "saveU12Attendance", "u12ContentTitles",
       source + "\nreturn scheduleU12AutoSave;",
     )(
-      null, new Set(["2026-11-07"]), false, true, false, true, false, false, save,
+      null, new Set(["2026-11-07"]), false, true, false, true, false, false, save, [],
     ) as () => void;
     vi.useFakeTimers();
     schedule();
@@ -56,9 +56,9 @@ describe("U12, U14 and Kindertraining autosave with per-training notes", () => {
     expect(save).toHaveBeenCalledOnce();
     const empty = new Function(
       "u12AutoSaveTimer", "u12DirtyDates", "u12AutoSaveFailed", "u12Ready",
-      "u12Conflict", "u12WriteAllowed", "u12Loading", "u12Saving", "saveU12Attendance",
+      "u12Conflict", "u12WriteAllowed", "u12Loading", "u12Saving", "saveU12Attendance", "u12ContentTitles",
       source + "\nreturn scheduleU12AutoSave;",
-    )(null, new Set(), false, true, false, true, false, false, save) as () => void;
+    )(null, new Set(), false, true, false, true, false, false, save, []) as () => void;
     empty();
     vi.advanceTimersByTime(900);
     expect(save).toHaveBeenCalledOnce();
