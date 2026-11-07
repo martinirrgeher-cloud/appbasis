@@ -224,7 +224,7 @@ async function applyUlcLifecycleMigrations(
   expect(owner).toEqual({
     id: "ulc-linz-lifecycle",
     root: "apps/ulc-linz",
-    schemaVersion: 15,
+    schemaVersion: 16,
     migrations: [
       "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
       "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -241,6 +241,7 @@ async function applyUlcLifecycleMigrations(
       "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql",
       "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
       "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
+      "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
     ],
   });
   if (owner === undefined) throw new Error("Expected ULC lifecycle database owner.");
