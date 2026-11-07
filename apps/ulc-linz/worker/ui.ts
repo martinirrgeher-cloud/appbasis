@@ -7089,16 +7089,18 @@ function openMasterdataAthleteOverlay(athleteId) {
 
 function openNewMasterdataAthlete(context = null) {
   if (!masterdataCanEdit || !masterdataSnapshot) return;
-  const fromU12 = context?.source === "u12" &&
-    masterdataSnapshot.trainingGroups.some((group) =>
-      group.id === context.groupId && group.isActive !== false);
-  if (context?.source === "u12" && !fromU12) {
-    showMessage(u12Ui.message,
-      "Die U12-Gruppe ist in den Stammdaten nicht verfügbar.");
+  const source = context?.source;
+  const fromU12 = source === "u12";
+  const fromYouth = ["u12", "u14", "kids"].includes(source);
+  const areaUi = source === "u14" ? u14Ui : source === "kids" ? kidsUi : u12Ui;
+  const validGroup = masterdataSnapshot.trainingGroups.some((group) =>
+    group.id === context?.groupId && group.isActive !== false);
+  if (fromYouth && !validGroup) {
+    showMessage(areaUi.message, "Die Trainingsgruppe ist in den Stammdaten nicht verfügbar.");
     return;
   }
-  masterdataAthleteCreateContext = fromU12
-    ? { source: "u12", groupId: context.groupId, startedOn: context.startedOn }
+  masterdataAthleteCreateContext = fromYouth
+    ? { source, groupId: context.groupId, startedOn: context.startedOn }
     : null;
   masterdataAthleteOverlayId = null;
   masterdataEdit = null;
@@ -7114,16 +7116,16 @@ function openNewMasterdataAthlete(context = null) {
     (group) => group.name,
   );
   if (elements.athleteCreateGroup) {
-    elements.athleteCreateGroup.value = fromU12 ? context.groupId : "";
-    elements.athleteCreateGroup.disabled = fromU12;
+    elements.athleteCreateGroup.value = fromYouth ? context.groupId : "";
+    elements.athleteCreateGroup.disabled = fromYouth;
   }
   if (elements.athleteCreateStartedOn) {
-    elements.athleteCreateStartedOn.value = fromU12
+    elements.athleteCreateStartedOn.value = fromYouth
       ? context.startedOn : localDateValue(new Date());
-    elements.athleteCreateStartedOn.disabled = fromU12;
+    elements.athleteCreateStartedOn.disabled = fromYouth;
   }
   refreshMasterdataEditMode();
-  if (fromU12 && elements.athleteOverlay && !masterdataAthleteOverlayHome) {
+  if (fromYouth && elements.athleteOverlay && !masterdataAthleteOverlayHome) {
     // The shared dialog lives inside the hidden masterdata section.
     // Move only this dialog to the body, preserving its original location.
     masterdataAthleteOverlayHome = {
@@ -7137,8 +7139,8 @@ function openNewMasterdataAthlete(context = null) {
     elements.athleteOverlayTitle.textContent = "Athlet anlegen";
   }
   if (elements.athleteOverlayMeta) {
-    elements.athleteOverlayMeta.textContent = fromU12
-      ? "Neue U12-Teilnahme: Gruppe wird automatisch zugeordnet"
+    elements.athleteOverlayMeta.textContent = fromYouth
+      ? "Neue Teilnahme: Gruppe wird automatisch zugeordnet"
       : "Stammdaten, Gruppe und Kontaktpersonen gemeinsam erfassen";
   }
   elements.athleteFirstName?.focus();
@@ -7201,7 +7203,7 @@ function addMasterdataNewAthleteContact() {
 }
 
 function closeMasterdataAthleteOverlay() {
-  const fromU12 = masterdataAthleteCreateContext?.source === "u12";
+  const youthSource = masterdataAthleteCreateContext?.source;
   masterdataAthleteCreateContext = null;
   elements.athleteCreateContacts?.replaceChildren();
   if (elements.athleteCreateContactAdd) elements.athleteCreateContactAdd.disabled = false;
@@ -7225,8 +7227,11 @@ function closeMasterdataAthleteOverlay() {
       next?.parentNode === parent ? next : null,
     );
   }
-  if (fromU12 && document.querySelector('[data-app-section="u12"]:not([hidden])')) {
-    u12Ui.addAthlete?.focus();
+  if (["u12", "u14", "kids"].includes(youthSource) &&
+      document.querySelector('[data-app-section="' + youthSource + '"]:not([hidden])')) {
+    const add = youthSource === "u14" ? u14Ui.addAthlete :
+      youthSource === "kids" ? kidsUi.addAthlete : u12Ui.addAthlete;
+    add?.focus();
   }
 }
 
@@ -7637,9 +7642,10 @@ async function createMasterdataAthlete(event) {
   }
 
   const context = masterdataAthleteCreateContext;
-  const groupId = context?.source === "u12" ? context.groupId :
+  const youthSource = ["u12", "u14", "kids"].includes(context?.source);
+  const groupId = youthSource ? context.groupId :
     (elements.athleteCreateGroup?.value || "");
-  const startedOn = context?.source === "u12" ? context.startedOn :
+  const startedOn = youthSource ? context.startedOn :
     (elements.athleteCreateStartedOn?.value || "");
   const contacts = readMasterdataNewAthleteContacts();
   if (groupId && (!masterdataSnapshot?.trainingGroups.some(
@@ -7675,14 +7681,22 @@ async function createMasterdataAthlete(event) {
     masterdataSnapshot = null;
     const refreshed = await loadMasterdata(true);
     if (generation !== masterdataSessionGeneration) return;
-    if (context?.source === "u12") {
-      u12Snapshot = null;
-      u12Present = new Map();
-      u12DirtyDates.clear();
-      await loadU12Attendance();
+    if (youthSource) {
+      if (context.source === "u14") {
+        u14Snapshot = null; u14Present = new Map(); u14DirtyDates.clear();
+        await loadU14Attendance();
+      } else if (context.source === "kids") {
+        kidsSnapshot = null; kidsPresent = new Map(); kidsDirtyDates.clear();
+        await loadKidsAttendance();
+      } else {
+        u12Snapshot = null; u12Present = new Map(); u12DirtyDates.clear();
+        await loadU12Attendance();
+      }
       if (generation !== masterdataSessionGeneration) return;
-      showMessage(u12Ui.success, refreshed
-        ? "Neues Kind angelegt und der U12-Gruppe zugeordnet."
+      const targetUi = context.source === "u14" ? u14Ui :
+        context.source === "kids" ? kidsUi : u12Ui;
+      showMessage(targetUi.success, refreshed
+        ? "Neues Kind angelegt und der Trainingsgruppe zugeordnet."
         : "Kind und Gruppenzuordnung angelegt. Stammdaten konnten nicht neu geladen werden.");
     } else if (refreshed && createdId) {
       showMasterdataTab("athletes");
@@ -7704,7 +7718,7 @@ async function createMasterdataAthlete(event) {
   } finally {
     masterdataQuickCreateSaving = false;
     setMasterdataFormsDisabled(false);
-    if (masterdataAthleteCreateContext?.source === "u12") {
+    if (["u12", "u14", "kids"].includes(masterdataAthleteCreateContext?.source)) {
       if (elements.athleteCreateGroup) elements.athleteCreateGroup.disabled = true;
       if (elements.athleteCreateStartedOn) elements.athleteCreateStartedOn.disabled = true;
     }
