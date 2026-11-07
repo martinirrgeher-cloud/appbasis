@@ -129,7 +129,7 @@ export const ULC_U12_HTML = `
                   <div id="u12-statistics-trainings" class="u12-statistics-list"></div>
                 </section>
                 <section data-u12-stats-panel="athletes" aria-label="Anwesenheit pro Athlet" hidden>
-                  <h3>Anwesenheit pro Athlet <small>aufsteigend</small></h3>
+                  <h3>Anwesenheit pro Athlet <small>anwesend / erfasst · Quote</small></h3>
                   <div id="u12-statistics-athletes" class="u12-statistics-list"></div>
                 </section>
                 <section data-u12-stats-panel="categories" aria-label="Trainingskategorien" hidden>
