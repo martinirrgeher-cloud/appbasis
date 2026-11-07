@@ -135,7 +135,7 @@ describe("A04.2 scoped youth statistics", () => {
       ]);
       expect(query).toContain(area === "u12"
         ? "session.module_id = 'u12'" : "session.module_id = $5");
-      expect(query).not.toMatch(/\\b(?:INSERT|UPDATE|DELETE|TRUNCATE)\\b/i);
+      expect(query).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|TRUNCATE)\b/i);
     },
   );
 
@@ -157,6 +157,7 @@ describe("A04.2 scoped youth statistics", () => {
       expect(script).toContain('report.trainers');
       expect(() => new Function(script)).not.toThrow();
     }
-    expect(ULC_LINZ_APP_SCRIPT).toContain("bootstrapYouthAttendanceAreas()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("bootstrapU14()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("bootstrapKids()");
   });
 });
