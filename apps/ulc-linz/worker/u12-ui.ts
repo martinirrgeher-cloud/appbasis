@@ -31,7 +31,7 @@ export const ULC_U12_HTML = `
                   <strong id="u12-count">0 von 0 anwesend</strong>
                   <small id="u12-save-state" role="status">Training auswählen</small>
                 </div>
-                <button class="button button--primary" type="button" id="u12-save" disabled>Training speichern</button>
+                <button class="button button--primary" type="button" id="u12-save" aria-label="Training speichern" disabled>Speichern</button>
               </div>
               <div class="u12-content-shell">
                 <details class="u12-content-card" id="u12-content-card">
@@ -133,28 +133,28 @@ export const ULC_U12_CSS = `
 /* Compact U12: single configured group, date picker, context action. */
 .u12-head { display:flex; justify-content:space-between; align-items:center; gap:7px; margin:0 0 8px; min-width:0; }
 .u12-head__title { min-width:0; }
-.u12-head h1 { margin:0; line-height:1.25; font-size:1.45rem; }
-.u12-head small { display:block; color:var(--secondary); margin-top:2px; overflow-wrap:anywhere; font-size:.75rem; }
+.u12-head h1 { margin:0; line-height:1.22; font-size:1.36rem; font-weight:800; letter-spacing:-.025em; }
+.u12-head small { display:block; color:var(--secondary); margin-top:2px; overflow-wrap:anywhere; font-size:.72rem; }
 .u12-athlete-new { flex:0 0 42px; align-self:center; width:42px; min-height:42px; border-radius:9px; font-size:1.35rem; padding:0; font-weight:800; }
-.u12-attendance-toolbar { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:0 3px; min-width:0; }
-.u12-attendance-toolbar > strong { font-size:.92rem; }
+.u12-attendance-toolbar { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:3px 1px 0; min-width:0; }
+.u12-attendance-toolbar > strong { font-size:1rem; font-weight:800; letter-spacing:-.015em; }
 .u12-attendance-toolbar__actions { display:flex; align-items:center; gap:5px; }
 .u12-statistics-open { min-height:42px; padding:0 10px; font-size:.82rem; }
 .u12-content-shell { position:relative; min-width:0; }
 .u12-category-shortcut { position:absolute; top:3px; right:38px; width:40px; min-width:40px; height:40px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--text); font-size:1.1rem; cursor:pointer; z-index:1; }
 .u12-category-shortcut[hidden] { display:none !important; }
 .u12-category-shortcut:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.u12-date-toolbar { display:grid; gap:5px; padding:8px 9px; border-radius:12px; background:var(--card); border:1px solid var(--border); min-width:0; }
-.u12-date-nav { display:grid; grid-template-columns:40px minmax(0,1fr) 40px; align-items:center; gap:6px; }
-.u12-date-arrow { height:44px; border:0; border-radius:10px; background:var(--muted); color:var(--text); font-size:1.4rem; font-weight:800; cursor:pointer; }
-.u12-date-field { display:grid; gap:1px; min-width:0; text-align:center; }
-.u12-date-field span { font-size:.68rem; font-weight:800; color:var(--secondary); letter-spacing:.03em; }
-.u12-date-field input { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:38px; padding:3px 5px; text-align:center; font-size:.96rem; font-weight:700; background:transparent; border:0; color:var(--text); }
-.u12-date-shortcuts { display:flex; justify-content:center; gap:10px; align-items:center; }
-.u12-date-shortcuts button { min-height:40px; border:0; background:transparent; color:var(--accent); padding:5px 9px; font-size:.8rem; font-weight:750; border-radius:8px; cursor:pointer; }
+.u12-date-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:5px; padding:6px 8px; border-radius:12px; background:var(--card); border:1px solid var(--border); min-width:0; box-shadow:0 2px 8px rgba(15,23,42,.035); }
+.u12-date-nav { display:grid; grid-template-columns:36px minmax(0,1fr) 36px; align-items:center; gap:3px; min-width:0; }
+.u12-date-arrow { min-width:36px; height:42px; border:0; border-radius:9px; background:var(--muted); color:var(--text); font-size:1.2rem; font-weight:800; cursor:pointer; }
+.u12-date-field { display:grid; gap:0; min-width:0; text-align:center; }
+.u12-date-field span { font-size:.62rem; font-weight:750; color:var(--secondary); letter-spacing:.03em; }
+.u12-date-field input { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:31px; padding:0 1px; text-align:center; font-size:.8rem; font-weight:780; background:transparent; border:0; color:var(--text); }
+.u12-date-shortcuts { display:flex; justify-content:center; gap:2px; align-items:center; }
+.u12-date-shortcuts button { min-height:42px; border:0; background:transparent; color:var(--accent); padding:3px 5px; font-size:.73rem; font-weight:750; border-radius:8px; cursor:pointer; }
 .u12-date-shortcuts button[aria-pressed="true"] { background:var(--muted); color:var(--secondary); }
-.u12-week, .u12-days { display:grid; gap:10px; min-width:0; max-width:100%; }
-.u12-info { flex: 0 0 40px; height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: transparent; color: inherit; font-size: 1.2rem; font-weight: 750; }
+.u12-week, .u12-days { display:grid; gap:8px; min-width:0; max-width:100%; }
+.u12-info { width:40px; height:42px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--secondary); font-size:1.1rem; font-weight:750; }
 .u12-person__toggle { display: flex; gap: 10px; flex: 1 1 auto; align-items: center; min-width: 0; cursor: pointer; }
 .u12-details-dialog { width: min(96vw, 480px); max-height: min(85dvh, 690px); border-radius: 16px; border: 1px solid var(--border); padding: 18px; color: inherit; background: var(--surface, #fff); overflow-y: auto; }
 .u12-details-dialog::backdrop { background: rgba(0, 0, 0, .6); }
@@ -166,24 +166,24 @@ export const ULC_U12_CSS = `
 .u12-contact-entry small { color: var(--secondary); }
 .u12-details-section p { overflow-wrap: anywhere; white-space: pre-wrap; }
  .u12-roster { isolation: isolate; }
-.u12-content-card { border:1px solid var(--border); border-radius:14px; background:var(--card); padding:0; min-width:0; }
-.u12-content-summary { display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; padding:8px 10px; padding-right:90px; font-size:.9rem; font-weight:750; min-height:42px; }
+.u12-content-card { border:1px solid var(--border); border-radius:12px; background:var(--card); padding:0; min-width:0; box-shadow:0 2px 8px rgba(15,23,42,.035); }
+.u12-content-summary { display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; padding:6px 10px; padding-right:90px; font-size:.9rem; font-weight:800; min-height:44px; }
 .u12-content-summary::marker { content:""; }
 .u12-content-summary small { font-size:.75rem; color:var(--secondary); margin-left:7px; }
-.u12-content-body { display:grid; gap:8px; padding:0 9px 10px; }
+.u12-content-body { display:grid; gap:7px; padding:0 8px 9px; }
 .u12-content-body p { margin:0; font-size:.79rem; line-height:1.4; color:var(--secondary); }
-.u12-content-rows { display:grid; gap:10px; min-width:0; }
-.u12-content-row { display:grid; gap:7px; min-width:0; padding:8px 9px 10px; border:1px solid var(--border-strong); border-left:4px solid var(--accent, #147a46); border-radius:11px; background:var(--card); box-shadow:0 1px 3px rgba(0,0,0,.055); }
-.u12-content-row:nth-child(even) { background:var(--surface, #fff); border-left-color:var(--secondary); }
-.u12-content-row__header { display:flex; justify-content:space-between; align-items:center; gap:8px; padding-bottom:5px; border-bottom:1px solid var(--border); min-height:40px; }
-.u12-content-row__number { font-size:.82rem; font-weight:800; color:var(--text); }
-.u12-content-fields { display:grid; gap:6px; min-width:0; }
-.u12-content-fields input, .u12-content-fields select { box-sizing:border-box; min-width:0; width:100%; min-height:42px; border:1px solid var(--border-strong); border-radius:8px; padding:5px 8px; background:var(--card); color:var(--text); }
+.u12-content-rows { display:grid; gap:7px; min-width:0; }
+.u12-content-row { display:grid; gap:5px; min-width:0; padding:6px 8px 8px; border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:9px; background:color-mix(in srgb, var(--accent) 3%, var(--card)); }
+.u12-content-row:nth-child(even) { background:var(--muted); border-left-color:var(--accent); }
+.u12-content-row__header { display:flex; justify-content:space-between; align-items:center; gap:6px; padding-bottom:3px; min-height:36px; }
+.u12-content-row__number { display:inline-flex; align-items:center; min-height:25px; padding:2px 8px; border-radius:7px; background:color-mix(in srgb, var(--accent) 10%, var(--card)); font-size:.75rem; font-weight:800; color:var(--text); }
+.u12-content-fields { display:grid; gap:5px; min-width:0; }
+.u12-content-fields input, .u12-content-fields select { box-sizing:border-box; min-width:0; width:100%; min-height:40px; border:1px solid var(--border-strong); border-radius:8px; padding:5px 8px; background:var(--card); color:var(--text); font-size:.83rem; }
 .u12-content-fields .u12-content-detail { font-size:.84rem; }
 .u12-content-legacy { display:block; color:var(--secondary); font-size:.75rem; overflow-wrap:anywhere; line-height:1.35; }
-.u12-content-remove { flex:0 0 40px; width:40px; min-height:40px; border:1px solid var(--border); background:var(--muted); color:var(--text); border-radius:8px; font-size:1.2rem; cursor:pointer; }
+.u12-content-remove { flex:0 0 38px; width:38px; min-height:38px; border:1px solid var(--border); background:var(--card); color:var(--secondary); border-radius:8px; font-size:1rem; cursor:pointer; }
 .u12-content-remove:focus-visible, .u12-content-fields select:focus-visible, .u12-content-fields input:focus-visible { outline:2px solid var(--accent, #147a46); outline-offset:2px; }
-.u12-content-add { justify-self:start; min-height:42px; padding:0 11px; border:1px solid var(--border-strong); border-radius:9px; background:var(--muted); color:var(--text); font-weight:750; cursor:pointer; }
+.u12-content-add { justify-self:start; min-height:42px; padding:0 11px; border:1px solid var(--border-strong); border-radius:9px; background:var(--card); color:var(--accent); font-weight:750; cursor:pointer; }
 .u12-content-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .u12-content-assign { min-height:42px; font-size:.82rem; }
 .u12-content-assign:disabled { opacity:.5; cursor:not-allowed; }
@@ -225,10 +225,10 @@ export const ULC_U12_CSS = `
 .u12-person { display:grid !important; grid-template-columns:minmax(0,1fr) 44px; column-gap:8px; }
 .u12-person__toggle { grid-column:1; }
 .u12-person:not(:has(.u12-info)) > .u12-person__toggle { grid-column:1 / -1; }
-.u12-person__contents { grid-column:1 / -1; min-width:0; display:flex; align-items:center; flex-wrap:wrap; gap:4px 6px; padding:0 2px 7px; font-size:.75rem; color:var(--secondary); }
+.u12-person__contents { grid-column:1 / -1; min-width:0; display:flex; align-items:center; flex-wrap:wrap; gap:3px 4px; padding:1px 2px 3px; font-size:.7rem; color:var(--secondary); }
 .u12-person__contents[hidden] { display:none !important; }
 .u12-person__contents-label { flex:0 0 auto; font-weight:700; }
-.u12-person__content-chip { display:inline-flex; max-width:100%; padding:3px 6px; border-radius:7px; background:var(--muted); color:var(--text); overflow-wrap:anywhere; }
+.u12-person__content-chip { display:inline-flex; max-width:100%; padding:2px 6px; border-radius:6px; background:var(--muted); color:var(--text); overflow-wrap:anywhere; }
 .u12-person__content-empty { font-style:italic; }
 
 /* Mobile matrix: fixed athlete names and horizontal scrolling across up to five slots. */
@@ -267,20 +267,20 @@ export const ULC_U12_CSS = `
 .u12-matrix-table input:disabled { cursor:not-allowed; opacity:.5; }
 .u12-matrix-empty { padding:12px 8px; color:var(--secondary); font-size:.8rem; }
 
-.u12-savebar { position: sticky; top: 57px; z-index: 8; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
-.u12-savebar > div { display: grid; gap: 3px; min-width: 0; }
-.u12-savebar strong { font-size: .9rem; }
-.u12-savebar small { font-size: .76rem; color: var(--secondary); line-height: 1.3; }
-.u12-savebar button { min-height: 44px; flex: 0 0 auto; }
-.u12-roster { min-width: 0; padding-top: 6px; padding-bottom: 6px; }
-.u12-roster-hint { display: block; padding: 9px 2px 13px; font-size: .82rem; color: var(--secondary); }
-.u12-person { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 10px 2px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.u12-savebar { position:sticky; top:56px; z-index:8; display:flex; gap:8px; align-items:center; justify-content:space-between; padding:7px 9px; border-radius:11px; box-shadow:0 5px 18px rgba(15,23,42,.09); }
+.u12-savebar > div { display:grid; gap:1px; min-width:0; }
+.u12-savebar strong { font-size:.82rem; }
+.u12-savebar small { font-size:.68rem; color:var(--secondary); line-height:1.2; }
+.u12-savebar button { min-height:42px; flex:0 0 auto; padding:0 12px; font-size:.78rem; border-radius:9px; }
+.u12-roster { min-width:0; padding:6px 8px 5px; border-radius:12px; box-shadow:0 2px 8px rgba(15,23,42,.035); }
+.u12-roster-hint { display:block; padding:2px 4px 6px; font-size:.7rem; color:var(--secondary); }
+.u12-person { display:grid; align-items:center; grid-template-columns:minmax(0,1fr) 40px; gap:2px 6px; min-height:50px; padding:7px 4px; border-bottom:1px solid var(--border); cursor:default; }
 .u12-person:last-child { border-bottom: 0; }
-.u12-person__name { min-width: 0; font-size: .93rem; font-weight: 650; overflow-wrap: anywhere; }
-.u12-person__answer { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 8px; min-width: 76px; min-height: 44px; border: 1px solid var(--border-strong); border-radius: 10px; padding: 0 9px; font-weight: 750; }
-.u12-person__answer input { width: 22px; height: 22px; margin: 0; accent-color: var(--accent); }
-.u12-person__answer span { font-size: .88rem; min-width: 30px; text-align: center; }
-.u12-person__answer:has(input:checked) { background: var(--muted); border-color: var(--accent); }
+.u12-person__name { min-width:0; font-size:.84rem; font-weight:750; overflow-wrap:anywhere; }
+.u12-person__answer { display:inline-flex; flex:0 0 auto; align-items:center; justify-content:center; gap:5px; min-width:64px; min-height:42px; border:1px solid var(--border-strong); border-radius:9px; padding:0 7px; font-weight:750; transition:background .15s ease; }
+.u12-person__answer input { width:21px; height:21px; margin:0; accent-color:var(--accent); }
+.u12-person__answer span { font-size:.76rem; min-width:24px; text-align:center; }
+.u12-person__answer:has(input:checked) { background:color-mix(in srgb, var(--accent) 8%, var(--card)); border-color:var(--accent); color:var(--accent); }
 .u12-person:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 7px; }
 @media (max-width: 370px) {
   .u12-date-nav { gap: 5px; }
@@ -1101,7 +1101,7 @@ function renderU12Attendance() {
   hint.className = "u12-roster-hint";
   hint.textContent = u12Snapshot.session?.state === "cancelled"
     ? "Dieser Trainingstermin ist abgesagt. Die Anwesenheit kann nicht geändert werden."
-    : "Angehakt = Ja (anwesend). Nicht angehakt = Nein (nicht anwesend).";
+    : "✓ = anwesend · leer = nicht anwesend";
   roster.append(hint);
   if (u12Snapshot.participants.length === 0) {
     const empty = document.createElement("p");
