@@ -40,8 +40,8 @@ describe("ULC: full one-step athlete creation", () => {
   it("preserves accepted edit route and returns new U12 athlete with the chosen group", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('source: "u12"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("groupId: context.groupId, startedOn: context.startedOn");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("elements.athleteCreateGroup.disabled = fromU12;");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("elements.athleteCreateStartedOn.disabled = fromU12;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("elements.athleteCreateGroup.disabled = fromYouth;");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("elements.athleteCreateStartedOn.disabled = fromYouth;");
     expect(ULC_LINZ_APP_SCRIPT).toContain('"/api/modules/athletes/masterdata/athletes/create-complete"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("u12Snapshot = null;");
     expect(ULC_LINZ_APP_SCRIPT).toContain("await loadU12Attendance();");
