@@ -44,52 +44,55 @@ test("appends the preview-only security isolation after the canonical ULC migrat
     ),
   );
   assert.equal(
-    plan.at(-13)?.relativePath,
+    plan.at(-14)?.relativePath,
     "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
   );
   assert.equal(
-    plan.at(-12)?.relativePath,
+    plan.at(-13)?.relativePath,
     "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
   );
   assert.equal(
-    plan.at(-11)?.relativePath,
+    plan.at(-12)?.relativePath,
     "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql",
   );
   assert.equal(
-    plan.at(-10)?.relativePath,
+    plan.at(-11)?.relativePath,
     "apps/ulc-linz/migrations/0006_ulc_linz_training_module_groups.sql",
   );
   assert.equal(
-    plan.at(-9)?.relativePath,
+    plan.at(-10)?.relativePath,
     "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
   );
   assert.equal(
-    plan.at(-8)?.relativePath,
+    plan.at(-9)?.relativePath,
     "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql",
   );
   assert.equal(
-    plan.at(-7)?.relativePath,
+    plan.at(-8)?.relativePath,
     "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
   );
   assert.equal(
-    plan.at(-6)?.relativePath,
+    plan.at(-7)?.relativePath,
     "apps/ulc-linz/migrations/0010_ulc_linz_registration_notes.sql",
   );
   assert.equal(
-    plan.at(-5)?.relativePath,
+    plan.at(-6)?.relativePath,
     "apps/ulc-linz/migrations/0011_ulc_linz_youth_training_content.sql",
   );
   assert.equal(
-    plan.at(-4)?.relativePath,
+    plan.at(-5)?.relativePath,
     "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql",
   );
   assert.equal(
-    plan.at(-3)?.relativePath,
+    plan.at(-4)?.relativePath,
     "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
   );
   assert.equal(
-    plan.at(-2)?.relativePath,
+    plan.at(-3)?.relativePath,
     "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
+  );
+  assert.equal(
+    plan.at(-2)?.relativePath,
     "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
   );
   assert.equal(
