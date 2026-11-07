@@ -48,14 +48,14 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_LINZ_APP_CSS).toContain('.app-nav__attendance-menu');
   });
 
-  it("shows only date, name, anwesenheit checkbox and save; no week or 4-state editor", () => {
+  it("shows one date, name and binary attendance with automatic save and retry", () => {
     expect(ULC_U12_HTML).toContain('id="u12-group"');
     expect(ULC_U12_HTML).toContain('type="date" id="u12-date"');
     expect(ULC_U12_HTML).toContain('id="u12-prev"');
     expect(ULC_U12_HTML).toContain('id="u12-next"');
     expect(ULC_U12_HTML).toContain('id="u12-reload"');
     expect(ULC_U12_HTML).toContain('id="u12-save"');
-    expect(ULC_U12_HTML).toContain("Training speichern");
+    expect(ULC_U12_HTML).toContain("Speichern erneut versuchen");
     expect(ULC_U12_HTML).toContain('id="u12-count"');
     expect(ULC_U12_HTML).not.toContain('id="u12-week-label"');
     expect(ULC_U12_HTML).not.toContain("Tagesnotiz");
@@ -76,21 +76,21 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_SCRIPT).toContain('encodeURIComponent(groupId) + "&sessionDate=" + encodeURIComponent(date)');
     expect(ULC_U12_SCRIPT).toContain('requestJson("/api/modules/u12/session", {');
     expect(ULC_U12_SCRIPT).toContain('expectedRevision: u12Snapshot.session?.revision ?? null');
-    expect(ULC_U12_SCRIPT).toContain('status: u12Present.get(person.athleteId) === true ? "present" : "absent"');
+    expect(ULC_U12_SCRIPT).toContain('status: u12TouchedAthletes.has(person.athleteId)');
+    expect(ULC_U12_SCRIPT).toContain(': person.status,');
     expect(ULC_U12_SCRIPT).toContain('state: u12Snapshot.session?.state ?? "scheduled"');
-    expect(ULC_U12_SCRIPT).toContain('note: u12Snapshot.session?.note ?? null');
+    expect(ULC_U12_SCRIPT).toContain('note: u12Note.trim() || null');
     expect(ULC_U12_SCRIPT).toContain('error?.status === 409');
     expect(ULC_U12_SCRIPT).toContain("u12Conflict = true;");
     expect(ULC_U12_SCRIPT).toContain("u12WriteAllowed = false;");
     expect(ULC_U12_SCRIPT).toContain('u12Snapshot.session?.state === "cancelled"');
     expect(ULC_U12_SCRIPT).toContain('if (generation !== attendanceSessionGeneration || loadId !== u12LoadId)');
-    expect(ULC_U12_SCRIPT).toContain('u12Snapshot.session === null ? "Noch nicht erfasst');
+    expect(ULC_U12_SCRIPT).toContain('u12Snapshot.session === null ? "Noch kein Training erfasst');
     expect(ULC_U12_SCRIPT).toContain("u12DirtyDates.clear();");
   });
 
   it("does not silently persist a completely unchecked first visit", () => {
-    // The initial state is a draft only. Save is enabled explicitly, and
-    // marking every unchecked name absent requires a deliberate trainer save.
+    // Visiting an empty day must not create a session until a trainer edits it.
     const bootstrap = ULC_U12_SCRIPT.slice(
       ULC_U12_SCRIPT.indexOf("async function bootstrapU12()"),
       ULC_U12_SCRIPT.indexOf("function refreshU12Controls()"),
@@ -100,13 +100,13 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     const changeHandler = ULC_U12_SCRIPT.slice(
       ULC_U12_SCRIPT.indexOf('u12Ui.days?.addEventListener("change"'),
     );
-    expect(changeHandler).toContain("u12DirtyDates.add(u12LoadedDate)");
+    expect(changeHandler).toContain("markU12DraftDirty()");
     expect(changeHandler).not.toContain("saveU12Attendance()");
-    expect(ULC_U12_SCRIPT).toContain("u12DirtyDates.size === 0 && u12Snapshot?.session !== null &&");
-    expect(ULC_U12_SCRIPT).toContain("!u12HasUnconfirmedAnswers());");
+    expect(ULC_U12_SCRIPT).toContain("if (u12DirtyDates.size === 0) return true;");
+    expect(ULC_U12_SCRIPT).toContain("if (!u12DirtyDates.size || u12AutoSaveFailed");
   });
 
-  it("permits an explicit binary save for old open or excused records", () => {
+  it("preserves the old open/excused status until the trainer edits the roster", () => {
     const source = ULC_U12_SCRIPT.match(
       /function u12HasUnconfirmedAnswers\(\) \{[\s\S]*?\n\}/,
     )?.[0];
@@ -134,14 +134,14 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(hasUnconfirmed(snapshot("excused"), unchecked, titles, assignments)).toBe(true);
     expect(hasUnconfirmed(snapshot("present"), unchecked, titles, assignments)).toBe(true);
     expect(ULC_U12_SCRIPT).toContain(
-      'u12HasUnconfirmedAnswers() ? "Ja/Nein noch nicht bestätigt – bitte speichern"',
+      'u12HasUnconfirmedAnswers() ? "Alte Antworten – beim Ändern automatisch übernehmen"'
     );
     const saveStart = ULC_U12_SCRIPT.indexOf("async function saveU12Attendance()");
     const saveBody = ULC_U12_SCRIPT.slice(saveStart);
     expect(saveBody).toContain(
-      "u12DirtyDates.size === 0 && u12Snapshot.session !== null &&",
+      "if (u12DirtyDates.size === 0) return true;",
     );
-    expect(saveBody).toContain("!u12HasUnconfirmedAnswers()) return true;");
+    expect(saveBody).toContain("const savedVersion = u12EditVersion;");
   });
 
   it("offers a local-date Heute shortcut without changing the binary roster", () => {
@@ -171,7 +171,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_CSS).toContain(".u12-content-row { display:grid; gap:5px;");
     expect(ULC_U12_CSS).toContain(".u12-person { display:grid; align-items:center;");
     expect(ULC_U12_CSS).toContain(".u12-roster-hint { display:block; padding:2px 4px 6px;");
-    expect(ULC_U12_HTML).toContain('aria-label="Training speichern" disabled>Speichern</button>');
+    expect(ULC_U12_HTML).toContain('aria-label="Speichern erneut versuchen" hidden disabled>Erneut versuchen</button>');
     expect(ULC_U12_SCRIPT).toContain('"✓ = anwesend · leer = nicht anwesend"');
     expect(ULC_U12_SCRIPT).toContain('input.dataset.u12AthleteId = person.athleteId');
     expect(ULC_U12_SCRIPT).toContain('row.append(summary)');
@@ -306,7 +306,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     const changeHandler = ULC_U12_SCRIPT.slice(
       ULC_U12_SCRIPT.indexOf('u12Ui.days?.addEventListener("change"'),
     );
-    expect(changeHandler).toContain("refreshU12Controls()");
+    expect(changeHandler).toContain("markU12DraftDirty()");
     expect(changeHandler).not.toContain("renderU12Attendance()");
     expect(ULC_U12_CSS).toContain("min-height:42px");
     expect(ULC_U12_CSS).toContain("max-width:100%");

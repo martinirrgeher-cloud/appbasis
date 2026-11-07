@@ -31,7 +31,7 @@ export const ULC_U12_HTML = `
                   <strong id="u12-count">0 von 0 anwesend</strong>
                   <small id="u12-save-state" role="status">Training auswählen</small>
                 </div>
-                <button class="button button--primary" type="button" id="u12-save" aria-label="Training speichern" disabled>Speichern</button>
+                <button class="button button--secondary" type="button" id="u12-save" aria-label="Speichern erneut versuchen" hidden disabled>Erneut versuchen</button>
               </div>
               <div class="u12-content-shell">
                 <details class="u12-content-card" id="u12-content-card">
@@ -50,6 +50,14 @@ export const ULC_U12_HTML = `
                 <button class="u12-category-shortcut" type="button" data-youth-category-area="u12" hidden disabled
                   aria-label="U12-Trainingskategorien bearbeiten" title="Trainingskategorien bearbeiten">⚙</button>
               </div>
+              <details class="u12-notes-card" id="u12-notes-card">
+                <summary>Notizen zum Training <small>optional</small></summary>
+                <div class="u12-notes-body">
+                  <label for="u12-note">Besondere Vorkommnisse und Informationen</label>
+                  <textarea id="u12-note" maxlength="3000" rows="3"
+                    placeholder="z. B. Wetter, Änderungen, Besonderheiten"></textarea>
+                </div>
+              </details>
               <div class="u12-attendance-toolbar">
                 <strong>Anwesenheit</strong>
                 <div class="u12-attendance-toolbar__actions">
@@ -267,6 +275,12 @@ export const ULC_U12_CSS = `
 .u12-matrix-table input:disabled { cursor:not-allowed; opacity:.5; }
 .u12-matrix-empty { padding:12px 8px; color:var(--secondary); font-size:.8rem; }
 
+.u12-notes-card { margin-top:8px; background:var(--card); border:1px solid var(--border); border-radius:11px; overflow:hidden; }
+.u12-notes-card summary { padding:11px 12px; font-weight:750; cursor:pointer; }
+.u12-notes-card summary small { font-weight:400; color:var(--secondary); margin-left:6px; }
+.u12-notes-body { padding:0 11px 11px; display:grid; gap:5px; }
+.u12-notes-body label { font-size:.78rem; color:var(--secondary); }
+.u12-notes-body textarea { display:block; width:100%; max-width:100%; box-sizing:border-box; min-height:86px; resize:vertical; border-radius:8px; border:1px solid var(--border); padding:9px; font:inherit; background:var(--card); color:var(--text); }
 .u12-savebar { position:sticky; top:56px; z-index:8; display:flex; gap:8px; align-items:center; justify-content:space-between; padding:7px 9px; border-radius:11px; box-shadow:0 5px 18px rgba(15,23,42,.09); }
 .u12-savebar > div { display:grid; gap:1px; min-width:0; }
 .u12-savebar strong { font-size:.82rem; }
@@ -313,6 +327,8 @@ const u12Ui = {
   statsTrainings: document.querySelector("#u12-statistics-trainings"),
   statsAthletes: document.querySelector("#u12-statistics-athletes"),
   statsCategories: document.querySelector("#u12-statistics-categories"),
+  note: document.querySelector("#u12-note"),
+  notesCard: document.querySelector("#u12-notes-card"),
   contentCard: document.querySelector("#u12-content-card"),
   contentCount: document.querySelector("#u12-content-count"),
   contentRows: document.querySelector("#u12-content-rows"),
@@ -355,6 +371,7 @@ let u12LoadedGroupId = "";
 let u12LoadedDate = "";
 let u12Snapshot = null;
 let u12Present = new Map();
+let u12TouchedAthletes = new Set();
 let u12ContentTitles = [];
 let u12ContentItems = [];
 let u12ContentAssignments = new Map();
@@ -362,10 +379,23 @@ let u12DirtyDates = new Set();
 let u12Loading = false;
 let u12Saving = false;
 let u12Conflict = false;
+let u12Note = "";
+let u12EditVersion = 0;
+let u12AutoSaveTimer = null;
+let u12AutoSaveFailed = false;
+let u12SaveInFlight = null;
 let u12StatisticsLoadId = 0;
 let u12LoadId = 0;
 
 function resetU12SessionState() {
+  if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
+  u12AutoSaveTimer = null;
+  u12EditVersion = 0;
+  u12Note = "";
+  u12AutoSaveFailed = false;
+  u12SaveInFlight = null;
+  if (u12Ui.note) u12Ui.note.value = "";
+  if (u12Ui.notesCard) u12Ui.notesCard.open = false;
   u12LoadId += 1;
   u12Ready = false;
   u12WriteAllowed = true;
@@ -374,6 +404,7 @@ function resetU12SessionState() {
   u12LoadedDate = "";
   u12Snapshot = null;
   u12Present = new Map();
+  u12TouchedAthletes = new Set();
   u12ContentTitles = [];
   u12ContentItems = [];
   u12ContentAssignments = new Map();
@@ -425,7 +456,7 @@ function u12ValidSnapshot(snapshot, date, groupId) {
       typeof snapshot.session !== "object" ||
       typeof snapshot.session.revision !== "string" ||
       !["scheduled", "cancelled"].includes(snapshot.session.state) ||
-      (snapshot.session.note !== null && typeof snapshot.session.note !== "string"))) return false;
+      (snapshot.session.note !== null && (typeof snapshot.session.note !== "string" || snapshot.session.note.length > 3000)))) return false;
   const ids = new Set();
   for (const person of snapshot.participants) {
     if (!person || typeof person.athleteId !== "string" || !person.athleteId ||
@@ -536,8 +567,9 @@ function refreshU12Controls() {
     if (control) control.disabled = busy || !u12Ready;
   }
   const cancelled = u12Snapshot?.session?.state === "cancelled";
-  const editable = !!u12Snapshot && !busy && !cancelled &&
+  const editable = !!u12Snapshot && !u12Loading && !cancelled &&
     u12WriteAllowed && !u12Conflict;
+  if (u12Ui.note) u12Ui.note.disabled = !editable;
   for (const input of u12Ui.days?.querySelectorAll("[data-u12-athlete-id]") ?? []) {
     input.disabled = !editable;
   }
@@ -553,7 +585,7 @@ function refreshU12Controls() {
     u12Ui.contentCount.textContent = u12ContentTitles.length + " / 5";
   }
   if (u12Ui.contentAssign) {
-    u12Ui.contentAssign.disabled = !u12Snapshot || busy || u12ContentTitles.length === 0;
+    u12Ui.contentAssign.disabled = !u12Snapshot || u12Loading || u12ContentTitles.length === 0;
   }
   if (u12Ui.statsOpen) u12Ui.statsOpen.disabled = !u12Ready || busy ||
     !u12Ui.group?.value || !u12Snapshot;
@@ -568,9 +600,8 @@ function refreshU12Controls() {
     "aria-pressed", String(u12Ui.date?.value === localIsoDate(new Date())),
   );
   if (u12Ui.save) {
-    u12Ui.save.disabled = !editable ||
-      (u12DirtyDates.size === 0 && u12Snapshot?.session !== null &&
-       !u12HasUnconfirmedAnswers());
+    u12Ui.save.hidden = !u12AutoSaveFailed || u12DirtyDates.size === 0;
+    u12Ui.save.disabled = !editable || u12Saving || u12Conflict;
   }
   if (u12Ui.count) {
     const total = u12Snapshot?.participants.length ?? 0;
@@ -584,10 +615,11 @@ function refreshU12Controls() {
       cancelled ? "Training wurde abgesagt" :
       u12Loading ? "Namensliste wird geladen …" :
       !u12Snapshot ? "Training auswählen" :
-      u12DirtyDates.size > 0 ? "Änderungen noch nicht gespeichert" :
-      u12Snapshot.session === null ? "Noch nicht erfasst – erst Speichern übernimmt Ja/Nein" :
-      u12HasUnconfirmedAnswers() ? "Ja/Nein noch nicht bestätigt – bitte speichern" :
-      "Gespeichert";
+      u12AutoSaveFailed ? "Automatisches Speichern fehlgeschlagen – erneut versuchen" :
+      u12DirtyDates.size > 0 ? "Änderungen werden automatisch gespeichert …" :
+      u12Snapshot.session === null ? "Noch kein Training erfasst" :
+      u12HasUnconfirmedAnswers() ? "Alte Antworten – beim Ändern automatisch übernehmen" :
+      "Automatisch gespeichert";
   }
   for (const mark of u12Ui.days?.querySelectorAll("[data-u12-answer-id]") ?? []) {
     mark.textContent = u12Present.get(mark.dataset.u12AnswerId) ? "Ja" : "Nein";
@@ -595,9 +627,23 @@ function refreshU12Controls() {
 }
 
 
+function scheduleU12AutoSave() {
+  if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
+  u12AutoSaveTimer = null;
+  if (!u12DirtyDates.size || u12AutoSaveFailed || !u12Ready || u12Conflict ||
+      !u12WriteAllowed || u12Loading) return;
+  u12AutoSaveTimer = setTimeout(() => {
+    u12AutoSaveTimer = null;
+    if (u12Saving) return; // In-flight save will queue the next draft.
+    void saveU12Attendance();
+  }, 850);
+}
 function markU12DraftDirty() {
   u12DirtyDates.add(u12LoadedDate);
+  u12EditVersion += 1;
+  u12AutoSaveFailed = false;
   showMessage(u12Ui.success, "");
+  scheduleU12AutoSave();
   refreshU12Controls();
 }
 
@@ -688,7 +734,7 @@ function renderU12ContentRows() {
 
 function addU12Content() {
   if (!u12Snapshot || u12ContentTitles.length >= 5 || u12Loading ||
-      u12Saving || !u12WriteAllowed || u12Conflict ||
+      !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return;
   const initial = U12_STANDARD_CONTENT_CATALOG[0];
   if (!initial) {
@@ -708,7 +754,7 @@ function addU12Content() {
 function removeU12Content(index) {
   if (!u12Snapshot || !Number.isInteger(index) ||
       index < 0 || index >= u12ContentTitles.length ||
-      u12Loading || u12Saving || !u12WriteAllowed || u12Conflict ||
+      u12Loading || !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return;
   u12ContentTitles.splice(index, 1);
   u12ContentItems.splice(index, 1);
@@ -730,7 +776,7 @@ function u12PresentAthletes() {
 
 function u12EditableDraft() {
   return !!u12Snapshot && u12Ready && u12WriteAllowed && !u12Conflict &&
-    !u12Loading && !u12Saving && u12Snapshot.session?.state !== "cancelled";
+    !u12Loading && u12Snapshot.session?.state !== "cancelled";
 }
 
 function refreshU12MatrixControls(editable = u12EditableDraft()) {
@@ -1166,9 +1212,15 @@ async function loadU12Attendance() {
   u12Ui.detailsContent?.replaceChildren();
   u12Snapshot = null;
   u12Present = new Map();
+  u12TouchedAthletes = new Set();
   u12ContentTitles = [];
   u12ContentItems = [];
   u12ContentAssignments = new Map();
+  if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
+  u12AutoSaveTimer = null;
+  u12Note = "";
+  u12EditVersion = 0;
+  u12AutoSaveFailed = false;
   u12DirtyDates.clear();
   u12Conflict = false;
   u12Loading = true;
@@ -1185,6 +1237,9 @@ async function loadU12Attendance() {
       throw new Error("U12_SESSION_INVALID");
     }
     u12Snapshot = payload.snapshot;
+    u12Note = u12Snapshot.session?.note ?? "";
+    if (u12Ui.note) u12Ui.note.value = u12Note;
+    if (u12Ui.notesCard) u12Ui.notesCard.open = u12Note.length > 0;
     u12Present = new Map(u12Snapshot.participants.map((person) =>
       [person.athleteId, person.status === "present"]));
     u12ContentTitles = [...u12Snapshot.contentTitles];
@@ -1209,90 +1264,115 @@ async function loadU12Attendance() {
 }
 
 async function saveU12Attendance() {
-  if (!u12Snapshot || u12Loading || u12Saving || !u12Ready ||
-      !u12WriteAllowed || u12Conflict ||
-      u12Snapshot.session?.state === "cancelled") return false;
-  if (u12DirtyDates.size === 0 && u12Snapshot.session !== null &&
-      !u12HasUnconfirmedAnswers()) return true;
+  if (u12Saving) return u12SaveInFlight ?? false;
+  if (!u12Snapshot || u12Loading || !u12Ready || !u12WriteAllowed ||
+      u12Conflict || u12Snapshot.session?.state === "cancelled") return false;
+  if (u12DirtyDates.size === 0) return true;
   const titles = u12ContentTitles.map((title) => title.trim());
   const invalidTitleIndex = titles.findIndex((title) => title.length === 0 || title.length > 120);
   if (invalidTitleIndex !== -1) {
+    u12AutoSaveFailed = true;
     if (u12Ui.contentCard) u12Ui.contentCard.open = true;
     showMessage(u12Ui.message, "Bitte für jeden neuen Trainingsinhalt eine Kategorie auswählen.");
-    u12Ui.contentRows?.querySelector('[data-u12-code-index="' + invalidTitleIndex + '"]')?.focus();
+    refreshU12Controls();
     return false;
   }
   const generation = attendanceSessionGeneration;
   const loadId = u12LoadId;
   const groupId = u12LoadedGroupId;
   const date = u12LoadedDate;
+  const savedVersion = u12EditVersion;
+  // Freeze this draft; the trainer can continue editing during the request.
+  const body = {
+    groupId,
+    sessionDate: date,
+    expectedRevision: u12Snapshot.session?.revision ?? null,
+    state: u12Snapshot.session?.state ?? "scheduled",
+    note: u12Note.trim() || null,
+    attendance: u12Snapshot.participants.map((person) => ({
+      athleteId: person.athleteId,
+      status: u12TouchedAthletes.has(person.athleteId)
+        ? (u12Present.get(person.athleteId) === true ? "present" : "absent")
+        : person.status,
+      contentSlots: u12Present.get(person.athleteId) === true
+        ? [...(u12ContentAssignments.get(person.athleteId) ?? new Set())].sort((a, b) => a - b)
+        : [],
+    })),
+    contentTitles: titles,
+    contentItems: u12ContentItems.map((meta) => ({
+      code: meta.code,
+      detail: meta.detail.trim(),
+    })),
+  };
   u12Saving = true;
   refreshU12Controls();
   showMessage(u12Ui.message, "");
-  showMessage(u12Ui.success, "");
-  try {
-    const payload = await requestJson("/api/modules/u12/session", {
-      method: "POST",
-      body: JSON.stringify({
-        groupId,
-        sessionDate: date,
-        expectedRevision: u12Snapshot.session?.revision ?? null,
-        // Never reset metadata belonging to an existing training session.
-        state: u12Snapshot.session?.state ?? "scheduled",
-        note: u12Snapshot.session?.note ?? null,
-        attendance: u12Snapshot.participants.map((person) => ({
-          athleteId: person.athleteId,
-          status: u12Present.get(person.athleteId) === true ? "present" : "absent",
-          contentSlots: u12Present.get(person.athleteId) === true
-            ? [...(u12ContentAssignments.get(person.athleteId) ?? new Set())].sort((a, b) => a - b)
-            : [],
-        })),
-        contentTitles: titles,
-        contentItems: u12ContentItems.map((meta) => ({
-          code: meta.code,
-          detail: meta.detail.trim(),
-        })),
-      }),
-    });
-    if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return false;
-    if (!u12ValidSnapshot(payload?.snapshot, date, groupId)) {
-      throw new Error("U12_SAVED_INVALID");
+  const operation = (async () => {
+    try {
+      const payload = await requestJson("/api/modules/u12/session", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return false;
+      if (!u12ValidSnapshot(payload?.snapshot, date, groupId)) {
+        throw new Error("U12_SAVED_INVALID");
+      }
+      u12Snapshot = payload.snapshot;
+      if (savedVersion === u12EditVersion) {
+        u12Present = new Map(u12Snapshot.participants.map((person) =>
+          [person.athleteId, person.status === "present"]));
+        u12ContentTitles = [...u12Snapshot.contentTitles];
+        u12ContentItems = u12Snapshot.contentItems.map((meta) => ({ ...meta }));
+        u12ContentAssignments = new Map(u12Snapshot.participants.map((person) =>
+          [person.athleteId, new Set(person.contentSlots)]));
+        u12Note = u12Snapshot.session?.note ?? "";
+        u12TouchedAthletes.clear();
+        u12DirtyDates.clear();
+      }
+      u12AutoSaveFailed = false;
+      return true;
+    } catch (error) {
+      if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return false;
+      u12AutoSaveFailed = true;
+      if (error?.status === 409) {
+        u12Conflict = true;
+        showMessage(u12Ui.message,
+          "Die Liste wurde zwischenzeitlich geändert. Bitte neu laden, um Daten nicht zu überschreiben.");
+      } else if (error?.status === 401 || error?.status === 403) {
+        u12WriteAllowed = false;
+        showMessage(u12Ui.message, "Keine Schreibberechtigung. Änderungen wurden nicht gespeichert.");
+      } else {
+        showMessage(u12Ui.message, "Automatisches Speichern fehlgeschlagen. Änderungen bleiben erhalten.");
+      }
+      return false;
+    } finally {
+      if (generation === attendanceSessionGeneration && loadId === u12LoadId) {
+        u12Saving = false;
+        u12SaveInFlight = null;
+        if (u12DirtyDates.size > 0 && savedVersion !== u12EditVersion &&
+            !u12AutoSaveFailed) scheduleU12AutoSave();
+        refreshU12Controls();
+      }
     }
-    u12Snapshot = payload.snapshot;
-    u12Present = new Map(u12Snapshot.participants.map((person) =>
-      [person.athleteId, person.status === "present"]));
-    u12ContentTitles = [...u12Snapshot.contentTitles];
-    u12ContentItems = u12Snapshot.contentItems.map((meta) => ({ ...meta }));
-    u12ContentAssignments = new Map(u12Snapshot.participants.map((person) =>
-      [person.athleteId, new Set(person.contentSlots)]));
-    u12DirtyDates.clear();
-    showMessage(u12Ui.success, "Namensliste für " + germanDate(date) + " gespeichert.");
-    return true;
-  } catch (error) {
-    if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return false;
-    if (error?.status === 409) {
-      u12Conflict = true;
-      showMessage(u12Ui.message,
-        "Die Liste wurde zwischenzeitlich geändert. Bitte neu laden, um Daten nicht zu überschreiben.");
-    } else if (error?.status === 401 || error?.status === 403) {
-      u12WriteAllowed = false;
-      showMessage(u12Ui.message, "Keine U12-Schreibberechtigung. Änderungen wurden nicht gespeichert.");
-    } else {
-      showMessage(u12Ui.message, "Speichern fehlgeschlagen. Die Häkchen bleiben erhalten.");
-    }
-    return false;
-  } finally {
-    if (generation === attendanceSessionGeneration && loadId === u12LoadId) {
-      u12Saving = false;
-      refreshU12Controls();
-    }
-  }
+  })();
+  u12SaveInFlight = operation;
+  return operation;
 }
 
 async function u12FlushChanges() {
-  if (u12Saving || u12Loading) return false;
-  if (u12DirtyDates.size === 0) return true;
-  return saveU12Attendance();
+  if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
+  u12AutoSaveTimer = null;
+  if (u12Loading) return false;
+  // Wait for the current CAS write and then persist edits made during it.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (u12Saving) {
+      if (!(await u12SaveInFlight)) return false;
+      continue;
+    }
+    if (u12DirtyDates.size === 0) return true;
+    if (!(await saveU12Attendance())) return false;
+  }
+  return u12DirtyDates.size === 0;
 }
 
 async function u12MoveDate(offset) {
@@ -1443,7 +1523,15 @@ u12Ui.days?.addEventListener("click", (event) => {
 });
 u12Ui.date?.addEventListener("change", () => void u12ChangeDate());
 u12Ui.group?.addEventListener("change", () => void u12ChangeGroup());
-u12Ui.save?.addEventListener("click", () => void saveU12Attendance());
+u12Ui.save?.addEventListener("click", () => {
+  u12AutoSaveFailed = false;
+  void saveU12Attendance();
+});
+u12Ui.note?.addEventListener("input", (event) => {
+  if (!u12EditableDraft()) return;
+  u12Note = event.target.value;
+  markU12DraftDirty();
+});
 u12Ui.contentAdd?.addEventListener("click", () => addU12Content());
 u12Ui.contentAssign?.addEventListener("click", () => openU12AssignmentDialog());
 u12Ui.assignmentClose?.addEventListener("click", () => u12Ui.matrixSection?.close());
@@ -1482,7 +1570,7 @@ u12Ui.contentRows?.addEventListener("input", (event) => {
   if (!input || !Object.prototype.hasOwnProperty.call(input.dataset, "u12DetailIndex")) return;
   const index = Number(input.dataset.u12DetailIndex);
   if (!Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
-      u12Loading || u12Saving || !u12WriteAllowed || u12Conflict ||
+      u12Loading || !u12WriteAllowed || u12Conflict ||
       u12Snapshot?.session?.state === "cancelled") return;
   u12ContentItems[index].detail = input.value;
   markU12DraftDirty();
@@ -1505,16 +1593,15 @@ u12Ui.reload?.addEventListener("click", () => void u12ReloadAttendance());
 u12Ui.days?.addEventListener("change", (event) => {
   const input = event.target;
   const athleteId = input?.dataset?.u12AthleteId;
-  if (!athleteId || !u12Snapshot || u12Saving || u12Loading ||
+  if (!athleteId || !u12Snapshot || u12Loading ||
       !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled" ||
       !u12Snapshot.participants.some((person) => person.athleteId === athleteId)) return;
   u12Present.set(athleteId, input.checked === true);
+  u12TouchedAthletes.add(athleteId);
   if (!input.checked) u12ContentAssignments.set(athleteId, new Set());
   renderU12AssignmentMatrix();
-  u12DirtyDates.add(u12LoadedDate);
-  showMessage(u12Ui.success, "");
   // Update just the count/status: no DOM rebuild and no lost checkbox focus.
-  refreshU12Controls();
+  markU12DraftDirty();
 });
 `;
