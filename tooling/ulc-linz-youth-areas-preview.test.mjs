@@ -56,7 +56,7 @@ test("v15 creates independent area table without touching existing U12 categorie
   assert.ok(plan.statements[0].includes("training_area IN ('u14', 'kindertraining')"));
   assert.ok(plan.statements[1].includes("organization_id, training_area, lower(label)"));
   for (const statement of plan.statements) {
-    assert.doesNotMatch(statement, /\\b(?:DROP|TRUNCATE|DELETE|UPDATE|ALTER)\\b/i);
+    assert.doesNotMatch(statement, /\b(?:DROP|TRUNCATE|DELETE|UPDATE|ALTER)\b/i);
     assert.doesNotMatch(statement, /ulc_linz_training_session|ulc_linz_training_attendance/);
   }
 });
@@ -87,19 +87,19 @@ test("v15 mutation without explicit approval is refused before any DB connection
 
 test("v15 Preview workflow requires explicit main and apply, then verifies DB and permissions", async () => {
   const workflow = await readFile(resolve(root, ".github/workflows/ulc-linz-youth-v15-preview.yml"), "utf8");
-  assert.match(workflow, /on:\\n  workflow_dispatch:/);
-  assert.match(workflow, /options: \\[inspect, migrate\\]/);
-  assert.match(workflow, /test "\\$EXPECTED_REF" = "refs\\/heads\\/main"/);
-  assert.match(workflow, /test "\\$APPROVED" = "1"/);
+  assert.match(workflow, /on:\n  workflow_dispatch:/);
+  assert.match(workflow, /options: \[inspect, migrate\]/);
+  assert.match(workflow, /test "\$EXPECTED_REF" = "refs\/heads\/main"/);
+  assert.match(workflow, /test "\$APPROVED" = "1"/);
   assert.match(workflow, /name: generated-preview-ulc-linz/);
   assert.match(workflow, /group: generated-preview-ulc-linz/);
-  assert.match(workflow, /ulc-linz-youth-categories-preview\\.mjs verify/);
-  assert.match(workflow, /steps\\.v15\\.outputs\\.state == 'migration-required'/);
+  assert.match(workflow, /ulc-linz-youth-categories-preview\.mjs verify/);
+  assert.match(workflow, /steps\.v15\.outputs\.state == 'migration-required'/);
   assert.match(workflow, /APPBASIS_APPLY_YOUTH_AREAS_PREVIEW: "1"/);
-  assert.match(workflow, /ulc-linz-youth-areas-preview\\.mjs verify/);
-  assert.match(workflow, /ulc-linz-d4-preview-database-access\\.mjs reconcile/);
-  assert.match(workflow, /ulc-linz-d4-preview-database-access\\.mjs preflight-existing/);
-  assert.doesNotMatch(workflow, /appbasis_ulc_linz_production|secrets\\.PRODUCTION/);
+  assert.match(workflow, /ulc-linz-youth-areas-preview\.mjs verify/);
+  assert.match(workflow, /ulc-linz-d4-preview-database-access\.mjs reconcile/);
+  assert.match(workflow, /ulc-linz-d4-preview-database-access\.mjs preflight-existing/);
+  assert.doesNotMatch(workflow, /appbasis_ulc_linz_production|secrets\.PRODUCTION/);
   const steps = [
     "Verify U12 categories schema-v14 prerequisite",
     "Inspect independent group categories schema-v15",
