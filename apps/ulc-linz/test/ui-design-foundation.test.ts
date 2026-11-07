@@ -117,12 +117,12 @@ describe("ULC UI-01: shared brand foundation with isolated youth-page pilot", ()
     const date = html.indexOf('id="u12-date"');
     const savebar = html.indexOf('id="u12-save-state"');
     const content = html.indexOf('id="u12-content-card"');
-    const notes = html.indexOf('id="u12-notes-card"');
     const trainers = html.indexOf('id="u12-trainers-card"');
     const roster = html.indexOf('id="u12-days"');
-    expect([date, savebar, content, notes, trainers, roster]).toEqual(
-      [...[date, savebar, content, notes, trainers, roster]].sort((a, b) => a - b),
-    );
+    const notes = html.indexOf('id="u12-notes-card"');
+    const sections = [date, savebar, content, trainers, roster, notes];
+    expect(sections.every((index) => index > 0)).toBe(true);
+    expect(sections).toEqual([...sections].sort((a, b) => a - b));
     expect(ULC_U12_SCRIPT).toContain("function scheduleU12AutoSave()");
     expect(ULC_U12_SCRIPT).toContain("function u12MissingTrainingDetails()");
     expect(ULC_LINZ_APP_SCRIPT).toContain("setAppNavMoreOpen(false)");
