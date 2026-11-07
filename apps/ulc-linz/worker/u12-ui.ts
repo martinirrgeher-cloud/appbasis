@@ -1409,8 +1409,8 @@ async function openU12NewAthlete() {
     showMessage(u12Ui.message, "Stammdaten konnten nicht geladen werden.");
     return;
   }
-  showAppSection("masterdata");
-  showMasterdataTab("athletes");
+  // Keep the U12 attendance page behind the shared athlete dialog. The
+  // dialog is portalled to the body for visibility while masterdata is hidden.
   openNewMasterdataAthlete({
     source: "u12", groupId, startedOn,
   });
