@@ -160,10 +160,15 @@ export function aggregateU12Statistics(
       for (const trainerId of trainerIds) {
         trainerCounts.set(trainerId, (trainerCounts.get(trainerId) ?? 0) + 1);
       }
-    } else if (session.date !== date || session.trainerPresentCount !== trainerCount ||
-        session.trainerIds.size !== trainerIds.size ||
-        [...trainerIds].some((trainerId) => !session.trainerIds.has(trainerId))) {
-      throw new UlcTrainingValidationError("Inconsistent training session statistics.");
+    } else {
+      // Stable local binding also keeps the per-row consistency predicate
+      // type-safe when evaluated in Array.some's callback.
+      const existing = session;
+      if (existing.date !== date || existing.trainerPresentCount !== trainerCount ||
+          existing.trainerIds.size !== trainerIds.size ||
+          [...trainerIds].some((trainerId) => !existing.trainerIds.has(trainerId))) {
+        throw new UlcTrainingValidationError("Inconsistent training session statistics.");
+      }
     }
     const selectedCategories = new Map<number, string>();
     for (const [index, entry] of items.entries()) {
