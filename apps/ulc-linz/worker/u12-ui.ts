@@ -35,9 +35,8 @@ export const ULC_U12_HTML = `
               </div>
               <div class="u12-content-shell">
                 <details class="u12-content-card ab-surface" id="u12-content-card">
-                <summary class="u12-content-summary">
+                <summary class="u12-content-summary ab-disclosure">
                   <span>Trainingsinhalte <small id="u12-content-count">0 / 5</small></span>
-                  <span aria-hidden="true">⌄</span>
                 </summary>
                 <div class="u12-content-body">
                   <div id="u12-content-rows" class="u12-content-rows"></div>
@@ -50,20 +49,11 @@ export const ULC_U12_HTML = `
                 <button class="u12-category-shortcut ab-icon-button" type="button" data-youth-category-area="u12" hidden disabled
                   aria-label="U12-Trainingskategorien bearbeiten" title="Trainingskategorien bearbeiten">⚙</button>
               </div>
-              <details class="u12-notes-card ab-surface" id="u12-notes-card">
-                <summary>Notizen zum Training <small>optional</small></summary>
-                <div class="u12-notes-body">
-                  <label for="u12-note">Besondere Vorkommnisse und Informationen</label>
-                  <textarea id="u12-note" maxlength="3000" rows="3"
-                    placeholder="z. B. Wetter, Änderungen, Besonderheiten"></textarea>
-                </div>
-              </details>
               <details class="u12-trainers-card ab-surface" id="u12-trainers-card">
-                <summary class="u12-trainers-summary" aria-label="Traineranwesenheit">
+                <summary class="u12-trainers-summary ab-disclosure" aria-label="Traineranwesenheit">
                   <span>Trainer</span>
                   <span class="u12-trainers-summary-status">
                     <small id="u12-trainers-count">0/0</small>
-                    <span class="u12-trainers-chevron" aria-hidden="true">⌄</span>
                   </span>
                 </summary>
                 <div class="u12-trainers-list" id="u12-trainers-rows"></div>
@@ -78,6 +68,14 @@ export const ULC_U12_HTML = `
                 </div>
               </div>
               <div id="u12-days" class="u12-days" aria-live="polite"></div>
+              <details class="u12-notes-card ab-surface" id="u12-notes-card">
+                <summary class="ab-disclosure">Notizen zum Training <small>optional</small></summary>
+                <div class="u12-notes-body">
+                  <label for="u12-note">Besondere Vorkommnisse und Informationen</label>
+                  <textarea id="u12-note" maxlength="3000" rows="3"
+                    placeholder="z. B. Wetter, Änderungen, Besonderheiten"></textarea>
+                </div>
+              </details>
             </section>
             <dialog class="u12-details-dialog u12-matrix-dialog" id="u12-assignment-section" aria-labelledby="u12-assignment-heading" aria-describedby="u12-assignment-help">
               <header class="u12-details-header u12-matrix-dialog__header">
@@ -185,7 +183,7 @@ export const ULC_U12_CSS = `
 .u12-details-section p { overflow-wrap: anywhere; white-space: pre-wrap; }
  .u12-roster { isolation: isolate; }
 .u12-content-card { border:1px solid var(--border); border-radius:12px; background:var(--card); padding:0; min-width:0; box-shadow:0 2px 8px rgba(15,23,42,.035); }
-.u12-content-summary { display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; padding:6px 10px; padding-right:90px; font-size:.9rem; font-weight:800; min-height:44px; }
+.u12-content-summary { display:flex; justify-content:flex-start; align-items:center; gap:8px; cursor:pointer; padding:6px 10px; padding-right:90px; font-size:.9rem; font-weight:800; min-height:44px; }
 .u12-content-summary::marker { content:""; }
 .u12-content-summary small { font-size:.75rem; color:var(--secondary); margin-left:7px; }
 .u12-content-body { display:grid; gap:7px; padding:0 8px 9px; }
@@ -236,7 +234,7 @@ export const ULC_U12_CSS = `
 .u12-statistics-line small { font-size:.71rem; color:var(--secondary); }
 .u12-statistics-athlete { border:1px solid var(--border); border-radius:9px; }
 .u12-statistics-athlete summary { display:flex; gap:8px; align-items:center; justify-content:space-between; min-height:42px; padding:6px 10px; cursor:pointer; font-size:.83rem; }
-.u12-statistics-athlete summary strong { white-space:nowrap; }
+.u12-statistics-athlete summary strong { margin-left:auto; white-space:nowrap; }
 .u12-statistics-athlete__detail { padding:3px 10px 9px; border-top:1px solid var(--border); display:grid; gap:5px; font-size:.75rem; }
 .u12-statistics-athlete__detail > div { display:flex; justify-content:space-between; gap:6px; }
 @media(max-width:370px) { .u12-statistics-filter input { font-size:.76rem; } .u12-statistics-tabs button { font-size:.75rem; } }
@@ -286,13 +284,11 @@ export const ULC_U12_CSS = `
 .u12-matrix-empty { padding:12px 8px; color:var(--secondary); font-size:.8rem; }
 
 .u12-trainers-card { margin-top:6px; border:1px solid var(--border); border-radius:10px; background:var(--card); overflow:hidden; }
-.u12-trainers-summary { min-height:40px; padding:0 10px; display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; font-size:.86rem; font-weight:750; }
+.u12-trainers-summary { min-height:44px; padding:0 10px; display:flex; justify-content:flex-start; align-items:center; gap:8px; cursor:pointer; font-size:.86rem; font-weight:750; }
 .u12-trainers-summary::marker { content:""; }
 .u12-trainers-summary::-webkit-details-marker { display:none; }
-.u12-trainers-summary-status { display:inline-flex; align-items:center; gap:8px; white-space:nowrap; }
+.u12-trainers-summary-status { display:inline-flex; align-items:center; gap:8px; margin-left:auto; white-space:nowrap; }
 .u12-trainers-summary small { font-size:.76rem; font-weight:600; color:var(--secondary); }
-.u12-trainers-chevron { font-size:1rem; transition:transform .15s ease; }
-.u12-trainers-card[open] .u12-trainers-chevron { transform:rotate(180deg); }
 .u12-trainers-list { padding:0 8px 8px; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr)); gap:5px; }
 .u12-trainers-list > small { grid-column:1/-1; padding:5px 2px; font-size:.78rem; }
 .u12-trainer-row { box-sizing:border-box; min-height:40px; min-width:0; display:flex; align-items:center; gap:7px; padding:3px 8px; border:1px solid var(--border); border-radius:8px; background:var(--card); cursor:pointer; }
@@ -1090,6 +1086,7 @@ function renderU12Statistics(report) {
     const details = document.createElement("details");
     details.className = "u12-statistics-athlete";
     const summary = document.createElement("summary");
+    summary.className = "ab-disclosure";
     const name = document.createElement("span");
     name.textContent = athlete.lastName + " " + athlete.firstName;
     const count = document.createElement("strong");
