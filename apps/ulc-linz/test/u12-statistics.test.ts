@@ -93,7 +93,7 @@ describe("U12 attendance statistics aggregation", () => {
       "session.session_date >= $3::date", "session.session_date <= $4::date",
       "attendance.organization_id = session.organization_id",
     ]) expect(sql).toContain(predicate);
-    expect(sql).not.toMatch(/\\b(?:INSERT|UPDATE|DELETE|TRUNCATE)\\b/i);
+    expect(sql).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|TRUNCATE)\b/i);
   });
 });
 
