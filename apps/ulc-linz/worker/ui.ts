@@ -791,14 +791,14 @@ ${ULC_TRAINING_DOCUMENTATION_HTML}
 
 export const ULC_LINZ_APP_CSS = `${ULC_DESIGN_SYSTEM_CSS}
 :root {
-  --accent: var(--ulc-brand);
-  --accent-foreground: var(--ulc-brand-contrast);
-  --page: var(--ulc-color-page);
-  --card: var(--ulc-color-surface);
+  --accent: var(--ab-brand-primary);
+  --accent-foreground: var(--ab-brand-contrast);
+  --page: var(--ab-surface-page);
+  --card: var(--ab-surface-card);
   --muted: #f1f5f9;
-  --text: var(--ulc-color-text);
-  --secondary: var(--ulc-color-secondary);
-  --border: var(--ulc-color-border);
+  --text: var(--ab-text-primary);
+  --secondary: var(--ab-text-secondary);
+  --border: var(--ab-border-default);
   --border-strong: #cbd5e1;
   --danger: #b91c1c;
   --danger-surface: #fee2e2;
@@ -842,7 +842,7 @@ button, input, select, textarea { font: inherit; }
   flex: 0 0 40px;
   width: 40px;
   height: 40px;
-  border-radius: var(--ulc-radius-control);
+  border-radius: var(--ab-radius-control);
   object-fit: contain;
 }
 .app-brand__copy { display: grid; line-height: 1.12; }
@@ -958,11 +958,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .app-nav__group summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; cursor: pointer; font-size: .86rem; font-weight: 800; color: var(--text); }
 .app-nav__group summary::after { content: "⌄"; font-size: 1.05rem; }
 .app-nav__group[open] summary::after { content: "⌃"; }
-.app-nav__group.is-active summary { color: var(--ulc-brand); }
+.app-nav__group.is-active summary { color: var(--ab-brand-primary); }
 .app-nav__group-list { display: grid; gap: 3px; padding: 0 5px 5px 12px; }
 .app-nav__overflow-footer { padding-top: 6px; border-top: 1px solid var(--border); }
 .app-nav__overflow-footer .app-nav__link { width: 100%; }
-.app-nav__more[aria-expanded="true"] { background: var(--ulc-brand-soft); color: var(--ulc-brand); }
+.app-nav__more[aria-expanded="true"] { background: var(--ab-brand-soft); color: var(--ab-brand-primary); }
 .app-nav__link {
   display: inline-flex;
   min-height: var(--touch);
@@ -985,7 +985,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   font-size: .8rem;
 }
 .app-nav__more { font-weight: 900; }
-.app-nav__link.is-active { background: var(--ulc-brand-soft); color: var(--ulc-brand); }
+.app-nav__link.is-active { background: var(--ab-brand-soft); color: var(--ab-brand-primary); }
 .app-nav__link:disabled { cursor: not-allowed; opacity: .45; }
 .content { width: min(100%, 52rem); margin: 0 auto; padding: 12px 12px 86px; }
 .app-section[hidden] { display: none !important; }
@@ -1162,7 +1162,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 }
 .masterdata-tab.is-active {
   border-color: var(--accent);
-  background: var(--ulc-brand-soft);
+  background: var(--ab-brand-soft);
   color: var(--accent);
 }
 .masterdata-panel { display: grid; gap: 10px; }
@@ -1393,7 +1393,7 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 }
 .registration-action[aria-pressed="true"] {
   border-color: var(--accent);
-  background: var(--ulc-brand-soft);
+  background: var(--ab-brand-soft);
   color: var(--accent);
 }
 .registration-action[data-intention="attending"][aria-pressed="true"] {
@@ -1522,7 +1522,7 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 }
 .kindertraining-status[aria-pressed="true"] {
   border-color: var(--accent);
-  background: var(--ulc-brand-soft);
+  background: var(--ab-brand-soft);
   color: var(--accent);
 }
 .kindertraining-status[data-status="present"][aria-pressed="true"] {
@@ -2177,7 +2177,7 @@ ${ULC_USER_ADMIN_CSS}
 .kindertraining-week-savebar { gap:6px; padding:7px 9px; }
 @media (max-width:375px) { .kindertraining-week-actions button { font-size:.75rem; padding:4px 6px; } }
 
-#app-nav-attendance[aria-expanded="true"] { background: var(--ulc-brand-soft); color: var(--ulc-brand); }
+#app-nav-attendance[aria-expanded="true"] { background: var(--ab-brand-soft); color: var(--ab-brand-primary); }
 ${ULC_U12_CSS}
 ${ULC_U14_CSS}
 ${ULC_KIDS_CSS}
