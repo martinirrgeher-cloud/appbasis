@@ -103,23 +103,14 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" aria-haspopup="true">Mehr</button>
           </div>
           <div class="app-nav__attendance-menu" id="app-nav-attendance-menu" aria-label="Anwesenheit nach Gruppe" hidden>
-            <div class="app-nav__attendance-row">
-              <button class="app-nav__attendance-item" type="button" data-attendance-target="u12" hidden disabled>
-                <strong>U12</strong><small>Anwesenheit und Inhalte</small>
-              </button>
-              <button class="app-nav__attendance-category" type="button" data-youth-category-area="u12" hidden disabled aria-label="U12-Kategorien bearbeiten" title="U12-Kategorien">⚙</button>
-            </div>
-            <div class="app-nav__attendance-row">
-              <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="kindertraining" hidden disabled>
-                <strong>Kindertraining</strong><small>Anwesenheit</small>
-              </button>
-              <button class="app-nav__attendance-category" type="button" data-youth-category-area="kindertraining" hidden disabled aria-label="Kindertraining-Kategorien bearbeiten" title="Kindertraining-Kategorien">⚙</button>
-            </div>
-            <div class="app-nav__attendance-row">
-              <div class="app-nav__attendance-item app-nav__attendance-item--pending" aria-disabled="true">
-                <strong>U14</strong><small>Anwesenheit in Vorbereitung</small>
-              </div>
-              <button class="app-nav__attendance-category" type="button" data-youth-category-area="u14" hidden disabled aria-label="U14-Kategorien bearbeiten" title="U14-Kategorien">⚙</button>
+            <button class="app-nav__attendance-item" type="button" data-attendance-target="u12" hidden disabled>
+              <strong>U12</strong><small>Anwesenheit und Inhalte</small>
+            </button>
+            <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="kindertraining" hidden disabled>
+              <strong>Kindertraining</strong><small>Anwesenheit</small>
+            </button>
+            <div class="app-nav__attendance-item app-nav__attendance-item--pending" aria-disabled="true">
+              <strong>U14</strong><small>Anwesenheit in Vorbereitung</small>
             </div>
             <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="irrgeher" hidden disabled>
               <strong>Gruppe Irrgeher</strong><small>Anwesenheit</small>
@@ -2162,17 +2153,12 @@ ${ULC_USER_ADMIN_CSS}
 .app-nav__attendance-item:not(:disabled):hover,
 .app-nav__attendance-item:not(:disabled):focus-visible { background: var(--muted); }
 .app-nav__attendance-item--pending { opacity: .55; cursor: default; }
-/* Category actions live alongside each attendance group, not in a shared menu. */
-.app-nav__attendance-row { display:flex; align-items:stretch; gap:3px; min-width:0; }
-.app-nav__attendance-row > .app-nav__attendance-item { flex:1 1 auto; min-width:0; }
-.app-nav__attendance-category, .app-category-shortcut {
+.app-category-shortcut {
   flex:0 0 42px; width:42px; height:42px; min-height:42px; padding:0;
   border:1px solid var(--border); border-radius:9px; background:var(--card);
   color:var(--text); font-size:1.1rem; cursor:pointer;
 }
-.app-nav__attendance-category[hidden], .app-category-shortcut[hidden] { display:none !important; }
-.app-nav__attendance-category:disabled { opacity:.45; cursor:default; }
-.app-nav__attendance-category:not(:disabled):focus-visible,
+.app-category-shortcut[hidden] { display:none !important; }
 .app-category-shortcut:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .kindertraining-head { display:flex; align-items:center; justify-content:space-between; gap:7px; min-width:0; margin:0 0 8px; }
 .kindertraining-head h1 { margin:0; font-size:1.45rem; line-height:1.25; }
