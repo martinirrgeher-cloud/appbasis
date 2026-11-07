@@ -371,6 +371,7 @@ let u12LoadedGroupId = "";
 let u12LoadedDate = "";
 let u12Snapshot = null;
 let u12Present = new Map();
+let u12TouchedAthletes = new Set();
 let u12ContentTitles = [];
 let u12ContentItems = [];
 let u12ContentAssignments = new Map();
@@ -403,6 +404,7 @@ function resetU12SessionState() {
   u12LoadedDate = "";
   u12Snapshot = null;
   u12Present = new Map();
+  u12TouchedAthletes = new Set();
   u12ContentTitles = [];
   u12ContentItems = [];
   u12ContentAssignments = new Map();
@@ -1210,6 +1212,7 @@ async function loadU12Attendance() {
   u12Ui.detailsContent?.replaceChildren();
   u12Snapshot = null;
   u12Present = new Map();
+  u12TouchedAthletes = new Set();
   u12ContentTitles = [];
   u12ContentItems = [];
   u12ContentAssignments = new Map();
@@ -1288,7 +1291,9 @@ async function saveU12Attendance() {
     note: u12Note.trim() || null,
     attendance: u12Snapshot.participants.map((person) => ({
       athleteId: person.athleteId,
-      status: u12Present.get(person.athleteId) === true ? "present" : "absent",
+      status: u12TouchedAthletes.has(person.athleteId)
+        ? (u12Present.get(person.athleteId) === true ? "present" : "absent")
+        : person.status,
       contentSlots: u12Present.get(person.athleteId) === true
         ? [...(u12ContentAssignments.get(person.athleteId) ?? new Set())].sort((a, b) => a - b)
         : [],
@@ -1321,6 +1326,7 @@ async function saveU12Attendance() {
         u12ContentAssignments = new Map(u12Snapshot.participants.map((person) =>
           [person.athleteId, new Set(person.contentSlots)]));
         u12Note = u12Snapshot.session?.note ?? "";
+        u12TouchedAthletes.clear();
         u12DirtyDates.clear();
       }
       u12AutoSaveFailed = false;
@@ -1592,6 +1598,7 @@ u12Ui.days?.addEventListener("change", (event) => {
       u12Snapshot.session?.state === "cancelled" ||
       !u12Snapshot.participants.some((person) => person.athleteId === athleteId)) return;
   u12Present.set(athleteId, input.checked === true);
+  u12TouchedAthletes.add(athleteId);
   if (!input.checked) u12ContentAssignments.set(athleteId, new Set());
   renderU12AssignmentMatrix();
   // Update just the count/status: no DOM rebuild and no lost checkbox focus.
