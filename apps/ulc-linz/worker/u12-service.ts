@@ -234,6 +234,7 @@ export function createUlcU12Service({
         moduleGroups,
         normalizedOrganizationId,
         normalizedGroupId,
+        area,
       );
       const context = await resolveContext(
         masterdata,
