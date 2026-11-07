@@ -83,7 +83,7 @@ describe("youth attendance documentation reminders", () => {
       expect(html).toContain('id="' + prefix + '-trainers-count"');
       expect(css).toContain('.' + prefix + '-content-card.' + prefix + '-reminder-pending');
       expect(css).toContain('.' + prefix + '-trainers-card.' + prefix + '-reminder-pending');
-      expect(css).toContain('background:color-mix(in srgb, var(--ulc-warning-tint) 23%, var(--card))');
+      expect(css).toContain('background:color-mix(in srgb, var(--ab-state-warning-tint) 23%, var(--card))');
       expect(css).toContain('min-height:40px');
       expect(css).toContain('grid-template-columns:repeat(auto-fit');
       expect(script).toContain('function ' + prefix + 'MissingTrainingDetails()');
