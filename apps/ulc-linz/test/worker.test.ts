@@ -5355,6 +5355,7 @@ describe("U12 runtime API", () => {
               session: null,
               contentTitles: [],
               contentItems: [],
+              trainers: [],
               participants: [],
             };
           },
@@ -5404,6 +5405,7 @@ describe("U12 runtime API", () => {
               contentTitles: input.contentTitles ?? [],
               contentItems: input.contentItems ?? (input.contentTitles ?? []).map(() =>
                 ({ code: "" as const, detail: "" })),
+              trainers: [],
               session: {
                 id: "session-1",
                 revision: "42",
