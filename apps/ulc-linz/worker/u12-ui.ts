@@ -540,7 +540,15 @@ function renderU12ContentRows() {
     // Historical free text, renamed and inactive categories stay visible and unchanged.
     // A category selection is an explicit conversion, never a silent rewrite.
     const current = U12_STANDARD_CONTENT_CATALOG.find((entry) => entry.code === meta.code);
-    if (!meta.code || !current || current.label !== title) {
+    if (!meta.code && !title.trim()) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Kategorie auswählen";
+      placeholder.disabled = true;
+      placeholder.selected = true;
+      category.prepend(placeholder);
+      category.value = "";
+    } else if (!meta.code || !current || current.label !== title) {
       const savedOption = document.createElement("option");
       savedOption.value = "__historical__";
       savedOption.textContent = !meta.code
@@ -583,8 +591,10 @@ function addU12Content() {
     showMessage(u12Ui.message, "Bitte zuerst eine U12-Kategorie über ⚙ anlegen oder aktivieren.");
     return;
   }
-  u12ContentTitles.push(initial.label);
-  u12ContentItems.push({ code: initial.code, detail: "" });
+  // A new content always requires a deliberate category selection.
+  // A placeholder is not a free-text category and can never be saved.
+  u12ContentTitles.push("");
+  u12ContentItems.push({ code: "", detail: "" });
   if (u12Ui.contentCard) u12Ui.contentCard.open = true;
   renderU12Attendance();
   markU12DraftDirty();
@@ -945,7 +955,7 @@ async function saveU12Attendance() {
   const invalidTitleIndex = titles.findIndex((title) => title.length === 0 || title.length > 120);
   if (invalidTitleIndex !== -1) {
     if (u12Ui.contentCard) u12Ui.contentCard.open = true;
-    showMessage(u12Ui.message, "Bitte alle Trainingsinhalte benennen (maximal 120 Zeichen).");
+    showMessage(u12Ui.message, "Bitte für jeden neuen Trainingsinhalt eine Kategorie auswählen.");
     u12Ui.contentRows?.querySelector('[data-u12-code-index="' + invalidTitleIndex + '"]')?.focus();
     return false;
   }
