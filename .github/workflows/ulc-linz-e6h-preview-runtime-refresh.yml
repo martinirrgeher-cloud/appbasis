@@ -165,6 +165,14 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-youth-categories-preview.mjs verify
 
+      - name: Require shared youth categories schema-v15 group categories before preview runtime refresh
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-youth-categories-preview.mjs verify
+
+
       - name: Resolve preview worker and URL
         id: preview
         shell: bash
