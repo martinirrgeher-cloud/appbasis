@@ -122,6 +122,12 @@ async function refreshYouthCategoryCatalog(area = "u12") {
   if (area === "u12" && typeof updateU12CategoryCatalog === "function") {
     updateU12CategoryCatalog(payload.categories);
   }
+  if (area === "u14" && typeof updateU14CategoryCatalog === "function") {
+    updateU14CategoryCatalog(payload.categories);
+  }
+  if (area === "kindertraining" && typeof updateKidsCategoryCatalog === "function") {
+    updateKidsCategoryCatalog(payload.categories);
+  }
   if (area === youthCategoryArea) {
     youthCategoryCatalog = payload.categories;
     youthCategoryCanManage = payload.canManage;
