@@ -225,7 +225,7 @@ export class PostgresUlcTrainingSessionRepository {
       revision: rowRevision(rows[0]),
       attendance,
       registrations,
-      ...(moduleId === "u12"
+      ...(["u12", "u14", "kindertraining"].includes(moduleId)
         ? {
             trainingContentTitles: readTrainingContentTitles(
               rows[0].training_content_titles,
