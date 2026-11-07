@@ -173,3 +173,21 @@ Live-Vorschau, optionalen Logos/Typografievarianten und barrierefreien
 Kontrastprüfungen. Eine Erweiterung des Theme-Manifests erfordert eine
 separate Schema-Version, Validierung und Migrationsstrategie, nicht
 ungeprüft zusätzliche Felder im v1-Manifest.
+
+### Disclosure / Aufklappbereiche (UI-02.1)
+
+Alle fachlichen Aufklappbereiche verwenden ab diesem Slice die Factory-Klasse
+`ab-disclosure` direkt am `<summary>` eines nativen `<details>`. Die
+einheitliche Pfeilmarkierung steht **links vor dem Inhalt**, zeigt geschlossen
+nach rechts und geöffnet nach unten. Ein zweiter, manuell eingefügter Pfeil
+rechts ist zu entfernen. Der HTML-Standard mit Tastatur- und
+Screenreader-Bedienung bleibt erhalten. Für bestehende Knopf-basierte
+Aufklappbereiche steht `ab-disclosure-toggle` zur Verfügung, bei dem die
+Rotation dem vorhandenen `aria-expanded` folgt.
+
+Beide Foundation-Varianten (`packages/ui/foundation.css` und
+`packages/ui/embedded-foundation.ts`) verwenden dasselbe Klassen- und
+Zustandsverhalten. Die Umstellung erfolgt als Opt-in je Komponente; besonders
+**Aktionsmenüs mit Drei-Punkte-Trigger** sind ausdrücklich ausgeschlossen.
+Bei längeren Namen bleiben die Statuszähler rechts und die Pfeile vorne.
+Das Vorgehen ist kein neuer Backend- oder Berechtigungsvertrag.

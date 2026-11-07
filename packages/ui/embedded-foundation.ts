@@ -96,8 +96,34 @@ export function renderAppBasisEmbeddedFoundationCss(theme: AppBasisEmbeddedTheme
   background: color-mix(in srgb, var(--ab-state-warning-tint) 23%, var(--ab-surface-card));
   box-shadow: inset 3px 0 0 var(--ab-state-warning-edge);
 }
+/* AppFactory disclosure: one chevron at the leading edge, rotated when open.
+   Opt-in only: overflow action menus (•••) deliberately remain unchanged. */
+.ab-disclosure {
+  display: flex;
+  align-items: center;
+  gap: var(--ab-space-2);
+  list-style: none;
+  cursor: pointer;
+}
+.ab-disclosure::marker { content: ""; }
+.ab-disclosure::-webkit-details-marker { display: none; }
+.ab-disclosure::before,
+.ab-disclosure-toggle::before {
+  content: "";
+  display: inline-block;
+  flex: 0 0 9px;
+  width: 9px;
+  height: 9px;
+  margin-right: 2px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+details[open] > .ab-disclosure::before,
+.ab-disclosure-toggle[aria-expanded="true"]::before { transform: rotate(45deg); }
 @media (prefers-reduced-motion: reduce) {
-  .ab-icon-button { transition: none; }
+  .ab-icon-button, .ab-disclosure::before, .ab-disclosure-toggle::before { transition: none; }
 }
 `;
 }

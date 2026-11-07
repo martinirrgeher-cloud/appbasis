@@ -79,7 +79,7 @@ describe("youth attendance documentation reminders", () => {
       ["kids", ULC_KIDS_HTML, ULC_KIDS_CSS, ULC_KIDS_SCRIPT],
     ] as const) {
       expect(html).toContain('id="' + prefix + '-trainers-card"');
-      expect(html).toContain('class="' + prefix + '-trainers-summary" aria-label="Traineranwesenheit"');
+      expect(html).toContain('class="' + prefix + '-trainers-summary ab-disclosure" aria-label="Traineranwesenheit"');
       expect(html).toContain('id="' + prefix + '-trainers-count"');
       expect(css).toContain('.' + prefix + '-content-card.' + prefix + '-reminder-pending');
       expect(css).toContain('.' + prefix + '-trainers-card.' + prefix + '-reminder-pending');

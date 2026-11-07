@@ -765,7 +765,7 @@ body.training-plan-picker-open { overflow: hidden; }
 .training-plan-item-summary,
 .training-plan-child-summary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 12px minmax(0, 1fr);
   gap: 8px;
   align-items: center;
 }
@@ -2413,7 +2413,7 @@ function renderTrainingPlanItems() {
     card.open = item.itemId === null;
 
     const summary = document.createElement("summary");
-    summary.className = "training-plan-item-summary";
+    summary.className = "training-plan-item-summary ab-disclosure";
     const summaryMain = document.createElement("span");
     const title = document.createElement("strong");
     title.textContent = item.name || (item.kind === "block" ? "Block" : "Übung");
@@ -2425,10 +2425,7 @@ function renderTrainingPlanItems() {
       meta.textContent = trainingPlanItemCompactSummary(item);
     };
     summaryMain.append(title, meta);
-    const chevron = document.createElement("span");
-    chevron.setAttribute("aria-hidden", "true");
-    chevron.textContent = "▾";
-    summary.append(summaryMain, chevron);
+    summary.append(summaryMain);
     card.append(summary);
 
     const editor = document.createElement("div");
@@ -2597,7 +2594,7 @@ function trainingPlanBlockFields(
     child.open = exercise.itemId === null;
 
     const summary = document.createElement("summary");
-    summary.className = "training-plan-child-summary";
+    summary.className = "training-plan-child-summary ab-disclosure";
     const main = document.createElement("span");
     const title = document.createElement("strong");
     title.textContent = exercise.name || "Übung " + String(childIndex + 1);
@@ -2609,10 +2606,7 @@ function trainingPlanBlockFields(
       meta.textContent = trainingPlanItemCompactSummary(exercise);
     };
     main.append(title, meta);
-    const chevron = document.createElement("span");
-    chevron.setAttribute("aria-hidden", "true");
-    chevron.textContent = "▾";
-    summary.append(main, chevron);
+    summary.append(main);
 
     const editor = document.createElement("div");
     editor.className = "training-plan-item-editor";
