@@ -2564,6 +2564,7 @@ let masterdataContactEdit = null;
 let masterdataAthleteOverlayId = null;
 let masterdataAthleteOverlayMode = "closed";
 let masterdataAthleteCreateContext = null;
+let masterdataAthleteOverlayHome = null;
 let masterdataTrainerOverlayId = null;
 let masterdataTrainerOverlayMode = "closed";
 let masterdataGroupOverlayId = null;
@@ -7066,7 +7067,7 @@ function openNewMasterdataAthlete(context = null) {
     masterdataSnapshot.trainingGroups.some((group) =>
       group.id === context.groupId && group.isActive !== false);
   if (context?.source === "u12" && !fromU12) {
-    showMessage(elements.masterdataMessage,
+    showMessage(u12Ui.message,
       "Die U12-Gruppe ist in den Stammdaten nicht verfügbar.");
     return;
   }
@@ -7096,6 +7097,15 @@ function openNewMasterdataAthlete(context = null) {
     elements.athleteCreateStartedOn.disabled = fromU12;
   }
   refreshMasterdataEditMode();
+  if (fromU12 && elements.athleteOverlay && !masterdataAthleteOverlayHome) {
+    // The shared dialog lives inside the hidden masterdata section.
+    // Move only this dialog to the body, preserving its original location.
+    masterdataAthleteOverlayHome = {
+      parent: elements.athleteOverlay.parentNode,
+      next: elements.athleteOverlay.nextSibling,
+    };
+    document.body.append(elements.athleteOverlay);
+  }
   showMasterdataAthleteOverlayMode("athlete");
   if (elements.athleteOverlayTitle) {
     elements.athleteOverlayTitle.textContent = "Athlet anlegen";
@@ -7165,6 +7175,7 @@ function addMasterdataNewAthleteContact() {
 }
 
 function closeMasterdataAthleteOverlay() {
+  const fromU12 = masterdataAthleteCreateContext?.source === "u12";
   masterdataAthleteCreateContext = null;
   elements.athleteCreateContacts?.replaceChildren();
   if (elements.athleteCreateContactAdd) elements.athleteCreateContactAdd.disabled = false;
@@ -7180,6 +7191,17 @@ function closeMasterdataAthleteOverlay() {
   refreshMasterdataEditMode();
   if (elements.athleteOverlay) elements.athleteOverlay.hidden = true;
   document.body.classList.remove("masterdata-athlete-overlay-open");
+  if (masterdataAthleteOverlayHome && elements.athleteOverlay) {
+    const { parent, next } = masterdataAthleteOverlayHome;
+    masterdataAthleteOverlayHome = null;
+    if (parent) parent.insertBefore(
+      elements.athleteOverlay,
+      next?.parentNode === parent ? next : null,
+    );
+  }
+  if (fromU12 && document.querySelector('[data-app-section="u12"]:not([hidden])')) {
+    u12Ui.addAthlete?.focus();
+  }
 }
 
 function showMasterdataAthleteOverlayMode(mode) {
@@ -7633,7 +7655,6 @@ async function createMasterdataAthlete(event) {
       u12DirtyDates.clear();
       await loadU12Attendance();
       if (generation !== masterdataSessionGeneration) return;
-      showAppSection("u12");
       showMessage(u12Ui.success, refreshed
         ? "Neues Kind angelegt und der U12-Gruppe zugeordnet."
         : "Kind und Gruppenzuordnung angelegt. Stammdaten konnten nicht neu geladen werden.");
