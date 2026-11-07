@@ -24,8 +24,11 @@ describe("ULC UI-01: shared brand foundation with isolated youth-page pilot", ()
     expect(ULC_DESIGN_SYSTEM_CSS).toBe(
       renderAppBasisEmbeddedFoundationCss(appTheme),
     );
-    expect(renderAppBasisEmbeddedFoundationCss({ accentColor: "#2563EB" }))
-      .toContain("--ab-brand-primary: #2563eb;");
+    const blue = renderAppBasisEmbeddedFoundationCss({ accentColor: "#2563EB" });
+    expect(blue).toContain("--ab-brand-primary: #2563eb;");
+    expect(blue).toContain("--ab-brand-contrast: #ffffff;");
+    expect(renderAppBasisEmbeddedFoundationCss({ accentColor: "#ffff00" }))
+      .toContain("--ab-brand-contrast: #000000;");
     for (const accentColor of ["red", "#123", "#00ff00;body{display:none}", ""]) {
       expect(() => renderAppBasisEmbeddedFoundationCss({ accentColor })).toThrow();
     }
