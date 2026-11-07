@@ -126,14 +126,14 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <button class="app-nav__link" type="button" data-nav-view="registration" data-nav-priority="1" hidden disabled>Anmeldung</button>
             <button class="app-nav__link" type="button" data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung</button>
             <details class="app-nav__group" data-nav-group="training" hidden>
-              <summary>Trainingsinhalte</summary>
+              <summary class="ab-disclosure">Trainingsinhalte</summary>
               <div class="app-nav__group-list">
                 <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="5" hidden disabled>Übungen</button>
                 <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="6" hidden disabled>Blöcke</button>
               </div>
             </details>
             <details class="app-nav__group" data-nav-group="administration" hidden>
-              <summary>Verwaltung</summary>
+              <summary class="ab-disclosure">Verwaltung</summary>
               <div class="app-nav__group-list">
                 <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="7" hidden disabled>Stammdaten</button>
                 <button class="app-nav__link" type="button" data-nav-view="users" data-nav-priority="9" hidden disabled>Benutzer</button>
@@ -955,9 +955,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .app-nav__overflow { max-height: min(72dvh, 620px); overflow-y: auto; overscroll-behavior: contain; }
 .app-nav__primary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .app-nav__group { min-width: 0; border: 1px solid var(--border); border-radius: 10px; }
-.app-nav__group summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; cursor: pointer; font-size: .86rem; font-weight: 800; color: var(--text); }
-.app-nav__group summary::after { content: "⌄"; font-size: 1.05rem; }
-.app-nav__group[open] summary::after { content: "⌃"; }
+.app-nav__group summary { min-height: 44px; display: flex; align-items: center; justify-content: flex-start; gap: var(--ab-space-2); padding: 8px 12px; cursor: pointer; font-size: .86rem; font-weight: 800; color: var(--text); }
 .app-nav__group.is-active summary { color: var(--ab-brand-primary); }
 .app-nav__group-list { display: grid; gap: 3px; padding: 0 5px 5px 12px; }
 .app-nav__overflow-footer { padding-top: 6px; border-top: 1px solid var(--border); }
