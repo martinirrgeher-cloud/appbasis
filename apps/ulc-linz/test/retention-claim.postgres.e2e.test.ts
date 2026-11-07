@@ -260,7 +260,18 @@ async function applyUlcLifecycleMigrations(
     ],
   });
   if (permissions === undefined) throw new Error("Expected ULC permissions database owner.");
-  for (const migration of [...permissions.migrations, ...owner.migrations]) {
+  // v16 trainer presence has a foreign key to canonical trainer masterdata.
+  // Install the exact foundational athletes owner before the app-owned table.
+  const athletes = manifest.owners.find((candidate) => candidate.id === "athletes");
+  if (!athletes || athletes.migrations[0] !==
+      "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql") {
+    throw new Error("ULC trainer presence E2E requires canonical trainer masterdata.");
+  }
+  for (const migration of [
+    ...permissions.migrations,
+    athletes.migrations[0],
+    ...owner.migrations,
+  ]) {
     const sql = await readFile(new URL(`../../../${migration}`, import.meta.url), "utf8");
     for (const statement of sql.split("--> statement-breakpoint")) {
       if (statement.trim() !== "") await client.unsafe(statement);
