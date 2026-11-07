@@ -625,11 +625,11 @@ body.training-block-editor-open { overflow: hidden; }
   .training-block-history-card { padding: 10px; }
   .training-block-info-tabs { top: 62px; }
   .training-block-commandbar {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     padding: 10px;
   }
-  .training-block-extra-filters { grid-column: 1; }
+  .training-block-extra-filters { grid-column: 1 / -1; }
   .training-block-filter-feedback { flex-wrap: wrap; }
   .training-block-form-grid { grid-template-columns: 1fr; }
   .training-block-parameters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -688,7 +688,9 @@ body.training-block-editor-open { overflow: hidden; }
 }
 
 @media (max-width: 359px) {
+  .training-block-commandbar,
   .training-block-extra-filters__fields { grid-template-columns: minmax(0, 1fr); }
+  .training-block-extra-filters { grid-column: 1; }
 }
 
 /* Category before exercise selection, still usable at phone width. */
