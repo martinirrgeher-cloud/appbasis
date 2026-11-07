@@ -32,9 +32,9 @@ describe("ULC Kindertraining weekly attendance UI", () => {
     expect(ULC_LINZ_APP_HTML).toContain("<h2>Anwesenheit</h2>");
     expect(ULC_LINZ_APP_HTML).toContain("Gruppe auswählen");
     expect(ULC_LINZ_APP_HTML).toContain("<h1>Anwesenheit</h1>");
-    expect(ULC_LINZ_APP_HTML).toContain(
-      "Die ganze Trainingswoche im Blick: Voranmeldungen prüfen und die tatsächliche Anwesenheit gesammelt erfassen.",
-    );
+    expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-categories"');
+    expect(ULC_LINZ_APP_HTML).toContain('class="kindertraining-head"');
+    expect(ULC_LINZ_APP_HTML).not.toContain("Die ganze Trainingswoche im Blick: Voranmeldungen prüfen");
     expect(ULC_LINZ_APP_HTML).toContain(
       "Änderungen werden automatisch gespeichert.",
     );
