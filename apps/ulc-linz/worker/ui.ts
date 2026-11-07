@@ -38,6 +38,7 @@ import {
   ULC_KIDS_HTML, ULC_KIDS_CSS, ULC_KIDS_SCRIPT,
 } from "./youth-attendance-ui";
 import { generatedPwaResponse } from "./pwa";
+import { ULC_DESIGN_SYSTEM_CSS } from "./design-system";
 
 export const ULC_LINZ_APP_HTML = `<!doctype html>
 <html lang="de">
@@ -59,7 +60,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
     <div class="app-shell">
       <header class="app-header">
         <a class="app-brand" href="/" aria-label="ULC Linz Startseite">
-          <span class="app-brand__mark" aria-hidden="true">ULC</span>
+          <img class="app-brand__mark" src="/icon-192.png" alt="" aria-hidden="true" width="40" height="40" />
           <span class="app-brand__copy"><strong>ULC Linz</strong><small>Vereins-App</small></span>
         </a>
         <div class="app-header__actions">
@@ -788,15 +789,16 @@ ${ULC_TRAINING_DOCUMENTATION_HTML}
 </html>
 `;
 
-export const ULC_LINZ_APP_CSS = `:root {
-  --accent: #1d4ed8;
-  --accent-foreground: #ffffff;
-  --page: #f8fafc;
-  --card: #ffffff;
+export const ULC_LINZ_APP_CSS = `${ULC_DESIGN_SYSTEM_CSS}
+:root {
+  --accent: var(--ab-brand-primary);
+  --accent-foreground: var(--ab-brand-contrast);
+  --page: var(--ab-surface-page);
+  --card: var(--ab-surface-card);
   --muted: #f1f5f9;
-  --text: #0f172a;
-  --secondary: #475569;
-  --border: #e2e8f0;
+  --text: var(--ab-text-primary);
+  --secondary: var(--ab-text-secondary);
+  --border: var(--ab-border-default);
   --border-strong: #cbd5e1;
   --danger: #b91c1c;
   --danger-surface: #fee2e2;
@@ -836,15 +838,12 @@ button, input, select, textarea { font: inherit; }
 .app-install { min-height: 36px; border: 1px solid var(--border-strong); border-radius: 9px; padding: 0 9px; background: white; color: var(--text); font-size: .76rem; font-weight: 750; cursor: pointer; }
 .app-brand { display: flex; min-height: var(--touch); align-items: center; gap: 8px; color: var(--text); text-decoration: none; }
 .app-brand__mark {
-  display: grid;
-  min-width: 40px;
-  height: 32px;
-  place-items: center;
-  border-radius: 10px;
-  background: var(--accent);
-  color: white;
-  font-size: .72rem;
-  font-weight: 900;
+  display: block;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ab-radius-control);
+  object-fit: contain;
 }
 .app-brand__copy { display: grid; line-height: 1.12; }
 .app-brand__copy strong { font-size: .96rem; }
@@ -959,11 +958,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .app-nav__group summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; cursor: pointer; font-size: .86rem; font-weight: 800; color: var(--text); }
 .app-nav__group summary::after { content: "⌄"; font-size: 1.05rem; }
 .app-nav__group[open] summary::after { content: "⌃"; }
-.app-nav__group.is-active summary { color: #1d4ed8; }
+.app-nav__group.is-active summary { color: var(--ab-brand-primary); }
 .app-nav__group-list { display: grid; gap: 3px; padding: 0 5px 5px 12px; }
 .app-nav__overflow-footer { padding-top: 6px; border-top: 1px solid var(--border); }
 .app-nav__overflow-footer .app-nav__link { width: 100%; }
-.app-nav__more[aria-expanded="true"] { background: #dbeafe; color: #1d4ed8; }
+.app-nav__more[aria-expanded="true"] { background: var(--ab-brand-soft); color: var(--ab-brand-primary); }
 .app-nav__link {
   display: inline-flex;
   min-height: var(--touch);
@@ -986,7 +985,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   font-size: .8rem;
 }
 .app-nav__more { font-weight: 900; }
-.app-nav__link.is-active { background: #dbeafe; color: #1d4ed8; }
+.app-nav__link.is-active { background: var(--ab-brand-soft); color: var(--ab-brand-primary); }
 .app-nav__link:disabled { cursor: not-allowed; opacity: .45; }
 .content { width: min(100%, 52rem); margin: 0 auto; padding: 12px 12px 86px; }
 .app-section[hidden] { display: none !important; }
@@ -1163,7 +1162,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 }
 .masterdata-tab.is-active {
   border-color: var(--accent);
-  background: #dbeafe;
+  background: var(--ab-brand-soft);
   color: var(--accent);
 }
 .masterdata-panel { display: grid; gap: 10px; }
@@ -1394,7 +1393,7 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 }
 .registration-action[aria-pressed="true"] {
   border-color: var(--accent);
-  background: #dbeafe;
+  background: var(--ab-brand-soft);
   color: var(--accent);
 }
 .registration-action[data-intention="attending"][aria-pressed="true"] {
@@ -1523,7 +1522,7 @@ body.masterdata-athlete-overlay-open { overflow: hidden; }
 }
 .kindertraining-status[aria-pressed="true"] {
   border-color: var(--accent);
-  background: #dbeafe;
+  background: var(--ab-brand-soft);
   color: var(--accent);
 }
 .kindertraining-status[data-status="present"][aria-pressed="true"] {
@@ -2178,7 +2177,7 @@ ${ULC_USER_ADMIN_CSS}
 .kindertraining-week-savebar { gap:6px; padding:7px 9px; }
 @media (max-width:375px) { .kindertraining-week-actions button { font-size:.75rem; padding:4px 6px; } }
 
-#app-nav-attendance[aria-expanded="true"] { background: #dbeafe; color: #1d4ed8; }
+#app-nav-attendance[aria-expanded="true"] { background: var(--ab-brand-soft); color: var(--ab-brand-primary); }
 ${ULC_U12_CSS}
 ${ULC_U14_CSS}
 ${ULC_KIDS_CSS}

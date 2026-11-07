@@ -40,7 +40,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_HTML).toContain('id="u12-group" aria-label="Zugeordnete U12-Gruppe" hidden');
     expect(ULC_U12_HTML).toContain('id="u12-group-label"');
     expect(ULC_U12_HTML).toContain('id="u12-add-athlete" hidden');
-    expect(ULC_U12_HTML).toContain('class="u12-date-toolbar"');
+    expect(ULC_U12_HTML).toContain('class="u12-date-toolbar ab-surface"');
     expect(ULC_U12_SCRIPT).toContain('u12Groups.length === 1 ? u12Groups[0].id : ""');
     expect(ULC_U12_SCRIPT).toContain('u12Ui.groupLabel.textContent = active ? active.name');
     expect(ULC_U12_CSS).toContain('.u12-head');

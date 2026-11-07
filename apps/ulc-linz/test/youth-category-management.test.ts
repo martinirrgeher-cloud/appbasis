@@ -178,7 +178,7 @@ describe("ULC mobile category management", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-youth-category-area="u12"');
     expect(ULC_LINZ_APP_HTML).toContain('data-youth-category-area="u14"');
     expect(ULC_LINZ_APP_HTML).toContain('data-youth-category-area="kindertraining"');
-    expect(ULC_U12_HTML).toContain('class="u12-category-shortcut"');
+    expect(ULC_U12_HTML).toContain('class="u12-category-shortcut ab-icon-button"');
     expect(ULC_LINZ_APP_HTML).toContain('id="kindertraining-categories"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("syncKindertrainingCategoryShortcut()");
     expect(ULC_LINZ_APP_CSS).not.toContain(".app-nav__attendance-row");
