@@ -36,7 +36,7 @@ describe("ULC U12 content assignment overlay and roster summary", () => {
     expect(ULC_U12_HTML).toContain('id="u12-assignment-matrix"');
     expect(ULC_U12_HTML).toContain('id="u12-assignment-close"');
     expect(ULC_U12_HTML).toContain('id="u12-assignment-done"');
-    expect(ULC_U12_HTML).toContain('Die Änderungen werden mit „Training speichern“ gesichert.');
+    expect(ULC_U12_HTML).toContain('Die Zuordnungen werden automatisch gespeichert.');
     expect(ULC_U12_HTML).not.toContain('class="card u12-matrix-card"');
     expect(ULC_U12_CSS).toContain('.u12-matrix-dialog {');
     expect(ULC_U12_CSS).toContain('max-height:calc(100dvh - 24px)');
