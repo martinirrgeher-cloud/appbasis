@@ -119,10 +119,13 @@ export const ULC_U12_HTML = `
                 <button type="button" data-u12-stats-tab="trainings" aria-pressed="true">Trainings</button>
                 <button type="button" data-u12-stats-tab="athletes" aria-pressed="false">Athleten</button>
                 <button type="button" data-u12-stats-tab="categories" aria-pressed="false">Kategorien</button>
+                <button type="button" data-u12-stats-tab="trainers" aria-pressed="false">Trainer</button>
               </div>
               <div class="u12-statistics-results">
                 <section data-u12-stats-panel="trainings" aria-label="Anwesende pro Training">
-                  <h3>Anwesende pro Training</h3>
+                  <h3>Monatsübersicht</h3>
+                  <div id="u12-statistics-months" class="u12-statistics-list"></div>
+                  <h3 class="u12-statistics-subheading">Einzelne Trainings</h3>
                   <div id="u12-statistics-trainings" class="u12-statistics-list"></div>
                 </section>
                 <section data-u12-stats-panel="athletes" aria-label="Anwesenheit pro Athlet" hidden>
@@ -132,6 +135,10 @@ export const ULC_U12_HTML = `
                 <section data-u12-stats-panel="categories" aria-label="Trainingskategorien" hidden>
                   <h3>Trainingskategorien</h3>
                   <div id="u12-statistics-categories" class="u12-statistics-list"></div>
+                </section>
+                <section data-u12-stats-panel="trainers" aria-label="Trainer-Einsätze" hidden>
+                  <h3>Trainer-Einsätze <small>absteigend</small></h3>
+                  <div id="u12-statistics-trainers" class="u12-statistics-list"></div>
                 </section>
               </div>
             </dialog>
@@ -220,12 +227,14 @@ export const ULC_U12_CSS = `
 .u12-statistics-kpi { display:grid; gap:3px; padding:9px 5px; border:1px solid var(--border); border-radius:9px; text-align:center; background:var(--muted); min-width:0; }
 .u12-statistics-kpi strong { font-size:1.15rem; line-height:1.2; }
 .u12-statistics-kpi small { font-size:.68rem; color:var(--secondary); overflow-wrap:anywhere; }
-.u12-statistics-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; padding:0 10px 8px; }
-.u12-statistics-tabs button { min-width:0; min-height:42px; padding:5px 3px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font:inherit; font-size:.8rem; font-weight:650; cursor:pointer; }
+.u12-statistics-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; padding:0 10px 8px; }
+@media(min-width:560px) { .u12-statistics-tabs { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+.u12-statistics-tabs button { min-width:0; min-height:var(--ab-touch-target); padding:5px 3px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font:inherit; font-size:.8rem; font-weight:650; cursor:pointer; }
 .u12-statistics-tabs button[aria-pressed="true"] { border-color:var(--accent); background:var(--muted); }
 .u12-statistics-results { padding:0 10px 12px; }
 .u12-statistics-results section[hidden] { display:none !important; }
 .u12-statistics-results h3 { display:flex; gap:6px; align-items:baseline; margin:3px 0 8px; font-size:.95rem; }
+.u12-statistics-results h3.u12-statistics-subheading { margin-top:16px; }
 .u12-statistics-results h3 small { font-size:.7rem; color:var(--secondary); }
 .u12-statistics-list { display:grid; gap:5px; min-width:0; }
 .u12-statistics-line { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; padding:8px 10px; border:1px solid var(--border); border-radius:9px; font-size:.82rem; }
@@ -349,9 +358,11 @@ const u12Ui = {
   statsError: document.querySelector("#u12-statistics-error"),
   statsState: document.querySelector("#u12-statistics-state"),
   statsSummary: document.querySelector("#u12-statistics-summary"),
+  statsMonths: document.querySelector("#u12-statistics-months"),
   statsTrainings: document.querySelector("#u12-statistics-trainings"),
   statsAthletes: document.querySelector("#u12-statistics-athletes"),
   statsCategories: document.querySelector("#u12-statistics-categories"),
+  statsTrainers: document.querySelector("#u12-statistics-trainers"),
   note: document.querySelector("#u12-note"),
   notesCard: document.querySelector("#u12-notes-card"),
   trainersCard: document.querySelector("#u12-trainers-card"),
@@ -1025,7 +1036,7 @@ function u12StatisticsDefaultRange() {
 }
 
 function selectU12StatisticsTab(tab) {
-  if (!["trainings", "athletes", "categories"].includes(tab)) return;
+  if (!["trainings", "athletes", "categories", "trainers"].includes(tab)) return;
   for (const button of u12Ui.statsDialog?.querySelectorAll("[data-u12-stats-tab]") ?? []) {
     button.setAttribute("aria-pressed", String(button.dataset.u12StatsTab === tab));
   }
@@ -1053,7 +1064,8 @@ function appendU12StatisticsLine(container, left, right, helper = "") {
 
 function renderU12Statistics(report) {
   if (!report || !report.summary || !Array.isArray(report.trainings) ||
-      !Array.isArray(report.athletes) || !Array.isArray(report.categories)) {
+      !Array.isArray(report.months) || !Array.isArray(report.athletes) ||
+      !Array.isArray(report.categories) || !Array.isArray(report.trainers)) {
     throw new Error("U12_STATISTICS_INVALID");
   }
   u12Ui.statsSummary?.replaceChildren();
@@ -1073,9 +1085,22 @@ function renderU12Statistics(report) {
     card.append(strong, small);
     u12Ui.statsSummary?.append(card);
   }
+  u12Ui.statsMonths?.replaceChildren();
   u12Ui.statsTrainings?.replaceChildren();
   u12Ui.statsAthletes?.replaceChildren();
   u12Ui.statsCategories?.replaceChildren();
+  u12Ui.statsTrainers?.replaceChildren();
+  for (const month of report.months) {
+    const label = month.month.slice(5) + "." + month.month.slice(0, 4);
+    const average = month.trainings === 0 ? "–" :
+      (month.attendance / month.trainings).toLocaleString("de-AT", {
+        maximumFractionDigits: 1,
+      });
+    appendU12StatisticsLine(u12Ui.statsMonths, label,
+      month.attendance + " Anwesenheiten",
+      month.trainings + " Trainings · Ø " + average + " anwesend · " +
+        month.trainerAttendances + " Trainer-Einsätze");
+  }
   for (const training of report.trainings) {
     appendU12StatisticsLine(
       u12Ui.statsTrainings, germanDate(training.date),
@@ -1092,12 +1117,18 @@ function renderU12Statistics(report) {
     const name = document.createElement("span");
     name.textContent = athlete.lastName + " " + athlete.firstName;
     const count = document.createElement("strong");
-    count.textContent = athlete.attended + " ×";
+    count.textContent = athlete.attended + " / " + athlete.evaluated +
+      (athlete.attendancePercent === null ? " · –" : " · " + athlete.attendancePercent + " %");
     summary.append(name, count);
     const contents = document.createElement("div");
     contents.className = "u12-statistics-athlete__detail";
+    const explanation = document.createElement("small");
+    explanation.textContent = "Anwesend / erfasst · offen zählt nicht als Fehlzeit";
+    contents.append(explanation);
     if (!Array.isArray(athlete.categories) || athlete.categories.length === 0) {
-      contents.textContent = "Keine standardisierten Trainingsinhalte zugeordnet.";
+      const empty = document.createElement("small");
+      empty.textContent = "Keine standardisierten Trainingsinhalte zugeordnet.";
+      contents.append(empty);
     } else {
       for (const category of athlete.categories) {
         const row = document.createElement("div");
@@ -1118,10 +1149,23 @@ function renderU12Statistics(report) {
       category.assignments + " Athleten-Zuordnungen",
     );
   }
+  for (const trainer of report.trainers) {
+    appendU12StatisticsLine(u12Ui.statsTrainers,
+      trainer.lastName + " " + trainer.firstName,
+      trainer.attended + " Trainings");
+  }
+  if (report.summary.unidentifiedTrainerAttendances > 0) {
+    appendU12StatisticsLine(u12Ui.statsTrainers, "Nicht mehr zuordenbar",
+      report.summary.unidentifiedTrainerAttendances + " Einsätze",
+      "Trainer ist nicht mehr in den Stammdaten vorhanden");
+  }
   for (const [list, hasEntries, emptyText] of [
+    [u12Ui.statsMonths, report.months.length > 0, "Keine Monatsdaten im Zeitraum."],
     [u12Ui.statsTrainings, report.trainings.length > 0, "Keine gespeicherten U12-Trainings im Zeitraum."],
     [u12Ui.statsAthletes, report.athletes.length > 0, "Keine U12-Athleten im Zeitraum."],
     [u12Ui.statsCategories, report.categories.length > 0, "Keine standardisierten Kategorien verwendet."],
+    [u12Ui.statsTrainers, report.trainers.length > 0 ||
+      report.summary.unidentifiedTrainerAttendances > 0, "Keine Trainer-Einsätze im Zeitraum."],
   ]) {
     if (!hasEntries && list) {
       const empty = document.createElement("p");
@@ -1141,9 +1185,11 @@ async function loadU12Statistics() {
   showMessage(u12Ui.statsError, "");
   u12Ui.statsState.textContent = "Statistik wird geladen …";
   u12Ui.statsSummary?.replaceChildren();
+  u12Ui.statsMonths?.replaceChildren();
   u12Ui.statsTrainings?.replaceChildren();
   u12Ui.statsAthletes?.replaceChildren();
   u12Ui.statsCategories?.replaceChildren();
+  u12Ui.statsTrainers?.replaceChildren();
   for (const input of [u12Ui.statsFrom, u12Ui.statsTo]) input.disabled = true;
   try {
     if (!from || !to || from > to) throw new Error("INVALID_RANGE");
