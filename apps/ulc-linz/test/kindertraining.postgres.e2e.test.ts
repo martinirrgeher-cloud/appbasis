@@ -69,6 +69,62 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       await administrativeConnection.client.end();
     });
 
+    it("persists trainer presence with CAS in real PostgreSQL, preserving historical nonmembers", async () => {
+      const repo = new PostgresUlcTrainingSessionRepository(
+        requiredConnection().client,
+        () => randomUUID(),
+      );
+      const organizationId = "verein-trainer-presence";
+      const input = {
+        moduleId: "u12" as const,
+        groupId: "trainer-roster-test",
+        sessionDate: "2026-11-07",
+      };
+      const eligible = ["trainer-a", "trainer-b"];
+      const created = await repo.saveSession(
+        organizationId, input, [], null, [], [], ["trainer-a"], eligible,
+      );
+      expect(created.trainingTrainerIds).toEqual(["trainer-a"]);
+      expect(await repo.readTrainerPresence(
+        organizationId, "u12", input.groupId, created.session.id,
+      )).toEqual(["trainer-a"]);
+      expect(await repo.readTrainerPresence(
+        "other-organization", "u12", input.groupId, created.session.id,
+      )).toEqual([]);
+      expect(await repo.readTrainerPresence(
+        organizationId, "u14", input.groupId, created.session.id,
+      )).toEqual([]);
+
+      const swapped = await repo.saveSession(
+        organizationId, input, [], created.revision, [], [], ["trainer-b"], eligible,
+      );
+      expect(swapped.trainingTrainerIds).toEqual(["trainer-b"]);
+      expect(await repo.readTrainerPresence(
+        organizationId, "u12", input.groupId, created.session.id,
+      )).toEqual(["trainer-b"]);
+
+      // A legacy save without the trainer argument must not delete present trainers.
+      const legacy = await repo.saveSession(
+        organizationId, { ...input, note: "Sonderinformation" },
+        [], swapped.revision,
+      );
+      expect(await repo.readTrainerPresence(
+        organizationId, "u12", input.groupId, created.session.id,
+      )).toEqual(["trainer-b"]);
+      await expect(repo.saveSession(
+        organizationId, input, [], created.revision, [], [], [], eligible,
+      )).rejects.toBeInstanceOf(UlcTrainingSessionConflictError);
+
+      // A trainer who leaves the group is removed from the editable roster,
+      // but their historical presence remains until the personal-data lifecycle.
+      await repo.saveSession(
+        organizationId, input, [], legacy.revision, [], [], [], ["trainer-a"],
+      );
+      expect(await repo.readTrainerPresence(
+        organizationId, "u12", input.groupId, created.session.id,
+      )).toEqual(["trainer-b"]);
+    });
+
     it("persists U12 contents and athlete slots atomically with CAS and retention-safe rows", async () => {
       const repo = new PostgresUlcTrainingSessionRepository(
         requiredConnection().client,
