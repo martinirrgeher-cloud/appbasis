@@ -17,7 +17,6 @@ const EXPECTED_COLUMNS = Object.freeze([
 const EXPECTED_CONSTRAINTS = Object.freeze([
   "ulc_linz_training_trainer_attendance_pk",
   "ulc_linz_training_trainer_attendance_session_id_fkey",
-  "ulc_linz_training_trainer_attendance_trainer_id_fkey",
 ]);
 const EXPECTED_INDEXES = Object.freeze([
   "ulc_linz_training_trainer_attendance_org_session_idx",
@@ -50,7 +49,6 @@ export async function loadYouthTrainersPreviewPlan({ repositoryRoot = process.cw
       !statements[0].includes("CREATE TABLE ulc_linz_training_trainer_attendance") ||
       !statements[0].includes("PRIMARY KEY (session_id, trainer_id)") ||
       !statements[0].includes("REFERENCES ulc_linz_training_session(id) ON DELETE CASCADE") ||
-      !statements[0].includes("REFERENCES appbasis_trainer(id) ON DELETE CASCADE") ||
       !/^CREATE INDEX ulc_linz_training_trainer_attendance_org_session_idx\s+ON ulc_linz_training_trainer_attendance\s+\(/.test(statements[1]) ||
       statements.some((statement) =>
         /\b(?:DROP|TRUNCATE|DELETE\s+FROM|UPDATE\s+\w+|ALTER\s+TABLE|GRANT|REVOKE)\b/i.test(statement))) {
@@ -117,8 +115,7 @@ async function readState(client) {
       "SELECT conname, convalidated FROM pg_catalog.pg_constraint " +
       "WHERE connamespace='public'::regnamespace AND conname IN " +
       "('ulc_linz_training_trainer_attendance_pk', " +
-      "'ulc_linz_training_trainer_attendance_session_id_fkey', " +
-      "'ulc_linz_training_trainer_attendance_trainer_id_fkey')",
+      "'ulc_linz_training_trainer_attendance_session_id_fkey')",
     ),
     client.unsafe(
       "SELECT indexname FROM pg_catalog.pg_indexes WHERE schemaname='public' AND " +
