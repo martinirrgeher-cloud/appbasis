@@ -244,7 +244,10 @@ let U12_STANDARD_CONTENT_CATALOG = [];
 function updateU12CategoryCatalog(categories) {
   U12_STANDARD_CONTENT_CATALOG = categories.filter((category) => category.isActive)
     .map((category) => ({ code: category.code, label: category.label }));
-  if (u12Snapshot && !u12Loading && !u12Saving) renderU12ContentRows();
+  if (u12Snapshot && !u12Loading && !u12Saving) {
+    renderU12ContentRows();
+    refreshU12Controls();
+  }
 }
 
 let u12Ready = false;
