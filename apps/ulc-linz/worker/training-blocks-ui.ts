@@ -11,15 +11,9 @@ export const ULC_TRAINING_BLOCKS_HTML = `
 
             <p class="message message--error" id="training-block-message" role="alert" hidden></p>
 
-            <section class="card training-block-commandbar">
+            <section class="card training-block-commandbar" aria-label="Trainingsblöcke filtern">
               <label>Suche
                 <input id="training-block-search" type="search" maxlength="160" placeholder="Block suchen …" autocomplete="off" />
-              </label>
-              <label>Gruppe
-                <select id="training-block-audience-filter">
-                  <option value="all">Alle Gruppen</option>
-                  <option value="clubwide">Generell gültig</option>
-                </select>
               </label>
               <label>Kategorie
                 <select id="training-block-category-filter">
@@ -27,14 +21,29 @@ export const ULC_TRAINING_BLOCKS_HTML = `
                   <option value="uncategorized">Ohne Kategorie</option>
                 </select>
               </label>
-              <label>Status
-                <select id="training-block-status-filter">
-                  <option value="active">Aktiv</option>
-                  <option value="all">Alle</option>
-                  <option value="archived">Archiv</option>
-                </select>
-              </label>
+              <details class="training-block-extra-filters">
+                <summary class="ab-disclosure">Weitere Filter <span class="training-block-extra-filters__state" id="training-block-filter-summary-state"></span></summary>
+                <div class="training-block-extra-filters__fields">
+                  <label>Gruppe
+                    <select id="training-block-audience-filter">
+                      <option value="all">Alle Gruppen</option>
+                      <option value="clubwide">Generell gültig</option>
+                    </select>
+                  </label>
+                  <label>Status
+                    <select id="training-block-status-filter">
+                      <option value="active">Aktiv</option>
+                      <option value="all">Alle</option>
+                      <option value="archived">Archiv</option>
+                    </select>
+                  </label>
+                </div>
+              </details>
             </section>
+            <div class="training-block-filter-feedback">
+              <span id="training-block-result-count" role="status" aria-live="polite"></span>
+              <button class="button button--secondary" id="training-block-filter-reset" type="button" hidden>Filter zurücksetzen</button>
+            </div>
 
             <section class="training-block-groups" id="training-block-list" aria-live="polite"></section>
 
@@ -162,11 +171,58 @@ export const ULC_TRAINING_BLOCKS_CSS = `
 }
 .training-block-commandbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
   padding: 12px;
 }
+.training-block-commandbar > label,
+.training-block-extra-filters__fields > label { min-width: 0; }
+.training-block-commandbar input,
+.training-block-commandbar select { min-width: 0; width: 100%; }
+.training-block-extra-filters {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+.training-block-extra-filters > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 8px;
+  cursor: pointer;
+  font-size: .85rem;
+  font-weight: 750;
+}
+.training-block-extra-filters__state {
+  margin-left: auto;
+  color: var(--secondary);
+  font-size: .76rem;
+  font-weight: 650;
+}
+.training-block-extra-filters__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px 0 4px;
+}
+.training-block-filter-feedback {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -4px 2px 10px;
+  color: var(--secondary);
+  font-size: .78rem;
+}
+#training-block-filter-reset {
+  min-height: 36px;
+  padding: 5px 10px;
+  font-size: .75rem;
+}
+#training-block-filter-reset[hidden] { display: none; }
 .training-block-groups { display: grid; gap: 12px; }
 .training-block-custom-category[hidden] { display: none !important; }
 .training-block-custom-category input { width: 100%; min-width: 0; font-size: 16px; }
@@ -569,11 +625,12 @@ body.training-block-editor-open { overflow: hidden; }
   .training-block-history-card { padding: 10px; }
   .training-block-info-tabs { top: 62px; }
   .training-block-commandbar {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     padding: 10px;
   }
-  .training-block-commandbar label:first-child { grid-column: 1 / -1; }
+  .training-block-extra-filters { grid-column: 1; }
+  .training-block-filter-feedback { flex-wrap: wrap; }
   .training-block-form-grid { grid-template-columns: 1fr; }
   .training-block-parameters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .training-block-wide { grid-column: auto; }
@@ -630,6 +687,10 @@ body.training-block-editor-open { overflow: hidden; }
   .training-block-group summary { min-width: 0; gap: 8px; padding: 10px; }
 }
 
+@media (max-width: 359px) {
+  .training-block-extra-filters__fields { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* Category before exercise selection, still usable at phone width. */
 .training-block-add { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
 .training-block-add > select { min-width: 0; }
@@ -657,6 +718,9 @@ const trainingBlockElements = Object.freeze({
   search: document.querySelector("#training-block-search"),
   audienceFilter: document.querySelector("#training-block-audience-filter"),
   categoryFilter: document.querySelector("#training-block-category-filter"),
+  filterSummaryState: document.querySelector("#training-block-filter-summary-state"),
+  filterReset: document.querySelector("#training-block-filter-reset"),
+  resultCount: document.querySelector("#training-block-result-count"),
   category: document.querySelector("#training-block-category"),
   customCategoryField: document.querySelector("#training-block-custom-category-field"),
   customCategory: document.querySelector("#training-block-custom-category"),
@@ -1076,6 +1140,14 @@ function renderTrainingBlockCategoryFilter() {
     ? previous : "all";
 }
 
+function resetTrainingBlockFilters() {
+  if (trainingBlockElements.search) trainingBlockElements.search.value = "";
+  if (trainingBlockElements.categoryFilter) trainingBlockElements.categoryFilter.value = "all";
+  if (trainingBlockElements.audienceFilter) trainingBlockElements.audienceFilter.value = "all";
+  if (trainingBlockElements.statusFilter) trainingBlockElements.statusFilter.value = "active";
+  renderTrainingBlocks();
+}
+
 function renderTrainingBlocks() {
   const container = trainingBlockElements.list;
   if (!container) return;
@@ -1113,6 +1185,21 @@ function renderTrainingBlocks() {
         .includes(query)
     );
   });
+
+  const advancedCount = Number(audience !== "all") + Number(status !== "active");
+  if (trainingBlockElements.filterSummaryState) {
+    trainingBlockElements.filterSummaryState.textContent =
+      advancedCount > 0 ? String(advancedCount) + " aktiv" : "";
+  }
+  const filtersActive = query !== "" || category !== "all" ||
+    audience !== "all" || status !== "active";
+  if (trainingBlockElements.filterReset) {
+    trainingBlockElements.filterReset.hidden = !filtersActive;
+  }
+  if (trainingBlockElements.resultCount) {
+    trainingBlockElements.resultCount.textContent =
+      String(filtered.length) + " von " + String(trainingBlocks.length) + " Blöcken";
+  }
 
   if (filtered.length === 0) {
     const empty = document.createElement("div");
@@ -3580,6 +3667,7 @@ trainingBlockElements.search?.addEventListener("input", renderTrainingBlocks);
 trainingBlockElements.audienceFilter?.addEventListener("change", renderTrainingBlocks);
 trainingBlockElements.categoryFilter?.addEventListener("change", renderTrainingBlocks);
 trainingBlockElements.statusFilter?.addEventListener("change", renderTrainingBlocks);
+trainingBlockElements.filterReset?.addEventListener("click", resetTrainingBlockFilters);
 trainingBlockElements.newButton?.addEventListener("click", newTrainingBlock);
 trainingBlockElements.save?.addEventListener("click", () => void saveTrainingBlock());
 trainingBlockElements.close?.addEventListener("click", () => closeTrainingBlockEditor());
