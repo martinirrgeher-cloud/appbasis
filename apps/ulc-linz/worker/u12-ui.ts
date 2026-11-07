@@ -1403,8 +1403,8 @@ async function openU12NewAthlete() {
   if (!masterdataReady || !masterdataCanEdit ||
       !u12Ready || !u12Groups.some((group) => group.id === groupId)) return;
   if (!(await u12FlushChanges())) return;
-  // Load the authorized masterdata snapshot *before* switching sections:
-  // showAppSection("masterdata") also invokes loadMasterdata asynchronously.
+  // Load the authorized masterdata snapshot first without navigating away.
+  // Its existing edit permission also gates this U12 shortcut.
   if (!(await loadMasterdata())) {
     showMessage(u12Ui.message, "Stammdaten konnten nicht geladen werden.");
     return;
