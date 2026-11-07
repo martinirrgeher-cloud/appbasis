@@ -42,7 +42,7 @@ export async function loadYouthCategoriesPreviewPlan({ repositoryRoot = process.
       manifest?.dialect !== "postgresql" ||
       matches?.length !== 1 ||
       JSON.stringify(matches[0]) !== JSON.stringify(owner) ||
-      owner.schemaVersion !== 14 || owner.migrations[13] !== MIGRATION_FILE) {
+      owner.schemaVersion < 14 || owner.migrations[13] !== MIGRATION_FILE) {
     throw new UlcYouthCategoriesPreviewError(
       "Shared-category preview requires exact canonical v14 owner.",
     );
