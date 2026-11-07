@@ -1873,7 +1873,7 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
 .kindertraining-day-toggle {
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(92px, .7fr) minmax(0, 1.8fr) auto;
+  grid-template-columns: 14px minmax(92px, .7fr) minmax(0, 1.8fr);
   align-items: center;
   gap: 8px;
   border: 0;
@@ -1900,11 +1900,6 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
   color: var(--secondary);
   font-size: .72rem;
   line-height: 1.35;
-}
-
-.kindertraining-day-marker {
-  font-weight: 900;
-  color: var(--secondary);
 }
 
 .kindertraining-day-details {
@@ -1945,7 +1940,7 @@ ${ULC_TRAINING_DOCUMENTATION_CSS}
 
 @media (max-width: 560px) {
   .kindertraining-day-toggle {
-    grid-template-columns: minmax(80px, .8fr) minmax(0, 1.8fr) auto;
+    grid-template-columns: 14px minmax(80px, .8fr) minmax(0, 1.8fr);
   }
 
   .kindertraining-day-registration-summary {
@@ -4276,7 +4271,7 @@ function renderKindertrainingWeek() {
 
     const toggle = document.createElement("button");
     toggle.type = "button";
-    toggle.className = "kindertraining-day-toggle";
+    toggle.className = "kindertraining-day-toggle ab-disclosure-toggle";
     toggle.dataset.kindertrainingDayToggle = snapshot.sessionDate;
     toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
     toggle.disabled = kindertrainingWeekSaving;
@@ -4302,10 +4297,7 @@ function renderKindertrainingWeek() {
       counts.registration.unknown +
       " offen";
 
-    const marker = document.createElement("span");
-    marker.className = "kindertraining-day-marker";
-    marker.textContent = expanded ? "▴" : "▾";
-    toggle.append(title, registrationSummary, marker);
+    toggle.append(title, registrationSummary);
     day.append(toggle);
 
     if (!expanded) {
