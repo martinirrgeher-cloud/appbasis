@@ -2801,7 +2801,9 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 window.addEventListener("beforeunload", (event) => {
-  if (u12Saving || u12DirtyDates.size > 0) {
+  if (u12Saving || u12DirtyDates.size > 0 ||
+      u14Saving || u14DirtyDates.size > 0 ||
+      kidsSaving || kidsDirtyDates.size > 0) {
     event.preventDefault();
     event.returnValue = "";
     return;
@@ -2831,6 +2833,10 @@ async function navigateAppSection(section) {
   const current = document.querySelector("[data-app-section]:not([hidden])")?.dataset.appSection || "home";
   if (current === "u12" && section !== "u12" &&
       !(await u12FlushChanges())) return false;
+  if (current === "u14" && section !== "u14" &&
+      !(await u14FlushChanges())) return false;
+  if (current === "kids" && section !== "kids" &&
+      !(await kidsFlushChanges())) return false;
   if (
     current === "training-plans" &&
     section !== "training-plans" &&
@@ -3120,6 +3126,18 @@ async function handleSignOut() {
   }
   if (u12DirtyDates.size > 0 && !(await u12FlushChanges())) {
     showMessage(elements.appSessionMessage, "U12-Änderungen konnten nicht gespeichert werden.");
+    return;
+  }
+  if (u14Saving || u14Loading || kidsSaving || kidsLoading) {
+    showMessage(elements.appSessionMessage, "U14/Kindertraining wird noch verarbeitet. Bitte danach abmelden.");
+    return;
+  }
+  if (u14DirtyDates.size > 0 && !(await u14FlushChanges())) {
+    showMessage(elements.appSessionMessage, "U14-Änderungen konnten nicht gespeichert werden.");
+    return;
+  }
+  if (kidsDirtyDates.size > 0 && !(await kidsFlushChanges())) {
+    showMessage(elements.appSessionMessage, "Kindertraining-Änderungen konnten nicht gespeichert werden.");
     return;
   }
   if (masterdataExchangeBusy || trainerIdentityLoading) {
