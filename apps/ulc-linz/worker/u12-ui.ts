@@ -149,7 +149,7 @@ export const ULC_U12_CSS = `
 .u12-date-arrow { min-width:36px; height:42px; border:0; border-radius:9px; background:var(--muted); color:var(--text); font-size:1.2rem; font-weight:800; cursor:pointer; }
 .u12-date-field { display:grid; gap:0; min-width:0; text-align:center; }
 .u12-date-field span { font-size:.62rem; font-weight:750; color:var(--secondary); letter-spacing:.03em; }
-.u12-date-field input { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:31px; padding:0 1px; text-align:center; font-size:.8rem; font-weight:780; background:transparent; border:0; color:var(--text); }
+.u12-date-field input { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:38px; padding:0 1px; text-align:center; font-size:.8rem; font-weight:780; background:transparent; border:0; color:var(--text); }
 .u12-date-shortcuts { display:flex; justify-content:center; gap:2px; align-items:center; }
 .u12-date-shortcuts button { min-height:42px; border:0; background:transparent; color:var(--accent); padding:3px 5px; font-size:.73rem; font-weight:750; border-radius:8px; cursor:pointer; }
 .u12-date-shortcuts button[aria-pressed="true"] { background:var(--muted); color:var(--secondary); }
