@@ -543,7 +543,6 @@ async function bootstrapU12() {
 // as "Nein" must not claim that the binary answer has already been saved.
 function u12HasUnconfirmedAnswers() {
   if (!u12Snapshot) return false;
-  if (u12Note.trim() !== (u12Snapshot.session?.note ?? "")) return true;
   if (JSON.stringify(u12Snapshot.contentTitles) !==
       JSON.stringify(u12ContentTitles.map((title) => title.trim()))) return true;
   return u12Snapshot.participants.some((person) => {
@@ -617,7 +616,7 @@ function refreshU12Controls() {
       u12AutoSaveFailed ? "Automatisches Speichern fehlgeschlagen – erneut versuchen" :
       u12DirtyDates.size > 0 ? "Änderungen werden automatisch gespeichert …" :
       u12Snapshot.session === null ? "Noch kein Training erfasst" :
-      u12HasUnconfirmedAnswers() ? "Änderungen werden automatisch gespeichert …" :
+      u12HasUnconfirmedAnswers() ? "Alte Antworten – beim Ändern automatisch übernehmen" :
       "Automatisch gespeichert";
   }
   for (const mark of u12Ui.days?.querySelectorAll("[data-u12-answer-id]") ?? []) {
