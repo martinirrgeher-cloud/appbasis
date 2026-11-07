@@ -9,6 +9,20 @@ export interface UlcU12StatisticsAthleteName {
   readonly firstName: string;
   readonly lastName: string;
 }
+export interface UlcYouthStatisticsTrainerName {
+  readonly trainerId: string;
+  readonly firstName: string;
+  readonly lastName: string;
+}
+export interface UlcYouthTrainerStatistics extends UlcYouthStatisticsTrainerName {
+  readonly attended: number;
+}
+export interface UlcYouthMonthStatistics {
+  readonly month: string;
+  readonly trainings: number;
+  readonly attendance: number;
+  readonly trainerAttendances: number;
+}
 export interface UlcU12CategoryCount {
   readonly code: string;
   readonly label: string;
@@ -20,6 +34,9 @@ export interface UlcU12AthleteStatistics {
   readonly firstName: string;
   readonly lastName: string;
   readonly attended: number;
+  /** Only explicitly saved present, absent and excused statuses; open is excluded. */
+  readonly evaluated: number;
+  readonly attendancePercent: number | null;
   readonly categories: readonly Readonly<{ code: string; label: string; count: number }>[];
 }
 export interface UlcU12TrainingStatistics {
@@ -33,12 +50,15 @@ export interface UlcU12StatisticsReport {
   readonly from: string;
   readonly to: string;
   readonly trainings: readonly UlcU12TrainingStatistics[];
+  readonly months: readonly UlcYouthMonthStatistics[];
   readonly athletes: readonly UlcU12AthleteStatistics[];
   readonly categories: readonly UlcU12CategoryCount[];
+  readonly trainers: readonly UlcYouthTrainerStatistics[];
   readonly summary: Readonly<{
     trainings: number;
     attendance: number;
     trainerAttendances: number;
+    unidentifiedTrainerAttendances: number;
     categories: number;
   }>;
 }
@@ -74,6 +94,7 @@ interface RawRow {
   content_titles?: unknown;
   content_items?: unknown;
   trainer_count?: unknown;
+  trainer_ids?: unknown;
   athlete_id?: unknown;
   status?: unknown;
   content_slots?: unknown;
@@ -84,21 +105,26 @@ export function aggregateU12Statistics(
   roster: readonly UlcU12StatisticsAthleteName[],
   from: string,
   to: string,
+  trainerRoster: readonly UlcYouthStatisticsTrainerName[] = [],
 ): UlcU12StatisticsReport {
   validateU12StatisticsDateRange(from, to);
   const athletesById = new Map<string, { athleteId: string; firstName: string; lastName: string;
-    attended: number; categories: Map<string, number> }>();
+    attended: number; evaluated: number; categories: Map<string, number> }>();
+  const trainerNames = new Map(trainerRoster.map((trainer) => [
+    identifier(trainer.trainerId), trainer,
+  ]));
+  const trainerCounts = new Map<string, number>();
   for (const athlete of roster) {
     if (athletesById.has(athlete.athleteId)) continue;
     athletesById.set(athlete.athleteId, {
       athleteId: identifier(athlete.athleteId),
       firstName: athlete.firstName,
       lastName: athlete.lastName,
-      attended: 0, categories: new Map(),
+      attended: 0, evaluated: 0, categories: new Map(),
     });
   }
   const sessions = new Map<string, { date: string; trainerPresentCount: number;
-    present: Set<string>; registered: Set<string>; categories: Set<string> }>();
+    trainerIds: Set<string>; present: Set<string>; registered: Set<string>; categories: Set<string> }>();
   const categoryTotals = new Map<string, { code: string; label: string; trainings: Set<string>; assignments: number }>();
   for (const row of rows) {
     const sessionId = identifier(row.session_id as string);
@@ -118,12 +144,25 @@ export function aggregateU12Statistics(
         trainerCount < 0) {
       throw new UlcTrainingValidationError("Invalid stored trainer attendance count.");
     }
+    const rawTrainerIds = row.trainer_ids;
+    if (!Array.isArray(rawTrainerIds) || rawTrainerIds.length !== trainerCount ||
+        rawTrainerIds.some((trainerId) => typeof trainerId !== "string" ||
+          trainerId.length < 1 || trainerId.length > 200 || trainerId.trim() !== trainerId) ||
+        new Set(rawTrainerIds).size !== rawTrainerIds.length) {
+      throw new UlcTrainingValidationError("Invalid saved trainer roll-call.");
+    }
+    const trainerIds = new Set(rawTrainerIds as string[]);
     let session = sessions.get(sessionId);
     if (!session) {
-      session = { date, trainerPresentCount: trainerCount,
+      session = { date, trainerPresentCount: trainerCount, trainerIds,
         present: new Set(), registered: new Set(), categories: new Set() };
       sessions.set(sessionId, session);
-    } else if (session.date !== date || session.trainerPresentCount !== trainerCount) {
+      for (const trainerId of trainerIds) {
+        trainerCounts.set(trainerId, (trainerCounts.get(trainerId) ?? 0) + 1);
+      }
+    } else if (session.date !== date || session.trainerPresentCount !== trainerCount ||
+        session.trainerIds.size !== trainerIds.size ||
+        [...trainerIds].some((trainerId) => !session.trainerIds.has(trainerId))) {
       throw new UlcTrainingValidationError("Inconsistent training session statistics.");
     }
     const selectedCategories = new Map<number, string>();
@@ -153,6 +192,7 @@ export function aggregateU12Statistics(
     }
     if (session.registered.has(athleteId)) throw new UlcTrainingValidationError("Duplicate U12 attendance.");
     session.registered.add(athleteId);
+    if (row.status !== "open") athlete.evaluated += 1;
     if (row.status !== "present") continue;
     athlete.attended += 1;
     session.present.add(athleteId);
@@ -178,11 +218,39 @@ export function aggregateU12Statistics(
     registeredCount: session.registered.size,
     categoryCount: session.categories.size,
   })).sort((a,b) => b.date.localeCompare(a.date));
+  const monthsByKey = new Map<string, { month: string; trainings: number;
+    attendance: number; trainerAttendances: number }>();
+  for (const training of trainings) {
+    const month = training.date.slice(0, 7);
+    const entry = monthsByKey.get(month) ?? {
+      month, trainings: 0, attendance: 0, trainerAttendances: 0,
+    };
+    entry.trainings += 1;
+    entry.attendance += training.presentCount;
+    entry.trainerAttendances += training.trainerPresentCount;
+    monthsByKey.set(month, entry);
+  }
+  const months = [...monthsByKey.values()].sort((a, b) => b.month.localeCompare(a.month))
+    .map((entry) => Object.freeze(entry));
+  const trainers = [...trainerCounts].filter(([trainerId]) => trainerNames.has(trainerId))
+    .map(([trainerId, attended]) => Object.freeze({
+      trainerId, firstName: trainerNames.get(trainerId)!.firstName,
+      lastName: trainerNames.get(trainerId)!.lastName, attended,
+    }))
+    .sort((a, b) => b.attended - a.attended ||
+      a.lastName.localeCompare(b.lastName, "de") ||
+      a.firstName.localeCompare(b.firstName, "de"));
+  const unidentifiedTrainerAttendances = [...trainerCounts]
+    .filter(([trainerId]) => !trainerNames.has(trainerId))
+    .reduce((sum, [, count]) => sum + count, 0);
   const athletes = [...athletesById.values()].map((athlete) => Object.freeze({
     athleteId: athlete.athleteId,
     firstName: athlete.firstName,
     lastName: athlete.lastName,
     attended: athlete.attended,
+    evaluated: athlete.evaluated,
+    attendancePercent: athlete.evaluated > 0
+      ? Math.round(athlete.attended / athlete.evaluated * 100) : null,
     categories: Object.freeze([...athlete.categories].map(([code,count]) =>
       Object.freeze({ code, label: categoryLabel(code), count }))
       .sort((a,b) => b.count-a.count || a.label.localeCompare(b.label, "de"))),
@@ -196,12 +264,15 @@ export function aggregateU12Statistics(
   return Object.freeze({
     from, to,
     trainings: Object.freeze(trainings),
+    months: Object.freeze(months),
     athletes: Object.freeze(athletes),
     categories: Object.freeze(categories),
+    trainers: Object.freeze(trainers),
     summary: Object.freeze({
       trainings: trainings.length,
       attendance: trainings.reduce((sum,session)=>sum+session.presentCount,0),
       trainerAttendances: trainings.reduce((sum,session)=>sum+session.trainerPresentCount,0),
+      unidentifiedTrainerAttendances,
       categories: categories.length,
     }),
   });
@@ -218,6 +289,7 @@ export class PostgresUlcU12StatisticsRepository {
     from: string,
     to: string,
     roster: readonly UlcU12StatisticsAthleteName[],
+    trainerRoster: readonly UlcYouthStatisticsTrainerName[] = [],
   ): Promise<UlcU12StatisticsReport> {
     const scope = [identifier(organizationId), identifier(groupId)];
     const interval = validateU12StatisticsDateRange(from, to);
@@ -231,6 +303,11 @@ export class PostgresUlcU12StatisticsRepository {
                  FROM ulc_linz_training_trainer_attendance AS trainer
                 WHERE trainer.organization_id = session.organization_id
                   AND trainer.session_id = session.id) AS trainer_count,
+              ARRAY(SELECT trainer.trainer_id::text
+                      FROM ulc_linz_training_trainer_attendance AS trainer
+                     WHERE trainer.organization_id = session.organization_id
+                       AND trainer.session_id = session.id
+                     ORDER BY trainer.trainer_id) AS trainer_ids,
               attendance.athlete_id,
               attendance.status,
               attendance.training_content_slots AS content_slots
@@ -248,6 +325,6 @@ export class PostgresUlcU12StatisticsRepository {
       [...scope, interval.from, interval.to,
         ...(this.moduleId === "u12" ? [] : [this.moduleId])],
     );
-    return aggregateU12Statistics(rows, roster, interval.from, interval.to);
+    return aggregateU12Statistics(rows, roster, interval.from, interval.to, trainerRoster);
   }
 }
