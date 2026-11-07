@@ -24,11 +24,11 @@ describe("ULC E4D.5 compact mobile layout", () => {
       'data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung',
     );
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-group="training"');
-    expect(ULC_LINZ_APP_HTML).toContain('<summary class="ab-disclosure">Trainingsinhalte</summary>');
+    expect(ULC_LINZ_APP_HTML).toContain('<h3 class="app-nav__group-title">Trainingsinhalte</h3>');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="exercise-catalog"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="training-blocks"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-group="administration"');
-    expect(ULC_LINZ_APP_HTML).toContain('<summary class="ab-disclosure">Verwaltung</summary>');
+    expect(ULC_LINZ_APP_HTML).toContain('<h3 class="app-nav__group-title">Verwaltung</h3>');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="masterdata"');
     expect(ULC_LINZ_APP_HTML).toContain('data-nav-view="users"');
     expect(ULC_LINZ_APP_HTML).toContain('id="app-sign-out"');
