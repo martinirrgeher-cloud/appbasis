@@ -153,13 +153,13 @@ export const ULC_U12_CSS = `
 .u12-head__title { min-width:0; }
 .u12-head h1 { margin:0; line-height:1.2; font-size:var(--ulc-page-title-size); font-weight:800; letter-spacing:-.025em; }
 .u12-head small { display:block; color:var(--secondary); margin-top:2px; overflow-wrap:anywhere; font-size:.75rem; }
-.u12-athlete-new { flex:0 0 42px; align-self:center; width:42px; min-height:42px; border-radius:9px; font-size:1.35rem; padding:0; font-weight:800; }
+.u12-athlete-new { flex:0 0 44px; align-self:center; width:44px; min-height:var(--ulc-touch-target); border-radius:9px; font-size:1.35rem; padding:0; font-weight:800; }
 .u12-attendance-toolbar { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:3px 1px 0; min-width:0; }
 .u12-attendance-toolbar > strong { font-size:1rem; font-weight:800; letter-spacing:-.015em; }
 .u12-attendance-toolbar__actions { display:flex; align-items:center; gap:5px; }
 .u12-statistics-open { min-height:42px; padding:0 10px; font-size:.82rem; }
 .u12-content-shell { position:relative; min-width:0; }
-.u12-category-shortcut { position:absolute; top:3px; right:38px; width:40px; min-width:40px; height:40px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--text); font-size:1.1rem; cursor:pointer; z-index:1; }
+.u12-category-shortcut { position:absolute; top:3px; right:38px; width:44px; min-width:44px; height:44px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--text); font-size:1.1rem; cursor:pointer; z-index:1; }
 .u12-category-shortcut[hidden] { display:none !important; }
 .u12-category-shortcut:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .u12-date-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:5px; padding:6px var(--ulc-space-2); border-radius:var(--ulc-radius-card); background:var(--card); border:1px solid var(--border); min-width:0; box-shadow:0 2px 8px rgba(15,23,42,.035); }
@@ -169,7 +169,7 @@ export const ULC_U12_CSS = `
 .u12-date-field span { font-size:.62rem; font-weight:750; color:var(--secondary); letter-spacing:.03em; }
 .u12-date-field input { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:38px; padding:0 1px; text-align:center; font-size:.8rem; font-weight:780; background:transparent; border:0; color:var(--text); }
 .u12-date-shortcuts { display:flex; justify-content:center; gap:2px; align-items:center; }
-.u12-date-shortcuts button { min-height:42px; border:0; background:transparent; color:var(--accent); padding:3px 5px; font-size:.73rem; font-weight:750; border-radius:8px; cursor:pointer; }
+.u12-date-shortcuts button { min-height:var(--ulc-touch-target); border:0; background:transparent; color:var(--accent); padding:3px 5px; font-size:.73rem; font-weight:750; border-radius:8px; cursor:pointer; }
 .u12-date-shortcuts button[aria-pressed="true"] { background:var(--muted); color:var(--secondary); }
 .u12-week, .u12-days { display:grid; gap:8px; min-width:0; max-width:100%; }
 .u12-info { width:40px; height:42px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--secondary); font-size:1.1rem; font-weight:750; }
