@@ -79,7 +79,7 @@ describe("U12 attendance statistics aggregation", () => {
   });
 
   it("uses an exact read-only database query with group/date/organization predicates", async () => {
-    const unsafe = vi.fn(async () => sessions);
+    const unsafe = vi.fn(async (_query: string, _params?: unknown[]) => sessions);
     const repo = new PostgresUlcU12StatisticsRepository({ unsafe });
     const report = await repo.read("org-ulc", "group-u12", "2026-08-07", "2026-11-07", roster);
     expect(report.summary.trainings).toBe(2);
