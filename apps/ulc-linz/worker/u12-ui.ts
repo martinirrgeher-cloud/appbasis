@@ -45,7 +45,6 @@ export const ULC_U12_HTML = `
                   <span aria-hidden="true">⌄</span>
                 </summary>
                 <div class="u12-content-body">
-                  <p>Bis zu fünf Inhalte mit optionaler Zusatzinfo.</p>
                   <div id="u12-content-rows" class="u12-content-rows"></div>
                   <div class="u12-content-actions">
                     <button type="button" class="u12-content-add" id="u12-content-add">＋ Inhalt</button>
@@ -122,14 +121,17 @@ export const ULC_U12_CSS = `
 .u12-content-summary small { font-size:.75rem; color:var(--secondary); margin-left:7px; }
 .u12-content-body { display:grid; gap:8px; padding:0 9px 10px; }
 .u12-content-body p { margin:0; font-size:.79rem; line-height:1.4; color:var(--secondary); }
-.u12-content-rows { display:grid; gap:5px; }
-.u12-content-row { display:grid; grid-template-columns:18px minmax(0,1fr) 38px; gap:5px; align-items:center; }
-.u12-content-row > strong { font-size:.84rem; color:var(--secondary); text-align:center; }
-.u12-content-fields { display:grid; gap:4px; min-width:0; }
-.u12-content-fields input, .u12-content-fields select { min-width:0; width:100%; min-height:40px; border:1px solid var(--border-strong); border-radius:8px; padding:5px 7px; background:var(--card); color:var(--text); }
-.u12-content-fields input[hidden] { display:none; }
-.u12-content-fields .u12-content-detail { font-size:.85rem; }
-.u12-content-remove { width:38px; height:42px; border:0; background:var(--muted); color:var(--text); border-radius:9px; font-size:1.15rem; cursor:pointer; }
+.u12-content-rows { display:grid; gap:10px; min-width:0; }
+.u12-content-row { display:grid; gap:7px; min-width:0; padding:8px 9px 10px; border:1px solid var(--border-strong); border-left:4px solid var(--accent, #147a46); border-radius:11px; background:var(--card); box-shadow:0 1px 3px rgba(0,0,0,.055); }
+.u12-content-row:nth-child(even) { background:var(--surface, #fff); border-left-color:var(--secondary); }
+.u12-content-row__header { display:flex; justify-content:space-between; align-items:center; gap:8px; padding-bottom:5px; border-bottom:1px solid var(--border); min-height:40px; }
+.u12-content-row__number { font-size:.82rem; font-weight:800; color:var(--text); }
+.u12-content-fields { display:grid; gap:6px; min-width:0; }
+.u12-content-fields input, .u12-content-fields select { box-sizing:border-box; min-width:0; width:100%; min-height:42px; border:1px solid var(--border-strong); border-radius:8px; padding:5px 8px; background:var(--card); color:var(--text); }
+.u12-content-fields .u12-content-detail { font-size:.84rem; }
+.u12-content-legacy { display:block; color:var(--secondary); font-size:.75rem; overflow-wrap:anywhere; line-height:1.35; }
+.u12-content-remove { flex:0 0 40px; width:40px; min-height:40px; border:1px solid var(--border); background:var(--muted); color:var(--text); border-radius:8px; font-size:1.2rem; cursor:pointer; }
+.u12-content-remove:focus-visible, .u12-content-fields select:focus-visible, .u12-content-fields input:focus-visible { outline:2px solid var(--accent, #147a46); outline-offset:2px; }
 .u12-content-add { justify-self:start; min-height:42px; padding:0 11px; border:1px solid var(--border-strong); border-radius:9px; background:var(--muted); color:var(--text); font-weight:750; cursor:pointer; }
 .u12-content-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .u12-content-assign { min-height:42px; font-size:.82rem; }
@@ -242,7 +244,10 @@ let U12_STANDARD_CONTENT_CATALOG = [];
 function updateU12CategoryCatalog(categories) {
   U12_STANDARD_CONTENT_CATALOG = categories.filter((category) => category.isActive)
     .map((category) => ({ code: category.code, label: category.label }));
-  if (u12Snapshot && !u12Loading && !u12Saving) renderU12ContentRows();
+  if (u12Snapshot && !u12Loading && !u12Saving) {
+    renderU12ContentRows();
+    refreshU12Controls();
+  }
 }
 
 let u12Ready = false;
@@ -441,7 +446,8 @@ function refreshU12Controls() {
     input.disabled = !editable;
   }
   if (u12Ui.contentAdd) {
-    u12Ui.contentAdd.disabled = !editable || u12ContentTitles.length >= 5;
+    u12Ui.contentAdd.disabled = !editable || u12ContentTitles.length >= 5 ||
+      U12_STANDARD_CONTENT_CATALOG.length === 0;
     u12Ui.contentAdd.hidden = u12ContentTitles.length >= 5;
   }
   if (u12Ui.contentCount) {
@@ -501,55 +507,70 @@ function renderU12ContentRows() {
   if (!u12Snapshot) return;
   if (u12ContentTitles.length === 0) {
     const empty = document.createElement("small");
-    empty.textContent = "Noch keine Trainingsinhalte erfasst.";
+    empty.textContent = U12_STANDARD_CONTENT_CATALOG.length
+      ? "Noch keine Trainingsinhalte erfasst."
+      : "Keine aktive U12-Kategorie verfügbar. Kategorien über ⚙ verwalten.";
     u12Ui.contentRows.append(empty);
   }
   for (const [index, title] of u12ContentTitles.entries()) {
     const meta = u12ContentItems[index] ?? { code: "", detail: "" };
-    const row = document.createElement("div");
+    const row = document.createElement("section");
     row.className = "u12-content-row";
+    row.setAttribute("aria-label", "Inhalt " + (index + 1));
+    const header = document.createElement("div");
+    header.className = "u12-content-row__header";
     const number = document.createElement("strong");
-    number.textContent = String(index + 1);
+    number.className = "u12-content-row__number";
+    number.textContent = "Inhalt " + (index + 1);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "u12-content-remove";
+    remove.dataset.u12RemoveIndex = String(index);
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", "Inhalt " + (index + 1) + " entfernen");
+    header.append(number, remove);
     const fields = document.createElement("div");
     fields.className = "u12-content-fields";
-
     const category = document.createElement("select");
     category.dataset.u12CodeIndex = String(index);
     category.setAttribute("aria-label", "Kategorie für Inhalt " + (index + 1));
-    const freeOption = document.createElement("option");
-    freeOption.value = "";
-    freeOption.textContent = "Freie Bezeichnung (nicht standardisiert)";
-    category.append(freeOption);
     for (const standard of U12_STANDARD_CONTENT_CATALOG) {
       const option = document.createElement("option");
       option.value = standard.code;
       option.textContent = standard.label;
       category.append(option);
     }
-    // A saved session retains its original category label even after a
-    // catalog rename/deactivation. Never overwrite historical content titles.
-    const activeEntry = U12_STANDARD_CONTENT_CATALOG.find((entry) => entry.code === meta.code);
-    if (meta.code && (!activeEntry || activeEntry.label !== title)) {
+    // Historical free text, renamed and inactive categories stay visible and unchanged.
+    // A category selection is an explicit conversion, never a silent rewrite.
+    const current = U12_STANDARD_CONTENT_CATALOG.find((entry) => entry.code === meta.code);
+    if (!meta.code && !title.trim()) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Kategorie auswählen";
+      placeholder.disabled = true;
+      placeholder.selected = true;
+      category.prepend(placeholder);
+      category.value = "";
+    } else if (!meta.code || !current || current.label !== title) {
       const savedOption = document.createElement("option");
-      savedOption.value = meta.code;
-      savedOption.textContent = title + " (im Training gespeichert)";
+      savedOption.value = "__historical__";
+      savedOption.textContent = !meta.code
+        ? "Bisheriger Inhalt (Altbestand)" : title + " (im Training gespeichert)";
       savedOption.disabled = true;
       savedOption.selected = true;
       category.append(savedOption);
+      category.value = "__historical__";
+    } else {
+      category.value = meta.code;
     }
-    category.value = meta.code;
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.required = true;
-    input.maxLength = 120;
-    input.placeholder = "Freien Inhalt benennen";
-    input.value = title;
-    input.hidden = !!meta.code;
-    input.readOnly = !!meta.code;
-    input.dataset.u12TitleIndex = String(index);
-    input.setAttribute("aria-label", "Trainingsinhalt " + (index + 1));
-
+    fields.append(category);
+    if (!meta.code && title.trim()) {
+      const legacy = document.createElement("small");
+      legacy.className = "u12-content-legacy";
+      legacy.textContent = "Bisher erfasst: " + title +
+        " · Zur Umstellung eine Kategorie auswählen.";
+      fields.append(legacy);
+    }
     const detail = document.createElement("input");
     detail.type = "text";
     detail.maxLength = 200;
@@ -558,15 +579,8 @@ function renderU12ContentRows() {
     detail.value = meta.detail;
     detail.dataset.u12DetailIndex = String(index);
     detail.setAttribute("aria-label", "Zusatzinfo für Inhalt " + (index + 1));
-    fields.append(category, input, detail);
-
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "u12-content-remove";
-    remove.dataset.u12RemoveIndex = String(index);
-    remove.textContent = "×";
-    remove.setAttribute("aria-label", "Inhalt " + (index + 1) + " entfernen");
-    row.append(number, fields, remove);
+    fields.append(detail);
+    row.append(header, fields);
     u12Ui.contentRows.append(row);
   }
 }
@@ -575,12 +589,19 @@ function addU12Content() {
   if (!u12Snapshot || u12ContentTitles.length >= 5 || u12Loading ||
       u12Saving || !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return;
+  const initial = U12_STANDARD_CONTENT_CATALOG[0];
+  if (!initial) {
+    showMessage(u12Ui.message, "Bitte zuerst eine U12-Kategorie über ⚙ anlegen oder aktivieren.");
+    return;
+  }
+  // A new content always requires a deliberate category selection.
+  // A placeholder is not a free-text category and can never be saved.
   u12ContentTitles.push("");
   u12ContentItems.push({ code: "", detail: "" });
   if (u12Ui.contentCard) u12Ui.contentCard.open = true;
   renderU12Attendance();
   markU12DraftDirty();
-  u12Ui.contentRows?.querySelectorAll("[data-u12-title-index]")[u12ContentTitles.length - 1]?.focus();
+  u12Ui.contentRows?.querySelectorAll("[data-u12-code-index]")[u12ContentTitles.length - 1]?.focus();
 }
 
 function removeU12Content(index) {
@@ -937,8 +958,8 @@ async function saveU12Attendance() {
   const invalidTitleIndex = titles.findIndex((title) => title.length === 0 || title.length > 120);
   if (invalidTitleIndex !== -1) {
     if (u12Ui.contentCard) u12Ui.contentCard.open = true;
-    showMessage(u12Ui.message, "Bitte alle Trainingsinhalte benennen (maximal 120 Zeichen).");
-    u12Ui.contentRows?.querySelector('[data-u12-title-index="' + invalidTitleIndex + '"]')?.focus();
+    showMessage(u12Ui.message, "Bitte für jeden neuen Trainingsinhalt eine Kategorie auswählen.");
+    u12Ui.contentRows?.querySelector('[data-u12-code-index="' + invalidTitleIndex + '"]')?.focus();
     return false;
   }
   const generation = attendanceSessionGeneration;
@@ -1170,55 +1191,29 @@ u12Ui.contentRows?.addEventListener("change", (event) => {
   if (!Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
       !item || !u12EditableDraft()) return;
   const standard = U12_STANDARD_CONTENT_CATALOG.find((entry) => entry.code === select.value);
-  if (select.value !== "" && !standard) return;
-  if (standard) {
-    const oldTitle = u12ContentTitles[index]?.trim() || "";
-    // Reclassifying a legacy free-text content must not discard its description.
-    if (!item.code && oldTitle && !item.detail) {
-      item.detail = oldTitle.slice(0, 200);
-    }
-    item.code = standard.code;
-    u12ContentTitles[index] = standard.label;
-  } else {
-    item.code = "";
-    if (U12_STANDARD_CONTENT_CATALOG.some((entry) => entry.label === u12ContentTitles[index])) {
-      u12ContentTitles[index] = "";
-    }
+  if (!standard) return;
+  const oldTitle = u12ContentTitles[index]?.trim() || "";
+  // When reclassifying legacy free text, keep its former title as part of
+  // the optional detail and retain any existing detail too.
+  if (!item.code && oldTitle) {
+    const previousDetail = item.detail.trim();
+    item.detail = (previousDetail && previousDetail !== oldTitle
+      ? oldTitle + " · " + previousDetail : oldTitle).slice(0, 200);
   }
+  item.code = standard.code;
+  u12ContentTitles[index] = standard.label;
   renderU12ContentRows();
   renderU12AssignmentMatrix();
   markU12DraftDirty();
 });
 u12Ui.contentRows?.addEventListener("input", (event) => {
   const input = event.target;
-  const isDetail = !!input &&
-    Object.prototype.hasOwnProperty.call(input.dataset, "u12DetailIndex");
-  const index = Number(isDetail ? input?.dataset?.u12DetailIndex : input?.dataset?.u12TitleIndex);
-  if (!input || !(isDetail || Object.prototype.hasOwnProperty.call(input.dataset, "u12TitleIndex")) ||
-      !Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
+  if (!input || !Object.prototype.hasOwnProperty.call(input.dataset, "u12DetailIndex")) return;
+  const index = Number(input.dataset.u12DetailIndex);
+  if (!Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
       u12Loading || u12Saving || !u12WriteAllowed || u12Conflict ||
       u12Snapshot?.session?.state === "cancelled") return;
-  if (isDetail) {
-    u12ContentItems[index].detail = input.value;
-    markU12DraftDirty();
-    return;
-  }
-  if (u12ContentItems[index]?.code) return;
-  u12ContentTitles[index] = input.value;
-  for (const heading of u12Ui.matrix?.querySelectorAll("[data-u12-matrix-heading]") ?? []) {
-    if (Number(heading.dataset.u12MatrixHeading) === index) {
-      heading.textContent = String(index + 1);
-      heading.title = input.value.trim() || "Inhalt " + (index + 1);
-    }
-  }
-  for (const legend of u12Ui.matrixLegend?.querySelectorAll("[data-u12-matrix-legend]") ?? []) {
-    if (Number(legend.dataset.u12MatrixLegend) === index) {
-      const number = legend.querySelector("strong");
-      legend.replaceChildren();
-      if (number) legend.append(number);
-      legend.append(document.createTextNode(input.value.trim() || "Inhalt ohne Bezeichnung"));
-    }
-  }
+  u12ContentItems[index].detail = input.value;
   markU12DraftDirty();
 });
 u12Ui.matrix?.addEventListener("change", (event) => {
