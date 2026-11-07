@@ -2,8 +2,7 @@ export const ULC_YOUTH_CATEGORY_HTML = `
   <dialog id="youth-category-dialog" class="u12-details-dialog youth-category-dialog" aria-labelledby="youth-category-dialog-title">
     <header class="u12-details-header youth-category-header">
       <div>
-        <h2 id="youth-category-dialog-title">Trainingskategorien</h2>
-        <small>Gemeinsam für U12, U14 und Kindertraining</small>
+        <h2 id="youth-category-dialog-title">Kategorien · <span id="youth-category-area-title">U12</span></h2>
       </div>
       <button type="button" class="button button--secondary" id="youth-category-close" aria-label="Kategorien schließen">✕</button>
     </header>
@@ -11,10 +10,10 @@ export const ULC_YOUTH_CATEGORY_HTML = `
       <p class="message message--error" id="youth-category-error" role="alert" hidden></p>
       <p class="message message--success" id="youth-category-success" role="status" hidden></p>
       <form id="youth-category-create" class="youth-category-create" hidden>
-        <label for="youth-category-new-name">Neue Kategorie</label>
+        <label class="youth-category-visually-hidden" for="youth-category-new-name">Neue Kategorie</label>
         <div class="youth-category-create-row">
-          <input id="youth-category-new-name" maxlength="120" required placeholder="z. B. Hürdenlauf" autocomplete="off"/>
-          <button type="submit" class="button button--primary">＋ Hinzufügen</button>
+          <input id="youth-category-new-name" maxlength="120" required placeholder="Kategorie hinzufügen" autocomplete="off"/>
+          <button type="submit" class="button button--primary" aria-label="Kategorie hinzufügen" title="Kategorie hinzufügen">＋</button>
         </div>
       </form>
       <div class="youth-category-toolbar">
@@ -51,13 +50,43 @@ export const ULC_YOUTH_CATEGORY_CSS = `
 .youth-category-item__name { min-width:0; overflow-wrap:anywhere; font-weight:700; }
 .youth-category-item__status { font-size:.74rem; color:var(--secondary); }
 .youth-category-item__actions, .youth-category-edit { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
-.youth-category-item__actions button, .youth-category-edit button { min-height:38px; padding:6px 10px; font-size:.8rem; }
+ .youth-category-item__actions button, .youth-category-edit button { min-height:38px; padding:6px 10px; font-size:.8rem; }
+/* Mobile-first: one category per dense line, full-size touch targets, no wide action bars. */
+.youth-category-dialog { box-sizing:border-box; width:min(calc(100vw - 12px),520px); max-width:520px; max-height:calc(100dvh - 12px); border-radius:12px; }
+.youth-category-header { padding:7px 10px; min-height:46px; gap:7px; }
+.youth-category-header h2 { font-size:1rem; line-height:1.2; }
+.youth-category-header button { min-width:40px; min-height:40px; padding:0 8px; }
+.youth-category-body { padding:8px 9px 10px; gap:7px; }
+.youth-category-visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.youth-category-create { gap:0; }
+.youth-category-create-row { display:grid; grid-template-columns:minmax(0,1fr) 42px; gap:5px; }
+.youth-category-create-row input { min-height:40px; padding:5px 8px; flex:auto; width:100%; box-sizing:border-box; }
+.youth-category-create-row button { min-height:42px; width:42px; padding:0; font-size:1.4rem; }
+.youth-category-toolbar { gap:7px; flex-wrap:nowrap; min-height:30px; }
+.youth-category-show-inactive { white-space:nowrap; font-size:.75rem; }
+.youth-category-show-inactive input { width:18px; height:18px; margin:0; }
+.youth-category-list { gap:3px; }
+.youth-category-item { min-width:0; padding:3px 5px; gap:3px; border-radius:8px; }
+.youth-category-item__head { gap:6px; flex-wrap:nowrap; min-height:40px; }
+.youth-category-item__name { flex:1 1 auto; font-size:.83rem; font-weight:650; }
+.youth-category-item__status { font-size:.68rem; flex:0 0 auto; }
+.youth-category-item__actions { flex:0 0 auto; flex-wrap:nowrap; gap:3px; }
+.youth-category-item__actions button { min-width:40px; width:40px; min-height:40px; padding:0; font-size:1rem; }
+.youth-category-edit { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:4px; flex-wrap:nowrap; }
+.youth-category-edit input { flex:auto; min-width:0; min-height:40px; padding:5px 8px; box-sizing:border-box; width:100%; }
+.youth-category-edit button { min-height:40px; padding:0 8px; font-size:.75rem; }
+@media (max-width: 365px) {
+  .youth-category-item__name { font-size:.78rem; }
+  .youth-category-item__actions button { min-width:38px; width:38px; }
+  .youth-category-edit button { padding:0 6px; font-size:.69rem; }
+}
 `;
 
 export const ULC_YOUTH_CATEGORY_SCRIPT = `
 const youthCategoryUi = {
   dialog: document.querySelector("#youth-category-dialog"),
   close: document.querySelector("#youth-category-close"),
+  areaTitle: document.querySelector("#youth-category-area-title"),
   error: document.querySelector("#youth-category-error"),
   success: document.querySelector("#youth-category-success"),
   create: document.querySelector("#youth-category-create"),
@@ -67,6 +96,7 @@ const youthCategoryUi = {
   list: document.querySelector("#youth-category-list"),
 };
 let youthCategoryCatalog = [];
+let youthCategoryArea = "u12";
 let youthCategoryCanManage = false;
 let youthCategoryBusy = false;
 let youthCategoryShowInactive = false;
@@ -84,14 +114,20 @@ function validYouthCategoryResponse(payload) {
     new Set(payload.categories.map((x) => x.code)).size === payload.categories.length;
 }
 
-async function refreshYouthCategoryCatalog() {
-  const payload = await requestJson("/api/modules/youth-categories");
+async function refreshYouthCategoryCatalog(area = "u12") {
+  if (!["u12", "u14", "kindertraining"].includes(area)) throw new Error("INVALID_TRAINING_AREA");
+  const payload = await requestJson("/api/modules/youth-categories?area=" +
+    encodeURIComponent(area));
   if (!validYouthCategoryResponse(payload)) throw new Error("YOUTH_CATEGORY_INVALID_RESPONSE");
-  youthCategoryCatalog = payload.categories;
-  youthCategoryCanManage = payload.canManage;
-  if (typeof updateU12CategoryCatalog === "function") updateU12CategoryCatalog(youthCategoryCatalog);
-  renderYouthCategoryManagement();
-  return youthCategoryCatalog;
+  if (area === "u12" && typeof updateU12CategoryCatalog === "function") {
+    updateU12CategoryCatalog(payload.categories);
+  }
+  if (area === youthCategoryArea) {
+    youthCategoryCatalog = payload.categories;
+    youthCategoryCanManage = payload.canManage;
+    renderYouthCategoryManagement();
+  }
+  return payload.categories;
 }
 
 function renderYouthCategoryManagement() {
@@ -115,7 +151,7 @@ function renderYouthCategoryManagement() {
     name.textContent = category.label;
     const status = document.createElement("span");
     status.className = "youth-category-item__status";
-    status.textContent = category.isActive ? "Aktiv" : "Inaktiv";
+    status.textContent = category.isActive ? "" : "Inaktiv";
     head.append(name, status);
     item.append(head);
 
@@ -148,14 +184,18 @@ function renderYouthCategoryManagement() {
         rename.type = "button";
         rename.className = "button button--secondary";
         rename.dataset.youthCategoryRename = category.code;
-        rename.textContent = "Umbenennen";
+        rename.textContent = "✎";
+        rename.setAttribute("aria-label", "Umbenennen");
+        rename.title = "Umbenennen";
         const toggle = document.createElement("button");
         toggle.type = "button";
         toggle.className = "button button--secondary";
         toggle.dataset.youthCategoryToggle = category.code;
-        toggle.textContent = category.isActive ? "Deaktivieren" : "Aktivieren";
+        toggle.textContent = category.isActive ? "⊘" : "↺";
+        toggle.setAttribute("aria-label", category.isActive ? "Deaktivieren" : "Aktivieren");
+        toggle.title = category.isActive ? "Deaktivieren" : "Aktivieren";
         actions.append(rename, toggle);
-        item.append(actions);
+        head.append(actions);
       }
     }
     for (const button of item.querySelectorAll("button")) button.disabled = youthCategoryBusy;
@@ -168,16 +208,29 @@ function renderYouthCategoryManagement() {
   }
 }
 
-async function openYouthCategoryManagement() {
+async function openYouthCategoryManagement(area = "u12") {
+  if (!["u12", "u14", "kindertraining"].includes(area)) return;
   if (!youthCategoryUi.dialog || youthCategoryUi.dialog.open) return;
+  youthCategoryArea = area;
+  youthCategoryCatalog = [];
+  youthCategoryCanManage = false;
   youthCategoryEditCode = "";
+  youthCategoryShowInactive = false;
+  if (youthCategoryUi.inactive) youthCategoryUi.inactive.checked = false;
+  if (youthCategoryUi.areaTitle) {
+    youthCategoryUi.areaTitle.textContent =
+      { u12: "U12", u14: "U14", kindertraining: "Kindertraining" }[area];
+  }
   showMessage(youthCategoryUi.error, "");
   showMessage(youthCategoryUi.success, "");
+  renderYouthCategoryManagement();
   youthCategoryUi.dialog.showModal();
   try {
-    await refreshYouthCategoryCatalog();
+    await refreshYouthCategoryCatalog(area);
   } catch {
-    showMessage(youthCategoryUi.error, "Kategorien konnten nicht geladen werden.");
+    if (area === youthCategoryArea && youthCategoryUi.dialog.open) {
+      showMessage(youthCategoryUi.error, "Kategorien konnten nicht geladen werden.");
+    }
   }
 }
 
@@ -188,15 +241,16 @@ async function saveYouthCategoryChange(method, data, successText) {
   showMessage(youthCategoryUi.success, "");
   renderYouthCategoryManagement();
   try {
-    await requestJson("/api/modules/youth-categories", {
+    await requestJson("/api/modules/youth-categories?area=" +
+      encodeURIComponent(youthCategoryArea), {
       method, body: JSON.stringify(data),
     });
     youthCategoryEditCode = "";
-    await refreshYouthCategoryCatalog();
+    await refreshYouthCategoryCatalog(youthCategoryArea);
     showMessage(youthCategoryUi.success, successText);
   } catch (error) {
     if (error?.status === 409) {
-      try { await refreshYouthCategoryCatalog(); } catch {}
+      try { await refreshYouthCategoryCatalog(youthCategoryArea); } catch {}
       showMessage(youthCategoryUi.error,
         "Die Kategorie wurde inzwischen verändert oder existiert bereits. Liste neu geladen.");
     } else {

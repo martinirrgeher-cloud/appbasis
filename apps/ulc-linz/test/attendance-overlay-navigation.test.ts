@@ -50,7 +50,10 @@ describe("ULC attendance: group overlay instead of an intermediate page", () => 
     expect(ULC_LINZ_APP_HTML).toContain('data-attendance-group="kindertraining"');
     expect(ULC_LINZ_APP_HTML).toContain('data-attendance-group="irrgeher"');
     expect(ULC_LINZ_APP_HTML).toContain("<strong>Gruppe Irrgeher</strong>");
-    expect(ULC_LINZ_APP_HTML).toContain("<strong>U14</strong><small>In Vorbereitung</small>");
+    expect(ULC_LINZ_APP_HTML).toContain("<strong>U14</strong><small>Anwesenheit in Vorbereitung</small>");
+    expect(ULC_LINZ_APP_HTML).toContain('data-youth-category-area="u12"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-youth-category-area="u14"');
+    expect(ULC_LINZ_APP_HTML).toContain('data-youth-category-area="kindertraining"');
     expect(ULC_LINZ_APP_HTML).toContain('data-app-section="kindertraining"');
     expect(ULC_LINZ_APP_HTML).toContain('data-app-section="u12"');
     expect(ULC_LINZ_APP_HTML).toContain('data-app-section="registration"');

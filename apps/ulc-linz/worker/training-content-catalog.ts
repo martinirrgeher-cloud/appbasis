@@ -15,6 +15,33 @@ export const ULC_YOUTH_CONTENT_CATALOG = Object.freeze([
   Object.freeze({ code: "other", label: "Sonstiges" }),
 ] as const);
 
+/** Separate initial catalogs. These are editable per area and never shared. */
+export const ULC_U14_CONTENT_CATALOG = Object.freeze([
+  Object.freeze({ code: "warmup", label: "Aufwärmen" }),
+  Object.freeze({ code: "sprint", label: "Sprint / Schnelligkeit" }),
+  Object.freeze({ code: "hurdles", label: "Hürden" }),
+  Object.freeze({ code: "jump", label: "Sprung" }),
+  Object.freeze({ code: "throw", label: "Wurf / Stoß" }),
+  Object.freeze({ code: "technique", label: "Technik" }),
+  Object.freeze({ code: "strength", label: "Kraft" }),
+  Object.freeze({ code: "endurance", label: "Ausdauer" }),
+  Object.freeze({ code: "other", label: "Sonstiges" }),
+] as const);
+
+export const ULC_KINDERTRAINING_CONTENT_CATALOG = Object.freeze([
+  Object.freeze({ code: "movement_games", label: "Bewegungsspiele" }),
+  Object.freeze({ code: "coordination", label: "Koordination" }),
+  Object.freeze({ code: "balance", label: "Gleichgewicht" }),
+  Object.freeze({ code: "running", label: "Laufen" }),
+  Object.freeze({ code: "jumping", label: "Springen" }),
+  Object.freeze({ code: "throwing", label: "Werfen" }),
+  Object.freeze({ code: "relays", label: "Staffeln" }),
+  Object.freeze({ code: "mobility", label: "Beweglichkeit" }),
+  Object.freeze({ code: "other", label: "Sonstiges" }),
+] as const);
+
+export type UlcYouthTrainingArea = "u12" | "u14" | "kindertraining";
+
 /** Stable organization-owned code; empty means uncategorized legacy text. */
 export type UlcYouthContentCode = string;
 

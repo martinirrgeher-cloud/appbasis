@@ -6,7 +6,11 @@ export const ULC_U12_HTML = `
                 <h1>U12</h1>
                 <small id="u12-group-label">Trainingsgruppe wird geladen</small>
               </div>
-              <button class="button button--secondary u12-athlete-new" type="button" id="u12-add-athlete" hidden title="Kind direkt der U12-Gruppe zuordnen" aria-label="Neues Kind anlegen">＋ <span>Kind</span></button>
+              <div class="u12-head__actions">
+                <button class="u12-category-shortcut" type="button" data-youth-category-area="u12" hidden disabled
+                  aria-label="U12-Kategorien bearbeiten" title="U12-Kategorien">⚙</button>
+                <button class="button button--secondary u12-athlete-new" type="button" id="u12-add-athlete" hidden title="Kind direkt der U12-Gruppe zuordnen" aria-label="Neues Kind anlegen">＋ <span>Kind</span></button>
+              </div>
             </header>
             <p class="message message--error" id="u12-message" role="alert" hidden></p>
             <p class="message message--success" id="u12-success" role="status" hidden></p>
@@ -41,7 +45,7 @@ export const ULC_U12_HTML = `
                   <span aria-hidden="true">⌄</span>
                 </summary>
                 <div class="u12-content-body">
-                  <p>Pro Training bis zu fünf Inhalte. Wähle eine standardisierte Kategorie und ergänze bei Bedarf Zusatzinfos. Vorhandene freie Inhalte bleiben erhalten.</p>
+                  <p>Bis zu fünf Inhalte mit optionaler Zusatzinfo.</p>
                   <div id="u12-content-rows" class="u12-content-rows"></div>
                   <div class="u12-content-actions">
                     <button type="button" class="u12-content-add" id="u12-content-add">＋ Inhalt</button>
@@ -86,8 +90,11 @@ export const ULC_U12_CSS = `
 .u12-head__title .eyebrow { margin:0 0 2px; }
 .u12-head h1 { margin:0; line-height:1.2; font-size:1.55rem; }
 .u12-head small { display:block; color:var(--secondary); margin-top:3px; overflow-wrap:anywhere; font-size:.75rem; }
-.u12-athlete-new { flex:0 0 auto; align-self:center; min-height:44px; border-radius:12px; font-size:.85rem; padding:0 12px; font-weight:800; }
-.u12-date-toolbar { display:grid; gap:6px; padding:10px 12px 8px; border-radius:14px; background:var(--card); border:1px solid var(--border); min-width:0; }
+ .u12-athlete-new { flex:0 0 auto; align-self:center; min-height:42px; border-radius:9px; font-size:.8rem; padding:0 9px; font-weight:800; }
+.u12-head__actions { flex:0 0 auto; display:flex; gap:5px; align-items:center; }
+.u12-category-shortcut { width:42px; min-width:42px; height:42px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--text); font-size:1.1rem; cursor:pointer; }
+.u12-category-shortcut[hidden] { display:none !important; }
+.u12-date-toolbar { display:grid; gap:4px; padding:7px 8px 6px; border-radius:14px; background:var(--card); border:1px solid var(--border); min-width:0; }
 .u12-date-nav { display:grid; grid-template-columns:40px minmax(0,1fr) 40px; align-items:center; gap:6px; }
 .u12-date-arrow { height:44px; border:0; border-radius:10px; background:var(--muted); color:var(--text); font-size:1.4rem; font-weight:800; cursor:pointer; }
 .u12-date-field { display:grid; gap:1px; min-width:0; text-align:center; }
@@ -110,16 +117,16 @@ export const ULC_U12_CSS = `
 .u12-details-section p { overflow-wrap: anywhere; white-space: pre-wrap; }
  .u12-roster { isolation: isolate; }
 .u12-content-card { border:1px solid var(--border); border-radius:14px; background:var(--card); padding:0; min-width:0; }
-.u12-content-summary { display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; padding:13px 14px; font-size:.95rem; font-weight:800; min-height:50px; }
+.u12-content-summary { display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; padding:8px 10px; font-size:.9rem; font-weight:750; min-height:42px; }
 .u12-content-summary::marker { content:""; }
 .u12-content-summary small { font-size:.75rem; color:var(--secondary); margin-left:7px; }
-.u12-content-body { display:grid; gap:12px; padding:0 12px 14px; }
+.u12-content-body { display:grid; gap:8px; padding:0 9px 10px; }
 .u12-content-body p { margin:0; font-size:.79rem; line-height:1.4; color:var(--secondary); }
-.u12-content-rows { display:grid; gap:8px; }
-.u12-content-row { display:grid; grid-template-columns:24px minmax(0,1fr) 38px; gap:8px; align-items:center; }
+.u12-content-rows { display:grid; gap:5px; }
+.u12-content-row { display:grid; grid-template-columns:18px minmax(0,1fr) 38px; gap:5px; align-items:center; }
 .u12-content-row > strong { font-size:.84rem; color:var(--secondary); text-align:center; }
-.u12-content-fields { display:grid; gap:6px; min-width:0; }
-.u12-content-fields input, .u12-content-fields select { min-width:0; width:100%; min-height:42px; border:1px solid var(--border-strong); border-radius:9px; padding:8px 10px; background:var(--card); color:var(--text); }
+.u12-content-fields { display:grid; gap:4px; min-width:0; }
+.u12-content-fields input, .u12-content-fields select { min-width:0; width:100%; min-height:40px; border:1px solid var(--border-strong); border-radius:8px; padding:5px 7px; background:var(--card); color:var(--text); }
 .u12-content-fields input[hidden] { display:none; }
 .u12-content-fields .u12-content-detail { font-size:.85rem; }
 .u12-content-remove { width:38px; height:42px; border:0; background:var(--muted); color:var(--text); border-radius:9px; font-size:1.15rem; cursor:pointer; }

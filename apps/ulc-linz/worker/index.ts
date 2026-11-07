@@ -85,6 +85,7 @@ import type { UlcYouthContentItem } from "./training-content-catalog";
 import {
   UlcYouthCategoryValidationError,
   UlcYouthCategoryConflictError,
+  safeYouthTrainingArea,
 } from "./youth-category-postgres";
 import { UlcTrainingSessionConflictError } from "./training-session-postgres";
 import {
@@ -1754,12 +1755,23 @@ async function youthCategoriesResponse(
   if (!["GET", "POST", "PATCH"].includes(request.method)) {
     return methodNotAllowedFor("GET, POST, PATCH", "Youth categories");
   }
+  // The area is always explicit, including for writes. A U12 trainer must not
+  // silently receive access to the independent Kindertraining category catalog.
+  let area;
+  try {
+    area = safeYouthTrainingArea(url.searchParams.get("area"));
+  } catch {
+    return Response.json({ error: { code: "INVALID_YOUTH_CATEGORY",
+      message: "Unknown training area." } }, { status: 400 });
+  }
   const editing = request.method !== "GET";
-  // Shared catalog is readable via U12 or Kindertraining. Its management
-  // changes all youth groups, therefore writes require organization scope.
   const action = editing ? "edit" : "view";
-  let access = await authorizeU12Request(request, runtime, url, action);
-  if (access instanceof Response && access.status === 403) {
+  let access = area === "kindertraining"
+    ? await authorizeKindertrainingRequest(request, runtime, url, action)
+    : await authorizeU12Request(request, runtime, url, action);
+  // U14 attendance is not implemented yet; organization-scoped U12/Kindertraining
+  // permissions can manage its independent catalog without broadening U12/Kids access.
+  if (area === "u14" && access instanceof Response && access.status === 403) {
     access = await authorizeKindertrainingRequest(request, runtime, url, action);
   }
   if (access instanceof Response) return access;
@@ -1773,13 +1785,13 @@ async function youthCategoriesResponse(
       reasonCode: "scope-denied",
     });
     return Response.json({ error: { code: "YOUTH_CATEGORY_FORBIDDEN",
-      message: "Only organization administrators can edit shared training categories." } },
+      message: "Only organization administrators can edit training categories." } },
       { status: 403 });
   }
 
   try {
     if (request.method === "GET") {
-      const categories = await runtime.youthCategories.list(access.organizationId);
+      const categories = await runtime.youthCategories.list(access.organizationId, area);
       return Response.json({ categories, canManage: access.scope === "organization" });
     }
     let value: unknown;
@@ -1793,7 +1805,7 @@ async function youthCategoriesResponse(
       if (JSON.stringify(Object.keys(body).sort()) !== '["label"]') {
         throw new UlcYouthCategoryValidationError();
       }
-      const category = await runtime.youthCategories.create(access.organizationId, body.label as string);
+      const category = await runtime.youthCategories.create(access.organizationId, area, body.label as string);
       return Response.json({ category }, { status: 201 });
     }
     if (JSON.stringify(Object.keys(body).sort()) !==
@@ -1802,6 +1814,7 @@ async function youthCategoriesResponse(
     }
     const category = await runtime.youthCategories.update(
       access.organizationId,
+      area,
       body.code as string,
       {
         label: body.label as string,

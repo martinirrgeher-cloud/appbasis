@@ -103,20 +103,26 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" aria-haspopup="true">Mehr</button>
           </div>
           <div class="app-nav__attendance-menu" id="app-nav-attendance-menu" aria-label="Anwesenheit nach Gruppe" hidden>
-            <button class="app-nav__attendance-item" type="button" data-attendance-target="u12" hidden disabled>
-              <strong>U12</strong><small>Anwesenheit und Trainingsinhalte</small>
-            </button>
-            <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="kindertraining" hidden disabled>
-              <strong>Kindertraining</strong><small>Anwesenheit je Trainingstag</small>
-            </button>
-            <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="irrgeher" hidden disabled>
-              <strong>Gruppe Irrgeher</strong><small>Bestehende Gruppenanmeldung und Anwesenheit</small>
-            </button>
-            <div class="app-nav__attendance-item app-nav__attendance-item--pending" aria-disabled="true">
-              <strong>U14</strong><small>In Vorbereitung</small>
+            <div class="app-nav__attendance-row">
+              <button class="app-nav__attendance-item" type="button" data-attendance-target="u12" hidden disabled>
+                <strong>U12</strong><small>Anwesenheit und Inhalte</small>
+              </button>
+              <button class="app-nav__attendance-category" type="button" data-youth-category-area="u12" hidden disabled aria-label="U12-Kategorien bearbeiten" title="U12-Kategorien">⚙</button>
             </div>
-            <button class="app-nav__attendance-item" type="button" data-attendance-target="categories" hidden disabled>
-              <strong><span aria-hidden="true">⚙</span> Trainingskategorien</strong><small>Für U12, U14 und Kindertraining verwalten</small>
+            <div class="app-nav__attendance-row">
+              <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="kindertraining" hidden disabled>
+                <strong>Kindertraining</strong><small>Anwesenheit</small>
+              </button>
+              <button class="app-nav__attendance-category" type="button" data-youth-category-area="kindertraining" hidden disabled aria-label="Kindertraining-Kategorien bearbeiten" title="Kindertraining-Kategorien">⚙</button>
+            </div>
+            <div class="app-nav__attendance-row">
+              <div class="app-nav__attendance-item app-nav__attendance-item--pending" aria-disabled="true">
+                <strong>U14</strong><small>Anwesenheit in Vorbereitung</small>
+              </div>
+              <button class="app-nav__attendance-category" type="button" data-youth-category-area="u14" hidden disabled aria-label="U14-Kategorien bearbeiten" title="U14-Kategorien">⚙</button>
+            </div>
+            <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="irrgeher" hidden disabled>
+              <strong>Gruppe Irrgeher</strong><small>Anwesenheit</small>
             </button>
           </div>
           ${ULC_YOUTH_CATEGORY_HTML}
@@ -628,11 +634,11 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
 
 ${ULC_U12_HTML}
           <section class="app-section" data-app-section="kindertraining" id="kindertraining" hidden>
-            <section class="hero">
-              <p class="eyebrow">Training</p>
+            <header class="kindertraining-head">
               <h1>Anwesenheit</h1>
-              <p class="summary">Die ganze Trainingswoche im Blick: Voranmeldungen prüfen und die tatsächliche Anwesenheit gesammelt erfassen.</p>
-            </section>
+              <button class="app-category-shortcut" type="button" id="kindertraining-categories" data-youth-category-area="kindertraining" hidden disabled
+                aria-label="Kindertraining-Kategorien bearbeiten" title="Kindertraining-Kategorien">⚙</button>
+            </header>
 
             <p class="message message--error" id="kindertraining-message" role="alert" hidden></p>
             <p class="message message--success" id="kindertraining-success" role="status" hidden></p>
@@ -2156,6 +2162,30 @@ ${ULC_USER_ADMIN_CSS}
 .app-nav__attendance-item:not(:disabled):hover,
 .app-nav__attendance-item:not(:disabled):focus-visible { background: var(--muted); }
 .app-nav__attendance-item--pending { opacity: .55; cursor: default; }
+/* Category actions live alongside each attendance group, not in a shared menu. */
+.app-nav__attendance-row { display:flex; align-items:stretch; gap:3px; min-width:0; }
+.app-nav__attendance-row > .app-nav__attendance-item { flex:1 1 auto; min-width:0; }
+.app-nav__attendance-category, .app-category-shortcut {
+  flex:0 0 42px; width:42px; height:42px; min-height:42px; padding:0;
+  border:1px solid var(--border); border-radius:9px; background:var(--card);
+  color:var(--text); font-size:1.1rem; cursor:pointer;
+}
+.app-nav__attendance-category[hidden], .app-category-shortcut[hidden] { display:none !important; }
+.app-nav__attendance-category:disabled { opacity:.45; cursor:default; }
+.app-nav__attendance-category:not(:disabled):focus-visible,
+.app-category-shortcut:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.kindertraining-head { display:flex; align-items:center; justify-content:space-between; gap:7px; min-width:0; margin:0 0 8px; }
+.kindertraining-head h1 { margin:0; font-size:1.45rem; line-height:1.25; }
+.kindertraining-week-toolbar { gap:6px; padding:8px 9px; margin-bottom:7px; }
+.kindertraining-week-toolbar > label { font-size:.76rem; }
+.kindertraining-week-toolbar select { min-height:40px; }
+.kindertraining-week-nav { grid-template-columns:40px minmax(0,1fr) 40px; gap:5px; }
+.kindertraining-week-arrow { min-width:40px; min-height:40px; }
+.kindertraining-week-actions { gap:5px; }
+.kindertraining-week-actions button { min-height:38px; padding:5px 8px; font-size:.8rem; }
+.kindertraining-week-savebar { gap:6px; padding:7px 9px; }
+@media (max-width:375px) { .kindertraining-week-actions button { font-size:.75rem; padding:4px 6px; } }
+
 #app-nav-attendance[aria-expanded="true"] { background: #dbeafe; color: #1d4ed8; }
 ${ULC_U12_CSS}
 ${ULC_YOUTH_CATEGORY_CSS}
@@ -2853,9 +2883,14 @@ for (const control of document.querySelectorAll("[data-attendance-target]")) {
       void navigateAppSection("u12");
     } else if (control.dataset.attendanceTarget === "kindertraining") {
       void navigateToAttendanceGroup(control.dataset.attendanceGroup || "");
-    } else if (control.dataset.attendanceTarget === "categories") {
-      void openYouthCategoryManagement();
     }
+  });
+}
+for (const control of document.querySelectorAll("[data-youth-category-area]")) {
+  control.addEventListener("click", () => {
+    if (control.disabled || control.hidden) return;
+    setAppNavAttendanceOpen(false);
+    void openYouthCategoryManagement(control.dataset.youthCategoryArea || "");
   });
 }
 for (const control of document.querySelectorAll("[data-open-view]")) {
@@ -4584,6 +4619,7 @@ async function handleKindertrainingWeekGroupChange() {
   kindertrainingWeekFailedDates = new Set();
   kindertrainingLoadedGroupId = "";
   kindertrainingMatrixOpen = false;
+  syncKindertrainingCategoryShortcut();
   renderKindertrainingWeek();
   if (nextGroupId) await loadKindertrainingWeek();
 }
@@ -4885,6 +4921,13 @@ function findAttendanceTrainingGroup(kind) {
   }) || null;
 }
 
+function syncKindertrainingCategoryShortcut() {
+  const control = document.querySelector("#kindertraining-categories");
+  if (!control) return;
+  const group = findAttendanceTrainingGroup("kindertraining");
+  control.hidden = !group || elements.kindertrainingGroup?.value !== group.id;
+}
+
 function setAppNavAttendanceOpen(open) {
   if (open && isAppNavigationAvailable("attendance")) setAppNavMoreOpen(false);
   appNavAttendanceOpen = !!open && isAppNavigationAvailable("attendance");
@@ -4964,12 +5007,20 @@ function refreshAppAvailability() {
   for (const choice of document.querySelectorAll("[data-attendance-target]")) {
     const target = choice.dataset.attendanceTarget || "";
     const available = target === "u12" ? u12Ready :
-      target === "categories" ? (u12Ready || kindertrainingReady) :
       target === "kindertraining" &&
       findAttendanceTrainingGroup(choice.dataset.attendanceGroup || "") !== null;
     choice.hidden = !available;
     choice.disabled = !available;
   }
+  for (const control of document.querySelectorAll("[data-youth-category-area]")) {
+    const area = control.dataset.youthCategoryArea;
+    const available = area === "u12" ? u12Ready :
+      area === "kindertraining" ? kindertrainingReady :
+      area === "u14" && (u12Ready || kindertrainingReady);
+    control.disabled = !available;
+    control.hidden = !available;
+  }
+  syncKindertrainingCategoryShortcut();
   const attendanceQuickAction = document.querySelector("#attendance-quick-action");
   if (attendanceQuickAction) attendanceQuickAction.disabled =
     !isAppNavigationAvailable("attendance");
@@ -5158,6 +5209,7 @@ function renderKindertrainingGroups() {
     select.value = kindertrainingGroups[0].id;
   }
   select.disabled = !kindertrainingReady || kindertrainingGroups.length === 0;
+  syncKindertrainingCategoryShortcut();
   if (elements.kindertrainingLoad) {
     elements.kindertrainingLoad.disabled =
       !kindertrainingReady || kindertrainingGroups.length === 0;
