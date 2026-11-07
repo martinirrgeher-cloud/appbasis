@@ -25,6 +25,8 @@ describe("U12, U14 and Kindertraining autosave with per-training notes", () => {
       expect(script).toContain(prefix + "AutoSaveFailed");
       expect(script).toContain("function schedule" + (prefix === "kids" ? "Kids" : prefix.toUpperCase()) + "AutoSave()");
       expect(script).toContain("const savedVersion = " + prefix + "EditVersion");
+      expect(script).toContain(prefix + "TouchedAthletes.has(person.athleteId)");
+      expect(script).toContain(": person.status,");
       expect(script).toContain("if (savedVersion === " + prefix + "EditVersion)");
       expect(script).toContain("if (" + prefix + "Saving) return " + prefix + "SaveInFlight ?? false");
       expect(script).toContain("const operation = (async () =>");
