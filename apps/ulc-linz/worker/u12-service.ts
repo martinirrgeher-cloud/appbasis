@@ -250,6 +250,7 @@ export function createUlcU12Service({
           );
           await categories.validateSessionContents(
             context.organizationId,
+            "u12",
             input.contentTitles,
             input.contentItems,
             previous === null ? null : {
