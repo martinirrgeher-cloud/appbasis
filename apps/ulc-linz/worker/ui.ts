@@ -108,37 +108,37 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <button class="app-nav__link app-nav__more" id="app-nav-more" type="button" aria-expanded="false" aria-controls="app-nav-overflow" aria-haspopup="true">Mehr</button>
           </div>
           <div class="app-nav__attendance-menu" id="app-nav-attendance-menu" aria-label="Anwesenheit nach Gruppe" hidden>
-            <button class="app-nav__attendance-item" type="button" data-attendance-target="u12" hidden disabled>
-              <strong>U12</strong><small>Anwesenheit und Inhalte</small>
-            </button>
             <button class="app-nav__attendance-item" type="button" data-attendance-target="kids" hidden disabled>
-              <strong>Kindertraining</strong><small>Anwesenheit, Inhalte und Statistik</small>
+              <strong>Kindertraining</strong>
+            </button>
+            <button class="app-nav__attendance-item" type="button" data-attendance-target="u12" hidden disabled>
+              <strong>U12</strong>
             </button>
             <button class="app-nav__attendance-item" type="button" data-attendance-target="u14" hidden disabled>
-              <strong>U14</strong><small>Anwesenheit, Inhalte und Statistik</small>
+              <strong>U14</strong>
             </button>
             <button class="app-nav__attendance-item" type="button" data-attendance-target="kindertraining" data-attendance-group="irrgeher" hidden disabled>
-              <strong>Gruppe Irrgeher</strong><small>Anwesenheit</small>
+              <strong>Gruppe Irrgeher</strong>
             </button>
           </div>
           ${ULC_YOUTH_CATEGORY_HTML}
           <div class="app-nav__overflow" id="app-nav-overflow" aria-label="Weitere Bereiche" hidden>
             <button class="app-nav__link" type="button" data-nav-view="registration" data-nav-priority="1" hidden disabled>Anmeldung</button>
             <button class="app-nav__link" type="button" data-nav-view="training-plans" data-nav-priority="3" hidden disabled>Planung</button>
-            <details class="app-nav__group" data-nav-group="training" hidden>
-              <summary class="ab-disclosure">Trainingsinhalte</summary>
+            <section class="app-nav__group" data-nav-group="training" aria-label="Trainingsinhalte" hidden>
+              <h3 class="app-nav__group-title">Trainingsinhalte</h3>
               <div class="app-nav__group-list">
                 <button class="app-nav__link" type="button" data-nav-view="exercise-catalog" data-nav-priority="5" hidden disabled>Übungen</button>
                 <button class="app-nav__link" type="button" data-nav-view="training-blocks" data-nav-priority="6" hidden disabled>Blöcke</button>
               </div>
-            </details>
-            <details class="app-nav__group" data-nav-group="administration" hidden>
-              <summary class="ab-disclosure">Verwaltung</summary>
+            </section>
+            <section class="app-nav__group" data-nav-group="administration" aria-label="Verwaltung" hidden>
+              <h3 class="app-nav__group-title">Verwaltung</h3>
               <div class="app-nav__group-list">
                 <button class="app-nav__link" type="button" data-nav-view="masterdata" data-nav-priority="7" hidden disabled>Stammdaten</button>
                 <button class="app-nav__link" type="button" data-nav-view="users" data-nav-priority="9" hidden disabled>Benutzer</button>
               </div>
-            </details>
+            </section>
             <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="8" hidden disabled>Nützliches</button>
             <div class="app-nav__overflow-footer">
               <button class="app-nav__link app-nav__signout" id="app-sign-out" type="button">Abmelden / Benutzer wechseln</button>
@@ -954,10 +954,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .app-nav__overflow[hidden], .app-nav__link[hidden], .app-nav__group[hidden] { display: none !important; }
 .app-nav__overflow { max-height: min(72dvh, 620px); overflow-y: auto; overscroll-behavior: contain; }
 .app-nav__primary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.app-nav__group { min-width: 0; border: 1px solid var(--border); border-radius: 10px; }
-.app-nav__group summary { min-height: 44px; display: flex; align-items: center; justify-content: flex-start; gap: var(--ab-space-2); padding: 8px 12px; cursor: pointer; font-size: .86rem; font-weight: 800; color: var(--text); }
-.app-nav__group.is-active summary { color: var(--ab-brand-primary); }
-.app-nav__group-list { display: grid; gap: 3px; padding: 0 5px 5px 12px; }
+.app-nav__group { min-width:0; padding:4px 0 8px; }
+.app-nav__group-title { margin:0; padding:8px 12px 5px; font-size:.76rem; font-weight:800; color:var(--secondary); }
+.app-nav__group.is-active .app-nav__group-title { color:var(--ab-brand-primary); }
+.app-nav__group-list { display:grid; gap:2px; margin:0 5px 0 14px; padding:0 0 0 9px; border-left:2px solid var(--border-strong); }
+.app-nav__group-list .app-nav__link { border-radius:8px; min-height:var(--ab-touch-target); }
 .app-nav__overflow-footer { padding-top: 6px; border-top: 1px solid var(--border); }
 .app-nav__overflow-footer .app-nav__link { width: 100%; }
 .app-nav__more[aria-expanded="true"] { background: var(--ab-brand-soft); color: var(--ab-brand-primary); }
@@ -2142,12 +2143,11 @@ ${ULC_USER_ADMIN_CSS}
 }
 .app-nav__attendance-menu[hidden], .app-nav__attendance-item[hidden] { display: none !important; }
 .app-nav__attendance-item {
-  display: grid; gap: 3px; width: 100%; min-height: 48px; padding: 9px 12px;
+  display: grid; gap: 0; width: 100%; min-height: 44px; padding: 9px 12px;
   border: 0; border-radius: 10px; background: transparent; color: var(--text);
   font: inherit; text-align: left; cursor: pointer;
 }
 .app-nav__attendance-item strong { font-size: .86rem; }
-.app-nav__attendance-item small { font-size: .74rem; color: var(--secondary); }
 .app-nav__attendance-item:not(:disabled):hover,
 .app-nav__attendance-item:not(:disabled):focus-visible { background: var(--muted); }
 .app-nav__attendance-item--pending { opacity: .55; cursor: default; }
@@ -4908,7 +4908,6 @@ function refreshAppNavigation() {
     const hasVisibleItems = [...group.querySelectorAll("[data-nav-view]")]
       .some(control => !control.hidden && !control.disabled);
     group.hidden = !hasVisibleItems;
-    if (!hasVisibleItems) group.open = false;
   }
   const hasOverflow = secondaryAvailable > 0 || elements.appSignOut !== null;
   if (!isAppNavigationAvailable("attendance")) setAppNavAttendanceOpen(false);
@@ -4981,15 +4980,7 @@ function setAppNavMoreOpen(open) {
   if (elements.appNavOverflow) {
     elements.appNavOverflow.hidden = !appNavMoreOpen;
   }
-  if (appNavMoreOpen) {
-    const currentSection =
-      document.querySelector("[data-app-section]:not([hidden])")?.dataset.appSection || "home";
-    const current = currentSection === "countdown" ? "useful" : currentSection;
-    const group = [...(elements.appNavOverflow?.querySelectorAll("[data-nav-group]") ?? [])]
-      .find(item => [...item.querySelectorAll("[data-nav-view]")]
-        .some(link => link.dataset.navView === current && !link.hidden));
-    if (group) group.open = true;
-  }
+  // Hierarchies stay visible; headings are not collapsible controls.
 }
 
 function syncAppNavigationActive(section) {
