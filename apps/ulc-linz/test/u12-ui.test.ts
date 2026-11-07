@@ -223,14 +223,14 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
   });
 
   it("adds an unselected standard-category row, never an arbitrary free-text category", () => {
-    const source = ULC_U12_SCRIPT.match(/function addU12Content\\(\\) \\{[\\s\\S]*?\\n\\}/)?.[0];
+    const source = ULC_U12_SCRIPT.match(/function addU12Content\(\) \{[\s\S]*?\n\}/)?.[0];
     expect(source).toBeDefined();
     const construct = new Function(
       "u12Snapshot", "u12ContentTitles", "u12ContentItems",
       "U12_STANDARD_CONTENT_CATALOG", "u12Loading", "u12Saving",
       "u12WriteAllowed", "u12Conflict", "u12Ui",
       "renderU12Attendance", "markU12DraftDirty", "showMessage",
-      source + "\\nreturn addU12Content;",
+      source + "\nreturn addU12Content;",
     );
     const titles: string[] = [];
     const items: Array<{ code: string; detail: string }> = [];
