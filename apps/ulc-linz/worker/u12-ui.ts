@@ -583,7 +583,7 @@ function refreshU12Controls() {
     u12Ui.contentCount.textContent = u12ContentTitles.length + " / 5";
   }
   if (u12Ui.contentAssign) {
-    u12Ui.contentAssign.disabled = !u12Snapshot || busy || u12ContentTitles.length === 0;
+    u12Ui.contentAssign.disabled = !u12Snapshot || u12Loading || u12ContentTitles.length === 0;
   }
   if (u12Ui.statsOpen) u12Ui.statsOpen.disabled = !u12Ready || busy ||
     !u12Ui.group?.value || !u12Snapshot;
@@ -1270,7 +1270,7 @@ async function saveU12Attendance() {
   if (invalidTitleIndex !== -1) {
     u12AutoSaveFailed = true;
     if (u12Ui.contentCard) u12Ui.contentCard.open = true;
-    showMessage(u12Ui.message, "Bitte für jeden Trainingsinhalt eine Kategorie auswählen.");
+    showMessage(u12Ui.message, "Bitte für jeden neuen Trainingsinhalt eine Kategorie auswählen.");
     refreshU12Controls();
     return false;
   }
