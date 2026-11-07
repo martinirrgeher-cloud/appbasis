@@ -1772,14 +1772,13 @@ async function youthCategoriesResponse(
   }
   const editing = request.method !== "GET";
   const action = editing ? "edit" : "view";
-  let access = area === "kindertraining"
+  // Every category catalog uses its OWN module entitlement. In particular
+  // U12 and Kindertraining grants cannot authorize the separate U14 catalog.
+  const access = area === "kindertraining"
     ? await authorizeKindertrainingRequest(request, runtime, url, action)
-    : await authorizeU12Request(request, runtime, url, action);
-  // U14 attendance is not implemented yet; organization-scoped U12/Kindertraining
-  // permissions can manage its independent catalog without broadening U12/Kids access.
-  if (area === "u14" && access instanceof Response && access.status === 403) {
-    access = await authorizeKindertrainingRequest(request, runtime, url, action);
-  }
+    : area === "u14"
+      ? await authorizeDetailedYouthArea(request, runtime, url, "u14", action)
+      : await authorizeU12Request(request, runtime, url, action);
   if (access instanceof Response) return access;
   if (editing && access.scope !== "organization") {
     recordUlcLinzSecurityEvent(runtime.securityEvents, {
