@@ -124,7 +124,7 @@ export function createUlcU12Service({
   sessions,
   moduleGroups,
   categories,
-  moduleId = area,
+  moduleId = MODULE_ID,
 }: {
   masterdata: UlcU12MasterdataReader;
   sessions: UlcU12SessionStore;
