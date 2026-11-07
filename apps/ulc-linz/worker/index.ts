@@ -79,6 +79,7 @@ import {
 import { trainingPlansHttpResponse } from "./training-plans-http";
 import { trainingDocumentationHttpResponse } from "./training-documentation-http";
 import type { UlcLinzU12AccessScope } from "./u12-access";
+import type { UlcLinzU14AccessScope } from "./u14-access";
 import { UlcU12NotFoundError } from "./u12-service";
 import { UlcTrainingValidationError } from "./training-session-domain";
 import type { UlcYouthContentItem } from "./training-content-catalog";
@@ -251,6 +252,8 @@ export function createGeneratedWorker(
           response = await u12SessionResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/u12/statistics") {
           response = await u12StatisticsResponse(request, runtime, url);
+        } else if (/^\\/api\\/modules\\/(u14|kids)(?:\\/(?:session|statistics))?$/.test(url.pathname)) {
+          response = await detailedYouthAreaResponse(request, runtime, url);
         } else if (url.pathname === "/api/auth/sign-out") {
           response = await identitySignOutResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/users") {
@@ -1835,6 +1838,154 @@ async function youthCategoriesResponse(
       return Response.json({ error: { code: error.code,
         message: "Category was changed or already exists. Reload the list." } },
         { status: 409 });
+    }
+    throw error;
+  }
+}
+
+type DetailedYouthAccess = UlcLinzU12AccessScope | UlcLinzU14AccessScope | UlcLinzKindertrainingAccessScope;
+
+async function authorizeDetailedYouthArea(
+  request: Request, runtime: GeneratedPostgresApplicationRuntime, url: URL,
+  area: "u14" | "kids", action: "view" | "edit",
+): Promise<Response | DetailedYouthAccess> {
+  if (area === "kids") return authorizeKindertrainingRequest(request, runtime, url, action);
+  if (!runtime.u14Access) {
+    return Response.json({ error: { code: "U14_UNAVAILABLE" } }, { status: 503 });
+  }
+  const identityHttp = createIdentityHttpHandlers({
+    identity: runtime.identity, secureCookies: url.protocol === "https:",
+  });
+  const current = await identityHttp.resolveCurrentIdentity(request);
+  if (current instanceof Response) return current;
+  try {
+    return action === "view"
+      ? await runtime.u14Access.assertViewAccess(current)
+      : await runtime.u14Access.assertEditAccess(current);
+  } catch (error) {
+    if (error instanceof UlcLinzAuthorizationDeniedError) {
+      recordUlcLinzSecurityEvent(runtime.securityEvents, {
+        eventType: "authorization.denied",
+        actorPrincipalId: current.identity.identityId,
+        organizationId: null,
+        action,
+        targetId: "u14",
+        reasonCode: "scope-denied",
+      });
+      return Response.json({ error: { code: "ULC_ACCESS_DENIED" } }, { status: 403 });
+    }
+    if (isPasswordChangeRequiredError(error)) {
+      return identityHttp.identityErrorResponse(error);
+    }
+    throw error;
+  }
+}
+
+async function detailedYouthAreaResponse(
+  request: Request, runtime: GeneratedPostgresApplicationRuntime, url: URL,
+): Promise<Response> {
+  const pieces = url.pathname.split("/");
+  const area = pieces[3] === "u14" ? "u14" : "kids";
+  const subroute = pieces[4] ?? "";
+  if (request.method !== "GET" && !(subroute === "session" && request.method === "POST")) {
+    return methodNotAllowedFor(subroute === "session" ? "GET, POST" : "GET", area);
+  }
+  if (subroute === "statistics" && request.method !== "GET") {
+    return methodNotAllowedFor("GET", "youth statistics");
+  }
+  const action = request.method === "POST" ? "edit" : "view";
+  const access = await authorizeDetailedYouthArea(request, runtime, url, area, action);
+  if (access instanceof Response) return access;
+  const service = area === "u14" ? runtime.u14 : runtime.kids;
+  if (!service) {
+    return Response.json({ error: { code: "YOUTH_AREA_UNAVAILABLE" } }, { status: 503 });
+  }
+  const groupAllowed = (groupId: string) => access.scope === "organization" ||
+    access.groupIds.includes(groupId);
+  const scopedGroups = async () => {
+    const available = await service.listGroups(access.organizationId);
+    return available.filter((group) => groupAllowed(group.id));
+  };
+  try {
+    if (!subroute) {
+      if ([...url.searchParams.keys()].length > 0) throw new InvalidU12RequestError();
+      return Response.json({
+        module: { moduleId: area },
+        access: { view: true },
+        trainingGroups: await scopedGroups(),
+      }, { headers: { "Cache-Control": "private, no-store" } });
+    }
+    if (subroute === "session") {
+      if (request.method === "GET") {
+        const query = u12SessionQuery(url);
+        if (!groupAllowed(query.groupId) ||
+            !(await scopedGroups()).some((group) => group.id === query.groupId)) {
+          return Response.json({ error: { code: "YOUTH_GROUP_NOT_FOUND" } }, { status: 404 });
+        }
+        const snapshot = await service.readSnapshot(
+          access.organizationId, query.groupId, query.sessionDate,
+        );
+        return Response.json({ snapshot }, { headers: { "Cache-Control": "private, no-store" } });
+      }
+      const body = await u12JsonBody(request);
+      const groupId = body.groupId as string;
+      if (!groupAllowed(groupId) ||
+          !(await scopedGroups()).some((group) => group.id === groupId)) {
+        return Response.json({ error: { code: "YOUTH_GROUP_NOT_FOUND" } }, { status: 404 });
+      }
+      const snapshot = await service.saveSession(access.organizationId, {
+        groupId,
+        sessionDate: body.sessionDate as string,
+        ...(body.state === undefined ? {} : { state: body.state as "scheduled" | "cancelled" }),
+        ...(body.note === undefined ? {} : { note: body.note as string | null }),
+        expectedRevision: body.expectedRevision as string | null,
+        ...(body.contentTitles === undefined ? {} : { contentTitles: body.contentTitles as string[] }),
+        ...(body.contentItems === undefined ? {} : { contentItems: body.contentItems as UlcYouthContentItem[] }),
+        attendance: body.attendance as Array<{
+          athleteId: string; status: "open" | "present" | "excused" | "absent";
+          contentSlots?: number[];
+        }>,
+      });
+      return Response.json({ snapshot }, { headers: { "Cache-Control": "private, no-store" } });
+    }
+    const groupId = url.searchParams.get("groupId");
+    const from = url.searchParams.get("from");
+    const to = url.searchParams.get("to");
+    if (!groupId || !from || !to || [...url.searchParams.keys()].some(
+      (key) => !["groupId", "from", "to"].includes(key),
+    )) throw new InvalidU12RequestError();
+    const interval = validateU12StatisticsDateRange(from, to);
+    if (!groupAllowed(groupId) ||
+        !(await scopedGroups()).some((group) => group.id === groupId)) {
+      return Response.json({ error: { code: "YOUTH_GROUP_NOT_FOUND" } }, { status: 404 });
+    }
+    const statistics = area === "u14" ? runtime.u14Statistics : runtime.kidsStatistics;
+    if (!statistics) {
+      return Response.json({ error: { code: "YOUTH_STATISTICS_UNAVAILABLE" } }, { status: 503 });
+    }
+    const masterdata = await runtime.athleteMasterdata.readOrganizationSnapshot(access.organizationId);
+    const members = new Set(masterdata.athleteGroupMemberships.filter((membership) =>
+      membership.organizationId === access.organizationId &&
+      membership.groupId === groupId &&
+      membership.startedOn <= interval.to &&
+      (membership.endedOn === null || membership.endedOn >= interval.from),
+    ).map((membership) => membership.athleteId));
+    const roster = masterdata.athletes.filter((athlete) =>
+      athlete.organizationId === access.organizationId && members.has(athlete.id),
+    ).map((athlete) => ({
+      athleteId: athlete.id, firstName: athlete.firstName, lastName: athlete.lastName,
+    }));
+    const report = await statistics.read(
+      access.organizationId, groupId, interval.from, interval.to, roster,
+    );
+    return Response.json({ report }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    if (error instanceof UlcTrainingSessionConflictError) return u12SessionConflict();
+    if (error instanceof UlcU12NotFoundError) {
+      return Response.json({ error: { code: "YOUTH_GROUP_NOT_FOUND" } }, { status: 404 });
+    }
+    if (error instanceof UlcTrainingValidationError || error instanceof InvalidU12RequestError) {
+      return invalidU12Session();
     }
     throw error;
   }
