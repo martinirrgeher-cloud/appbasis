@@ -59,7 +59,13 @@ export const ULC_U12_HTML = `
                 </div>
               </details>
               <details class="u12-trainers-card" id="u12-trainers-card">
-                <summary>Traineranwesenheit <small id="u12-trainers-count">0 anwesend</small></summary>
+                <summary class="u12-trainers-summary" aria-label="Traineranwesenheit">
+                  <span>Trainer</span>
+                  <span class="u12-trainers-summary-status">
+                    <small id="u12-trainers-count">0/0</small>
+                    <span class="u12-trainers-chevron" aria-hidden="true">⌄</span>
+                  </span>
+                </summary>
                 <div class="u12-trainers-list" id="u12-trainers-rows"></div>
               </details>
               <div class="u12-attendance-toolbar">
@@ -279,13 +285,25 @@ export const ULC_U12_CSS = `
 .u12-matrix-table input:disabled { cursor:not-allowed; opacity:.5; }
 .u12-matrix-empty { padding:12px 8px; color:var(--secondary); font-size:.8rem; }
 
-.u12-trainers-card { margin-top:8px; border:1px solid var(--border); border-radius:11px; overflow:hidden; }
-.u12-trainers-card summary { padding:11px 12px; cursor:pointer; font-weight:750; }
-.u12-trainers-card summary small { margin-left:7px; font-weight:400; color:var(--secondary); }
-.u12-trainers-list { padding:0 11px 9px; display:grid; gap:3px; }
-.u12-trainer-row { min-height:43px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 2px; border-bottom:1px solid var(--border); cursor:pointer; }
-.u12-trainer-row:last-child { border-bottom:0; }
-.u12-trainer-row input { width:20px; height:20px; flex:none; accent-color:var(--primary); }
+.u12-trainers-card { margin-top:6px; border:1px solid var(--border); border-radius:10px; background:var(--card); overflow:hidden; }
+.u12-trainers-summary { min-height:40px; padding:0 10px; display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; font-size:.86rem; font-weight:750; }
+.u12-trainers-summary::marker { content:""; }
+.u12-trainers-summary::-webkit-details-marker { display:none; }
+.u12-trainers-summary-status { display:inline-flex; align-items:center; gap:8px; white-space:nowrap; }
+.u12-trainers-summary small { font-size:.76rem; font-weight:600; color:var(--secondary); }
+.u12-trainers-chevron { font-size:1rem; transition:transform .15s ease; }
+.u12-trainers-card[open] .u12-trainers-chevron { transform:rotate(180deg); }
+.u12-trainers-list { padding:0 8px 8px; display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr)); gap:5px; }
+.u12-trainers-list > small { grid-column:1/-1; padding:5px 2px; font-size:.78rem; }
+.u12-trainer-row { box-sizing:border-box; min-height:40px; min-width:0; display:flex; align-items:center; gap:7px; padding:3px 8px; border:1px solid var(--border); border-radius:8px; background:var(--card); cursor:pointer; }
+.u12-trainer-row:has(input:checked) { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 7%, var(--card)); }
+.u12-trainer-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.81rem; }
+.u12-trainer-row input { width:20px; height:20px; margin:0; flex:none; accent-color:var(--accent); }
+.u12-trainer-row:focus-within { outline:2px solid var(--accent); outline-offset:1px; }
+/* Visible only for an attended session with unfinished training documentation. */
+.u12-content-card.u12-reminder-pending,
+.u12-trainers-card.u12-reminder-pending { border-color:#d4a017; background:color-mix(in srgb, #facc15 23%, var(--card)); box-shadow:inset 3px 0 0 #eab308; }
+.u12-reminder-pending > summary small { color:var(--text); }
 .u12-notes-card { margin-top:8px; background:var(--card); border:1px solid var(--border); border-radius:11px; overflow:hidden; }
 .u12-notes-card summary { padding:11px 12px; font-weight:750; cursor:pointer; }
 .u12-notes-card summary small { font-weight:400; color:var(--secondary); margin-left:6px; }
@@ -584,6 +602,18 @@ function groupIdOrValidU12Group() {
   return u12Groups.some((group) => group.id === u12Ui.group?.value);
 }
 
+function u12MissingTrainingDetails() {
+  // An untouched or empty session does not need documentation reminders.
+  const hasPresentAthlete = !!u12Snapshot &&
+    u12Snapshot.session?.state !== "cancelled" &&
+    u12Snapshot.participants.some((person) => u12Present.get(person.athleteId) === true);
+  return {
+    content: hasPresentAthlete &&
+      (u12ContentTitles.length === 0 || u12ContentTitles.some((title) => !title.trim())),
+    trainers: hasPresentAthlete && u12TrainerPresent.size === 0,
+  };
+}
+
 function refreshU12Controls() {
   const busy = u12Loading || u12Saving;
   for (const control of [u12Ui.group, u12Ui.date, u12Ui.prev, u12Ui.next, u12Ui.reload, u12Ui.today]) {
@@ -596,8 +626,13 @@ function refreshU12Controls() {
   for (const input of u12Ui.trainerRows?.querySelectorAll("[data-u12-trainer-id]") ?? []) {
     input.disabled = !editable;
   }
+  const missing = u12MissingTrainingDetails();
+  u12Ui.contentCard?.classList.toggle("u12-reminder-pending", missing.content);
+  u12Ui.trainersCard?.classList.toggle("u12-reminder-pending", missing.trainers);
   if (u12Ui.trainerCount) {
-    u12Ui.trainerCount.textContent = u12TrainerPresent.size + " anwesend";
+    const totalTrainers = u12Snapshot?.trainers?.length ?? 0;
+    u12Ui.trainerCount.textContent = u12TrainerPresent.size + "/" + totalTrainers +
+      (missing.trainers ? " · offen" : "");
   }
   for (const input of u12Ui.days?.querySelectorAll("[data-u12-athlete-id]") ?? []) {
     input.disabled = !editable;
@@ -611,7 +646,8 @@ function refreshU12Controls() {
     u12Ui.contentAdd.hidden = u12ContentTitles.length >= 5;
   }
   if (u12Ui.contentCount) {
-    u12Ui.contentCount.textContent = u12ContentTitles.length + " / 5";
+    u12Ui.contentCount.textContent = u12ContentTitles.length + " / 5" +
+      (missing.content ? " · offen" : "");
   }
   if (u12Ui.contentAssign) {
     u12Ui.contentAssign.disabled = !u12Snapshot || u12Loading || u12ContentTitles.length === 0;
@@ -1157,13 +1193,14 @@ function renderU12Trainers() {
     const label = document.createElement("label");
     label.className = "u12-trainer-row";
     const name = document.createElement("span");
+    name.className = "u12-trainer-name";
     name.textContent = trainer.lastName + " " + trainer.firstName;
     const input = document.createElement("input");
     input.type = "checkbox";
     input.dataset.u12TrainerId = trainer.trainerId;
     input.checked = u12TrainerPresent.has(trainer.trainerId);
     input.setAttribute("aria-label", "Trainer anwesend: " + trainer.firstName + " " + trainer.lastName);
-    label.append(name, input);
+    label.append(input, name);
     u12Ui.trainerRows.append(label);
   }
 }
