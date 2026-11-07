@@ -15,19 +15,19 @@ const roster = [
 ];
 const sessions = [
   {
-    session_id: "session-new", session_date: "2026-11-04", trainer_count: 2,
+    session_id: "session-new", session_date: "2026-11-04", trainer_count: 2, trainer_ids: ["trainer-1", "trainer-2"],
     content_titles: ["Sprint / Schnelligkeit", "Sprung"],
     content_items: [{ code: "sprint", detail: "" }, { code: "jump", detail: "" }],
     athlete_id: "athlete-a", status: "present", content_slots: [1, 2],
   },
   {
-    session_id: "session-new", session_date: "2026-11-04", trainer_count: 2,
+    session_id: "session-new", session_date: "2026-11-04", trainer_count: 2, trainer_ids: ["trainer-1", "trainer-2"],
     content_titles: ["Sprint / Schnelligkeit", "Sprung"],
     content_items: [{ code: "sprint", detail: "" }, { code: "jump", detail: "" }],
     athlete_id: "athlete-b", status: "absent", content_slots: [],
   },
   {
-    session_id: "session-old", session_date: "2026-10-01", trainer_count: 1,
+    session_id: "session-old", session_date: "2026-10-01", trainer_count: 1, trainer_ids: ["trainer-1"],
     content_titles: ["Sprint / Schnelligkeit", "Freies Alt-Training"],
     content_items: [{ code: "sprint", detail: "" }, { code: "", detail: "" }],
     athlete_id: "athlete-a", status: "present", content_slots: [1, 2],
@@ -38,7 +38,8 @@ describe("U12 attendance statistics aggregation", () => {
   it("counts only persisted present participants and their assigned standard categories", () => {
     const report = aggregateU12Statistics(sessions, roster, "2026-08-07", "2026-11-07");
     expect(report.summary).toEqual({
-      trainings: 2, attendance: 2, trainerAttendances: 3, categories: 2,
+      trainings: 2, attendance: 2, trainerAttendances: 3,
+      unidentifiedTrainerAttendances: 3, categories: 2,
     });
     expect(report.trainings).toEqual([
       { date: "2026-11-04", presentCount: 1, trainerPresentCount: 2,
@@ -46,8 +47,12 @@ describe("U12 attendance statistics aggregation", () => {
       { date: "2026-10-01", presentCount: 1, trainerPresentCount: 1,
         registeredCount: 1, categoryCount: 1 },
     ]);
-    expect(report.athletes.map(a => [a.lastName, a.attended])).toEqual([
-      ["Binder", 0], ["Christ", 0], ["Auer", 2],
+    expect(report.months).toEqual([
+      { month: "2026-11", trainings: 1, attendance: 1, trainerAttendances: 2 },
+      { month: "2026-10", trainings: 1, attendance: 1, trainerAttendances: 1 },
+    ]);
+    expect(report.athletes.map(a => [a.lastName, a.attended, a.evaluated, a.attendancePercent])).toEqual([
+      ["Binder", 0, 1, 0], ["Christ", 0, 0, null], ["Auer", 2, 2, 100],
     ]);
     expect(report.athletes[2]?.categories).toEqual([
       { code: "sprint", label: "Sprint / Schnelligkeit", count: 2 },
@@ -106,6 +111,8 @@ describe("U12 attendance statistics aggregation", () => {
       "FROM ulc_linz_training_trainer_attendance AS trainer",
       "trainer.organization_id = session.organization_id",
       "trainer.session_id = session.id",
+      "AS trainer_ids",
+      "ORDER BY trainer.trainer_id",
     ]) expect(sql).toContain(predicate);
     expect(sql).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|TRUNCATE)\b/i);
   });
@@ -152,6 +159,10 @@ describe("U12 statistics and mobile navigation", () => {
     expect(ULC_U12_SCRIPT).toContain('category.assignments + " Athleten-Zuordnungen"');
     expect(ULC_U12_SCRIPT).toContain('["Trainer-Einsätze", report.summary.trainerAttendances]');
     expect(ULC_U12_SCRIPT).toContain('training.trainerPresentCount + " Trainer"');
+    expect(ULC_U12_HTML).toContain('data-u12-stats-tab="trainers"');
+    expect(ULC_U12_HTML).toContain('data-u12-stats-panel="trainers"');
+    expect(ULC_U12_HTML).toContain('id="u12-statistics-months"');
+    expect(ULC_U12_SCRIPT).toContain('trainer.attended + " Trainings"');
     expect(ULC_U12_SCRIPT).not.toContain("statsSummary.innerHTML");
     expect(() => new Function(ULC_U12_SCRIPT)).not.toThrow();
     expect(ULC_U12_CSS).toContain(".u12-statistics-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr))");
