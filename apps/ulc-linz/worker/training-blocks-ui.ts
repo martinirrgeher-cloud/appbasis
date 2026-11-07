@@ -2756,6 +2756,7 @@ function setTrainingBlockInfoTab(tab) {
     );
   }
   renderTrainingBlockExerciseInfo();
+  if (trainingBlockElements.infoBody) trainingBlockElements.infoBody.scrollTop = 0;
 }
 
 function appendTrainingBlockInfoCard(container, title, value) {
