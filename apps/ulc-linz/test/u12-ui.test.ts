@@ -305,7 +305,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     const changeHandler = ULC_U12_SCRIPT.slice(
       ULC_U12_SCRIPT.indexOf('u12Ui.days?.addEventListener("change"'),
     );
-    expect(changeHandler).toContain("refreshU12Controls()");
+    expect(changeHandler).toContain("markU12DraftDirty()");
     expect(changeHandler).not.toContain("renderU12Attendance()");
     expect(ULC_U12_CSS).toContain("min-height:42px");
     expect(ULC_U12_CSS).toContain("max-width:100%");
