@@ -666,10 +666,10 @@ function runtime(
     u12,
     youthCategories: {
       async list() { return []; },
-      async create(_organizationId, label) {
+      async create(_organizationId, _area, label) {
         return { code: "custom_test", label, isActive: true, revision: 1 };
       },
-      async update(_organizationId, code, input) {
+      async update(_organizationId, _area, code, input) {
         return {
           code, label: input.label, isActive: input.isActive,
           revision: input.expectedRevision + 1,
