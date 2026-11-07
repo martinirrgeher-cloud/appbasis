@@ -2,6 +2,8 @@
   color-scheme: light;
 
   --ab-brand-primary: #2563eb;
+  --ab-brand-soft: color-mix(in srgb, var(--ab-brand-primary) 12%, #ffffff);
+  --ab-brand-contrast: #ffffff;
   --ab-brand-secondary: #0f172a;
   --ab-brand-accent: #0f766e;
 
@@ -22,6 +24,9 @@
   --ab-state-success-surface: #dcfce7;
   --ab-state-warning: #a16207;
   --ab-state-warning-surface: #fef3c7;
+  --ab-state-warning-border: #d4a017;
+  --ab-state-warning-tint: #facc15;
+  --ab-state-warning-edge: #eab308;
   --ab-state-danger: #b91c1c;
   --ab-state-danger-surface: #fee2e2;
   --ab-state-info: #1d4ed8;
@@ -54,6 +59,7 @@
   --ab-line-height-body: 1.5;
 
   --ab-touch-target: 44px;
+  --ab-page-title-size: 1.4rem;
   --ab-content-max: 1180px;
 }
 
