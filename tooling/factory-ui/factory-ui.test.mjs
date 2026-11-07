@@ -21,6 +21,16 @@ import { startFactoryServer } from "./server.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
+// Node's recursive rm can hit a short ENOTEMPTY/EBUSY window when the
+// integration server has just finalized its generated fixture files.
+// Use Node's bounded built-in retries for temporary *test-only* roots.
+const FIXTURE_CLEANUP_OPTIONS = Object.freeze({
+  recursive: true,
+  force: true,
+  maxRetries: 6,
+  retryDelay: 100,
+});
+
 test("factory snapshot reads the real app registry and supported catalog", async () => {
   const snapshot = await loadFactorySnapshot(repositoryRoot);
 
@@ -88,7 +98,7 @@ test("factory snapshot ignores unpublished app directories without weakening str
       /apps\/publishing is missing appbasis\.app\.json/,
     );
   } finally {
-    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(fixtureRoot, FIXTURE_CLEANUP_OPTIONS);
   }
 });
 
@@ -350,7 +360,7 @@ test("factory local app creation is origin-locked, JSON-only and uses the existi
     await new Promise((resolveClose, rejectClose) => {
       server.close((error) => (error ? rejectClose(error) : resolveClose()));
     });
-    await rm(fixtureRoot, { recursive: true, force: true });
+    await rm(fixtureRoot, FIXTURE_CLEANUP_OPTIONS);
   });
 
   const address = server.address();
