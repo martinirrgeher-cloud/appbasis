@@ -88,6 +88,7 @@ import {
   safeYouthTrainingArea,
 } from "./youth-category-postgres";
 import { UlcTrainingSessionConflictError } from "./training-session-postgres";
+import { validateU12StatisticsDateRange } from "./u12-statistics-postgres";
 import {
   UlcLinzTrainerIdentityConflictError,
   UlcLinzTrainerIdentityNotFoundError,
@@ -248,6 +249,8 @@ export function createGeneratedWorker(
           response = await u12ModuleResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/u12/session") {
           response = await u12SessionResponse(request, runtime, url);
+        } else if (url.pathname === "/api/modules/u12/statistics") {
+          response = await u12StatisticsResponse(request, runtime, url);
         } else if (url.pathname === "/api/auth/sign-out") {
           response = await identitySignOutResponse(request, runtime, url);
         } else if (url.pathname === "/api/admin/users") {
@@ -1947,6 +1950,61 @@ async function u12SessionResponse(
     }
     if (error instanceof UlcU12NotFoundError) {
       return u12GroupNotFound();
+    }
+    throw error;
+  }
+}
+
+async function u12StatisticsResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") return methodNotAllowedFor("GET", "U12 statistics");
+  const access = await authorizeU12Request(request, runtime, url, "view");
+  if (access instanceof Response) return access;
+  const groupId = url.searchParams.get("groupId");
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  if (!groupId || !from || !to || [...url.searchParams.keys()].some(
+    (key) => !["groupId", "from", "to"].includes(key),
+  )) {
+    return Response.json({ error: { code: "INVALID_U12_STATISTICS_RANGE" } }, { status: 400 });
+  }
+  try {
+    const interval = validateU12StatisticsDateRange(from, to);
+    const groups = await runtime.u12.listGroups(access.organizationId);
+    if (!groups.some((group) => group.id === groupId) ||
+        !u12GroupAllowed(access, groupId)) {
+      return u12GroupScopeDenied(runtime, access, "view");
+    }
+    // Scope every name to athletes who belonged to the authorized U12 group
+    // within the requested interval; never return organization-wide masterdata.
+    const masterdata = await runtime.athleteMasterdata.readOrganizationSnapshot(
+      access.organizationId,
+    );
+    const ids = new Set(masterdata.athleteGroupMemberships.filter((membership) =>
+      membership.organizationId === access.organizationId &&
+      membership.groupId === groupId &&
+      membership.startedOn <= interval.to &&
+      (membership.endedOn === null || membership.endedOn >= interval.from),
+    ).map((membership) => membership.athleteId));
+    const roster = masterdata.athletes
+      .filter((athlete) => athlete.organizationId === access.organizationId &&
+        ids.has(athlete.id))
+      .map((athlete) => ({
+        athleteId: athlete.id, firstName: athlete.firstName, lastName: athlete.lastName,
+      }));
+    if (!runtime.u12Statistics) {
+      return Response.json({ error: { code: "U12_STATISTICS_UNAVAILABLE" } }, { status: 503 });
+    }
+    const report = await runtime.u12Statistics.read(
+      access.organizationId, groupId, interval.from, interval.to, roster,
+    );
+    return Response.json({ report }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    if (error instanceof UlcTrainingValidationError) {
+      return Response.json({ error: { code: "INVALID_U12_STATISTICS_RANGE" } }, { status: 400 });
     }
     throw error;
   }

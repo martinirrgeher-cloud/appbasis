@@ -2,14 +2,8 @@ export const ULC_U12_HTML = `
           <section class="app-section" data-app-section="u12" id="u12" hidden>
             <header class="u12-head">
               <div class="u12-head__title">
-                <p class="eyebrow">Anwesenheit · Nachwuchs</p>
-                <h1>U12</h1>
+                <h1>U12 · Anwesenheit</h1>
                 <small id="u12-group-label">Trainingsgruppe wird geladen</small>
-              </div>
-              <div class="u12-head__actions">
-                <button class="u12-category-shortcut" type="button" data-youth-category-area="u12" hidden disabled
-                  aria-label="U12-Kategorien bearbeiten" title="U12-Kategorien">⚙</button>
-                <button class="button button--secondary u12-athlete-new" type="button" id="u12-add-athlete" hidden title="Kind direkt der U12-Gruppe zuordnen" aria-label="Neues Kind anlegen">＋ <span>Kind</span></button>
               </div>
             </header>
             <p class="message message--error" id="u12-message" role="alert" hidden></p>
@@ -39,7 +33,8 @@ export const ULC_U12_HTML = `
                 </div>
                 <button class="button button--primary" type="button" id="u12-save" disabled>Training speichern</button>
               </div>
-              <details class="u12-content-card" id="u12-content-card">
+              <div class="u12-content-shell">
+                <details class="u12-content-card" id="u12-content-card">
                 <summary class="u12-content-summary">
                   <span>Trainingsinhalte <small id="u12-content-count">0 / 5</small></span>
                   <span aria-hidden="true">⌄</span>
@@ -51,7 +46,19 @@ export const ULC_U12_HTML = `
                     <button type="button" class="button button--secondary u12-content-assign" id="u12-content-assign" aria-haspopup="dialog" aria-controls="u12-assignment-section" disabled>Inhalte zuordnen</button>
                   </div>
                 </div>
-              </details>
+                </details>
+                <button class="u12-category-shortcut" type="button" data-youth-category-area="u12" hidden disabled
+                  aria-label="U12-Trainingskategorien bearbeiten" title="Trainingskategorien bearbeiten">⚙</button>
+              </div>
+              <div class="u12-attendance-toolbar">
+                <strong>Anwesenheit</strong>
+                <div class="u12-attendance-toolbar__actions">
+                  <button class="button button--secondary u12-statistics-open" type="button" id="u12-statistics-open"
+                    aria-haspopup="dialog" aria-controls="u12-statistics-dialog">Statistik</button>
+                  <button class="button button--secondary u12-athlete-new" type="button" id="u12-add-athlete" hidden
+                    title="Kind direkt der U12-Gruppe zuordnen" aria-label="Neues Kind anlegen">＋</button>
+                </div>
+              </div>
               <div id="u12-days" class="u12-days" aria-live="polite"></div>
             </section>
             <dialog class="u12-details-dialog u12-matrix-dialog" id="u12-assignment-section" aria-labelledby="u12-assignment-heading" aria-describedby="u12-assignment-help">
@@ -72,6 +79,46 @@ export const ULC_U12_HTML = `
                 <button type="button" class="button button--primary" id="u12-assignment-done">Fertig</button>
               </footer>
             </dialog>
+            <dialog class="u12-statistics-dialog" id="u12-statistics-dialog" aria-labelledby="u12-statistics-title">
+              <header class="u12-statistics-header">
+                <div>
+                  <small>U12 · Anwesenheit</small>
+                  <h2 id="u12-statistics-title">Statistik</h2>
+                </div>
+                <button type="button" class="button button--secondary u12-statistics-close" id="u12-statistics-close" aria-label="Statistik schließen">✕</button>
+              </header>
+              <form class="u12-statistics-filter" id="u12-statistics-filter">
+                <label for="u12-statistics-from">Von
+                  <input id="u12-statistics-from" type="date" required />
+                </label>
+                <label for="u12-statistics-to">Bis
+                  <input id="u12-statistics-to" type="date" required />
+                </label>
+                <button type="submit" class="button button--primary" aria-label="Zeitraum auswerten" title="Zeitraum auswerten">↻</button>
+              </form>
+              <p class="message message--error" id="u12-statistics-error" role="alert" hidden></p>
+              <p class="u12-statistics-state" id="u12-statistics-state" role="status"></p>
+              <div class="u12-statistics-summary" id="u12-statistics-summary"></div>
+              <div class="u12-statistics-tabs" aria-label="Statistiken auswählen">
+                <button type="button" data-u12-stats-tab="trainings" aria-pressed="true">Trainings</button>
+                <button type="button" data-u12-stats-tab="athletes" aria-pressed="false">Athleten</button>
+                <button type="button" data-u12-stats-tab="categories" aria-pressed="false">Kategorien</button>
+              </div>
+              <div class="u12-statistics-results">
+                <section data-u12-stats-panel="trainings" aria-label="Anwesende pro Training">
+                  <h3>Anwesende pro Training</h3>
+                  <div id="u12-statistics-trainings" class="u12-statistics-list"></div>
+                </section>
+                <section data-u12-stats-panel="athletes" aria-label="Anwesenheit pro Athlet" hidden>
+                  <h3>Anwesenheit pro Athlet <small>aufsteigend</small></h3>
+                  <div id="u12-statistics-athletes" class="u12-statistics-list"></div>
+                </section>
+                <section data-u12-stats-panel="categories" aria-label="Trainingskategorien" hidden>
+                  <h3>Trainingskategorien</h3>
+                  <div id="u12-statistics-categories" class="u12-statistics-list"></div>
+                </section>
+              </div>
+            </dialog>
             <dialog class="u12-details-dialog" id="u12-details-dialog" aria-labelledby="u12-details-title">
               <header class="u12-details-header">
                 <h2 id="u12-details-title">Athletenhinweise</h2>
@@ -84,23 +131,27 @@ export const ULC_U12_HTML = `
 
 export const ULC_U12_CSS = `
 /* Compact U12: single configured group, date picker, context action. */
-.u12-head { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; min-width:0; }
+.u12-head { display:flex; justify-content:space-between; align-items:center; gap:7px; margin:0 0 8px; min-width:0; }
 .u12-head__title { min-width:0; }
-.u12-head__title .eyebrow { margin:0 0 2px; }
-.u12-head h1 { margin:0; line-height:1.2; font-size:1.55rem; }
-.u12-head small { display:block; color:var(--secondary); margin-top:3px; overflow-wrap:anywhere; font-size:.75rem; }
- .u12-athlete-new { flex:0 0 auto; align-self:center; min-height:42px; border-radius:9px; font-size:.8rem; padding:0 9px; font-weight:800; }
-.u12-head__actions { flex:0 0 auto; display:flex; gap:5px; align-items:center; }
-.u12-category-shortcut { width:42px; min-width:42px; height:42px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--text); font-size:1.1rem; cursor:pointer; }
+.u12-head h1 { margin:0; line-height:1.25; font-size:1.45rem; }
+.u12-head small { display:block; color:var(--secondary); margin-top:2px; overflow-wrap:anywhere; font-size:.75rem; }
+.u12-athlete-new { flex:0 0 42px; align-self:center; width:42px; min-height:42px; border-radius:9px; font-size:1.35rem; padding:0; font-weight:800; }
+.u12-attendance-toolbar { display:flex; gap:8px; align-items:center; justify-content:space-between; padding:0 3px; min-width:0; }
+.u12-attendance-toolbar > strong { font-size:.92rem; }
+.u12-attendance-toolbar__actions { display:flex; align-items:center; gap:5px; }
+.u12-statistics-open { min-height:42px; padding:0 10px; font-size:.82rem; }
+.u12-content-shell { position:relative; min-width:0; }
+.u12-category-shortcut { position:absolute; top:3px; right:38px; width:40px; min-width:40px; height:40px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--text); font-size:1.1rem; cursor:pointer; z-index:1; }
 .u12-category-shortcut[hidden] { display:none !important; }
-.u12-date-toolbar { display:grid; gap:4px; padding:7px 8px 6px; border-radius:14px; background:var(--card); border:1px solid var(--border); min-width:0; }
+.u12-category-shortcut:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.u12-date-toolbar { display:grid; gap:5px; padding:8px 9px; border-radius:12px; background:var(--card); border:1px solid var(--border); min-width:0; }
 .u12-date-nav { display:grid; grid-template-columns:40px minmax(0,1fr) 40px; align-items:center; gap:6px; }
 .u12-date-arrow { height:44px; border:0; border-radius:10px; background:var(--muted); color:var(--text); font-size:1.4rem; font-weight:800; cursor:pointer; }
 .u12-date-field { display:grid; gap:1px; min-width:0; text-align:center; }
 .u12-date-field span { font-size:.68rem; font-weight:800; color:var(--secondary); letter-spacing:.03em; }
 .u12-date-field input { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:38px; padding:3px 5px; text-align:center; font-size:.96rem; font-weight:700; background:transparent; border:0; color:var(--text); }
 .u12-date-shortcuts { display:flex; justify-content:center; gap:10px; align-items:center; }
-.u12-date-shortcuts button { min-height:32px; border:0; background:transparent; color:var(--accent); padding:3px 9px; font-size:.82rem; font-weight:800; border-radius:8px; cursor:pointer; }
+.u12-date-shortcuts button { min-height:40px; border:0; background:transparent; color:var(--accent); padding:5px 9px; font-size:.8rem; font-weight:750; border-radius:8px; cursor:pointer; }
 .u12-date-shortcuts button[aria-pressed="true"] { background:var(--muted); color:var(--secondary); }
 .u12-week, .u12-days { display:grid; gap:10px; min-width:0; max-width:100%; }
 .u12-info { flex: 0 0 40px; height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: transparent; color: inherit; font-size: 1.2rem; font-weight: 750; }
@@ -116,7 +167,7 @@ export const ULC_U12_CSS = `
 .u12-details-section p { overflow-wrap: anywhere; white-space: pre-wrap; }
  .u12-roster { isolation: isolate; }
 .u12-content-card { border:1px solid var(--border); border-radius:14px; background:var(--card); padding:0; min-width:0; }
-.u12-content-summary { display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; padding:8px 10px; font-size:.9rem; font-weight:750; min-height:42px; }
+.u12-content-summary { display:flex; justify-content:space-between; align-items:center; gap:8px; cursor:pointer; padding:8px 10px; padding-right:90px; font-size:.9rem; font-weight:750; min-height:42px; }
 .u12-content-summary::marker { content:""; }
 .u12-content-summary small { font-size:.75rem; color:var(--secondary); margin-left:7px; }
 .u12-content-body { display:grid; gap:8px; padding:0 9px 10px; }
@@ -136,6 +187,41 @@ export const ULC_U12_CSS = `
 .u12-content-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .u12-content-assign { min-height:42px; font-size:.82rem; }
 .u12-content-assign:disabled { opacity:.5; cursor:not-allowed; }
+/* Compact header/controls follow the common 42px touch-target layout. */
+.u12-statistics-dialog { box-sizing:border-box; width:min(96vw,640px); max-width:640px; max-height:calc(100dvh - 20px); padding:0; border:1px solid var(--border); border-radius:14px; color:var(--text); background:var(--card); overflow-y:auto; overscroll-behavior:contain; }
+.u12-statistics-dialog::backdrop { background:rgba(0,0,0,.55); }
+.u12-statistics-header { position:sticky; top:0; z-index:3; display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border-bottom:1px solid var(--border); background:var(--card); }
+.u12-statistics-header h2 { margin:0; font-size:1.1rem; line-height:1.3; }
+.u12-statistics-header small { font-size:.74rem; color:var(--secondary); }
+.u12-statistics-close { min-width:42px; min-height:42px; padding:0; }
+.u12-statistics-filter { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)) 42px; gap:6px; align-items:end; margin:0; padding:8px 10px; }
+.u12-statistics-filter label { display:grid; gap:3px; min-width:0; font-size:.73rem; font-weight:700; color:var(--secondary); }
+.u12-statistics-filter input { box-sizing:border-box; display:block; width:100%; min-width:0; min-height:42px; padding:5px 4px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font-size:.8rem; }
+.u12-statistics-filter button { min-height:42px; padding:0; font-size:1.15rem; }
+.u12-statistics-state { margin:0 10px 5px; font-size:.75rem; color:var(--secondary); }
+.u12-statistics-dialog .message { margin:5px 10px; }
+.u12-statistics-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; margin:4px 10px 8px; }
+.u12-statistics-kpi { display:grid; gap:3px; padding:9px 5px; border:1px solid var(--border); border-radius:9px; text-align:center; background:var(--muted); min-width:0; }
+.u12-statistics-kpi strong { font-size:1.15rem; line-height:1.2; }
+.u12-statistics-kpi small { font-size:.68rem; color:var(--secondary); overflow-wrap:anywhere; }
+.u12-statistics-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; padding:0 10px 8px; }
+.u12-statistics-tabs button { min-width:0; min-height:42px; padding:5px 3px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font:inherit; font-size:.8rem; font-weight:650; cursor:pointer; }
+.u12-statistics-tabs button[aria-pressed="true"] { border-color:var(--accent); background:var(--muted); }
+.u12-statistics-results { padding:0 10px 12px; }
+.u12-statistics-results section[hidden] { display:none !important; }
+.u12-statistics-results h3 { display:flex; gap:6px; align-items:baseline; margin:3px 0 8px; font-size:.95rem; }
+.u12-statistics-results h3 small { font-size:.7rem; color:var(--secondary); }
+.u12-statistics-list { display:grid; gap:5px; min-width:0; }
+.u12-statistics-line { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; padding:8px 10px; border:1px solid var(--border); border-radius:9px; font-size:.82rem; }
+.u12-statistics-line span { min-width:0; overflow-wrap:anywhere; }
+.u12-statistics-line > strong { white-space:nowrap; font-size:.88rem; }
+.u12-statistics-line small { font-size:.71rem; color:var(--secondary); }
+.u12-statistics-athlete { border:1px solid var(--border); border-radius:9px; }
+.u12-statistics-athlete summary { display:flex; gap:8px; align-items:center; justify-content:space-between; min-height:42px; padding:6px 10px; cursor:pointer; font-size:.83rem; }
+.u12-statistics-athlete summary strong { white-space:nowrap; }
+.u12-statistics-athlete__detail { padding:3px 10px 9px; border-top:1px solid var(--border); display:grid; gap:5px; font-size:.75rem; }
+.u12-statistics-athlete__detail > div { display:flex; justify-content:space-between; gap:6px; }
+@media(max-width:370px) { .u12-statistics-filter input { font-size:.76rem; } .u12-statistics-tabs button { font-size:.75rem; } }
 .u12-person { display:grid !important; grid-template-columns:minmax(0,1fr) 44px; column-gap:8px; }
 .u12-person__toggle { grid-column:1; }
 .u12-person:not(:has(.u12-info)) > .u12-person__toggle { grid-column:1 / -1; }
@@ -215,6 +301,18 @@ const u12Ui = {
   reload: document.querySelector("#u12-reload"),
   today: document.querySelector("#u12-today"),
   addAthlete: document.querySelector("#u12-add-athlete"),
+  statsOpen: document.querySelector("#u12-statistics-open"),
+  statsDialog: document.querySelector("#u12-statistics-dialog"),
+  statsClose: document.querySelector("#u12-statistics-close"),
+  statsFilter: document.querySelector("#u12-statistics-filter"),
+  statsFrom: document.querySelector("#u12-statistics-from"),
+  statsTo: document.querySelector("#u12-statistics-to"),
+  statsError: document.querySelector("#u12-statistics-error"),
+  statsState: document.querySelector("#u12-statistics-state"),
+  statsSummary: document.querySelector("#u12-statistics-summary"),
+  statsTrainings: document.querySelector("#u12-statistics-trainings"),
+  statsAthletes: document.querySelector("#u12-statistics-athletes"),
+  statsCategories: document.querySelector("#u12-statistics-categories"),
   contentCard: document.querySelector("#u12-content-card"),
   contentCount: document.querySelector("#u12-content-count"),
   contentRows: document.querySelector("#u12-content-rows"),
@@ -264,6 +362,7 @@ let u12DirtyDates = new Set();
 let u12Loading = false;
 let u12Saving = false;
 let u12Conflict = false;
+let u12StatisticsLoadId = 0;
 let u12LoadId = 0;
 
 function resetU12SessionState() {
@@ -456,6 +555,8 @@ function refreshU12Controls() {
   if (u12Ui.contentAssign) {
     u12Ui.contentAssign.disabled = !u12Snapshot || busy || u12ContentTitles.length === 0;
   }
+  if (u12Ui.statsOpen) u12Ui.statsOpen.disabled = !u12Ready || busy ||
+    !u12Ui.group?.value || !u12Snapshot;
   refreshU12MatrixControls(editable);
   refreshU12AssignmentSummaries();
   if (u12Ui.addAthlete) {
@@ -805,6 +906,165 @@ function changeU12MatrixColumn(slot, checked) {
     u12ContentAssignments.set(person.athleteId, selected);
   }
   markU12DraftDirty();
+}
+
+function u12StatisticsDefaultRange() {
+  const today = new Date();
+  const day = today.getDate();
+  const start = new Date(today.getFullYear(), today.getMonth() - 3, 1);
+  const endOfMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+  start.setDate(Math.min(day, endOfMonth));
+  return { from: localIsoDate(start), to: localIsoDate(today) };
+}
+
+function selectU12StatisticsTab(tab) {
+  if (!["trainings", "athletes", "categories"].includes(tab)) return;
+  for (const button of u12Ui.statsDialog?.querySelectorAll("[data-u12-stats-tab]") ?? []) {
+    button.setAttribute("aria-pressed", String(button.dataset.u12StatsTab === tab));
+  }
+  for (const panel of u12Ui.statsDialog?.querySelectorAll("[data-u12-stats-panel]") ?? []) {
+    panel.hidden = panel.dataset.u12StatsPanel !== tab;
+  }
+}
+
+function appendU12StatisticsLine(container, left, right, helper = "") {
+  if (!container) return;
+  const row = document.createElement("div");
+  row.className = "u12-statistics-line";
+  const body = document.createElement("span");
+  body.textContent = left;
+  if (helper) {
+    const note = document.createElement("small");
+    note.textContent = helper;
+    body.append(document.createElement("br"), note);
+  }
+  const value = document.createElement("strong");
+  value.textContent = String(right);
+  row.append(body, value);
+  container.append(row);
+}
+
+function renderU12Statistics(report) {
+  if (!report || !report.summary || !Array.isArray(report.trainings) ||
+      !Array.isArray(report.athletes) || !Array.isArray(report.categories)) {
+    throw new Error("U12_STATISTICS_INVALID");
+  }
+  u12Ui.statsSummary?.replaceChildren();
+  const kpis = [
+    ["Trainings", report.summary.trainings],
+    ["Anwesenheiten", report.summary.attendance],
+    ["Kategorien", report.summary.categories],
+  ];
+  for (const [label, count] of kpis) {
+    const card = document.createElement("div");
+    card.className = "u12-statistics-kpi";
+    const strong = document.createElement("strong");
+    strong.textContent = String(count);
+    const small = document.createElement("small");
+    small.textContent = label;
+    card.append(strong, small);
+    u12Ui.statsSummary?.append(card);
+  }
+  u12Ui.statsTrainings?.replaceChildren();
+  u12Ui.statsAthletes?.replaceChildren();
+  u12Ui.statsCategories?.replaceChildren();
+  for (const training of report.trainings) {
+    appendU12StatisticsLine(
+      u12Ui.statsTrainings, germanDate(training.date),
+      training.presentCount + " anwesend",
+      training.categoryCount + " Kategorien · " + training.registeredCount + " erfasst",
+    );
+  }
+  for (const athlete of report.athletes) {
+    const details = document.createElement("details");
+    details.className = "u12-statistics-athlete";
+    const summary = document.createElement("summary");
+    const name = document.createElement("span");
+    name.textContent = athlete.lastName + " " + athlete.firstName;
+    const count = document.createElement("strong");
+    count.textContent = athlete.attended + " ×";
+    summary.append(name, count);
+    const contents = document.createElement("div");
+    contents.className = "u12-statistics-athlete__detail";
+    if (!Array.isArray(athlete.categories) || athlete.categories.length === 0) {
+      contents.textContent = "Keine standardisierten Trainingsinhalte zugeordnet.";
+    } else {
+      for (const category of athlete.categories) {
+        const row = document.createElement("div");
+        const label = document.createElement("span");
+        label.textContent = category.label;
+        const value = document.createElement("strong");
+        value.textContent = category.count + " ×";
+        row.append(label, value);
+        contents.append(row);
+      }
+    }
+    details.append(summary, contents);
+    u12Ui.statsAthletes?.append(details);
+  }
+  for (const category of report.categories) {
+    appendU12StatisticsLine(
+      u12Ui.statsCategories, category.label, category.trainings + " Trainings",
+      category.assignments + " Athleten-Zuordnungen",
+    );
+  }
+  for (const [list, hasEntries, emptyText] of [
+    [u12Ui.statsTrainings, report.trainings.length > 0, "Keine gespeicherten U12-Trainings im Zeitraum."],
+    [u12Ui.statsAthletes, report.athletes.length > 0, "Keine U12-Athleten im Zeitraum."],
+    [u12Ui.statsCategories, report.categories.length > 0, "Keine standardisierten Kategorien verwendet."],
+  ]) {
+    if (!hasEntries && list) {
+      const empty = document.createElement("p");
+      empty.className = "u12-statistics-state";
+      empty.textContent = emptyText;
+      list.append(empty);
+    }
+  }
+}
+
+async function loadU12Statistics() {
+  const groupId = u12Ui.group?.value || "";
+  const from = u12Ui.statsFrom?.value || "";
+  const to = u12Ui.statsTo?.value || "";
+  const id = ++u12StatisticsLoadId;
+  if (!groupId || !u12Ui.statsDialog?.open) return;
+  showMessage(u12Ui.statsError, "");
+  u12Ui.statsState.textContent = "Statistik wird geladen …";
+  u12Ui.statsSummary?.replaceChildren();
+  u12Ui.statsTrainings?.replaceChildren();
+  u12Ui.statsAthletes?.replaceChildren();
+  u12Ui.statsCategories?.replaceChildren();
+  for (const input of [u12Ui.statsFrom, u12Ui.statsTo]) input.disabled = true;
+  try {
+    if (!from || !to || from > to) throw new Error("INVALID_RANGE");
+    const payload = await requestJson("/api/modules/u12/statistics?groupId=" +
+      encodeURIComponent(groupId) + "&from=" + encodeURIComponent(from) +
+      "&to=" + encodeURIComponent(to));
+    if (id !== u12StatisticsLoadId || !u12Ui.statsDialog.open ||
+        groupId !== u12Ui.group?.value) return;
+    renderU12Statistics(payload?.report);
+    u12Ui.statsState.textContent = "Nur gespeicherte Anwesenheiten · " +
+      germanDate(from) + " – " + germanDate(to) + ".";
+  } catch {
+    if (id === u12StatisticsLoadId && u12Ui.statsDialog.open) {
+      u12Ui.statsState.textContent = "";
+      showMessage(u12Ui.statsError, "Statistik konnte nicht geladen werden. Zeitraum prüfen und erneut versuchen.");
+    }
+  } finally {
+    if (id === u12StatisticsLoadId) {
+      for (const input of [u12Ui.statsFrom, u12Ui.statsTo]) input.disabled = false;
+    }
+  }
+}
+
+function openU12Statistics() {
+  if (!u12Ui.statsDialog || u12Ui.statsDialog.open || !u12Ready || !u12Snapshot) return;
+  const range = u12StatisticsDefaultRange();
+  u12Ui.statsFrom.value = range.from;
+  u12Ui.statsTo.value = range.to;
+  selectU12StatisticsTab("trainings");
+  u12Ui.statsDialog.showModal();
+  void loadU12Statistics();
 }
 
 function renderU12Attendance() {
@@ -1165,6 +1425,17 @@ u12Ui.prev?.addEventListener("click", () => void u12MoveDate(-1));
 u12Ui.next?.addEventListener("click", () => void u12MoveDate(1));
 u12Ui.today?.addEventListener("click", () => void u12GoToday());
 u12Ui.addAthlete?.addEventListener("click", () => void openU12NewAthlete());
+u12Ui.statsOpen?.addEventListener("click", () => openU12Statistics());
+u12Ui.statsClose?.addEventListener("click", () => u12Ui.statsDialog?.close());
+u12Ui.statsDialog?.addEventListener("close", () => { u12StatisticsLoadId += 1; });
+u12Ui.statsFilter?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void loadU12Statistics();
+});
+u12Ui.statsDialog?.addEventListener("click", (event) => {
+  const tab = event.target?.closest?.("[data-u12-stats-tab]");
+  if (tab) selectU12StatisticsTab(tab.dataset.u12StatsTab || "");
+});
 u12Ui.detailsClose?.addEventListener("click", () => u12Ui.detailsDialog?.close());
 u12Ui.days?.addEventListener("click", (event) => {
   const info = event.target?.closest?.("[data-u12-info-id]");

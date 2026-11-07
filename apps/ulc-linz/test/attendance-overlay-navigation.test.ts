@@ -45,12 +45,12 @@ describe("ULC attendance: group overlay instead of an intermediate page", () => 
     expect(() => new Function(ULC_LINZ_APP_SCRIPT)).not.toThrow();
   });
 
-  it("lists U12, Kindertraining, Irrgeher and a disabled U14 without duplicating screens", () => {
+  it("lists U12, Kindertraining, Irrgeher and U14 category access without menu gears", () => {
     expect(ULC_LINZ_APP_HTML).toContain('data-attendance-target="u12"');
     expect(ULC_LINZ_APP_HTML).toContain('data-attendance-group="kindertraining"');
     expect(ULC_LINZ_APP_HTML).toContain('data-attendance-group="irrgeher"');
     expect(ULC_LINZ_APP_HTML).toContain("<strong>Gruppe Irrgeher</strong>");
-    expect(ULC_LINZ_APP_HTML).toContain("<strong>U14</strong><small>Anwesenheit in Vorbereitung</small>");
+    expect(ULC_LINZ_APP_HTML).toContain("<strong>U14</strong><small>Kategorien bearbeiten · Anwesenheit folgt</small>");
     expect(ULC_LINZ_APP_HTML).toContain('data-youth-category-area="u12"');
     expect(ULC_LINZ_APP_HTML).toContain('data-youth-category-area="u14"');
     expect(ULC_LINZ_APP_HTML).toContain('data-youth-category-area="kindertraining"');
