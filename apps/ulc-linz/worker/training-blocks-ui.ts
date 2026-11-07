@@ -1733,6 +1733,7 @@ function renderTrainingBlockExercises() {
     const editor = document.createElement("details");
     editor.className = "training-block-exercise__editor";
     const editorSummary = document.createElement("summary");
+    editorSummary.className = "ab-disclosure";
     editorSummary.dataset.trainingBlockExerciseSummary = String(index);
     editorSummary.textContent = trainingBlockExerciseCompactSummary(draft, item);
     editor.append(editorSummary);
