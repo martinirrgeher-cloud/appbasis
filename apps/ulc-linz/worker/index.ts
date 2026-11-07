@@ -1940,6 +1940,7 @@ async function detailedYouthAreaResponse(
         expectedRevision: body.expectedRevision as string | null,
         ...(body.contentTitles === undefined ? {} : { contentTitles: body.contentTitles as string[] }),
         ...(body.contentItems === undefined ? {} : { contentItems: body.contentItems as UlcYouthContentItem[] }),
+        ...(body.trainerIds === undefined ? {} : { trainerIds: body.trainerIds as string[] }),
         attendance: body.attendance as Array<{
           athleteId: string; status: "open" | "present" | "excused" | "absent";
           contentSlots?: number[];
@@ -2080,6 +2081,7 @@ async function u12SessionResponse(
           ? {} : { contentTitles: body.contentTitles as string[] }),
         ...(body.contentItems === undefined
           ? {} : { contentItems: body.contentItems as UlcYouthContentItem[] }),
+        ...(body.trainerIds === undefined ? {} : { trainerIds: body.trainerIds as string[] }),
         attendance: body.attendance as Array<{
           athleteId: string;
           status: "open" | "present" | "excused" | "absent";
@@ -2286,6 +2288,7 @@ async function u12JsonBody(
     "attendance",
     "contentTitles",
     "contentItems",
+    "trainerIds",
   ];
   if (
     Object.keys(body).some((key) => !allowed.includes(key)) ||
@@ -2299,6 +2302,12 @@ async function u12JsonBody(
     body.groupId.length > 200 ||
     body.groupId.trim() !== body.groupId ||
     !Array.isArray(body.attendance) ||
+    (body.trainerIds !== undefined &&
+      (!Array.isArray(body.trainerIds) ||
+        body.trainerIds.length > 100 ||
+        body.trainerIds.some((id) => typeof id !== "string" ||
+          id.length === 0 || id.length > 200 || id.trim() !== id) ||
+        new Set(body.trainerIds).size !== body.trainerIds.length)) ||
     (body.contentTitles !== undefined &&
       (!Array.isArray(body.contentTitles) ||
         body.contentTitles.length > 5)) ||

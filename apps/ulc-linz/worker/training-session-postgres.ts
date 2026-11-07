@@ -30,6 +30,7 @@ export interface UlcTrainingSessionSnapshot {
   readonly revision: string;
   readonly attendance: readonly UlcTrainingAttendance[];
   readonly registrations: readonly UlcTrainingRegistration[];
+  readonly trainingTrainerIds?: readonly string[];
   /** Only U12 currently consumes these app-owned youth documentation fields. */
   readonly trainingContentTitles?: readonly string[];
   readonly trainingContentItems?: readonly UlcYouthContentItem[];
@@ -128,6 +129,16 @@ function normalizeTrainingContentSlots(
     throw new UlcTrainingValidationError("Invalid athlete training content assignment.");
   }
   return Object.freeze([...slots].sort((a, b) => a - b));
+}
+
+function normalizeTrainingTrainerIds(value: readonly string[]): readonly string[] {
+  if (!Array.isArray(value) || value.length > 100 || !value.every(
+    (id) => typeof id === "string" && id.length > 0 && id.length <= 200 &&
+      id.trim() === id,
+  ) || new Set(value).size !== value.length) {
+    throw new UlcTrainingValidationError("Invalid training trainer roll-call.");
+  }
+  return Object.freeze([...value].sort((a, b) => a.localeCompare(b)));
 }
 
 export class PostgresUlcTrainingSessionRepository {
@@ -245,6 +256,34 @@ export class PostgresUlcTrainingSessionRepository {
     });
   }
 
+  /**
+   * Scoped trainer roll-call for the authorized youth training. Never expose
+   * organization-wide trainer identities from this read path.
+   */
+  async readTrainerPresence(
+    organizationId: string,
+    moduleId: UlcTrainingModule,
+    groupId: string,
+    sessionId: string,
+  ): Promise<readonly string[]> {
+    const rows = await this.#sql.unsafe(
+      `SELECT attendance.trainer_id
+       FROM ulc_linz_training_trainer_attendance AS attendance
+       INNER JOIN ulc_linz_training_session AS session
+         ON session.id = attendance.session_id
+        AND session.organization_id = attendance.organization_id
+       WHERE attendance.organization_id = $1
+         AND session.id = $2
+         AND session.module_id = $3
+         AND session.group_id = $4
+       ORDER BY attendance.trainer_id ASC`,
+      [organizationId, sessionId, moduleId, groupId],
+    );
+    return Object.freeze(rows.map((row) => requiredInputIdentifier(
+      row.trainer_id, "Training trainer id",
+    )));
+  }
+
   async ensureScheduledSession(
     organizationId: string,
     moduleId: UlcTrainingModule,
@@ -348,6 +387,8 @@ export class PostgresUlcTrainingSessionRepository {
     expectedRevision: string | null,
     trainingContentTitles?: readonly string[],
     trainingContentItems?: readonly UlcYouthContentItem[],
+    trainingTrainerIds?: readonly string[],
+    eligibleTrainerIds?: readonly string[],
   ): Promise<UlcTrainingSessionSnapshot> {
     const proposed = createUlcTrainingSession(input, {
       id: requiredGeneratedId(this.#createId()),
@@ -394,6 +435,17 @@ export class PostgresUlcTrainingSessionRepository {
     );
     const revision =
       expectedRevision === null ? null : requiredRevisionToken(expectedRevision);
+    if ((trainingTrainerIds === undefined) !== (eligibleTrainerIds === undefined)) {
+      throw new UlcTrainingValidationError("Trainer roster must be supplied completely.");
+    }
+    const trainerRoster = trainingTrainerIds === undefined
+      ? null : normalizeTrainingTrainerIds(trainingTrainerIds);
+    const eligibleRoster = eligibleTrainerIds === undefined
+      ? null : normalizeTrainingTrainerIds(eligibleTrainerIds);
+    if (trainerRoster && eligibleRoster &&
+        trainerRoster.some((trainerId) => !eligibleRoster.includes(trainerId))) {
+      throw new UlcTrainingValidationError("Trainer is not assigned to this training group.");
+    }
 
     const rows = await this.#sql.unsafe(
       `WITH updated_session AS (
@@ -505,6 +557,39 @@ export class PostgresUlcTrainingSessionRepository {
              WHERE input.athlete_id = attendance.athlete_id
            )
          RETURNING attendance.athlete_id
+       ),
+       selected_trainers AS MATERIALIZED (
+         SELECT trainer_id FROM jsonb_array_elements_text(
+           COALESCE($12::jsonb, '[]'::jsonb)
+         ) AS trainer(trainer_id)
+       ),
+       eligible_trainers AS MATERIALIZED (
+         SELECT trainer_id FROM jsonb_array_elements_text(
+           COALESCE($13::jsonb, '[]'::jsonb)
+         ) AS trainer(trainer_id)
+       ),
+       saved_trainers AS (
+         INSERT INTO ulc_linz_training_trainer_attendance (
+           organization_id, session_id, trainer_id
+         )
+         SELECT $2, session.id, trainer.trainer_id
+         FROM saved_session AS session
+         CROSS JOIN selected_trainers AS trainer
+         WHERE $12::jsonb IS NOT NULL
+           AND trainer.trainer_id IN (SELECT trainer_id FROM eligible_trainers)
+         ON CONFLICT (session_id, trainer_id)
+         DO UPDATE SET updated_at = now()
+         RETURNING trainer_id
+       ),
+       deleted_stale_trainers AS (
+         DELETE FROM ulc_linz_training_trainer_attendance AS trainer
+         USING saved_session AS session
+         WHERE trainer.organization_id = $2
+           AND trainer.session_id = session.id
+           AND $12::jsonb IS NOT NULL
+           AND trainer.trainer_id IN (SELECT trainer_id FROM eligible_trainers)
+           AND trainer.trainer_id NOT IN (SELECT trainer_id FROM selected_trainers)
+         RETURNING trainer.trainer_id
        )
        SELECT session.id,
               session.organization_id,
@@ -519,7 +604,11 @@ export class PostgresUlcTrainingSessionRepository {
               (SELECT count(*)::int FROM saved_attendance)
                 AS saved_attendance_count,
               (SELECT count(*)::int FROM deleted_stale_attendance)
-                AS deleted_stale_attendance_count
+                AS deleted_stale_attendance_count,
+              (SELECT count(*)::int FROM saved_trainers)
+                AS saved_trainer_count,
+              (SELECT count(*)::int FROM deleted_stale_trainers)
+                AS deleted_stale_trainer_count
        FROM saved_session session`,
       [
         proposed.id,
@@ -533,6 +622,8 @@ export class PostgresUlcTrainingSessionRepository {
         revision,
         titles === null ? null : JSON.stringify(titles),
         contentItems === null ? null : JSON.stringify(contentItems),
+        trainerRoster === null ? null : JSON.stringify(trainerRoster),
+        eligibleRoster === null ? null : JSON.stringify(eligibleRoster),
       ],
     );
 
@@ -548,6 +639,12 @@ export class PostgresUlcTrainingSessionRepository {
       blocked();
     }
     nonNegativeInteger(rows[0], "deleted_stale_attendance_count");
+    if (trainerRoster !== null) {
+      if (nonNegativeInteger(rows[0], "saved_trainer_count") !== trainerRoster.length) {
+        blocked();
+      }
+      nonNegativeInteger(rows[0], "deleted_stale_trainer_count");
+    }
 
     const registrationRows = await this.#sql.unsafe(
       `SELECT organization_id,
@@ -583,6 +680,7 @@ export class PostgresUlcTrainingSessionRepository {
         ),
       ),
       registrations,
+      ...(trainerRoster === null ? {} : { trainingTrainerIds: trainerRoster }),
       ...(titles === null ? {} : {
         trainingContentTitles: titles,
         trainingContentItems: readTrainingContentItems(rows[0].training_content_items, titles),

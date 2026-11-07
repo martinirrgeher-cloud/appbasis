@@ -450,6 +450,7 @@ function runtime(
         session: null,
         contentTitles: [],
         contentItems: [],
+        trainers: [],
         participants: [],
       };
     },
@@ -460,6 +461,7 @@ function runtime(
         contentTitles: input.contentTitles ?? [],
         contentItems: input.contentItems ?? (input.contentTitles ?? []).map(() =>
           ({ code: "" as const, detail: "" })),
+        trainers: [],
         session: {
           id: "session-u12-test",
           revision: "1",
@@ -5353,6 +5355,7 @@ describe("U12 runtime API", () => {
               session: null,
               contentTitles: [],
               contentItems: [],
+              trainers: [],
               participants: [],
             };
           },
@@ -5402,6 +5405,7 @@ describe("U12 runtime API", () => {
               contentTitles: input.contentTitles ?? [],
               contentItems: input.contentItems ?? (input.contentTitles ?? []).map(() =>
                 ({ code: "" as const, detail: "" })),
+              trainers: [],
               session: {
                 id: "session-1",
                 revision: "42",

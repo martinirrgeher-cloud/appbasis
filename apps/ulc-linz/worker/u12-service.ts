@@ -50,6 +50,13 @@ export interface UlcU12Participant {
   readonly contentSlots: readonly number[];
 }
 
+export interface UlcU12Trainer {
+  readonly trainerId: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly present: boolean;
+}
+
 export interface UlcU12Snapshot {
   readonly group: Readonly<{
     id: string;
@@ -64,6 +71,7 @@ export interface UlcU12Snapshot {
     note: string | null;
   }> | null;
   readonly participants: readonly UlcU12Participant[];
+  readonly trainers: readonly UlcU12Trainer[];
   readonly contentTitles: readonly string[];
   readonly contentItems: readonly UlcYouthContentItem[];
 }
@@ -81,6 +89,12 @@ export interface UlcU12SessionStore {
     groupId: string,
     sessionDate: string,
   ): Promise<UlcTrainingSessionSnapshot | null>;
+  readTrainerPresence?(
+    organizationId: string,
+    moduleId: UlcTrainingModule,
+    groupId: string,
+    sessionId: string,
+  ): Promise<readonly string[]>;
   saveSession(
     organizationId: string,
     input: {
@@ -98,6 +112,8 @@ export interface UlcU12SessionStore {
     expectedRevision: string | null,
     trainingContentTitles?: readonly string[],
     trainingContentItems?: readonly UlcYouthContentItem[],
+    trainerPresenceIds?: readonly string[],
+    eligibleTrainerIds?: readonly string[],
   ): Promise<UlcTrainingSessionSnapshot>;
 }
 
@@ -197,7 +213,12 @@ export function createUlcU12Service({
         context.group.id,
         context.sessionDate,
       );
-      return presentSnapshot(context, stored, area);
+      const selected = stored && sessions.readTrainerPresence
+        ? await sessions.readTrainerPresence(
+            context.organizationId, area, context.group.id, stored.session.id,
+          )
+        : [];
+      return presentSnapshot(context, stored, area, selected);
     },
 
     async saveSession(
@@ -215,6 +236,7 @@ export function createUlcU12Service({
         }[];
         readonly contentTitles?: readonly string[];
         readonly contentItems?: readonly UlcYouthContentItem[];
+        readonly trainerIds?: readonly string[];
       },
     ): Promise<UlcU12Snapshot> {
       if (!Array.isArray(input.attendance)) {
@@ -267,6 +289,19 @@ export function createUlcU12Service({
         }
       }
       const expectedRevision = revisionToken(input.expectedRevision);
+      const eligibleTrainerIds = context.trainers.map((trainer) => trainer.trainerId);
+      if (input.trainerIds !== undefined) {
+        if (!Array.isArray(input.trainerIds) ||
+            input.trainerIds.length > 100 ||
+            new Set(input.trainerIds).size !== input.trainerIds.length ||
+            input.trainerIds.some((trainerId) =>
+              typeof trainerId !== "string" ||
+              !eligibleTrainerIds.includes(trainerId))) {
+          throw new UlcTrainingValidationError(
+            "Trainer attendance must match the current group roster.",
+          );
+        }
+      }
 
       const stored = await sessions.saveSession(
         context.organizationId,
@@ -281,8 +316,15 @@ export function createUlcU12Service({
         expectedRevision,
         input.contentTitles,
         input.contentItems,
+        input.trainerIds,
+        input.trainerIds === undefined ? undefined : eligibleTrainerIds,
       );
-      return presentSnapshot(context, stored, area);
+      const selected = input.trainerIds ??
+        (sessions.readTrainerPresence
+          ? await sessions.readTrainerPresence(
+              context.organizationId, area, context.group.id, stored.session.id,
+            ) : []);
+      return presentSnapshot(context, stored, area, selected);
     },
   });
 }
@@ -335,6 +377,11 @@ interface ResolvedContext {
   readonly organizationId: string;
   readonly group: TrainingGroup;
   readonly sessionDate: string;
+  readonly trainers: readonly {
+    readonly trainerId: string;
+    readonly firstName: string;
+    readonly lastName: string;
+  }[];
   readonly participants: readonly {
     readonly athleteId: string;
     readonly firstName: string;
@@ -439,10 +486,35 @@ async function resolveContext(
         left.athleteId.localeCompare(right.athleteId),
     );
 
+  const trainerById = new Map(snapshot.trainers
+    .filter((trainer) => trainer.organizationId === normalizedOrganizationId &&
+      trainer.isActive === true)
+    .map((trainer) => [trainer.id, trainer]));
+  const activeTrainerIds = new Set<string>();
+  for (const membership of snapshot.trainerGroupMemberships) {
+    if (membership.organizationId !== normalizedOrganizationId ||
+        membership.groupId !== normalizedGroupId ||
+        !trainerById.has(membership.trainerId)) continue;
+    if (activeTrainerIds.has(membership.trainerId)) throw new UlcU12ConsistencyError();
+    activeTrainerIds.add(membership.trainerId);
+  }
+  const trainers = [...activeTrainerIds].map((id) => {
+    const trainer = trainerById.get(id);
+    if (!trainer) throw new UlcU12ConsistencyError();
+    return Object.freeze({
+      trainerId: trainer.id,
+      firstName: trainer.firstName,
+      lastName: trainer.lastName,
+    });
+  }).sort((left, right) => left.lastName.localeCompare(right.lastName, "de") ||
+    left.firstName.localeCompare(right.firstName, "de") ||
+    left.trainerId.localeCompare(right.trainerId));
+
   return Object.freeze({
     organizationId: normalizedOrganizationId,
     group,
     sessionDate: normalizedSessionDate,
+    trainers: Object.freeze(trainers),
     participants: Object.freeze(participants),
   });
 }
@@ -451,6 +523,7 @@ function presentSnapshot(
   context: ResolvedContext,
   stored: UlcTrainingSessionSnapshot | null,
   moduleId: UlcTrainingModule = MODULE_ID,
+  selectedTrainerIds: readonly string[] = [],
 ): UlcU12Snapshot {
   if (
     stored !== null &&
@@ -461,6 +534,10 @@ function presentSnapshot(
   ) {
     throw new UlcU12ConsistencyError();
   }
+
+  const trainerIds = new Set(context.trainers.map((trainer) => trainer.trainerId));
+  // Revoked trainer memberships remain in history but never enter this scoped roster.
+  const visibleTrainerIds = selectedTrainerIds.filter((id) => trainerIds.has(id));
 
   const statusByAthlete = new Map<string, UlcTrainingAttendanceStatus>();
   if (stored !== null) {
@@ -521,6 +598,9 @@ function presentSnapshot(
       shortName: context.group.shortName,
     }),
     sessionDate: context.sessionDate,
+    trainers: Object.freeze(context.trainers.map((trainer) => Object.freeze({
+      ...trainer, present: visibleTrainerIds.includes(trainer.trainerId),
+    }))),
     contentTitles: Object.freeze([...contentTitles]),
     contentItems,
     session:

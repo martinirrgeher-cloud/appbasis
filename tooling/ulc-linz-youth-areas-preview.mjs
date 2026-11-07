@@ -43,7 +43,7 @@ export async function loadYouthAreasPreviewPlan({ repositoryRoot = process.cwd()
   if (manifest?.application !== "ulc-linz" || manifest?.manifestVersion !== 1 ||
       manifest?.dialect !== "postgresql" || matched?.length !== 1 ||
       JSON.stringify(matched[0]) !== JSON.stringify(owner) ||
-      owner.schemaVersion !== 15 || owner.migrations[13] !== PREVIOUS_MIGRATION ||
+      owner.schemaVersion < 15 || owner.migrations[13] !== PREVIOUS_MIGRATION ||
       owner.migrations[14] !== MIGRATION_FILE) {
     throw new UlcYouthAreasPreviewError("Area categories require the exact canonical v15 owner.");
   }

@@ -202,6 +202,7 @@ describe("ULC U12 service", () => {
         shortName: "KT",
       },
       sessionDate: DATE,
+      trainers: [],
       contentTitles: [],
       contentItems: [],
       session: {

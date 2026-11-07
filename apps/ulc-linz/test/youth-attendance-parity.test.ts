@@ -36,6 +36,8 @@ function setup(groups = [
         startedOn: "2025-01-01", endedOn: null },
     ],
     athleteContacts: [],
+    trainers: [],
+    trainerGroupMemberships: [],
   } as unknown as AthleteMasterdataSnapshot;
   const masterdata = { readOrganizationSnapshot: vi.fn(async () => snapshot) };
   const moduleGroups: UlcLinzTrainingModuleGroupReader = {

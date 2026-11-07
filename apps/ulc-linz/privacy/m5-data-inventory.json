@@ -403,6 +403,14 @@
       "retentionEvidence": "fail-closed-pending-lifecycle"
     },
     {
+      "id": "ulc_linz_training_trainer_attendance",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "trainer-training-attendance",
+      "retentionPolicy": "pending-training-data-lifecycle-contract",
+      "deletionEvidence": "fail-closed-pending-lifecycle",
+      "retentionEvidence": "fail-closed-pending-lifecycle"
+    },
+    {
       "id": "ulc_linz_training_registration_change",
       "owner": "ulc-linz-lifecycle",
       "privacyClass": "athlete-training-registration-history",
