@@ -792,7 +792,7 @@ function scheduleU12AutoSave() {
   if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
   u12AutoSaveTimer = null;
   if (!u12DirtyDates.size || u12AutoSaveFailed || !u12Ready || u12Conflict ||
-      !u12WriteAllowed || u12Loading || u12Saving || u12IsOffline() ||
+      !u12WriteAllowed || u12Loading || u12Saving || u12CalendarBusy || u12IsOffline() ||
       u12ContentTitles.some((title) => !title.trim())) return;
   u12AutoSaveTimer = setTimeout(() => {
     u12AutoSaveTimer = null;
@@ -800,7 +800,7 @@ function scheduleU12AutoSave() {
     // a failed in-flight POST may commit before its response is lost. Never
     // replay a draft after its failure flag was raised.
     if (!u12DirtyDates.size || u12AutoSaveFailed || !u12Ready || u12Conflict ||
-        !u12WriteAllowed || u12Loading || u12Saving || u12IsOffline() ||
+        !u12WriteAllowed || u12Loading || u12Saving || u12CalendarBusy || u12IsOffline() ||
         u12ContentTitles.some((title) => !title.trim())) return;
     void saveU12Attendance();
   }, 850);
@@ -900,7 +900,7 @@ function renderU12ContentRows() {
 }
 
 function addU12Content() {
-  if (!u12Snapshot || u12ContentTitles.length >= 5 || u12Loading ||
+  if (!u12Snapshot || u12ContentTitles.length >= 5 || u12Loading || u12CalendarBusy ||
       !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return;
   const initial = U12_STANDARD_CONTENT_CATALOG[0];
@@ -921,7 +921,7 @@ function addU12Content() {
 function removeU12Content(index) {
   if (!u12Snapshot || !Number.isInteger(index) ||
       index < 0 || index >= u12ContentTitles.length ||
-      u12Loading || !u12WriteAllowed || u12Conflict ||
+      u12Loading || u12CalendarBusy || !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return;
   u12ContentTitles.splice(index, 1);
   u12ContentItems.splice(index, 1);
@@ -1672,7 +1672,7 @@ async function loadU12Attendance() {
 
 async function saveU12Attendance() {
   if (u12Saving) return u12SaveInFlight ?? false;
-  if (!u12Snapshot || u12Loading || !u12Ready || !u12WriteAllowed ||
+  if (!u12Snapshot || u12Loading || u12CalendarBusy || !u12Ready || !u12WriteAllowed ||
       u12Conflict || u12Snapshot.session?.state === "cancelled") return false;
   if (u12DirtyDates.size === 0) return true;
   const titles = u12ContentTitles.map((title) => title.trim());
@@ -1857,7 +1857,7 @@ async function u12ChangeDate() {
 }
 
 async function u12ChangeGroup() {
-  if (u12Saving || u12Loading) return;
+  if (u12Saving || u12Loading || u12CalendarBusy) return;
   const next = u12Ui.group?.value || "";
   if (next === u12LoadedGroupId) return;
   if (!(await u12FlushChanges())) {
@@ -1885,7 +1885,7 @@ async function u12ChangeGroup() {
 }
 
 async function u12ReloadAttendance() {
-  if (u12Saving || u12Loading) return;
+  if (u12Saving || u12Loading || u12CalendarBusy) return;
   if (u12DirtyDates.size > 0 &&
       !window.confirm("Ungespeicherte Anwesenheit und Trainingsinhalte verwerfen und neu laden?")) return;
   if (u12FollowGroupCalendar) u12CalendarWeekCache = new Map();
@@ -2135,7 +2135,7 @@ u12Ui.contentRows?.addEventListener("input", (event) => {
   if (!input || !Object.prototype.hasOwnProperty.call(input.dataset, "u12DetailIndex")) return;
   const index = Number(input.dataset.u12DetailIndex);
   if (!Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
-      u12Loading || !u12WriteAllowed || u12Conflict ||
+      u12Loading || u12CalendarBusy || !u12WriteAllowed || u12Conflict ||
       u12Snapshot?.session?.state === "cancelled") return;
   u12ContentItems[index].detail = input.value;
   markU12DraftDirty();
@@ -2158,7 +2158,7 @@ u12Ui.reload?.addEventListener("click", () => void u12ReloadAttendance());
 u12Ui.days?.addEventListener("change", (event) => {
   const input = event.target;
   const athleteId = input?.dataset?.u12AthleteId;
-  if (!athleteId || !u12Snapshot || u12Loading ||
+  if (!athleteId || !u12Snapshot || u12Loading || u12CalendarBusy ||
       !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled" ||
       !u12Snapshot.participants.some((person) => person.athleteId === athleteId)) return;
