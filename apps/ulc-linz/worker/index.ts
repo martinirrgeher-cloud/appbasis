@@ -1547,7 +1547,9 @@ async function kindertrainingCalendarResponse(
   // closed instead of returning a null repository.
   const calendar = runtime.registrationCalendar;
   if (!calendar) {
-    return Response.json({ groupId, weekStart, dates: weekDates }, {
+    return Response.json({
+      groupId, weekStart, dates: weekDates, calendarEnabled: false, weekdays: null,
+    }, {
       headers: { "Cache-Control": "private, no-store" },
     });
   }
@@ -1564,7 +1566,14 @@ async function kindertrainingCalendarResponse(
       kind: exceptions[index]?.kind ?? null,
     })),
   });
-  return Response.json({ groupId, weekStart, dates }, {
+  // Publish the authoritative schedule state to the Kids day navigator.
+  // No rule and seven explicitly planned days may look identical as a list,
+  // but must not be interpreted identically for the navigation buttons.
+  return Response.json({
+    groupId, weekStart, dates,
+    calendarEnabled: true,
+    weekdays: rule?.schedule.weekdays ?? null,
+  }, {
     headers: { "Cache-Control": "private, no-store" },
   });
 }

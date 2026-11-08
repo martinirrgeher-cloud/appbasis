@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ULC_KIDS_HTML, ULC_KIDS_SCRIPT, ULC_U14_SCRIPT } from "../worker/youth-attendance-ui";
+import { ULC_KIDS_HTML, ULC_KIDS_CSS, ULC_KIDS_SCRIPT, ULC_U14_SCRIPT } from "../worker/youth-attendance-ui";
 import { ULC_U12_SCRIPT } from "../worker/u12-ui";
 import { ULC_LINZ_APP_HTML } from "../worker/ui";
 
@@ -19,6 +19,8 @@ function weekStart(date: Date): string {
 function plannedDaysHarness(
   weeks: Record<string, string[]>,
   invalid = false,
+  weekdays: number[] | null = [2],
+  initiallyLoadedWeekdays: number[] | null = null,
 ) {
   const sourceStart = ULC_KIDS_SCRIPT.indexOf("function kidsCalendarWeekStart(");
   const sourceEnd = ULC_KIDS_SCRIPT.indexOf("async function loadKidsAttendance()", sourceStart);
@@ -30,8 +32,10 @@ function plannedDaysHarness(
     const params = new URL(url, "https://example.org").searchParams;
     const monday = params.get("weekStart") || "";
     requested.push(monday);
-    if (invalid) return { groupId: "some-other-group", weekStart: monday, dates: [] };
-    return { groupId: params.get("groupId"), weekStart: monday, dates: weeks[monday] || [] };
+    if (invalid) return { groupId: "some-other-group", weekStart: monday, dates: [],
+      calendarEnabled: true, weekdays };
+    return { groupId: params.get("groupId"), weekStart: monday,
+      dates: weeks[monday] || [], calendarEnabled: true, weekdays };
   };
   const selectedDate = {
     value: "",
@@ -39,16 +43,31 @@ function plannedDaysHarness(
     replaceChildren() { this.options = []; },
     append(option: { value: string; textContent: string }) { this.options.push(option); },
   };
+  const moveStart = ULC_KIDS_SCRIPT.indexOf("async function kidsMoveDate(");
+  const moveEnd = ULC_KIDS_SCRIPT.indexOf("async function kidsChangeDate(", moveStart);
+  expect(moveStart).toBeGreaterThan(sourceEnd);
+  expect(moveEnd).toBeGreaterThan(moveStart);
+  const moveCode = ULC_KIDS_SCRIPT.slice(moveStart, moveEnd);
+  const loadState = { calls: 0 };
   const factory = new Function(
     "requestJson", "localIsoDate", "localWeekStart",
     "registrationWeekDates", "shiftIsoDate",
     "kidsUi", "document", "germanWeekday", "germanDate", "kidsFollowGroupCalendar",
-    "const kidsCalendarWeekCache = new Map();\nconst attendanceSessionGeneration = 1;\n" + code +
-      "\nreturn { find: kidsFindCalendarDate, fetch: kidsFetchCalendarDates, populate: kidsPopulateCalendarChoices };",
+    "kidsFlushChanges", "refreshKidsControls", "loadKidsAttendance", "showMessage",
+    "initiallyLoadedWeekdays",
+    "let kidsCalendarWeekCache = new Map();\n" +
+      "let kidsCalendarEnabled = true;\n" +
+      "let kidsCalendarRuleWeekdays = initiallyLoadedWeekdays;\n" +
+      "let kidsReady = true, kidsCalendarBusy = false, kidsLoading = false;\n" +
+      "let kidsSaving = false, kidsLoadId = 0;\n" +
+      "const attendanceSessionGeneration = 1;\n" + code + moveCode +
+      "\nreturn { find: kidsFindCalendarDate, fetch: kidsFetchCalendarDates, populate: kidsPopulateCalendarChoices, move: kidsMoveDate };",
   ) as (...args: any[]) => {
-    find: (groupId: string, anchor: string, direction: number, includeAnchor: boolean) => Promise<string>;
+    find: (groupId: string, anchor: string, direction: number, includeAnchor: boolean,
+      onlyWeekday?: number | null) => Promise<string>;
     fetch: (groupId: string, start: string) => Promise<string[]>;
     populate: (groupId: string, selected: string, isCurrent: () => boolean) => Promise<void>;
+    move: (offset: number) => Promise<void>;
   };
   const fns = factory(
     requestJson,
@@ -56,10 +75,13 @@ function plannedDaysHarness(
     weekStart,
     (monday: string) => Array.from({ length: 7 }, (_, i) => dateShift(monday, i)),
     dateShift,
-    { date: selectedDate }, { createElement: () => ({ value: "", textContent: "" }) },
+    { date: selectedDate, group: { value: "kids-group" } },
+    { createElement: () => ({ value: "", textContent: "" }) },
     (date: string) => date.slice(8), (date: string) => date, true,
+    async () => true, () => {}, async () => { loadState.calls += 1; },
+    () => {}, initiallyLoadedWeekdays,
   );
-  return { ...fns, requested, selectedDate };
+  return { ...fns, requested, selectedDate, loadState };
 }
 
 describe("G-04.11 Kindertraining day navigation obeys shared group calendar", () => {
@@ -72,7 +94,11 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     );
     expect(ULC_KIDS_SCRIPT).toContain("if (!dates.includes(selected))");
     expect(ULC_KIDS_SCRIPT).toContain("await kidsNavigateCalendarDate(");
-    expect(ULC_KIDS_HTML).toContain("Nächstes Training");
+    expect(ULC_KIDS_HTML).toContain('aria-label="Nächstes Training"');
+    expect(ULC_KIDS_HTML).toContain('aria-label="Vorheriges Training"');
+    expect(ULC_KIDS_HTML).toContain("Zum aktuellen Training");
+    expect(ULC_KIDS_HTML).toContain('id="kids-calendar-hint"');
+    expect(ULC_KIDS_CSS).toContain(".kids-calendar-hint[hidden]");
     expect(ULC_KIDS_HTML).toContain('<select id="kids-date"');
     expect(ULC_KIDS_HTML).not.toContain('<input type="date" id="kids-date"');
   });
@@ -88,6 +114,53 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     expect(await find("kids-group", "2026-11-17", -1, false)).toBe("2026-11-10");
     expect(requested).toContain("2026-11-09");
     expect(requested).toContain("2026-11-16");
+  });
+
+  it("one arrow click moves the actual Kids selector to the next Tuesday", async () => {
+    const { move, selectedDate, loadState } = plannedDaysHarness({
+      "2026-11-09": ["2026-11-10"],
+      "2026-11-16": ["2026-11-17"],
+      "2026-11-23": ["2026-11-24"],
+    }, false, [2], [2]);
+    selectedDate.value = "2026-11-10";
+    await move(1);
+    expect(selectedDate.value).toBe("2026-11-17");
+    expect(loadState.calls).toBe(1);
+    await move(-1);
+    expect(selectedDate.value).toBe("2026-11-10");
+    expect(loadState.calls).toBe(2);
+    expect(ULC_KIDS_SCRIPT).toContain(
+      'kidsUi.next?.addEventListener("click", () => void kidsMoveDate(1))',
+    );
+  });
+
+  it("refreshes the server calendar before deciding which date the arrows select", async () => {
+    // Existing dropdown was loaded when there was no rule (stale null).
+    // Another editor has now added Tuesday and Thursday. Thursday must win.
+    const { move, selectedDate, loadState } = plannedDaysHarness({
+      "2026-11-09": ["2026-11-10", "2026-11-12"],
+      "2026-11-16": ["2026-11-17", "2026-11-19"],
+    }, false, [2, 4], null);
+    selectedDate.value = "2026-11-10";
+    await move(1);
+    expect(selectedDate.value).toBe("2026-11-12");
+    expect(loadState.calls).toBe(1);
+  });
+
+  it("uses one weekly arrow step if a fresh calendar read confirms no rule", async () => {
+    const days = Array.from({ length: 7 }, (_, i) => dateShift("2026-11-09", i));
+    const following = Array.from({ length: 7 }, (_, i) => dateShift("2026-11-16", i));
+    const { move, selectedDate, loadState } = plannedDaysHarness({
+      "2026-11-09": days,
+      "2026-11-16": following,
+    }, false, null, [2]);
+    // The stale dropdown thought Tuesday-only; a newly unconfigured calendar
+    // must not suddenly make seven arrow taps necessary.
+    selectedDate.value = "2026-11-10";
+    await move(1);
+    expect(selectedDate.value).toBe("2026-11-17");
+    expect(loadState.calls).toBe(1);
+    expect(ULC_KIDS_SCRIPT).toContain("noch keine Wochenregel gespeichert");
   });
 
   it("only offers server-approved days in the Kids date select", async () => {
