@@ -33,13 +33,22 @@ function plannedDaysHarness(
     if (invalid) return { groupId: "some-other-group", weekStart: monday, dates: [] };
     return { groupId: params.get("groupId"), weekStart: monday, dates: weeks[monday] || [] };
   };
+  const selectedDate = {
+    value: "",
+    options: [] as Array<{ value: string; textContent: string }>,
+    replaceChildren() { this.options = []; },
+    append(option: { value: string; textContent: string }) { this.options.push(option); },
+  };
   const factory = new Function(
     "requestJson", "localIsoDate", "localWeekStart",
     "registrationWeekDates", "shiftIsoDate",
-    "const kidsCalendarWeekCache = new Map();\n" + code + "\nreturn { find: kidsFindCalendarDate, fetch: kidsFetchCalendarDates };",
+    "kidsUi", "document", "germanWeekday", "germanDate", "kidsFollowGroupCalendar",
+    "const kidsCalendarWeekCache = new Map();\n" + code +
+      "\nreturn { find: kidsFindCalendarDate, fetch: kidsFetchCalendarDates, populate: kidsPopulateCalendarChoices };",
   ) as (...args: any[]) => {
     find: (groupId: string, anchor: string, direction: number, includeAnchor: boolean) => Promise<string>;
     fetch: (groupId: string, start: string) => Promise<string[]>;
+    populate: (groupId: string, selected: string) => Promise<void>;
   };
   const fns = factory(
     requestJson,
@@ -47,8 +56,10 @@ function plannedDaysHarness(
     weekStart,
     (monday: string) => Array.from({ length: 7 }, (_, i) => dateShift(monday, i)),
     dateShift,
+    { date: selectedDate }, { createElement: () => ({ value: "", textContent: "" }) },
+    (date: string) => date.slice(8), (date: string) => date, true,
   );
-  return { ...fns, requested };
+  return { ...fns, requested, selectedDate };
 }
 
 describe("G-04.11 Kindertraining day navigation obeys shared group calendar", () => {
@@ -77,6 +88,21 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     expect(await find("kids-group", "2026-11-17", -1, false)).toBe("2026-11-10");
     expect(requested).toContain("2026-11-09");
     expect(requested).toContain("2026-11-16");
+  });
+
+  it("only offers server-approved days in the Kids date select", async () => {
+    const { populate, selectedDate } = plannedDaysHarness({
+      "2026-11-09": ["2026-11-10", "2026-11-14"],
+      "2026-11-16": ["2026-11-17"],
+    });
+    await populate("kids-group", "2026-11-10");
+    expect(selectedDate.options.map(option => option.value)).toEqual([
+      "2026-11-10", "2026-11-14", "2026-11-17",
+    ]);
+    expect(selectedDate.value).toBe("2026-11-10");
+    expect(selectedDate.options).not.toContainEqual(
+      expect.objectContaining({ value: "2026-11-11" }),
+    );
   });
 
   it("includes extra days, excludes cancellations, and denies invalid calendar responses", async () => {
