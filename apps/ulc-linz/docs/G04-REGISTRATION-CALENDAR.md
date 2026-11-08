@@ -99,3 +99,33 @@ Erst nach der fachlichen Freigabe dieser Struktur:
 
 **Gate:** Eigener PR, CI, Review; kein Merge, keine Preview- oder
 Produktionsmutation ohne nächste ausdrückliche Betreiberfreigabe.
+
+## G-04.2a – geprüfte Registrierungsregeln (separater Integrations-PR)
+
+Die Anwendung kann eine injizierte Kalender-Lesequelle nutzen:
+
+- **Nur wenn `registrationCalendar` injiziert wird**: Terminliste liefert
+  `registrationWindow`, filtert nicht zulässige neue Wochentage,
+  hält existierende Anmeldungen sichtbar und sperrt direkte/stellvertretende
+  Aktionen sowie Notizänderungen entsprechend der Regel.
+- POST-Speicherpfad erzeugt Trainingstermin und Registration in **einer**
+  PostgreSQL-Transaktion; bei Datenbankfehler (`UL024`) keine leeren Termine.
+- Die neue Kandidatenmigration enthält nun einen Trigger, der reguläre
+  Wochentage, `extra|cancelled|none`, Gruppenzustand, Vorlauf und
+  `Europe/Vienna`-Fristen bei jeder Registration-Änderung mit
+  PostgreSQL-Sperren nochmals prüft. Die Regel greift dadurch auch nach
+  zwischenzeitlicher Änderung einer Gruppenpolicy.
+- Die Wochenansicht zeigt Grund und Meldeschluss, deaktiviert
+  Anmeldung/Stellvertretung/Notizen bei gesperrtem Termin und behält
+  bestehende Optimismus-/Draft-/Konfliktbehandlung bei.
+- Tests: isolierter echter SQL-Write-Guard mit Rollback und Ausnahme-Reset,
+  eigener Service-Test für direkten und stellvertretenden Pfad, allgemeine
+  Typecheck/Unit/Browser/Build-Regression.
+
+**Wichtige Grenze:** Die aktuelle Laufzeit injiziert `registrationCalendar`
+noch **nicht**, das Datenbankschema bleibt v16. Damit sind die neuen Regeln
+zunächst vorbereitet, **aber nicht aktiv**. Konfigurationsendpunkte für
+berechtigte Administratoren, den Sondertermin-Editor, Runtime-Injektion,
+v17-Manifeste/Privacy-/Migrationsfreigabe und mobile Fachabnahme sind
+eine **gesonderte** Aktivierungsstufe G-04.2b. Kein automatisches
+Production-/Preview-Deploy.
