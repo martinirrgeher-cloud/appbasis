@@ -120,7 +120,7 @@ export async function registrationCalendarHttpResponse(
   }
   const calendar = runtime.registrationCalendar;
   try {
-    const data = request.method === "GET"
+    const data: Record<string, unknown> = request.method === "GET"
       ? query(url, exceptional)
       : exact(await bodyOf(request), exceptional
         ? ["groupId", "sessionDate", "expectedRevision", "kind"]
