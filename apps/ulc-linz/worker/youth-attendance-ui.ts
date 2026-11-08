@@ -31,6 +31,14 @@ function areaUi(source: string, prefix: "u14" | "kids", area: "u14" | "kindertra
       'refreshYouthCategoryCatalog("' + area + '")',
     );
   }
+  if (source === ULC_U12_CSS && area === "kindertraining") {
+    output += `
+.kids-date-nav { grid-column:1; grid-row:1; }
+.kids-date-shortcuts { grid-column:2; grid-row:1; }
+.kids-calendar-hint { grid-column:1 / -1; margin:0; padding:4px 6px; font-size:.76rem; line-height:1.35; color:var(--secondary); background:var(--muted); border-radius:7px; }
+.kids-calendar-hint[hidden] { display:none; }
+`;
+  }
   if (source === ULC_U12_HTML) {
     if (area === "kindertraining") {
       output = output.replace('>Heute</button>', '>Zum aktuellen Training</button>')
