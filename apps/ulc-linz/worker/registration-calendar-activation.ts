@@ -16,6 +16,7 @@ export class UlcRegistrationCalendarActivationError extends Error {
 export interface UlcCalendarReadiness {
   readonly database_name: string;
   readonly principal_name: string;
+  readonly least_privilege_role: boolean;
   readonly rule_table: boolean;
   readonly exception_table: boolean;
   readonly guard_function: boolean;
@@ -38,6 +39,7 @@ export function assertUlcG04PreviewCalendarReadiness(value: unknown): asserts va
     typeof row.principal_name === "string" &&
     row.principal_name.length > 0 &&
     row.principal_name !== "appbasis_ulc_linz_preview_migration" &&
+    row.least_privilege_role === true &&
     row.rule_table === true &&
     row.exception_table === true &&
     [
@@ -54,6 +56,11 @@ export async function verifyUlcG04PreviewCalendarReadiness(
     SELECT
       current_database() AS database_name,
       current_user AS principal_name,
+      EXISTS (
+        SELECT 1 FROM pg_catalog.pg_roles r WHERE r.rolname = current_user
+          AND r.rolcanlogin AND NOT r.rolsuper AND NOT r.rolcreatedb
+          AND NOT r.rolcreaterole AND NOT r.rolreplication AND NOT r.rolbypassrls
+      ) AS least_privilege_role,
       to_regclass('public.ulc_linz_registration_calendar_rule') IS NOT NULL AS rule_table,
       to_regclass('public.ulc_linz_registration_calendar_exception') IS NOT NULL AS exception_table,
       EXISTS (
@@ -66,7 +73,11 @@ export async function verifyUlcG04PreviewCalendarReadiness(
         SELECT 1 FROM pg_catalog.pg_trigger t
         JOIN pg_catalog.pg_class c ON t.tgrelid = c.oid
         JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+        JOIN pg_catalog.pg_proc p ON t.tgfoid = p.oid
+        JOIN pg_catalog.pg_namespace fn ON p.pronamespace = fn.oid
         WHERE n.nspname = 'public'
+          AND fn.nspname = 'public'
+          AND p.proname = 'ulc_linz_registration_calendar_guard'
           AND c.relname = 'ulc_linz_training_registration'
           AND t.tgname = 'ulc_linz_registration_calendar_guard_trg'
           AND t.tgenabled = 'O' AND NOT t.tgisinternal
