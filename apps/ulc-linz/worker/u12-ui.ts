@@ -177,7 +177,9 @@ export const ULC_U12_CSS = `
 .u12-date-shortcuts button { min-height:var(--ab-touch-target); border:0; background:transparent; color:var(--accent); padding:3px 5px; font-size:.73rem; font-weight:750; border-radius:8px; cursor:pointer; }
 .u12-date-shortcuts button[aria-pressed="true"] { background:var(--muted); color:var(--secondary); }
 .u12-week, .u12-days { display:grid; gap:8px; min-width:0; max-width:100%; }
-.u12-info { width:40px; height:42px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--secondary); font-size:1.1rem; font-weight:750; }
+.u12-info { width:44px; min-width:44px; height:44px; padding:0; border:1px solid var(--border); border-radius:9px; background:var(--card); color:var(--secondary); font-size:1.1rem; font-weight:750; cursor:pointer; }
+.u12-info--emergency { color:var(--accent); border-color:var(--accent); }
+.u12-info:focus-visible, .u12-contact-call:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .u12-person__toggle { display: flex; gap: 10px; flex: 1 1 auto; align-items: center; min-width: 0; cursor: pointer; }
 .u12-details-dialog { width: min(96vw, 480px); max-height: min(85dvh, 690px); border-radius: 16px; border: 1px solid var(--border); padding: 18px; color: inherit; background: var(--surface, #fff); overflow-y: auto; }
 .u12-details-dialog::backdrop { background: rgba(0, 0, 0, .6); }
@@ -187,6 +189,12 @@ export const ULC_U12_CSS = `
 .u12-details-section h3 { font-size: .94rem; margin: 0; }
 .u12-contact-entry { padding: 10px 0; border-top: 1px solid var(--border); display: grid; gap: 3px; }
 .u12-contact-entry small { color: var(--secondary); }
+.u12-contact-group { display:grid; gap:4px; min-width:0; }
+.u12-contact-group h4 { font-size:.87rem; margin:12px 0 0; }
+.u12-contact-entry span { overflow-wrap:anywhere; }
+.u12-contact-call { display:inline-flex; align-items:center; justify-content:center; min-height:44px; min-width:105px; width:max-content; max-width:100%; box-sizing:border-box; padding:8px 13px; border-radius:9px; background:var(--accent); color:var(--on-accent,#fff); text-decoration:none; font-size:.85rem; font-weight:750; }
+.u12-contact-call:hover { text-decoration:underline; }
+.u12-contact-call[hidden] { display:none; }
 .u12-details-section p { overflow-wrap: anywhere; white-space: pre-wrap; }
  .u12-roster { isolation: isolate; }
 .u12-content-card { border:1px solid var(--border); border-radius:12px; background:var(--card); padding:0; min-width:0; box-shadow:0 2px 8px rgba(15,23,42,.035); }
@@ -560,6 +568,9 @@ function u12ValidSnapshot(snapshot, date, groupId) {
           typeof contact.contactName === "string" &&
           typeof contact.phone === "string" &&
           typeof contact.isEmergency === "boolean" &&
+          (contact.priority === undefined ||
+            (Number.isSafeInteger(contact.priority) && contact.priority >= 1 &&
+             contact.priority <= 1000)) &&
           (contact.relationship === null || typeof contact.relationship === "string") &&
           (contact.notes === null || typeof contact.notes === "string")) ||
         ids.has(person.athleteId)) return false;
@@ -1405,8 +1416,12 @@ function renderU12Attendance() {
       info.type = "button";
       info.className = "u12-info";
       info.dataset.u12InfoId = person.athleteId;
-      info.textContent = "ⓘ";
-      info.setAttribute("aria-label", "Hinweise und Kontakte zu " +
+      const hasEmergencyContact = person.contacts.some((contact) => contact.isEmergency);
+      info.textContent = hasEmergencyContact ? "☎" : "ⓘ";
+      info.classList.toggle("u12-info--emergency", hasEmergencyContact);
+      info.title = hasEmergencyContact ? "Notfallkontakte öffnen" : "Hinweise und Kontakte öffnen";
+      info.setAttribute("aria-label",
+        (hasEmergencyContact ? "Notfallkontakte zu " : "Hinweise und Kontakte zu ") +
         person.firstName + " " + person.lastName + " anzeigen");
       row.append(info);
     }
@@ -1663,6 +1678,19 @@ async function u12ReloadAttendance() {
 }
 
 
+// Dial through the device only after strict validation. Never put arbitrary
+// contact text, extensions or URI syntax into a clickable tel: destination.
+function u12DialablePhone(rawPhone) {
+  if (typeof rawPhone !== "string") return null;
+  const phone = rawPhone.trim();
+  if (!phone || !phone.split("").every((char, index) =>
+      (char >= "0" && char <= "9") ||
+      " ()/.-".includes(char) || (index === 0 && char === "+"))) return null;
+  const digits = phone.split("").filter((char) => char >= "0" && char <= "9").join("");
+  if (digits.length < 3 || digits.length > 15) return null;
+  return "tel:" + (phone.startsWith("+") ? "+" : "") + digits;
+}
+
 function openU12AthleteDetails(athleteId) {
   const person = u12Snapshot?.participants.find(
     (item) => item.athleteId === athleteId,
@@ -1689,23 +1717,49 @@ function openU12AthleteDetails(athleteId) {
     empty.textContent = "Keine Kontaktperson hinterlegt.";
     contacts.append(empty);
   }
-  for (const contact of person.contacts) {
-    const entry = document.createElement("div");
-    entry.className = "u12-contact-entry";
-    const name = document.createElement("strong");
-    name.textContent = contact.contactName +
-      (contact.relationship ? " · " + contact.relationship : "");
-    const phone = document.createElement("span");
-    phone.textContent = "Telefon: " + contact.phone;
-    const label = document.createElement("small");
-    label.textContent = contact.isEmergency ? "Notfallkontakt" : "Kontakt";
-    entry.append(name, phone, label);
-    if (contact.notes) {
-      const note = document.createElement("p");
-      note.textContent = contact.notes;
-      entry.append(note);
+  // Preserve server-side emergency/priority ordering, with distinct groups.
+  for (const group of [
+    { title: "Notfallkontakte", entries: person.contacts.filter((contact) => contact.isEmergency) },
+    { title: "Weitere Kontakte", entries: person.contacts.filter((contact) => !contact.isEmergency) },
+  ]) {
+    if (group.entries.length === 0) continue;
+    const section = document.createElement("div");
+    section.className = "u12-contact-group";
+    const heading = document.createElement("h4");
+    heading.textContent = group.title;
+    section.append(heading);
+    for (const contact of group.entries) {
+      const entry = document.createElement("div");
+      entry.className = "u12-contact-entry";
+      const name = document.createElement("strong");
+      name.textContent = contact.contactName +
+        (contact.relationship ? " · " + contact.relationship : "");
+      const phone = document.createElement("span");
+      phone.textContent = "Telefon: " + contact.phone;
+      const label = document.createElement("small");
+      label.textContent = contact.isEmergency ? "Notfallkontakt" : "Kontakt";
+      entry.append(name, phone, label);
+      const href = u12DialablePhone(contact.phone);
+      if (href) {
+        const call = document.createElement("a");
+        call.className = "u12-contact-call";
+        call.href = href;
+        call.textContent = "☎ Anrufen";
+        call.setAttribute("aria-label", "Anrufen: " + contact.contactName);
+        entry.append(call);
+      } else {
+        const hint = document.createElement("small");
+        hint.textContent = "Nummer prüfen – Direktwahl nicht möglich.";
+        entry.append(hint);
+      }
+      if (contact.notes) {
+        const note = document.createElement("p");
+        note.textContent = contact.notes;
+        entry.append(note);
+      }
+      section.append(entry);
     }
-    contacts.append(entry);
+    contacts.append(section);
   }
   u12Ui.detailsContent.append(contacts);
   u12Ui.detailsDialog.showModal();
