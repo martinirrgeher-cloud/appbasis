@@ -114,6 +114,7 @@ export const ULC_U12_HTML = `
               <p class="message message--error" id="u12-statistics-error" role="alert" hidden></p>
               <p class="u12-statistics-state" id="u12-statistics-state" role="status"></p>
               <div class="u12-statistics-summary" id="u12-statistics-summary"></div>
+              <p class="u12-statistics-completeness" id="u12-statistics-completeness" role="status"></p>
               <div class="u12-statistics-tabs" aria-label="Statistiken auswählen">
                 <button type="button" data-u12-stats-tab="trainings" aria-pressed="true">Trainings</button>
                 <button type="button" data-u12-stats-tab="athletes" aria-pressed="false">Athleten</button>
@@ -226,6 +227,7 @@ export const ULC_U12_CSS = `
 .u12-statistics-kpi { display:grid; gap:3px; padding:9px 5px; border:1px solid var(--border); border-radius:9px; text-align:center; background:var(--muted); min-width:0; }
 .u12-statistics-kpi strong { font-size:1.15rem; line-height:1.2; }
 .u12-statistics-kpi small { font-size:.68rem; color:var(--secondary); overflow-wrap:anywhere; }
+.u12-statistics-completeness { margin:0 10px 9px; font-size:.78rem; color:var(--secondary); line-height:1.45; overflow-wrap:anywhere; }
 .u12-statistics-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; padding:0 10px 8px; }
 @media(min-width:560px) { .u12-statistics-tabs { grid-template-columns:repeat(4,minmax(0,1fr)); } }
 .u12-statistics-tabs button { min-width:0; min-height:var(--ab-touch-target); padding:5px 3px; border:1px solid var(--border); border-radius:8px; background:var(--card); color:var(--text); font:inherit; font-size:.8rem; font-weight:650; cursor:pointer; }
@@ -330,6 +332,10 @@ export const ULC_U12_CSS = `
 .u12-person__answer span { font-size:.8rem; min-width:26px; text-align:left; }
 .u12-person__answer:has(input:checked) { background:var(--ab-brand-soft); border-color:var(--accent); color:var(--accent); }
 .u12-person__answer:has(input:checked)::before { content:"✓"; background:var(--accent); color:var(--ab-brand-contrast); }
+.u12-person__answer[data-attendance-status="open"] { background:var(--card); border-style:dashed; color:var(--secondary); }
+.u12-person__answer[data-attendance-status="open"]::before { content:"?"; }
+.u12-person__answer[data-attendance-status="excused"] { background:var(--muted); color:var(--secondary); }
+.u12-person__answer[data-attendance-status="excused"]::before { content:"E"; }
 .u12-person__answer:has(input:focus-visible) { outline:3px solid var(--accent); outline-offset:2px; }
 .u12-person:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 7px; }
 @media (max-width: 370px) {
@@ -360,6 +366,7 @@ const u12Ui = {
   statsError: document.querySelector("#u12-statistics-error"),
   statsState: document.querySelector("#u12-statistics-state"),
   statsSummary: document.querySelector("#u12-statistics-summary"),
+  statsCompleteness: document.querySelector("#u12-statistics-completeness"),
   statsMonths: document.querySelector("#u12-statistics-months"),
   statsTrainings: document.querySelector("#u12-statistics-trainings"),
   statsAthletes: document.querySelector("#u12-statistics-athletes"),
@@ -394,6 +401,34 @@ const u12Ui = {
   success: document.querySelector("#u12-success"),
 };
 const U12_SERVER_STATUSES = Object.freeze(["open", "present", "excused", "absent"]);
+const U12_ATTENDANCE_STATUS_TEXT = Object.freeze({
+  open: { short: "Offen", long: "Offen – noch nicht erfasst" },
+  present: { short: "Ja", long: "Anwesend" },
+  absent: { short: "Nein", long: "Abwesend" },
+  excused: { short: "Entsch.", long: "Entschuldigt" },
+});
+
+// Display only: saved open/excused states remain untouched unless the trainer
+// explicitly operates the existing binary Ja/Nein checkbox.
+function u12DisplayedAttendanceStatus(person, checked, touched) {
+  return touched ? (checked ? "present" : "absent") : person.status;
+}
+function updateU12AttendanceStatus(mark, person) {
+  const athleteId = person.athleteId;
+  const status = u12DisplayedAttendanceStatus(
+    person, u12Present.get(athleteId) === true, u12TouchedAthletes.has(athleteId),
+  );
+  const copy = U12_ATTENDANCE_STATUS_TEXT[status];
+  if (!copy) return; // Incoming snapshots are validated separately.
+  mark.textContent = copy.short;
+  const pill = mark.closest(".u12-person__answer");
+  if (!pill) return;
+  pill.dataset.attendanceStatus = status;
+  pill.title = copy.long;
+  const checkbox = pill.querySelector("input[type=checkbox]");
+  checkbox?.setAttribute("aria-label",
+    "Anwesenheit " + person.firstName + " " + person.lastName + ": " + copy.long);
+}
 let U12_STANDARD_CONTENT_CATALOG = [];
 
 function updateU12CategoryCatalog(categories) {
@@ -685,7 +720,12 @@ function refreshU12Controls() {
   if (u12Ui.count) {
     const total = u12Snapshot?.participants.length ?? 0;
     const present = [...u12Present.values()].filter(Boolean).length;
-    u12Ui.count.textContent = present + " von " + total + " anwesend";
+    const open = (u12Snapshot?.participants ?? []).filter((person) =>
+      u12DisplayedAttendanceStatus(person,
+        u12Present.get(person.athleteId) === true,
+        u12TouchedAthletes.has(person.athleteId)) === "open").length;
+    u12Ui.count.textContent = present + " von " + total + " anwesend" +
+      (open > 0 ? " · " + open + " offen" : "");
   }
   if (u12Ui.saveState) {
     u12Ui.saveState.textContent = u12Saving ? "Wird gespeichert …" :
@@ -702,8 +742,11 @@ function refreshU12Controls() {
       u12HasUnconfirmedAnswers() ? "Alte Antworten – beim Ändern automatisch übernehmen" :
       "Automatisch gespeichert";
   }
+  const participantsById = new Map((u12Snapshot?.participants ?? [])
+    .map((person) => [person.athleteId, person]));
   for (const mark of u12Ui.days?.querySelectorAll("[data-u12-answer-id]") ?? []) {
-    mark.textContent = u12Present.get(mark.dataset.u12AnswerId) ? "Ja" : "Nein";
+    const person = participantsById.get(mark.dataset.u12AnswerId);
+    if (person) updateU12AttendanceStatus(mark, person);
   }
 }
 
@@ -1079,6 +1122,19 @@ function renderU12Statistics(report) {
     throw new Error("U12_STATISTICS_INVALID");
   }
   u12Ui.statsSummary?.replaceChildren();
+  const assessed = report.summary.evaluatedStatuses;
+  const open = report.summary.openStatuses;
+  if (!Number.isSafeInteger(assessed) || assessed < 0 ||
+      !Number.isSafeInteger(open) || open < 0) {
+    throw new Error("U12_STATISTICS_INVALID");
+  }
+  if (u12Ui.statsCompleteness) {
+    const total = assessed + open;
+    u12Ui.statsCompleteness.textContent =
+      "Status geklärt: " + assessed + " von " + total +
+      " vorhandenen Anwesenheitseinträgen · " + open + " offen. " +
+      "Nicht angelegte Einträge werden nicht als Fehlzeiten gewertet.";
+  }
   const kpis = [
     ["Trainings", report.summary.trainings],
     ["Anwesenheiten", report.summary.attendance],
@@ -1115,7 +1171,9 @@ function renderU12Statistics(report) {
     appendU12StatisticsLine(
       u12Ui.statsTrainings, germanDate(training.date),
       training.presentCount + " anwesend",
-      training.categoryCount + " Kategorien · " + training.registeredCount + " erfasst · " +
+      training.categoryCount + " Kategorien · " +
+        (training.registeredCount - training.openCount) + " / " +
+        training.registeredCount + " Status geklärt · " +
         training.trainerPresentCount + " Trainer",
     );
   }
@@ -1133,8 +1191,14 @@ function renderU12Statistics(report) {
     const contents = document.createElement("div");
     contents.className = "u12-statistics-athlete__detail";
     const explanation = document.createElement("small");
-    explanation.textContent = "Anwesend / erfasst · offen zählt nicht als Fehlzeit";
+    explanation.textContent = "Quote: anwesend / (anwesend + abwesend + entschuldigt). " +
+      "Offene und nicht vorhandene Einträge zählen nicht als Fehlzeit.";
     contents.append(explanation);
+    if (athlete.openCount > 0) {
+      const openStatus = document.createElement("small");
+      openStatus.textContent = athlete.openCount + " vorhandene Einträge noch offen";
+      contents.append(openStatus);
+    }
     if (!Array.isArray(athlete.categories) || athlete.categories.length === 0) {
       const empty = document.createElement("small");
       empty.textContent = "Keine standardisierten Trainingsinhalte zugeordnet.";
@@ -1195,6 +1259,7 @@ async function loadU12Statistics() {
   showMessage(u12Ui.statsError, "");
   u12Ui.statsState.textContent = "Statistik wird geladen …";
   u12Ui.statsSummary?.replaceChildren();
+  if (u12Ui.statsCompleteness) u12Ui.statsCompleteness.textContent = "";
   u12Ui.statsMonths?.replaceChildren();
   u12Ui.statsTrainings?.replaceChildren();
   u12Ui.statsAthletes?.replaceChildren();
@@ -1319,8 +1384,8 @@ function renderU12Attendance() {
     input.setAttribute("aria-label", "Anwesend: " + person.firstName + " " + person.lastName);
     const status = document.createElement("span");
     status.dataset.u12AnswerId = person.athleteId;
-    status.textContent = input.checked ? "Ja" : "Nein";
     answer.append(input, status);
+    updateU12AttendanceStatus(status, person);
     label.append(name, answer);
     row.append(label);
     if (person.notes || person.contacts.length > 0) {
