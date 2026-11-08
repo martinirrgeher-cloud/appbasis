@@ -2609,6 +2609,7 @@ let kindertrainingGroups = [];
 let kindertrainingSnapshot = null;
 let kindertrainingWeekStart = "";
 let kindertrainingWeekSnapshots = [];
+let kindertrainingWeekCalendarDates = [];
 let kindertrainingWeekDirtyDates = new Set();
 let kindertrainingWeekExpandedDates = new Set();
 let kindertrainingWeekFailedDates = new Set();
@@ -3094,6 +3095,7 @@ function resetAttendanceSessionState() {
   kindertrainingSnapshot = null;
   kindertrainingWeekStart = "";
   kindertrainingWeekSnapshots = [];
+  kindertrainingWeekCalendarDates = [];
   kindertrainingWeekDirtyDates = new Set();
   kindertrainingWeekExpandedDates = new Set();
   kindertrainingWeekFailedDates = new Set();
@@ -4106,6 +4108,7 @@ async function bootstrapKindertraining() {
   kindertrainingSnapshot = null;
   kindertrainingWeekStart = localWeekStart(new Date());
   kindertrainingWeekSnapshots = [];
+  kindertrainingWeekCalendarDates = [];
   kindertrainingWeekDirtyDates = new Set();
   kindertrainingWeekExpandedDates = new Set();
   kindertrainingLoadedGroupId = "";
@@ -4246,7 +4249,7 @@ function renderKindertrainingRegistrationMatrix() {
     return;
   }
 
-  const dates = registrationWeekDates(kindertrainingWeekStart || localWeekStart(new Date()));
+  const dates = kindertrainingWeekCalendarDates;
   const snapshots = new Map(kindertrainingWeekSnapshots.map((day) => [day.sessionDate, day]));
   const people = new Map();
   for (const date of dates) {
@@ -4316,7 +4319,7 @@ function renderKindertrainingRegistrationMatrix() {
   if (roster.length === 0) {
     const row = document.createElement("tr");
     const empty = document.createElement("td");
-    empty.colSpan = 8;
+    empty.colSpan = dates.length + 1;
     empty.textContent = "Für diese Woche sind keine Teilnehmer geladen.";
     row.append(empty);
     body.append(row);
@@ -4365,18 +4368,18 @@ function renderKindertrainingWeek() {
     return;
   }
 
-  if (kindertrainingWeekSnapshots.length === 0 && kindertrainingWeekFailedDates.size === 0) {
+  if (kindertrainingWeekCalendarDates.length === 0 && kindertrainingWeekFailedDates.size === 0) {
     const empty = document.createElement("div");
     empty.className = "card kindertraining-week-empty";
-    empty.textContent = "Für diese Woche konnten keine Trainingstage geladen werden.";
+    empty.textContent = "Für diese Woche sind keine Trainingstage geplant.";
     container.append(empty);
     refreshKindertrainingWeekControls();
     return;
   }
 
-  // Render all seven dates, even if only some API requests succeed. An
-  // unavailable date is not a valid attendance snapshot and must not be editable.
-  for (const sessionDate of registrationWeekDates(kindertrainingWeekStart)) {
+  // Show only calendar-approved dates. Existing test sessions outside the
+  // updated schedule are intentionally not shown in the current week view.
+  for (const sessionDate of kindertrainingWeekCalendarDates) {
     const snapshot = kindertrainingWeekSnapshots.find(
       (entry) => entry.sessionDate === sessionDate,
     );
@@ -4600,6 +4603,16 @@ function refreshKindertrainingWeekControls() {
   }
 }
 
+function isKindertrainingWeekCalendar(payload, groupId, weekStart) {
+  const allDates = registrationWeekDates(weekStart);
+  const dates = payload?.dates;
+  if (payload?.groupId !== groupId || payload?.weekStart !== weekStart ||
+      !Array.isArray(dates)) return false;
+  const positions = dates.map(date => allDates.indexOf(date));
+  return positions.every((index, position) => index >= 0 &&
+    (position === 0 || index > positions[position - 1]));
+}
+
 async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
   if (!kindertrainingReady || kindertrainingLoading || kindertrainingWeekSaving) return;
   const groupId = elements.kindertrainingGroup?.value || "";
@@ -4610,7 +4623,6 @@ async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
   const generation = attendanceSessionGeneration;
   const loadId = ++kindertrainingWeekLoadId;
   const weekStart = kindertrainingWeekStart || localWeekStart(new Date());
-  const dates = registrationWeekDates(weekStart);
   kindertrainingLoading = true;
   showMessage(elements.kindertrainingMessage, "");
   showMessage(elements.kindertrainingSuccess, "");
@@ -4618,6 +4630,16 @@ async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
   renderKindertrainingWeek();
 
   try {
+    const calendar = await requestJson(
+      "/api/modules/kindertraining/calendar?groupId=" +
+      encodeURIComponent(groupId) + "&weekStart=" + encodeURIComponent(weekStart),
+    );
+    if (generation !== attendanceSessionGeneration ||
+        loadId !== kindertrainingWeekLoadId) return;
+    if (!isKindertrainingWeekCalendar(calendar, groupId, weekStart)) {
+      throw new Error("Invalid authorized attendance calendar.");
+    }
+    const dates = calendar.dates;
     const responses = await Promise.allSettled(
       dates.map((sessionDate) =>
         requestJson(
@@ -4644,13 +4666,14 @@ async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
       }
     }
     kindertrainingWeekStart = weekStart;
+    kindertrainingWeekCalendarDates = [...dates];
     kindertrainingWeekSnapshots = snapshots;
     kindertrainingWeekFailedDates = failedDates;
     if (failedDates.size > 0) {
       showMessage(
         elements.kindertrainingMessage,
         String(failedDates.size) + " Trainingstag(e) konnten nicht geladen werden. " +
-          "Die übrigen Tage bleiben sichtbar. Bitte „Neu laden“ versuchen.",
+          "Die übrigen geplanten Tage bleiben sichtbar. Bitte „Neu laden“ versuchen.",
       );
     }
     kindertrainingWeekDirtyDates = new Set();
@@ -4670,8 +4693,9 @@ async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
       generation !== attendanceSessionGeneration ||
       loadId !== kindertrainingWeekLoadId
     ) return;
+    kindertrainingWeekCalendarDates = [];
     kindertrainingWeekSnapshots = [];
-    kindertrainingWeekFailedDates = new Set(dates);
+    kindertrainingWeekFailedDates = new Set();
     kindertrainingWeekDirtyDates = new Set();
     kindertrainingLoadedGroupId = groupId;
     showMessage(
@@ -4759,6 +4783,7 @@ async function handleKindertrainingWeekGroupChange() {
     }
   }
   kindertrainingWeekSnapshots = [];
+  kindertrainingWeekCalendarDates = [];
   kindertrainingWeekExpandedDates = new Set();
   kindertrainingWeekFailedDates = new Set();
   kindertrainingLoadedGroupId = "";
