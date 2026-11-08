@@ -1871,28 +1871,43 @@ async function u12ChangeGroup() {
   if (u12Saving || u12Loading || u12CalendarBusy) return;
   const next = u12Ui.group?.value || "";
   if (next === u12LoadedGroupId) return;
-  if (!(await u12FlushChanges())) {
-    if (u12Ui.group) u12Ui.group.value = u12LoadedGroupId;
-    return;
-  }
-  u12Snapshot = null;
-  u12Present = new Map();
-  u12LoadedGroupId = "";
-  u12LoadedDate = "";
+  const generation = attendanceSessionGeneration;
+  // Freeze Kids drafts before a potentially slow CAS flush, just as in day
+  // navigation. U12/U14 continue to use their existing group-change path.
   if (u12FollowGroupCalendar) {
-    u12CalendarWeekCache = new Map();
-    if (u12Ui.date) {
-      u12Ui.date.replaceChildren();
-      const placeholder = document.createElement("option");
-      placeholder.value = localIsoDate(new Date());
-      placeholder.textContent = "Trainingstage laden …";
-      u12Ui.date.append(placeholder);
+    u12CalendarBusy = true;
+    refreshU12Controls();
+  }
+  try {
+    if (!(await u12FlushChanges())) {
+      if (u12Ui.group) u12Ui.group.value = u12LoadedGroupId;
+      return;
+    }
+    if (generation !== attendanceSessionGeneration) return;
+    u12Snapshot = null;
+    u12Present = new Map();
+    u12LoadedGroupId = "";
+    u12LoadedDate = "";
+    if (u12FollowGroupCalendar) {
+      u12CalendarWeekCache = new Map();
+      if (u12Ui.date) {
+        u12Ui.date.replaceChildren();
+        const placeholder = document.createElement("option");
+        placeholder.value = localIsoDate(new Date());
+        placeholder.textContent = "Trainingstage laden …";
+        u12Ui.date.append(placeholder);
+      }
+    }
+    u12DirtyDates.clear();
+    u12Conflict = false;
+    if (next) await loadU12Attendance();
+    else renderU12Attendance();
+  } finally {
+    if (u12FollowGroupCalendar && generation === attendanceSessionGeneration) {
+      u12CalendarBusy = false;
+      refreshU12Controls();
     }
   }
-  u12DirtyDates.clear();
-  u12Conflict = false;
-  if (next) await loadU12Attendance();
-  else renderU12Attendance();
 }
 
 async function u12ReloadAttendance() {
