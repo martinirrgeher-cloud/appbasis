@@ -37,7 +37,7 @@ describe("U12, U14 and Kindertraining autosave with per-training notes", () => {
 
   it("debounces the initial write, rather than saving an empty day on load", () => {
     const source = ULC_U12_SCRIPT.slice(
-      ULC_U12_SCRIPT.indexOf("function scheduleU12AutoSave()"),
+      ULC_U12_SCRIPT.indexOf("function u12IsOffline()"),
       ULC_U12_SCRIPT.indexOf("function markU12DraftDirty()"),
     );
     const save = vi.fn();
