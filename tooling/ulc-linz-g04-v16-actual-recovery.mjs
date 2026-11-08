@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { holdUlcLinzM5ExportedSnapshot } from "./ulc-linz-m5-exported-snapshot.mjs";
@@ -11,6 +11,8 @@ import { validateG04V17PreviewRecoveryPreflight } from "./ulc-linz-g04-v17-recov
 
 const PG_IMAGE = "postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15";
 const SOURCE_DB = "appbasis_ulc_linz_preview";
+// Resolve from this module, never from the operator caller\'s working directory.
+export const G045_REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DUMP = "preview-v16.pgdump";
 const MANIFEST = "preview-v16.manifest.json";
 const REPORT = "preview-v16.restore-report.json";
@@ -113,6 +115,11 @@ export async function readDataDigest(url, snapshotId) {
     return await db.client.begin(async sql => {
       await sql.unsafe("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY");
       if (snapshotId) await sql.unsafe("SET TRANSACTION SNAPSHOT '" + snapshotId + "'");
+      // Canonical JSON serialization for identical timestamptz/date/interval/float values.
+      await sql.unsafe("SET LOCAL TIME ZONE 'UTC'");
+      await sql.unsafe("SET LOCAL DateStyle TO 'ISO, YMD'");
+      await sql.unsafe("SET LOCAL IntervalStyle TO 'iso_8601'");
+      await sql.unsafe("SET LOCAL extra_float_digits TO 3");
       const tables = await sql.unsafe(
         "SELECT c.relname FROM pg_catalog.pg_class c" +
         " JOIN pg_catalog.pg_namespace ns ON ns.oid=c.relnamespace" +
@@ -207,7 +214,7 @@ export async function runG045(action,env=process.env) {
   const {backupUrl,restoreUrl,work,restoreDb}=validateG045OperatorInput(env,action);
   const dir=await lstat(work);
   const canonical=await realpath(work);
-  const repoRoot=await realpath(resolve(process.cwd()));
+  const repoRoot=await realpath(G045_REPOSITORY_ROOT);
   if (!dir.isDirectory() || dir.isSymbolicLink() ||
       canonical!==resolve(work) || canonical===repoRoot ||
       canonical.startsWith(repoRoot + "/") || (dir.mode & 0o077)!==0) deny();
