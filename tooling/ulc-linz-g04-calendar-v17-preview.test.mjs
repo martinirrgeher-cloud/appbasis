@@ -46,6 +46,7 @@ const current = {
     tgname: "ulc_linz_registration_calendar_guard_trg",
     tgenabled: "O",
     table_name: "ulc_linz_training_registration",
+    function_name: "ulc_linz_registration_calendar_guard",
   }],
   functions: [{
     proname: "ulc_linz_registration_calendar_guard", schema_name: "public",
@@ -88,6 +89,7 @@ test("G-04.2c rejects incomplete v16, partial v17, broken guard, or metadata dri
     { ...current, constraints: current.constraints.slice(0, 1) },
     { ...current, triggers: [] },
     { ...current, triggers: current.triggers.map((x) => ({ ...x, tgenabled: "D" })) },
+    { ...current, triggers: current.triggers.map((x) => ({ ...x, function_name: "unrelated" })) },
     { ...current, functions: [] },
     { ...current, functions: current.functions.map((x) => ({ ...x, schema_name: "pg_temp" })) },
   ];
