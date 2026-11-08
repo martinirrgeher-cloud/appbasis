@@ -378,3 +378,69 @@ test("replaces a stale world-readable artifact with owner-only permissions", asy
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("G-04 uses only existing ULC Preview Worker with explicit v17 opt-in and original Hyperdrives", () => {
+  const config = renderGeneratedPreviewWranglerConfig({
+    appId: "ulc-linz",
+    hyperdriveId: "existing-ulc-preview-application-hyperdrive",
+    securityLogHyperdriveId: "existing-ulc-preview-security-log-hyperdrive",
+    baseURL: "https://appbasis-ulc-linz.demo-account.workers.dev",
+    entrypoint: "./worker/preview-exercise-catalog-standard.ts",
+    registrationCalendarV17: true,
+    buildSha: "a".repeat(40),
+    r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
+    r2Jurisdiction: "eu",
+  });
+  assert.equal(config.name, "appbasis-ulc-linz");
+  assert.equal(config.main, "./worker/preview-exercise-catalog-standard.ts");
+  assert.deepEqual(config.hyperdrive.map(x => x.id), [
+    "existing-ulc-preview-application-hyperdrive",
+    "existing-ulc-preview-security-log-hyperdrive",
+  ]);
+  assert.deepEqual(config.vars, {
+    APPBASIS_BASE_URL: "https://appbasis-ulc-linz.demo-account.workers.dev",
+    APPBASIS_GENERATED_APP_ID: "ulc-linz",
+    APPBASIS_RUNTIME_ENVIRONMENT: "generated-preview-ulc-linz",
+    APPBASIS_REGISTRATION_CALENDAR_V17: "enabled",
+    APPBASIS_BUILD_SHA: "a".repeat(40),
+  });
+  assert.equal(config.r2_buckets[0].bucket_name, "appbasis-ulc-linz-preview-exercise-media");
+  assert.equal(JSON.stringify(config).includes("postgresql://"), false);
+  assert.equal(config.secrets.required.length, 1);
+});
+
+test("G-04 v17 preview activation refuses production, wrong app or accidental enablement", () => {
+  const input = {
+    appId: "ulc-linz",
+    hyperdriveId: "preview-app",
+    securityLogHyperdriveId: "preview-security",
+    baseURL: "https://appbasis-ulc-linz.demo-account.workers.dev",
+    entrypoint: "./worker/preview-exercise-catalog-standard.ts",
+    registrationCalendarV17: true,
+  };
+  const failures = [
+    o => { o.appId = "tasks-minimal"; },
+    o => { o.baseURL = "https://ulc-linz.example.com"; },
+    o => { o.baseURL = "https://appbasis-ulc-linz-prod.demo-account.workers.dev"; },
+    o => { o.baseURL = "https://appbasis-ulc-linz.demo-account.workers.dev.evil.test"; },
+    o => { o.entrypoint = "./worker/index.ts"; },
+    o => { o.entrypoint = "./worker/preview.ts"; },
+    o => { delete o.securityLogHyperdriveId; },
+    o => { o.registrationCalendarV17 = "true"; },
+    o => { o.registrationCalendarV17 = 1; },
+  ];
+  for (const mutate of failures) {
+    const candidate={...input};mutate(candidate);
+    assert.throws(() => renderGeneratedPreviewWranglerConfig(candidate));
+  }
+  const normal=renderGeneratedPreviewWranglerConfig({
+    ...input,registrationCalendarV17:false,
+  });
+  assert.equal("APPBASIS_REGISTRATION_CALENDAR_V17" in normal.vars,false);
+  const noToggle=renderGeneratedPreviewWranglerConfig({
+    appId:"ulc-linz",hyperdriveId:"preview-app",
+    securityLogHyperdriveId:"preview-security",
+    baseURL:"https://ulc-linz.example.com",
+  });
+  assert.equal("APPBASIS_RUNTIME_ENVIRONMENT" in noToggle.vars,false);
+});
