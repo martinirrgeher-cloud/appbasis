@@ -3407,7 +3407,7 @@ function isRegistrationWindowContract(window) {
      "cancelled", "deadline-passed", "past-training-day"].includes(window.reason) &&
     (window.deadlineLocal === null ||
       (typeof window.deadlineLocal === "string" &&
-       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(window.deadlineLocal)));
+       /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(window.deadlineLocal)));
 }
 
 function registrationWindowExplanation(window) {
