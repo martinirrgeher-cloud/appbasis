@@ -41,7 +41,7 @@ test("G-04.3 rejects identical, pooled, remote-untrusted, production and weak-SS
   const bad = [
     (v) => { v.restoreDatabaseUrl = v.migrationDatabaseUrl; },
     (v) => { v.restoreDatabaseUrl = url(sourceHost, "appbasis_ulc_linz_g04_restore_rehearsal", "different"); },
-    (v) => { v.restoreDatabaseUrl = url(restoreHost.replace("ep-test", "ep-test-pooler"), "appbasis_ulc_linz_g04_restore_rehearsal", "different"); },
+    (v) => { v.restoreDatabaseUrl = url("ep-test-ulc-restore-pooler.eu-central-1.aws.neon.tech", "appbasis_ulc_linz_g04_restore_rehearsal", "different"); },
     (v) => { v.restoreDatabaseUrl = url("db.example.com", "appbasis_ulc_linz_g04_restore_rehearsal", "different"); },
     (v) => { v.restoreDatabaseUrl = url(restoreHost, "production", "different"); },
     (v) => { v.restoreDatabaseUrl = url(restoreHost, sourceDb, "different"); },
