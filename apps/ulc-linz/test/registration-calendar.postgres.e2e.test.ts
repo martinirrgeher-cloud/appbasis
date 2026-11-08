@@ -213,8 +213,12 @@ if (!databaseUrl) {
       const retainedRule = await calendar.writeRule(organizationId, group.id, null, {
         weekdays: [1, 3], weeksAhead: 4, deadline: null, lateMode: "allow",
       });
-      const retainedException = await calendar.writeException(
+      await calendar.writeException(
         organizationId, group.id, "2026-12-02", null, "cancelled",
+      );
+      // "none" must preserve a monotonic CAS revision even for inactive groups.
+      const retainedException = await calendar.writeException(
+        organizationId, group.id, "2026-12-02", 1, null,
       );
       await connection().client.unsafe(`
         UPDATE appbasis_training_group SET is_active = false
