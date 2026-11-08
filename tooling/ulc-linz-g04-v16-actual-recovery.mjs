@@ -210,14 +210,19 @@ async function waitSnapshot(path) {
   deny();
 }
 
-export async function runG045(action,env=process.env) {
-  const {backupUrl,restoreUrl,work,restoreDb}=validateG045OperatorInput(env,action);
+export async function assertG045PrivateEvidenceDirectory(work) {
   const dir=await lstat(work);
   const canonical=await realpath(work);
   const repoRoot=await realpath(G045_REPOSITORY_ROOT);
   if (!dir.isDirectory() || dir.isSymbolicLink() ||
       canonical!==resolve(work) || canonical===repoRoot ||
       canonical.startsWith(repoRoot + "/") || (dir.mode & 0o077)!==0) deny();
+  return canonical;
+}
+
+export async function runG045(action,env=process.env) {
+  const {backupUrl,restoreUrl,work,restoreDb}=validateG045OperatorInput(env,action);
+  await assertG045PrivateEvidenceDirectory(work);
   const dumpPath=join(work,DUMP);
   if(action==="backup") {
     if ((await readdir(work)).length !== 0) deny();
