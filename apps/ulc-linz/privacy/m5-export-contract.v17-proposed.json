@@ -1,0 +1,436 @@
+{
+  "schemaVersion": 1,
+  "appId": "ulc-linz",
+  "canonicalFormat": "json",
+  "supplementaryFormats": [
+    "csv"
+  ],
+  "unknownDataset": "deny",
+  "runtimeModules": [
+    "countdown",
+    "athletes",
+    "exercise-catalog",
+    "training-blocks",
+    "training-plans",
+    "training-documentation"
+  ],
+  "datasets": [
+    {
+      "id": "member-contact",
+      "privacyClasses": [
+        "member-contact-master-data"
+      ],
+      "sourceTables": [
+        {
+          "owner": "identity",
+          "table": "appbasis_person",
+          "privacyClass": "member-contact-master-data"
+        },
+        {
+          "owner": "identity",
+          "table": "user",
+          "privacyClass": "member-contact-master-data"
+        }
+      ],
+      "scopes": [
+        "self",
+        "managed",
+        "organization"
+      ],
+      "allowedFields": [
+        "username",
+        "displayName",
+        "contactEmail",
+        "createdAt",
+        "updatedAt"
+      ],
+      "csvEligible": true,
+      "csvColumns": [
+        "username",
+        "displayName",
+        "contactEmail",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  ],
+  "excludedTables": [
+    {
+      "owner": "identity",
+      "table": "appbasis_identity_security_state",
+      "privacyClass": "identity-security-state"
+    },
+    {
+      "owner": "identity",
+      "table": "account",
+      "privacyClass": "authentication-credential-data"
+    },
+    {
+      "owner": "identity",
+      "table": "session",
+      "privacyClass": "authentication-session-data"
+    },
+    {
+      "owner": "identity",
+      "table": "verification",
+      "privacyClass": "authentication-verification-data"
+    },
+    {
+      "owner": "identity",
+      "table": "appbasis_identity_operation",
+      "privacyClass": "identity-operation-state"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_capability",
+      "privacyClass": "authorization-configuration"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_role",
+      "privacyClass": "authorization-configuration"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_role_capability",
+      "privacyClass": "authorization-configuration"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_principal",
+      "privacyClass": "authorization-state"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_principal_role",
+      "privacyClass": "authorization-state"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_principal_grant",
+      "privacyClass": "authorization-state"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_principal_revoke",
+      "privacyClass": "authorization-state"
+    },
+    {
+      "owner": "permissions",
+      "table": "appbasis_permission_administration_audit",
+      "privacyClass": "audit-security-data"
+    },
+    {
+      "owner": "athletes",
+      "table": "appbasis_training_group",
+      "privacyClass": "training-group-configuration"
+    },
+    {
+      "owner": "athletes",
+      "table": "appbasis_athlete",
+      "privacyClass": "athlete-master-data"
+    },
+    {
+      "owner": "athletes",
+      "table": "appbasis_athlete_contact",
+      "privacyClass": "athlete-contact-data"
+    },
+    {
+      "owner": "athletes",
+      "table": "appbasis_trainer",
+      "privacyClass": "trainer-master-data"
+    },
+    {
+      "owner": "athletes",
+      "table": "appbasis_athlete_group_membership",
+      "privacyClass": "athlete-training-membership"
+    },
+    {
+      "owner": "athletes",
+      "table": "appbasis_trainer_group_membership",
+      "privacyClass": "trainer-training-membership"
+    },
+    {
+      "owner": "athletes",
+      "table": "appbasis_athletes_deletion",
+      "privacyClass": "minimal-delete-reconciliation-state"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_membership",
+      "privacyClass": "membership-lifecycle-data"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_subject_scope",
+      "privacyClass": "subject-access-link"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_lifecycle_deletion",
+      "privacyClass": "minimal-delete-reconciliation-state"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_lifecycle_audit",
+      "privacyClass": "audit-security-data"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_security_event_log",
+      "privacyClass": "audit-security-data"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_training_session",
+      "privacyClass": "training-session-data"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_training_attendance",
+      "privacyClass": "athlete-training-attendance"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_training_trainer_attendance",
+      "privacyClass": "trainer-training-attendance"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_training_registration",
+      "privacyClass": "athlete-training-registration-intent"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_training_registration_change",
+      "privacyClass": "athlete-training-registration-history"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_trainer_identity_audit",
+      "privacyClass": "audit-security-data"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_training_module_group",
+      "privacyClass": "training-module-configuration"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_exercise_catalog_item",
+      "privacyClass": "exercise-catalog-configuration"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_exercise_parameter",
+      "privacyClass": "exercise-catalog-configuration"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_exercise_group",
+      "privacyClass": "exercise-catalog-configuration"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_exercise_favorite",
+      "privacyClass": "exercise-catalog-user-preference"
+    },
+    {
+      "owner": "exercise-catalog",
+      "table": "appbasis_exercise_catalog_item",
+      "privacyClass": "exercise-catalog-configuration"
+    },
+    {
+      "owner": "exercise-catalog",
+      "table": "appbasis_exercise_catalog_parameter",
+      "privacyClass": "exercise-catalog-configuration"
+    },
+    {
+      "owner": "exercise-catalog",
+      "table": "appbasis_exercise_catalog_audience",
+      "privacyClass": "exercise-catalog-configuration"
+    },
+    {
+      "owner": "exercise-catalog",
+      "table": "appbasis_exercise_catalog_favorite",
+      "privacyClass": "exercise-catalog-user-preference"
+    },
+    {
+      "owner": "exercise-catalog",
+      "table": "appbasis_exercise_catalog_video",
+      "privacyClass": "exercise-catalog-configuration"
+    },
+    {
+      "owner": "exercise-catalog",
+      "table": "appbasis_exercise_catalog_similarity",
+      "privacyClass": "exercise-catalog-configuration"
+    },
+    {
+      "owner": "exercise-catalog",
+      "table": "appbasis_exercise_catalog_usage",
+      "privacyClass": "exercise-catalog-training-usage-metadata"
+    },
+    {
+      "owner": "exercise-catalog",
+      "table": "appbasis_exercise_catalog_private_media",
+      "privacyClass": "exercise-catalog-private-media-metadata"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block",
+      "privacyClass": "training-block-data"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_revision",
+      "privacyClass": "training-block-data"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_revision_item",
+      "privacyClass": "training-block-data"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_revision_item_parameter",
+      "privacyClass": "training-block-data"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_favorite",
+      "privacyClass": "training-block-user-preference"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_usage",
+      "privacyClass": "training-block-training-usage-metadata"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_usage_subject",
+      "privacyClass": "personal-training-plan-subject-attribution"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_usage_subject_deletion",
+      "privacyClass": "minimal-delete-reconciliation-state"
+    },
+    {
+      "owner": "training-blocks",
+      "table": "appbasis_training_block_favorite_deletion",
+      "privacyClass": "minimal-delete-reconciliation-state"
+    },
+    {
+      "owner": "training-documentation",
+      "table": "appbasis_training_documentation",
+      "privacyClass": "training-documentation-data"
+    },
+    {
+      "owner": "training-documentation",
+      "table": "appbasis_training_documentation_revision",
+      "privacyClass": "training-documentation-data"
+    },
+    {
+      "owner": "training-plans",
+      "table": "appbasis_training_plan",
+      "privacyClass": "training-plan-data"
+    },
+    {
+      "owner": "training-plans",
+      "table": "appbasis_training_plan_revision",
+      "privacyClass": "training-plan-data"
+    },
+    {
+      "owner": "training-plans",
+      "table": "appbasis_training_plan_revision_item",
+      "privacyClass": "training-plan-data"
+    },
+    {
+      "owner": "training-plans",
+      "table": "appbasis_training_plan_subject_deletion",
+      "privacyClass": "minimal-delete-reconciliation-state"
+    },
+    {
+      "owner": "training-documentation",
+      "table": "appbasis_training_documentation_subject_deletion",
+      "privacyClass": "minimal-delete-reconciliation-state"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_youth_content_category",
+      "privacyClass": "youth-training-category-configuration"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_youth_group_category",
+      "privacyClass": "youth-training-category-configuration"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_registration_calendar_rule",
+      "privacyClass": "training-calendar-configuration"
+    },
+    {
+      "owner": "ulc-linz-lifecycle",
+      "table": "ulc_linz_registration_calendar_exception",
+      "privacyClass": "training-calendar-configuration"
+    }
+  ],
+  "excludedPrivacyClasses": [
+    "authentication-credential-data",
+    "authentication-session-data",
+    "authentication-verification-data",
+    "identity-security-state",
+    "identity-operation-state",
+    "authorization-configuration",
+    "authorization-state",
+    "audit-security-data",
+    "membership-lifecycle-data",
+    "subject-access-link",
+    "minimal-delete-reconciliation-state",
+    "training-group-configuration",
+    "athlete-master-data",
+    "athlete-contact-data",
+    "trainer-master-data",
+    "athlete-training-membership",
+    "trainer-training-membership",
+    "training-session-data",
+    "athlete-training-attendance",
+    "trainer-training-attendance",
+    "athlete-training-registration-history",
+    "athlete-training-registration-intent",
+    "training-module-configuration",
+    "exercise-catalog-configuration",
+    "exercise-catalog-user-preference",
+    "exercise-catalog-training-usage-metadata",
+    "exercise-catalog-private-media-metadata",
+    "training-block-data",
+    "training-block-user-preference",
+    "training-block-training-usage-metadata",
+    "personal-training-plan-subject-attribution",
+    "training-documentation-data",
+    "training-plan-data",
+    "youth-training-category-configuration",
+    "training-calendar-configuration"
+  ],
+  "credentialFieldNames": [
+    "password",
+    "passwordHash",
+    "accessToken",
+    "refreshToken",
+    "idToken",
+    "sessionToken",
+    "token",
+    "secret",
+    "credential",
+    "cookie",
+    "apiKey",
+    "connectionString"
+  ],
+  "staging": {
+    "status": "not-active-v16-canonical-unchanged",
+    "targetSchemaVersion": 17,
+    "controllerApproval": "pending",
+    "activation": "blocked"
+  }
+}
