@@ -1575,7 +1575,7 @@ async function u12FindCalendarDate(groupId, anchor, direction, includeAnchor,
 }
 
 async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false,
-    onlyWeekday = null) {
+    resolveMoveMode = false) {
   if (!u12Ui.date || !u12Ready || u12CalendarBusy || u12Loading || u12Saving) return;
   const groupId = u12Ui.group?.value || "";
   if (!groupId) return;
@@ -1591,8 +1591,23 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false,
         u12LoadId !== loadId) return;
     // A fresh navigation must observe schedule updates from other sessions.
     u12CalendarWeekCache = new Map();
+    let selectedAnchor = anchor;
+    let includeSelectedAnchor = includeAnchor;
+    let onlyWeekday = null;
+    if (resolveMoveMode) {
+      // A calendar rule can change in another session since the dropdown
+      // was loaded. Decide the arrow semantics only after a fresh API read.
+      await u12FetchCalendarDates(groupId, u12CalendarWeekStart(anchor));
+      if (u12CalendarRuleWeekdays === null) {
+        // Without a saved weekly rule the seven-day API fallback must not
+        // make the trainer click through seven calendar days.
+        onlyWeekday = new Date(anchor + "T12:00:00").getDay();
+        selectedAnchor = shiftIsoDate(anchor, direction * 7);
+        includeSelectedAnchor = true;
+      }
+    }
     const chosen = await u12FindCalendarDate(
-      groupId, anchor, direction, includeAnchor, onlyWeekday);
+      groupId, selectedAnchor, direction, includeSelectedAnchor, onlyWeekday);
     if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
         u12LoadId !== loadId) return;
     // A native select ignores a value that is not yet in its option list.
@@ -1860,18 +1875,10 @@ async function u12MoveDate(offset) {
     if (!u12Ui.date || offset === 0) return;
     const selected = u12Ui.date.value || localIsoDate(new Date());
     const direction = offset > 0 ? 1 : -1;
-    if (u12CalendarRuleWeekdays === null) {
-      // No stored weekly rule: the API's seven-day fallback is *not* proof of
-      // seven daily training sessions. Keep the user's weekday, jump 7 days,
-      // and state this fallback clearly instead of requiring seven clicks.
-      const weekday = new Date(selected + "T12:00:00").getDay();
-      await u12NavigateCalendarDate(
-        shiftIsoDate(selected, direction * 7), direction, true, weekday);
-    } else {
-      // A real schedule: jump to the next/previous authorized training, even
-      // when it is more than one calendar week away.
-      await u12NavigateCalendarDate(selected, direction, false);
-    }
+    // Exactly one navigation per arrow press. The final mode is determined
+    // from a fresh calendar read inside the guarded navigation, not from
+    // potentially stale dropdown metadata.
+    await u12NavigateCalendarDate(selected, direction, false, true);
     return;
   }
   if (!(await u12FlushChanges())) return;
