@@ -115,3 +115,20 @@ test("G-04 live preflight fails closed if schema is missing and still closes DB"
   }),/G-04 direct Preview preflight blocked/);
   assert.equal(closed,true);
 });
+
+test("G-04 recognizes Neon's required channel binding without allowing overrides",()=>{
+  const valid=credentials();
+  valid.migrationDatabaseUrl+="&channel_binding=require";
+  valid.applicationDatabaseUrl+="&channel_binding=require";
+  valid.securityLogDatabaseUrl+="&channel_binding=require";
+  assert.equal(validateG04ExistingPreviewCredentials(valid).target,"existing-ulc-preview");
+  for(const mutation of [
+    x=>{x.applicationDatabaseUrl=x.applicationDatabaseUrl.replace("channel_binding=require","channel_binding=disable");},
+    x=>{x.applicationDatabaseUrl+="&channel_binding=require";},
+    x=>{x.applicationDatabaseUrl+="&database=production";},
+  ]) {
+    const wrong={...valid};mutation(wrong);
+    assert.throws(()=>validateG04ExistingPreviewCredentials(wrong),
+      /G-04 direct Preview preflight blocked/);
+  }
+});
