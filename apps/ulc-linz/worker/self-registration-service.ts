@@ -11,6 +11,13 @@ import type {
   PostgresUlcTrainingSessionRepository,
   UlcTrainingSessionSnapshot,
 } from "./training-session-postgres";
+import {
+  evaluateUlcRegistrationSchedule,
+  type UlcRegistrationScheduleEvaluation,
+} from "./registration-schedule-policy";
+import type {
+  PostgresUlcRegistrationCalendarRepository,
+} from "./registration-calendar-postgres";
 
 const MODULE_ID = "kindertraining" as const;
 
@@ -25,6 +32,7 @@ export interface UlcSelfRegistrationOption {
   readonly intention: UlcTrainingRegistrationIntention;
   readonly revision: number | null;
   readonly note?: string | null;
+  readonly registrationWindow?: UlcRegistrationScheduleEvaluation;
 }
 
 export interface UlcProxyRegistrationOption {
@@ -39,6 +47,7 @@ export interface UlcProxyRegistrationRoster {
   readonly sessionDate: string;
   readonly sessionState: "scheduled" | "cancelled" | null;
   readonly options: readonly UlcProxyRegistrationOption[];
+  readonly registrationWindow?: UlcRegistrationScheduleEvaluation;
 }
 
 export interface UlcSelfRegistrationMasterdataReader {
@@ -50,7 +59,86 @@ export interface UlcSelfRegistrationMasterdataReader {
 export type UlcSelfRegistrationSessionStore = Pick<
   PostgresUlcTrainingSessionRepository,
   "readSession" | "ensureScheduledSession" | "saveRegistration"
+> & Partial<Pick<PostgresUlcTrainingSessionRepository, "withRegistrationTransaction">>;
+
+export class UlcSelfRegistrationWindowError extends Error {
+  readonly code = "ULC_SELF_REGISTRATION_WINDOW_CLOSED";
+  constructor(readonly reason: UlcRegistrationScheduleEvaluation["reason"] | "changed") {
+    super("Self-registration is outside the configured calendar.");
+    this.name = "UlcSelfRegistrationWindowError";
+  }
+}
+
+export type UlcSelfRegistrationCalendarReader = Pick<
+  PostgresUlcRegistrationCalendarRepository, "readRule" | "readException"
 >;
+
+async function registrationWindowFor(
+  calendar: UlcSelfRegistrationCalendarReader | undefined,
+  organizationId: string,
+  groupId: string,
+  sessionDate: string,
+  snapshot: UlcTrainingSessionSnapshot | null,
+  athleteId?: string,
+): Promise<UlcRegistrationScheduleEvaluation | null> {
+  if (!calendar) return null;
+  const [rule, exception] = await Promise.all([
+    calendar.readRule(organizationId, groupId),
+    calendar.readException(organizationId, groupId, sessionDate),
+  ]);
+  if (rule === null && exception?.kind == null) return null;
+  return evaluateUlcRegistrationSchedule({
+    schedule: rule?.schedule ?? null,
+    calendarException: exception?.kind ?? null,
+    sessionDate,
+    serverNow: new Date(),
+    sessionState: snapshot?.session.state ?? null,
+    hasExistingRegistration: athleteId === undefined
+      ? !!snapshot?.registrations.length
+      : !!snapshot?.registrations.some((entry) => entry.athleteId === athleteId),
+  });
+}
+
+async function registerAtomically(
+  sessions: UlcSelfRegistrationSessionStore,
+  calendarEnabled: boolean,
+  input: {
+    organizationId: string; groupId: string; sessionDate: string;
+    athleteId: string; intention: UlcTrainingRegistrationIntention;
+    expectedRevision: number | null; actorIdentityId: string;
+    proxyActorAthleteId?: string; note?: string | null;
+  },
+) {
+  const write = async (
+    scoped: Pick<PostgresUlcTrainingSessionRepository,
+      "ensureScheduledSession" | "saveRegistration">,
+  ) => {
+    const snapshot = await scoped.ensureScheduledSession(
+      input.organizationId, MODULE_ID, input.groupId, input.sessionDate,
+    );
+    return scoped.saveRegistration(
+      input.organizationId, snapshot.session.id, input.athleteId, input.intention,
+      input.expectedRevision, input.actorIdentityId, input.proxyActorAthleteId,
+      input.note,
+    );
+  };
+  try {
+    if (sessions.withRegistrationTransaction) {
+      return await sessions.withRegistrationTransaction(write);
+    }
+    if (calendarEnabled) {
+      throw new Error("Configured calendar registration requires atomic transaction.");
+    }
+    // Legacy test fixtures do not implement PostgreSQL transactions.
+    return await write(sessions);
+  } catch (error) {
+    if (error !== null && typeof error === "object" &&
+        "code" in error && error.code === "UL024") {
+      throw new UlcSelfRegistrationWindowError("changed");
+    }
+    throw error;
+  }
+}
 
 export class UlcSelfRegistrationNotFoundError extends Error {
   readonly code = "ULC_SELF_REGISTRATION_NOT_FOUND";
@@ -73,9 +161,11 @@ export class UlcSelfRegistrationModeError extends Error {
 export function createUlcSelfRegistrationService({
   masterdata,
   sessions,
+  registrationCalendar,
 }: {
   masterdata: UlcSelfRegistrationMasterdataReader;
   sessions: UlcSelfRegistrationSessionStore;
+  registrationCalendar?: UlcSelfRegistrationCalendarReader;
 }) {
   return Object.freeze({
     async listOptions(
@@ -91,21 +181,25 @@ export function createUlcSelfRegistrationService({
       );
       const groups = eligibleGroups(context);
       const options = await Promise.all(
-        groups.map(async (group) =>
-          optionFromSnapshot(
-            group,
-            context.athleteId,
-            context.sessionDate,
-            await sessions.readSession(
-              context.organizationId,
-              MODULE_ID,
-              group.id,
-              context.sessionDate,
-            ),
-          ),
-        ),
+        groups.map(async (group) => {
+          const snapshot = await sessions.readSession(
+            context.organizationId, MODULE_ID, group.id, context.sessionDate,
+          );
+          const option = optionFromSnapshot(
+            group, context.athleteId, context.sessionDate, snapshot,
+          );
+          const window = await registrationWindowFor(
+            registrationCalendar, context.organizationId,
+            group.id, context.sessionDate, snapshot, context.athleteId,
+          );
+          if (window !== null && !window.visible) return null;
+          return window === null ? option :
+            Object.freeze({ ...option, registrationWindow: window });
+        }),
       );
-      return Object.freeze(options);
+      return Object.freeze(options.filter(
+        (option): option is UlcSelfRegistrationOption => option !== null,
+      ));
     },
 
     // Athletes may act for another currently enrolled member of the SAME
@@ -130,6 +224,13 @@ export function createUlcSelfRegistrationService({
         snapshot.session.sessionDate !== context.sessionDate
       )) {
         throw new UlcTrainingValidationError("Registration session scope is inconsistent.");
+      }
+      const window = await registrationWindowFor(
+        registrationCalendar, context.organizationId, group.id,
+        context.sessionDate, snapshot,
+      );
+      if (window !== null && !window.visible) {
+        throw new UlcSelfRegistrationNotFoundError();
       }
       const options = colleagues.map((athlete) => {
         const matching = snapshot?.registrations.filter(
@@ -156,6 +257,7 @@ export function createUlcSelfRegistrationService({
         sessionDate: context.sessionDate,
         sessionState: snapshot?.session.state ?? null,
         options: Object.freeze(options),
+        ...(window === null ? {} : { registrationWindow: window }),
       });
     },
 
@@ -182,18 +284,29 @@ export function createUlcSelfRegistrationService({
       const intention = requiredIntention(input.intention);
       const expectedRevision = registrationRevision(input.expectedRevision);
       const actor = requiredIdentifier(actorIdentityId, "Registration actor identity id");
-      const snapshot = await sessions.ensureScheduledSession(
-        context.organizationId, MODULE_ID, group.id, context.sessionDate,
+      const existing = registrationCalendar
+        ? await sessions.readSession(
+            context.organizationId, MODULE_ID, group.id, context.sessionDate,
+          ) : null;
+      const window = await registrationWindowFor(
+        registrationCalendar, context.organizationId, group.id,
+        context.sessionDate, existing, target.id,
       );
-      const registration = await sessions.saveRegistration(
-        context.organizationId,
-        snapshot.session.id,
-        target.id,
-        intention,
-        expectedRevision,
-        actor,
-        context.athleteId, // triggers atomic DB-side proxy scope validation
-        input.note,
+      if (window !== null && !window.mayEdit) {
+        throw new UlcSelfRegistrationWindowError(window.reason);
+      }
+      const registration = await registerAtomically(sessions,
+        registrationCalendar !== undefined, {
+          organizationId: context.organizationId,
+          groupId: group.id,
+          sessionDate: context.sessionDate,
+          athleteId: target.id,
+          intention,
+          expectedRevision,
+          actorIdentityId: actor,
+          proxyActorAthleteId: context.athleteId,
+          note: input.note,
+        },
       );
       return Object.freeze({
         athlete: Object.freeze({
@@ -245,21 +358,28 @@ export function createUlcSelfRegistrationService({
         "Registration actor identity id",
       );
 
-      const snapshot = await sessions.ensureScheduledSession(
-        context.organizationId,
-        MODULE_ID,
-        group.id,
-        context.sessionDate,
+      const existing = registrationCalendar
+        ? await sessions.readSession(
+            context.organizationId, MODULE_ID, group.id, context.sessionDate,
+          ) : null;
+      const window = await registrationWindowFor(
+        registrationCalendar, context.organizationId, group.id,
+        context.sessionDate, existing, context.athleteId,
       );
-      const registration = await sessions.saveRegistration(
-        context.organizationId,
-        snapshot.session.id,
-        context.athleteId,
-        intention,
-        expectedRevision,
-        actor,
-        undefined,
-        input.note,
+      if (window !== null && !window.mayEdit) {
+        throw new UlcSelfRegistrationWindowError(window.reason);
+      }
+      const registration = await registerAtomically(sessions,
+        registrationCalendar !== undefined, {
+          organizationId: context.organizationId,
+          groupId: group.id,
+          sessionDate: context.sessionDate,
+          athleteId: context.athleteId,
+          intention,
+          expectedRevision,
+          actorIdentityId: actor,
+          note: input.note,
+        },
       );
       return Object.freeze({
         group: groupOption(group),
