@@ -89,7 +89,7 @@ test("G-04.2e requires group-delete CASCADE in both candidate tables and no auto
   const plan = await loadG04CalendarPreviewPlan({ repositoryRoot: root });
   for (const statement of plan.statements.slice(0, 2)) {
     assert.match(statement,
-      /group_id\\s+text\\s+NOT NULL\\s+REFERENCES\\s+appbasis_training_group\\(id\\)\\s+ON DELETE CASCADE/i);
+      /group_id\s+text\s+NOT NULL\s+REFERENCES\s+appbasis_training_group\(id\)\s+ON DELETE CASCADE/i);
   }
   const policy = JSON.parse(await readFile(resolve(
     root, "apps/ulc-linz/privacy/g04-v17-calendar-lifecycle-proposal.json",
