@@ -408,6 +408,7 @@ const u12Ui = {
   message: document.querySelector("#u12-message"),
   success: document.querySelector("#u12-success"),
 };
+const u12FollowGroupCalendar = false; // Kids enables this in the generated youth adapter.
 const U12_SERVER_STATUSES = Object.freeze(["open", "present", "excused", "absent"]);
 const U12_ATTENDANCE_STATUS_TEXT = Object.freeze({
   open: { short: "Offen", long: "Offen – noch nicht erfasst" },
@@ -471,6 +472,7 @@ let u12AutoSaveFailed = false;
 let u12SaveInFlight = null;
 let u12StatisticsLoadId = 0;
 let u12LoadId = 0;
+let u12CalendarBusy = false;
 
 function resetU12SessionState() {
   if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
@@ -484,6 +486,7 @@ function resetU12SessionState() {
   u12LoadId += 1;
   u12Ready = false;
   u12WriteAllowed = true;
+  u12CalendarBusy = false;
   u12Groups = [];
   u12LoadedGroupId = "";
   u12LoadedDate = "";
@@ -675,7 +678,7 @@ function u12MissingTrainingDetails() {
 }
 
 function refreshU12Controls() {
-  const busy = u12Loading || u12Saving;
+  const busy = u12Loading || u12Saving || u12CalendarBusy;
   for (const control of [u12Ui.group, u12Ui.date, u12Ui.prev, u12Ui.next, u12Ui.reload, u12Ui.today]) {
     if (control) control.disabled = busy || !u12Ready;
   }
@@ -1436,15 +1439,111 @@ function renderU12Attendance() {
   refreshU12Controls();
 }
 
+
+/**
+ * Kids-only trainer calendar reader. The v17 calendar endpoint projects group
+ * weekdays plus explicit extra/cancelled exceptions; it never returns old test
+ * sessions as schedule exceptions. U12/U14 keep their accepted day-navigation.
+ */
+function u12CalendarWeekStart(date) {
+  const parsed = new Date(String(date) + "T12:00:00");
+  if (!Number.isFinite(parsed.getTime()) || localIsoDate(parsed) !== date) {
+    throw new Error("INVALID_CALENDAR_DATE");
+  }
+  return localWeekStart(parsed);
+}
+
+async function u12FetchCalendarDates(groupId, weekStart) {
+  const result = await requestJson(
+    "/api/modules/kindertraining/calendar?groupId=" + encodeURIComponent(groupId) +
+    "&weekStart=" + encodeURIComponent(weekStart));
+  const validWeek = registrationWeekDates(weekStart);
+  if (result?.groupId !== groupId || result?.weekStart !== weekStart ||
+      !Array.isArray(result.dates)) throw new Error("INVALID_CALENDAR_RESPONSE");
+  const positions = result.dates.map((date) => validWeek.indexOf(date));
+  if (!positions.every((index, i) => index >= 0 &&
+      (i === 0 || index > positions[i - 1]))) {
+    throw new Error("INVALID_CALENDAR_DATES");
+  }
+  return result.dates;
+}
+
+async function u12FindCalendarDate(groupId, anchor, direction, includeAnchor) {
+  let searchDate = includeAnchor ? anchor : shiftIsoDate(anchor, direction);
+  for (let week = 0; week < 16; week += 1) {
+    const weekStart = u12CalendarWeekStart(searchDate);
+    const dates = await u12FetchCalendarDates(groupId, weekStart);
+    const eligible = dates.filter((date) => direction > 0
+      ? date >= searchDate : date <= searchDate);
+    if (eligible.length) return direction > 0
+      ? eligible[0] : eligible[eligible.length - 1];
+    searchDate = shiftIsoDate(weekStart, direction > 0 ? 7 : -1);
+  }
+  throw new Error("NO_CALENDAR_TRAINING_DAY");
+}
+
+async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false) {
+  if (!u12Ui.date || !u12Ready || u12CalendarBusy || u12Loading || u12Saving) return;
+  if (!(await u12FlushChanges())) return;
+  const groupId = u12Ui.group?.value || "";
+  if (!groupId) return;
+  const generation = attendanceSessionGeneration;
+  u12CalendarBusy = true;
+  refreshU12Controls();
+  try {
+    const chosen = await u12FindCalendarDate(groupId, anchor, direction, includeAnchor);
+    if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId) return;
+    u12Ui.date.value = chosen;
+  } catch {
+    if (generation === attendanceSessionGeneration && u12Ui.group?.value === groupId) {
+      showMessage(u12Ui.message,
+        "Geplante Trainingstage konnten nicht ermittelt werden. Datum unverändert.");
+    }
+    return;
+  } finally {
+    if (generation === attendanceSessionGeneration) {
+      u12CalendarBusy = false;
+      refreshU12Controls();
+    }
+  }
+  await loadU12Attendance();
+}
+
 async function loadU12Attendance() {
   const groupId = u12Ui.group?.value || "";
-  const date = u12Ui.date?.value || "";
+  let date = u12Ui.date?.value || "";
   if (!u12Ready || u12Loading || u12Saving || !groupId || !date) {
     renderU12Attendance();
     return;
   }
   const generation = attendanceSessionGeneration;
   const loadId = ++u12LoadId;
+  if (u12FollowGroupCalendar) {
+    u12CalendarBusy = true;
+    refreshU12Controls();
+    try {
+      const dates = await u12FetchCalendarDates(groupId, u12CalendarWeekStart(date));
+      if (!dates.includes(date)) {
+        date = await u12FindCalendarDate(groupId, date, 1, true);
+      }
+      if (generation !== attendanceSessionGeneration ||
+          loadId !== u12LoadId || u12Ui.group?.value !== groupId) return;
+      u12Ui.date.value = date;
+    } catch {
+      if (generation === attendanceSessionGeneration && loadId === u12LoadId) {
+        u12Snapshot = null;
+        renderU12Attendance();
+        showMessage(u12Ui.message,
+          "Trainingskalender nicht verfügbar. Anwesenheit wurde nicht geladen.");
+      }
+      return;
+    } finally {
+      if (generation === attendanceSessionGeneration && loadId === u12LoadId) {
+        u12CalendarBusy = false;
+        refreshU12Controls();
+      }
+    }
+  }
   u12LoadedGroupId = groupId;
   u12LoadedDate = date;
   if (u12Ui.detailsDialog?.open) u12Ui.detailsDialog.close();
@@ -1633,6 +1732,12 @@ async function u12FlushChanges() {
 }
 
 async function u12MoveDate(offset) {
+  if (u12FollowGroupCalendar) {
+    if (!u12Ui.date || offset === 0) return;
+    await u12NavigateCalendarDate(
+      u12Ui.date.value || localIsoDate(new Date()), offset > 0 ? 1 : -1);
+    return;
+  }
   if (!(await u12FlushChanges())) return;
   if (!u12Ui.date) return;
   const selected = u12Ui.date.value || localIsoDate(new Date());
@@ -1641,8 +1746,38 @@ async function u12MoveDate(offset) {
 }
 
 async function u12ChangeDate() {
-  if (u12Saving || u12Loading) return;
+  if (u12Saving || u12Loading || u12CalendarBusy) return;
   if (u12Ui.date?.value === u12LoadedDate) return;
+  if (u12FollowGroupCalendar && u12Ui.date?.value) {
+    const groupId = u12Ui.group?.value || "";
+    const selected = u12Ui.date.value;
+    const generation = attendanceSessionGeneration;
+    u12CalendarBusy = true;
+    refreshU12Controls();
+    try {
+      const dates = await u12FetchCalendarDates(
+        groupId, u12CalendarWeekStart(selected));
+      if (generation !== attendanceSessionGeneration ||
+          u12Ui.group?.value !== groupId) return;
+      if (!dates.includes(selected)) {
+        u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
+        showMessage(u12Ui.message,
+          "Dieser Tag ist kein geplanter Trainingstag. Bitte einen Trainingstag wählen.");
+        return;
+      }
+    } catch {
+      if (generation === attendanceSessionGeneration) {
+        u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
+        showMessage(u12Ui.message, "Trainingskalender konnte nicht geladen werden.");
+      }
+      return;
+    } finally {
+      if (generation === attendanceSessionGeneration) {
+        u12CalendarBusy = false;
+        refreshU12Controls();
+      }
+    }
+  }
   if (!(await u12FlushChanges())) {
     if (u12Ui.date) u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
     return;
@@ -1779,8 +1914,12 @@ function openU12AthleteDetails(athleteId) {
 }
 
 async function u12GoToday() {
-  if (!u12Ui.date || u12Loading || u12Saving) return;
+  if (!u12Ui.date || u12Loading || u12Saving || u12CalendarBusy) return;
   const today = localIsoDate(new Date());
+  if (u12FollowGroupCalendar) {
+    await u12NavigateCalendarDate(today, 1, true);
+    return;
+  }
   if (u12Ui.date.value === today && u12LoadedDate === today) return;
   u12Ui.date.value = today;
   await u12ChangeDate();
