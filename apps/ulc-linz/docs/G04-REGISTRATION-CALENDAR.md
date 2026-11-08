@@ -129,3 +129,50 @@ berechtigte Administratoren, den Sondertermin-Editor, Runtime-Injektion,
 v17-Manifeste/Privacy-/Migrationsfreigabe und mobile Fachabnahme sind
 eine **gesonderte** Aktivierungsstufe G-04.2b. Kein automatisches
 Production-/Preview-Deploy.
+
+## G-04.2b – Gruppen-Editor und Admin-API (noch nicht live)
+
+Der in `registration-calendar-http.ts` definierte API-Vertrag wird durch
+die bestehenden, authentifizierten Stammdatenrechte geschützt:
+
+- GET Regel: `/api/modules/athletes/registration-calendar?groupId=...`
+- POST Regel: `/api/modules/athletes/registration-calendar`
+  (`groupId`, `expectedRevision`, `schedule`)
+- GET Abweichung:
+  `/api/modules/athletes/registration-calendar/exception?groupId=...&sessionDate=...`
+- POST Abweichung:
+  `/api/modules/athletes/registration-calendar/exception`
+  (`groupId`, `sessionDate`, `expectedRevision`, `kind`)
+- Zugriff: **athletes:view** zum Lesen, **athletes:edit** zum Schreiben.
+  Gruppen außerhalb der aktuellen Organisation, inaktive Gruppen und Gruppen
+  im Trainer-Anwesenheitsmodus sind nicht bearbeitbar (404).
+- Schreibenden wird über das CAS-Token bei Konflikt `409 CALENDAR_CONFLICT`
+  signalisiert. Ungültige JSON-Bodies, Felder und Daten werden abgewiesen.
+- Kein Termin-Import, kein Zurücksetzen der Mitglieder-Anmeldungen,
+  keine Löschung einer anderen Modul-Tabelle, kein erneutes Audit mit
+  personenbezogenen Feldern.
+
+**Feature-Gate:** `registrationCalendar` ist ein optionales Runtime-Objekt,
+das durch `createGeneratedPostgresApplicationRuntime` in diesem PR
+**noch nicht injiziert wird**. Beide Endpunkte antworten nach
+Authentifizierung mit `503 CALENDAR_NOT_ENABLED`, ohne Schema-v17-Tabellen
+abzufragen. Das aktive Schema bleibt v16.
+
+Die vorhandene Stammdaten-Antwort zeigt mit `calendarAvailable`, ob der
+Server den Kalender unterstützt. Nur dann erscheint im bestehenden
+Gruppen-Overlay für aktive Selbstanmeldegruppen und mit Bearbeitungsrecht
+`Trainingstage & Anmeldefristen`. Der Editor nutzt seine bestehenden
+mobilen Overlay-/Schließregeln und bietet den sieben-Tage-Plan,
+Wochenvorlauf, optionale Meldeschlusszeit in Wien, Nachmeldemodus sowie
+separate explizite `extra`/`cancelled`/`none`-Termine. Die gesperrte
+Version darf keine 500er oder ungültigen SQL-Zugriffe auslösen.
+
+**Folge-Gate nach CI/Review von G-04.2b:**
+Die Aktivierung in einer isolierten **v17-Preview** benötigt gesonderte
+Freigabe und einen eigenen PR für Manifest-/Schema-/Migration-/Retention-/
+Restore-Verträge sowie Runtime-Injektion. Vorhandene Jugend-Anwesenheit,
+Trainingsplanung, eigene/Stellvertreter-Anmeldung und Statistik müssen als
+Regression bestehen. Zusätzliche reine Trainer-Ausnahmerechte
+(`kindertraining:edit`) werden **noch nicht erweitert**: das würde
+gesonderte aktuelle Trainer-Gruppenzuordnung und atomare Scope-Prüfungen
+benötigen. Produktion bleibt gesperrt.

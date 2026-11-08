@@ -54,6 +54,7 @@ import {
   type UlcLinzSelfRegistrationAccessService,
 } from "./self-registration-access";
 import { createUlcSelfRegistrationService } from "./self-registration-service";
+import type { PostgresUlcRegistrationCalendarRepository } from "./registration-calendar-postgres";
 import {
   createUlcLinzU12AccessService,
   type UlcLinzU12AccessService,
@@ -175,6 +176,12 @@ export interface GeneratedPostgresApplicationRuntime {
   };
   kindertraining: ReturnType<typeof createUlcKindertrainingService>;
   selfRegistration: ReturnType<typeof createUlcSelfRegistrationService>;
+  /**
+   * G-04.2b feature gate: never expose calendar endpoints before a separately
+   * approved schema-v17 Preview migration and runtime activation.
+   */
+  registrationCalendar?: Pick<PostgresUlcRegistrationCalendarRepository,
+    "readRule" | "writeRule" | "readException" | "writeException"> | null;
   u12: ReturnType<typeof createUlcU12Service>;
   /** Separate detailed youth modules; optional only for historical test fixture runtimes. */
   u14?: ReturnType<typeof createUlcYouthAreaService>;

@@ -39,6 +39,7 @@ import {
 } from "./youth-attendance-ui";
 import { generatedPwaResponse } from "./pwa";
 import { ULC_DESIGN_SYSTEM_CSS } from "./design-system";
+import { ULC_REGISTRATION_CALENDAR_CSS, ULC_REGISTRATION_CALENDAR_SCRIPT } from "./registration-calendar-ui";
 
 export const ULC_LINZ_APP_HTML = `<!doctype html>
 <html lang="de">
@@ -527,6 +528,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                       <p class="masterdata-athlete-note" id="group-detail-description" hidden></p>
                       <div class="masterdata-athlete-actions masterdata-group-actions">
                         <button class="button button--secondary" id="group-detail-edit" type="button"><span aria-hidden="true">✎</span> Bearbeiten</button>
+                        <button class="button button--secondary" id="group-calendar-open" type="button" hidden>Trainingstage &amp; Anmeldefristen</button>
                       </div>
                     </section>
                     <form class="card masterdata-form masterdata-overlay-form" id="group-form" hidden>
@@ -548,6 +550,68 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                         <button class="button button--secondary" id="group-edit-cancel" type="button">Zurück</button>
                       </div>
                     </form>
+                    <section class="card masterdata-form masterdata-overlay-form" id="group-calendar-panel" hidden>
+                      <div class="section-heading"><div><p class="eyebrow">Selbstanmeldung</p><h3>Trainingstage &amp; Anmeldefristen</h3></div></div>
+                      <p class="settings-note" id="group-calendar-status">Lade Gruppenregeln …</p>
+                      <p class="message message--error" id="group-calendar-message" role="alert" hidden></p>
+                      <p class="message message--success" id="group-calendar-success" role="status" hidden></p>
+                      <form id="group-calendar-form">
+                        <fieldset class="registration-calendar-weekdays" id="group-calendar-weekdays">
+                          <legend>Regelmäßige Trainingstage</legend>
+                          <label><input type="checkbox" value="1" data-calendar-weekday="true" /> Montag</label>
+                            <label><input type="checkbox" value="2" data-calendar-weekday="true" /> Dienstag</label>
+                            <label><input type="checkbox" value="3" data-calendar-weekday="true" /> Mittwoch</label>
+                            <label><input type="checkbox" value="4" data-calendar-weekday="true" /> Donnerstag</label>
+                            <label><input type="checkbox" value="5" data-calendar-weekday="true" /> Freitag</label>
+                            <label><input type="checkbox" value="6" data-calendar-weekday="true" /> Samstag</label>
+                            <label><input type="checkbox" value="7" data-calendar-weekday="true" /> Sonntag</label>
+                        </fieldset>
+                        <div class="settings-grid">
+                          <label>Wochen im Voraus
+                            <input id="group-calendar-weeks-ahead" type="number" min="0" max="26" step="1" value="4" required inputmode="numeric" />
+                          </label>
+                          <label>Nachmeldungen
+                            <select id="group-calendar-late-mode">
+                              <option value="allow">Erlauben</option>
+                              <option value="block">Nach Frist sperren</option>
+                            </select>
+                          </label>
+                          <label><input id="group-calendar-deadline-enabled" type="checkbox" /> Anmeldeschluss verwenden</label>
+                          <label>Tage vor Training
+                            <input id="group-calendar-deadline-days" type="number" min="0" max="14" step="1" value="1" inputmode="numeric" />
+                          </label>
+                          <label>Uhrzeit (Wien)
+                            <input id="group-calendar-deadline-time" type="time" value="18:00" />
+                          </label>
+                        </div>
+                        <p class="settings-note">Bei deaktiviertem Anmeldeschluss bleibt die Anmeldung bis zum Trainingstag möglich; abgesagte Termine bleiben gesperrt.</p>
+                        <div class="masterdata-form-actions">
+                          <button class="button button--primary" type="submit" id="group-calendar-save">Trainingstage speichern</button>
+                        </div>
+                      </form>
+                      <form id="group-calendar-exception">
+                        <h3>Einzeltermine</h3>
+                        <p class="settings-note">Zusatztraining anlegen, regulären Termin absagen oder Abweichung zurücksetzen.</p>
+                        <div class="settings-grid">
+                          <label>Datum<input id="group-calendar-exception-date" type="date" required /></label>
+                          <label>Terminstatus
+                            <select id="group-calendar-exception-kind">
+                              <option value="none">Keine Abweichung</option>
+                              <option value="extra">Zusatztraining</option>
+                              <option value="cancelled">Abgesagt</option>
+                            </select>
+                          </label>
+                        </div>
+                        <p class="message message--error" id="group-calendar-exception-message" role="alert" hidden></p>
+                        <p class="message message--success" id="group-calendar-exception-success" role="status" hidden></p>
+                        <div class="masterdata-form-actions">
+                          <button class="button button--primary" type="submit" id="group-calendar-exception-save">Einzeltermin speichern</button>
+                        </div>
+                      </form>
+                      <div class="masterdata-form-actions">
+                        <button class="button button--secondary" id="group-calendar-back" type="button">Zurück zur Gruppe</button>
+                      </div>
+                    </section>
                   </div>
                 </section>
               </div>
@@ -2175,6 +2239,7 @@ ${ULC_U12_CSS}
 ${ULC_U14_CSS}
 ${ULC_KIDS_CSS}
 ${ULC_YOUTH_CATEGORY_CSS}
+${ULC_REGISTRATION_CALENDAR_CSS}
 `;
 
 export const ULC_LINZ_APP_SCRIPT = `const SETTINGS_KEY = "ulc-linz.countdown.settings.v1";
@@ -2524,6 +2589,7 @@ let busy = false;
 let countdownReady = false;
 let masterdataReady = false;
 let masterdataCanEdit = false;
+let masterdataCalendarAvailable = false;
 let attendanceSessionGeneration = 0;
 let selfRegistrationReady = false;
 let selfRegistrationLoading = false;
@@ -3057,6 +3123,7 @@ function resetMasterdataSessionState() {
   masterdataSessionGeneration += 1;
   masterdataReady = false;
   masterdataCanEdit = false;
+  masterdataCalendarAvailable = false;
   masterdataLoading = false;
   masterdataExchangeBusy = false;
   masterdataSnapshot = null;
@@ -3077,7 +3144,9 @@ function resetMasterdataSessionState() {
   closeMasterdataImportPreview();
   closeMasterdataAthleteOverlay();
   closeMasterdataTrainerOverlay();
-  closeMasterdataGroupOverlay();
+  // Session teardown must invalidate even an in-flight calendar save. Late
+  // responses are ignored by masterdataSessionGeneration and request ID.
+  closeMasterdataGroupOverlay({ force: true });
 
   trainerIdentityAdminReady = false;
   trainerIdentityLoading = false;
@@ -3138,10 +3207,10 @@ async function handleSignOut() {
     showMessage(elements.appSessionMessage, "Kindertraining-Änderungen konnten nicht gespeichert werden.");
     return;
   }
-  if (masterdataExchangeBusy || trainerIdentityLoading) {
+  if (masterdataExchangeBusy || trainerIdentityLoading || groupCalendarState?.saving) {
     showMessage(
       elements.appSessionMessage,
-      "In den Stammdaten läuft noch ein Vorgang. Bitte zuerst abschließen lassen.",
+      "In den Stammdaten läuft noch ein Speichervorgang. Bitte zuerst abschließen lassen.",
     );
     return;
   }
@@ -6215,11 +6284,13 @@ async function loadMasterdata(force = false) {
       throw new Error("INVALID_MASTERDATA_SNAPSHOT");
     }
     masterdataSnapshot = snapshot;
+    masterdataCalendarAvailable = payload.calendarAvailable === true;
     renderMasterdata(snapshot);
     return true;
   } catch (error) {
     if (generation !== masterdataSessionGeneration) return false;
     masterdataSnapshot = null;
+    masterdataCalendarAvailable = false;
     showMessage(
       elements.masterdataMessage,
       error?.status === 403
@@ -7073,7 +7144,14 @@ function openNewMasterdataGroup() {
   elements.groupName?.focus();
 }
 
-function closeMasterdataGroupOverlay() {
+function closeMasterdataGroupOverlay({ force = false } = {}) {
+  // Interactive dismissal is blocked while saving; session teardown must
+  // always discard the pending UI state, even if a request never finishes.
+  if (groupCalendarState?.saving && !force) {
+    showMessage(calendarUi.message, "Speichervorgang läuft noch.");
+    return;
+  }
+  resetGroupCalendar();
   masterdataGroupOverlayMode = "closed";
   masterdataGroupOverlayId = null;
   masterdataEdit = null;
@@ -7093,6 +7171,7 @@ function showMasterdataGroupOverlayMode(mode) {
   document.body.classList.add("masterdata-athlete-overlay-open");
   if (elements.groupDetail) elements.groupDetail.hidden = mode !== "detail";
   if (elements.groupForm) elements.groupForm.hidden = mode !== "group";
+  if (calendarUi.panel) calendarUi.panel.hidden = mode !== "calendar";
   if (masterdataSnapshot) renderMasterdataGroupOverlay(masterdataSnapshot);
 }
 
@@ -7122,6 +7201,7 @@ function renderMasterdataGroupOverlay(snapshot) {
   if (elements.groupDetailEdit) {
     elements.groupDetailEdit.disabled = !masterdataCanEdit || group.isActive === false;
   }
+  refreshGroupCalendarAvailability();
 }
 
 function selectedMasterdataAthlete() {
@@ -8596,6 +8676,7 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
   });
 }
 
+${ULC_REGISTRATION_CALENDAR_SCRIPT}
 `;
 
 export function generatedUiResponse(request: Request): Response | null {
