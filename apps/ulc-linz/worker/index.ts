@@ -1547,9 +1547,10 @@ async function kindertrainingCalendarResponse(
     return Response.json({ error: { code: "ATTENDANCE_CALENDAR_UNAVAILABLE" } },
       { status: 503, headers: { "Cache-Control": "no-store" } });
   }
-  const [rule, ...exceptions] = await Promise.all([
+  const [rule, exceptions] = await Promise.all([
     calendar.readRule(access.organizationId, groupId),
-    ...weekDates.map(date => calendar.readException(access.organizationId, groupId, date)),
+    Promise.all(weekDates.map(date =>
+      calendar.readException(access.organizationId, groupId, date))),
   ]);
   const dates = selectAttendanceCalendarDates({
     weekStart,
