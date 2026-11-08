@@ -12,6 +12,14 @@
 
 **Wichtige Beweisgrenze:** Der Test belegt nur, dass der kanonische v16-Stand mit synthetischen Daten technisch sicherbar und isoliert wiederherstellbar ist. Er ist **nicht** die reale v16-Preview-Sicherung, nicht der unabhängige Preview-Restore und **niemals** Freigabe-Evidence für die v17-Migration. Die aktive Datei privacy/g04-v17-preview-activation-evidence.json bleibt unangetastet und blockiert weiterhin alle Migrationspfade.
 
+## Aktualisierung 08.11.2026 – Testbetriebsentscheidung und Provider-Evidence
+
+Die Betreiberentscheidung für die **Testphase** wurde ausdrücklich bestätigt: Bei bloßer Gruppen-Deaktivierung bleiben Kalenderregel, Ausnahmen und CAS-Revisionen erhalten; bei fachlich autorisierter endgültiger Gruppenlöschung werden ausschließlich die zugehörigen Kalenderkonfigurationen im selben Datenbankvorgang per Cascade entfernt; eine automatische zeitbasierte Bereinigung erfolgt nicht. **Dies ersetzt keine formelle Datenschutz-/Aufbewahrungsentscheidung für spätere Echtdaten.**
+
+Ein realer aktueller Neon-Preview-Snapshot wurde erstellt und auf einem separaten Branch wiederhergestellt. Der in der Neon-API **implizit finalisierte** Restore führte vorübergehend zu einer ungewollten Vertauschung des Preview-Standardbranches und Anwendungsendpunkts; dieser Zustand wurde rückgängig gemacht und die ursprüngliche Zuordnung verifiziert. Die vollständige Prüfung sowie die Pflicht, künftig immer explizit `finalize: false` zu verwenden, sind in [G04-V17-NEON-PREVIEW-RESTORE-EVIDENCE-20261108.md](./G04-V17-NEON-PREVIEW-RESTORE-EVIDENCE-20261108.md) dokumentiert.
+
+Das technisch erfolgreiche Neon-Snapshot-Restore **ersetzt nicht** den bisherigen Gate-Nachweis für eine unabhängige `pg_dump`-/`pg_restore`-Probe samt gesichertem Backup-Artefakt-SHA-256. Deshalb bleiben die v17-Aktivierung und das Privacy-Ledger gesperrt.
+
 ## Offene Entscheidung des Datenverantwortlichen
 
 Die folgenden Punkte benötigen eine dokumentierte Entscheidung, bevor v17 in Preview aktiviert wird. Es wird keine gesetzliche Frist geraten und keine rückwirkende Löschung ausgelöst.
