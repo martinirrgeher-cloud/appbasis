@@ -69,7 +69,7 @@ if (!databaseUrl) {
       lateMode: "block",
     } as const;
 
-    it("stores scoped weekday rules, refuses cross-org and wrong-mode edits, enforces CAS", async () => {
+    it("stores group calendar rules in both modes, refuses cross-org edits and enforces CAS", async () => {
       const athletes = new PostgresAthleteMasterdataRepository(
         connection().client, () => randomUUID(),
       );
@@ -88,8 +88,29 @@ if (!databaseUrl) {
         .rejects.toBeInstanceOf(UlcRegistrationCalendarConflictError);
       await expect(repo.writeRule("other-verein", group.id, null, schedule))
         .rejects.toBeInstanceOf(UlcRegistrationCalendarConflictError);
-      await expect(repo.writeRule("verein-g04", attendance.id, null, schedule))
+      const trainerSchedule = {
+        weekdays: [1, 2, 3, 4, 7], weeksAhead: 4,
+        deadline: null, lateMode: "allow",
+      } as const;
+      const trainerRule = await repo.writeRule(
+        "verein-g04", attendance.id, null, trainerSchedule,
+      );
+      expect(trainerRule).toEqual({ schedule: trainerSchedule, revision: 1 });
+      expect(await repo.readRule("verein-g04", attendance.id)).toEqual(trainerRule);
+      await expect(repo.writeRule("other-verein", attendance.id, 1, trainerSchedule))
         .rejects.toBeInstanceOf(UlcRegistrationCalendarConflictError);
+      const trainerExtra = await repo.writeException(
+        "verein-g04", attendance.id, "2026-11-14", null, "extra",
+      );
+      expect(trainerExtra).toEqual({ kind: "extra", revision: 1 });
+      // Changing who records attendance cannot discard group training days.
+      await connection().client.unsafe(
+        "UPDATE appbasis_training_group SET attendance_mode = 'self_registration' WHERE id = $1",
+        [attendance.id],
+      );
+      expect(await repo.readRule("verein-g04", attendance.id)).toEqual(trainerRule);
+      expect(await repo.readException("verein-g04", attendance.id, "2026-11-14"))
+        .toEqual(trainerExtra);
       await expect(repo.writeRule("verein-g04", "does-not-exist", null, schedule))
         .rejects.toBeInstanceOf(UlcRegistrationCalendarConflictError);
       expect(await repo.readRule("other-verein", group.id)).toBeNull();

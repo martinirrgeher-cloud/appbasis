@@ -5,7 +5,8 @@
  */
 export const ULC_REGISTRATION_CALENDAR_CSS = `
 #group-calendar-panel { display: grid; gap: 12px; max-width: 100%; min-width: 0; }
-#group-calendar-panel[hidden], #group-calendar-exception[hidden] { display: none; }
+#group-calendar-panel[hidden], #group-calendar-exception[hidden],
+#group-calendar-registration-settings[hidden] { display: none; }
 .registration-calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
@@ -42,6 +43,7 @@ const calendarUi = {
   back: document.querySelector("#group-calendar-back"),
   form: document.querySelector("#group-calendar-form"),
   weekdays: document.querySelector("#group-calendar-weekdays"),
+  registrationSettings: document.querySelector("#group-calendar-registration-settings"),
   weeksAhead: document.querySelector("#group-calendar-weeks-ahead"),
   deadlineEnabled: document.querySelector("#group-calendar-deadline-enabled"),
   deadlineDays: document.querySelector("#group-calendar-deadline-days"),
@@ -73,8 +75,15 @@ function refreshGroupCalendarAvailability() {
   if (calendarUi.open) {
     calendarUi.open.hidden = !(
       masterdataCalendarAvailable && masterdataCanEdit && group &&
-      group.isActive === true && group.attendanceMode === "self_registration"
+      group.isActive === true
     );
+  }
+}
+
+function refreshGroupCalendarMode() {
+  const group = selectedMasterdataGroup();
+  if (calendarUi.registrationSettings) {
+    calendarUi.registrationSettings.hidden = group?.attendanceMode !== "self_registration";
   }
 }
 
@@ -117,7 +126,7 @@ function refreshGroupCalendarBusy() {
 async function openGroupCalendar() {
   const group = selectedMasterdataGroup();
   if (!group || !masterdataCalendarAvailable || !masterdataCanEdit ||
-      group.isActive !== true || group.attendanceMode !== "self_registration") return;
+      group.isActive !== true) return;
   resetGroupCalendar();
   const id = groupCalendarRequestId;
   const generation = masterdataSessionGeneration;
@@ -145,9 +154,10 @@ async function openGroupCalendar() {
     }
     state.revision = result.revision;
     fillGroupCalendarRule(result.schedule);
+    refreshGroupCalendarMode();
     calendarUi.status.textContent = result.schedule === null
       ? "Noch keine Trainingstage hinterlegt. Bisher sind alle Wochentage möglich."
-      : "Trainingstage und Anmeldefrist gespeichert.";
+      : "Trainingstage gespeichert; Anmeldefristen gelten bei Selbstanmeldung.";
     calendarUi.exceptionDate.value = localDateValue(new Date());
     state.loading = false;
     await loadGroupCalendarException();
@@ -211,7 +221,7 @@ async function saveGroupCalendarRule(event) {
       throw new Error("INVALID_CALENDAR_RULE_SAVE");
     }
     state.revision = result.revision;
-    calendarUi.status.textContent = "Trainingstage und Anmeldefrist gespeichert.";
+    calendarUi.status.textContent = "Trainingstage gespeichert; Anmeldefristen gelten bei Selbstanmeldung.";
     showMessage(calendarUi.success, "Regel für diese Gruppe gespeichert.");
   } catch (error) {
     if (generation !== masterdataSessionGeneration || id !== groupCalendarRequestId ||

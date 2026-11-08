@@ -130,7 +130,9 @@ export async function registrationCalendarHttpResponse(
     const snapshot = await runtime.athleteMasterdata.readOrganizationSnapshot(organizationId);
     const group = snapshot.trainingGroups.find((item) =>
       item.id === groupId && item.organizationId === organizationId &&
-      item.isActive === true && item.attendanceMode === "self_registration");
+      item.isActive === true &&
+      (item.attendanceMode === "self_registration" ||
+       item.attendanceMode === "trainer_roll_call"));
     if (!group) {
       return error(404, "CALENDAR_GROUP_NOT_FOUND", "Registration group not available.");
     }
