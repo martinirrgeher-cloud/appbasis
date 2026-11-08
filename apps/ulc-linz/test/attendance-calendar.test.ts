@@ -30,6 +30,12 @@ describe("G-04.10 trainer attendance follows the group training calendar", () =>
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "const dates = kindertrainingWeekCalendarDates;",
     );
+    // The week caption must still use the entire Monday-Sunday range, not
+    // dates[6] from a one-day/two-day calendar selection.
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      'germanDate(weekDates[0]) + " bis " + germanDate(weekDates[6])',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain("empty.colSpan = dates.length + 1;");
   });
 
   it("uses explicit extra/cancelled exceptions instead of guessing from stored test data", () => {
