@@ -179,6 +179,17 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-youth-trainers-preview.mjs verify
 
+      # G-04: existing Preview only; no migration or provider write before this
+      # read-only v17 schema/Neon-origin/application-role attestation succeeds.
+      - name: Require existing Preview v17 calendar and protected app role
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node ./tooling/ulc-linz-g04-calendar-v17-preview.mjs verify
+          node ./tooling/ulc-linz-g04-direct-preview-preflight.mjs
 
       - name: Resolve preview worker and URL
         id: preview
@@ -264,6 +275,7 @@ jobs:
             baseURL: process.env.APPBASIS_BASE_URL,
             buildSha: process.env.GITHUB_SHA,
             entrypoint: "./worker/preview-exercise-catalog-standard.ts",
+            registrationCalendarV17: true,
             r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
             r2Jurisdiction: "eu",
             outputPath:
@@ -347,6 +359,33 @@ jobs:
         env:
           APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
         run: node ./tooling/generated-preview-database-smoke.mjs
+
+      - name: Verify v17 calendar HTML and protected anonymous calendar API
+        shell: bash
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          HTML="$(curl --fail-with-body --silent --show-error "$APPBASIS_GENERATED_PREVIEW_URL/")"
+          grep -F 'id="group-calendar-open"' <<<"$HTML" >/dev/null || {
+            echo 'The existing Preview lacks the calendar editor action.' >&2
+            exit 1
+          }
+          grep -F 'id="group-calendar-weekdays"' <<<"$HTML" >/dev/null || {
+            echo 'The existing Preview lacks the weekday editor.' >&2
+            exit 1
+          }
+          CALENDAR_STATUS="$(curl --silent --show-error \
+            --output "$RUNNER_TEMP/g04-calendar-anonymous.json" \
+            --write-out '%{http_code}' \
+            "$APPBASIS_GENERATED_PREVIEW_URL/api/modules/athletes/registration-calendar?groupId=anonymous")"
+          case "$CALENDAR_STATUS" in
+            401|403) ;;
+            *)
+              echo "Unauthenticated calendar API returned unsafe HTTP $CALENDAR_STATUS." >&2
+              exit 1
+              ;;
+          esac
 
       - name: Verify preview UI and protected audit path
         env:

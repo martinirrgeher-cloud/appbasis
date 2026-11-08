@@ -21,19 +21,19 @@ Die Controller-/Retention-/Exportentscheidung und ein unabhängiges `pg_dump`/`p
 
 ## Der gewohnte App-Weg ohne zusätzliche Infrastruktur
 
-Der Code dieses PR aktiviert den Kalender nur für den **bestehenden Preview-Worker `appbasis-ulc-linz`** in der vorhandenen E7B9-Preview-GitHub-Actions-Deployment-Pipeline:
+Der Kalender wird über den **bestehenden Preview-Worker `appbasis-ulc-linz`** und den täglich verwendeten **E6H-Preview-Runtime-Refresh** aktiviert. Das alte E7B9-Migrationsworkflow ist für diese reine App-Aktualisierung nicht geeignet:
 
 - Derselbe Worker und dieselben zwei bereits bestehenden Anwendung/Security-Log-Hyperdrives (keine neue Sandbox).
 - `renderGeneratedPreviewWranglerConfig` kennt einen **expliziten, standardmäßig deaktivierten** Parameter `registrationCalendarV17`. Er darf nur bei App-ID `ulc-linz`, bestehendem Preview-Entrypoint `./worker/preview-exercise-catalog-standard.ts`, zwei getrennten Hyperdrives und Worker-URL `https://appbasis-ulc-linz.<subdomain>.workers.dev` aktiviert werden.
 - Nur dann erhält die Preview-Worker-Konfiguration die bestehenden Runtime-Flags `APPBASIS_GENERATED_APP_ID`, `APPBASIS_RUNTIME_ENVIRONMENT` und `APPBASIS_REGISTRATION_CALENDAR_V17=enabled`. Andere Apps und alle normalen Konfigurationen bleiben unverändert.
-- Der **bestehende** manuelle Workflow `.github/workflows/ulc-linz-e7b9-preview.yml` führt vor jeder v17-Preview-Bereitstellung sowohl die bestehenden v16-/D4-Tests als auch die **v17-Schema- und Origin/Anwendungsrollen-/Guard-Prüfung** aus. Nur bei PASS wird die vorhandene Preview mit dem v17-Featureflag deployed. Die App-Runtime prüft beim Start die echte DB erneut und verweigert bei fehlenden Objekten/ACLs die Aktivierung.
-- **Keine automatische Workflow-Ausführung** durch diesen PR, kein Produktionszugriff und kein neuer Cloudflare-Worker. Bestehende U12/U14/Kindertraining-/Doku-Funktionen bleiben Teil der E7B9-Regressionsabnahme.
+- Der **aktuell verwendete** manuelle Workflow `.github/workflows/ulc-linz-e6h-preview-runtime-refresh.yml` prüft die bestehenden v11–v16-Verträge, danach **v17-Schema und unveränderte Neon-Origin/Anwendungsrollen/Guard-Berechtigungen** vor jedem Worker-Update. Nur bei PASS aktiviert er über `registrationCalendarV17: true` den Kalender in derselben App. Die App-Runtime prüft die Berechtigungen zusätzlich bei Verbindungsaufbau.
+- **Keine automatische Workflow-Ausführung** durch diesen PR, kein Produktionszugriff und kein neuer Cloudflare-Worker. Bestehende U12/U14/Kindertraining-/Doku-Funktionen bleiben Teil der E6H-Regressionstests. Die Kalender-HTML-Elemente und der anonyme Kalender-API-Schutz werden nach dem Deploy separat geprüft.
 
 ## Freigabe und Handytest
 
 1. PR-CI auf exakt dem aktuellen HEAD und Codex-Review müssen **PASS** sein.
 2. Erst nach separater **Merge-Freigabe** den PR nach `main` übernehmen und Main-CI prüfen.
-3. Erst nach separater **Preview-Deploy-Freigabe** den bekannten Workflow **ULC E7B9 Training Plans Preview** mit Operation `deploy-accept` (oder `deploy` und später `accept`) sowie bestätigtem `apply=true` manuell ausführen. Dieser Workflow verwendet die bestehenden geschützten Preview-Credentials und dieselbe bestehende App-Adresse.
+3. Nach separater **Preview-Deploy-Freigabe** den bisherigen Workflow **ULC Linz Preview – Aktuelle App aktualisieren** (`ulc-linz-e6h-preview-runtime-refresh.yml`) auf `main`, `apply=true`, einmalig starten. Dieser Workflow verwendet die bestehenden geschützten Preview-Credentials und dieselbe bestehende App-Adresse. Der alte E7B9-Workflow ist für diesen G-04-Test nicht erneut zu starten.
 4. Abnahme: exakter Build-SHA, Datenbank-Smoke, aktivierte Kalender-UI, Anmelde- und Rechteprüfungen.
 5. Am Handy: **Stammdaten → Gruppen → aktive Selbstanmeldegruppe → Kalender**, Wochentage/Anmeldevorlauf/Frist anpassen, Sondertermin hinzufügen/absagen/zurücksetzen, anschließend Wochenanmeldung einschließlich abgelaufener Frist und bestehende U12/U14/Kindertraining/Trainingsdoku prüfen.
 
@@ -48,3 +48,9 @@ Der zusätzliche Sandbox-PR [#564](https://github.com/martinirrgeher-cloud/appba
 - Bestehende Preview-Datenbank: **v17 Schema PASS**, unveränderte Altanmeldungen.
 - Neue App-Freischaltung im gewohnten Preview-Worker: **PR, noch nicht deployed**.
 - Produktiver Echtbetrieb / unabhängiger Backup- und formaler Privacy-Gate: **BLOCKED**.
+
+## Fehlgeschlagener E7B9-Deployment-Versuch und Korrektur (08.11.2026)
+
+Der freigegebene Run [#42501283046](https://github.com/martinirrgeher-cloud/appbasis/actions/runs/42501283046), Commit `f90e25cd4a5351b31b08406812350164673431b6`, scheiterte **vor** Cloudflare-/Worker-Mutationen bei `ulc-linz-training-blocks-v4-preview.mjs verify`. Der alte Workflow verlangt irrtümlich den **veröffentlichten Repository-Vertrag exakt v4**, obwohl das Trainingsblöcke-Modul mittlerweile v6 veröffentlicht, die Preview-Datenbank für dieses Modul aber korrekt mit v4 arbeitet (v5/v6-Tabellen fehlen). Das ist **kein** Fehler der G-04-Datenbankmigration und kein Anlass, Training-Blöcke-v5/v6 ohne gesondertes Arbeitspaket zu installieren.
+
+Gegenmaßnahme: Das bewährte E6H-Workflow wurde gezielt um dieselbe **read-only v17-Readiness**, das v17-Flag und einen neuen Kalender-HTML/API-Smoke erweitert. Die E7B9-Historienprüfung wird **nicht** deaktiviert, verkürzt oder umgangen: Sie bleibt für ihren eigenen Legacy-Workflow aktiv, der hier ausdrücklich nicht verwendet wird. Vorbereitete, aber nicht gemergte Änderungen am alten v4-Checker werden nicht übernommen. **Der neue E6H-Workflow führt weiterhin keine Datenbankmigration durch.**
