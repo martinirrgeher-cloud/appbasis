@@ -136,7 +136,7 @@ if (!databaseUrl) {
         .rejects.toBeInstanceOf(UlcRegistrationCalendarDataError);
     });
 
-    it("blocks SQL-level policy bypass for both direct and proxy-style writes, without orphan sessions", async () => {
+    it("blocks direct SQL registration writes and rolls back rejected orphan sessions", async () => {
       const athletes = new PostgresAthleteMasterdataRepository(
         connection().client, () => randomUUID(),
       );
