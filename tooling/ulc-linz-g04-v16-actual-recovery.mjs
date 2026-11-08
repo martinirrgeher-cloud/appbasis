@@ -55,7 +55,7 @@ export function validateG045OperatorInput(env, action) {
 
   const work = env.APPBASIS_G04_V16_EVIDENCE_DIR;
   if (typeof work !== "string" || !work.startsWith("/") || work === "/" ||
-      work.includes("..") || work.includes("\n") || work.includes("\r")) deny();
+      work.includes("..") || !/^\/[a-zA-Z0-9_./-]+$/.test(work)) deny();
   return Object.freeze({
     backupUrl, restoreUrl: urls.restoreDatabaseUrl, work,
     restoreDb: decodeURIComponent(restore.pathname.slice(1)),
@@ -83,7 +83,7 @@ export function validateG045BackupManifest(manifest, restoreDb) {
   return manifest;
 }
 
-async function readProtectedAcl(url, snapshotId) {
+export async function readProtectedAcl(url, snapshotId) {
   const db = createPostgresDatabase(url);
   try {
     return await db.client.begin(async sql => {
@@ -107,7 +107,7 @@ async function readProtectedAcl(url, snapshotId) {
   } finally { await db.client.end().catch(() => {}); }
 }
 
-async function readDataDigest(url, snapshotId) {
+export async function readDataDigest(url, snapshotId) {
   const db = createPostgresDatabase(url);
   try {
     return await db.client.begin(async sql => {
@@ -146,7 +146,7 @@ async function verifySourceV16(url) {
   } finally { await db.client.end().catch(() => {}); }
 }
 
-async function verifyTargetEmpty(url, expectedDb) {
+export async function verifyTargetEmpty(url, expectedDb) {
   const db = createPostgresDatabase(url);
   try {
     const rows = await db.client.unsafe(
