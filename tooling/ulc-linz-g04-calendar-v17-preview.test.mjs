@@ -39,8 +39,10 @@ const current = {
     ...exceptionColumns.map((column_name) => ({ table_name: exceptions, column_name })),
   ],
   constraints: [
-    { table_name: rules, contype: "p", convalidated: true },
-    { table_name: exceptions, contype: "p", convalidated: true },
+    { table_name: rules, contype: "p", convalidated: true,
+      key_columns: ["organization_id", "group_id"] },
+    { table_name: exceptions, contype: "p", convalidated: true,
+      key_columns: ["organization_id", "group_id", "session_date"] },
   ],
   triggers: [{
     tgname: "ulc_linz_registration_calendar_guard_trg",
@@ -87,6 +89,22 @@ test("G-04.2c rejects incomplete v16, partial v17, broken guard, or metadata dri
     { ...current, columns: current.columns.filter((x) =>
       !(x.table_name === exceptions && x.column_name === "kind")) },
     { ...current, constraints: current.constraints.slice(0, 1) },
+    { ...current, constraints: current.constraints.map((c) =>
+      c.table_name === exceptions
+        ? { ...c, key_columns: ["organization_id", "group_id"] }
+        : c) },
+    { ...current, constraints: current.constraints.map((c) =>
+      c.table_name === rules
+        ? { ...c, key_columns: ["group_id", "organization_id"] }
+        : c) },
+    { ...current, constraints: current.constraints.map((c) =>
+      c.table_name === exceptions
+        ? { ...c, key_columns: [...c.key_columns, "revision"] }
+        : c) },
+    { ...current, constraints: current.constraints.map((c) =>
+      c.table_name === rules
+        ? { ...c, key_columns: [] }
+        : c) },
     { ...current, triggers: [] },
     { ...current, triggers: current.triggers.map((x) => ({ ...x, tgenabled: "D" })) },
     { ...current, triggers: current.triggers.map((x) => ({ ...x, function_name: "unrelated" })) },
