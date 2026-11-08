@@ -2793,7 +2793,13 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 window.addEventListener("beforeunload", (event) => {
-  if (u12Saving || u12DirtyDates.size > 0 ||
+  // Registration writes may still be in flight and note drafts only live in
+  // this open tab. Protect them just as the existing youth attendance drafts.
+  // Do not try an asynchronous write during page unload.
+  if (selfRegistrationSavingKeys.size > 0 || selfRegistrationProxy?.saving ||
+      selfRegistrationNoteDrafts.size > 0 ||
+      (selfRegistrationProxy?.noteDrafts?.size || 0) > 0 ||
+      u12Saving || u12DirtyDates.size > 0 ||
       u14Saving || u14DirtyDates.size > 0 ||
       kidsSaving || kidsDirtyDates.size > 0) {
     event.preventDefault();
