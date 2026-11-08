@@ -360,6 +360,33 @@ jobs:
           APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
         run: node ./tooling/generated-preview-database-smoke.mjs
 
+      - name: Verify v17 calendar HTML and protected anonymous calendar API
+        shell: bash
+        env:
+          APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          HTML="$(curl --fail-with-body --silent --show-error "$APPBASIS_GENERATED_PREVIEW_URL/")"
+          grep -F 'id="group-calendar-open"' <<<"$HTML" >/dev/null || {
+            echo 'The existing Preview lacks the calendar editor action.' >&2
+            exit 1
+          }
+          grep -F 'id="group-calendar-weekdays"' <<<"$HTML" >/dev/null || {
+            echo 'The existing Preview lacks the weekday editor.' >&2
+            exit 1
+          }
+          CALENDAR_STATUS="$(curl --silent --show-error \
+            --output "$RUNNER_TEMP/g04-calendar-anonymous.json" \
+            --write-out '%{http_code}' \
+            "$APPBASIS_GENERATED_PREVIEW_URL/api/modules/athletes/registration-calendar?groupId=anonymous")"
+          case "$CALENDAR_STATUS" in
+            401|403) ;;
+            *)
+              echo "Unauthenticated calendar API returned unsafe HTTP $CALENDAR_STATUS." >&2
+              exit 1
+              ;;
+          esac
+
       - name: Verify preview UI and protected audit path
         env:
           APPBASIS_GENERATED_PREVIEW_URL: ${{ steps.preview.outputs.base_url }}
