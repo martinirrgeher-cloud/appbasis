@@ -360,6 +360,7 @@ const u12Ui = {
   group: document.querySelector("#u12-group"),
   groupLabel: document.querySelector("#u12-group-label"),
   date: document.querySelector("#u12-date"),
+  calendarHint: document.querySelector("#u12-calendar-hint"),
   prev: document.querySelector("#u12-prev"),
   next: document.querySelector("#u12-next"),
   reload: document.querySelector("#u12-reload"),
@@ -474,6 +475,8 @@ let u12StatisticsLoadId = 0;
 let u12LoadId = 0;
 let u12CalendarBusy = false;
 let u12CalendarWeekCache = new Map();
+let u12CalendarEnabled = false;
+let u12CalendarRuleWeekdays = null;
 
 function resetU12SessionState() {
   if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
@@ -489,6 +492,8 @@ function resetU12SessionState() {
   u12WriteAllowed = true;
   u12CalendarBusy = false;
   u12CalendarWeekCache = new Map();
+  u12CalendarEnabled = false;
+  u12CalendarRuleWeekdays = null;
   u12Groups = [];
   u12LoadedGroupId = "";
   u12LoadedDate = "";
@@ -737,6 +742,7 @@ function refreshU12Controls() {
     u12Ui.addAthlete.hidden = !canCreate;
     u12Ui.addAthlete.disabled = busy || !groupIdOrValidU12Group();
   }
+  if (u12FollowGroupCalendar) refreshU12CalendarHint();
   if (u12Ui.today) {
     if (u12FollowGroupCalendar) u12Ui.today.removeAttribute("aria-pressed");
     else u12Ui.today.setAttribute(
@@ -1469,6 +1475,26 @@ function u12CalendarWeekStart(date) {
   return localWeekStart(parsed);
 }
 
+
+function refreshU12CalendarHint() {
+  if (!u12FollowGroupCalendar) return;
+  const hasRule = Array.isArray(u12CalendarRuleWeekdays);
+  if (u12Ui.calendarHint) {
+    u12Ui.calendarHint.hidden = hasRule || !u12Ready;
+    u12Ui.calendarHint.textContent = u12CalendarEnabled
+      ? "Für diese Gruppe ist noch keine Wochenregel gespeichert. Mit den Pfeilen wechselst du jeweils eine Woche."
+      : "Der Gruppenkalender ist hier nicht aktiv. Mit den Pfeilen wechselst du jeweils eine Woche.";
+  }
+  for (const [control, label] of [
+    [u12Ui.prev, hasRule ? "Vorheriges Training" : "Gleicher Wochentag in der Vorwoche"],
+    [u12Ui.next, hasRule ? "Nächstes Training" : "Gleicher Wochentag in der Folgewoche"],
+  ]) {
+    if (!control) continue;
+    control.setAttribute("aria-label", label);
+    control.title = label;
+  }
+}
+
 async function u12FetchCalendarDates(groupId, weekStart) {
   const cache = u12CalendarWeekCache;
   const generation = attendanceSessionGeneration;
@@ -1482,7 +1508,20 @@ async function u12FetchCalendarDates(groupId, weekStart) {
   }
   const validWeek = registrationWeekDates(weekStart);
   if (result?.groupId !== groupId || result?.weekStart !== weekStart ||
-      !Array.isArray(result.dates)) throw new Error("INVALID_CALENDAR_RESPONSE");
+      !Array.isArray(result.dates) ||
+      typeof result.calendarEnabled !== "boolean" ||
+      !(result.weekdays === null ||
+        (Array.isArray(result.weekdays) &&
+         result.weekdays.length > 0 &&
+         result.weekdays.length <= 7 &&
+         result.weekdays.every((day, i) => Number.isInteger(day) &&
+           day >= 1 && day <= 7 && (i === 0 || day > result.weekdays[i - 1])))) ||
+      (!result.calendarEnabled && result.weekdays !== null)) {
+    throw new Error("INVALID_CALENDAR_RESPONSE");
+  }
+  u12CalendarEnabled = result.calendarEnabled;
+  u12CalendarRuleWeekdays = result.weekdays;
+  refreshU12CalendarHint();
   const positions = result.dates.map((date) => validWeek.indexOf(date));
   if (!positions.every((index, i) => index >= 0 &&
       (i === 0 || index > positions[i - 1]))) {
@@ -1518,13 +1557,16 @@ async function u12PopulateCalendarChoices(groupId, selected, isCurrent) {
   select.value = selected;
 }
 
-async function u12FindCalendarDate(groupId, anchor, direction, includeAnchor) {
+async function u12FindCalendarDate(groupId, anchor, direction, includeAnchor,
+    onlyWeekday = null) {
   let searchDate = includeAnchor ? anchor : shiftIsoDate(anchor, direction);
   for (let week = 0; week < 16; week += 1) {
     const weekStart = u12CalendarWeekStart(searchDate);
     const dates = await u12FetchCalendarDates(groupId, weekStart);
-    const eligible = dates.filter((date) => direction > 0
-      ? date >= searchDate : date <= searchDate);
+    const eligible = dates.filter((date) =>
+      (direction > 0 ? date >= searchDate : date <= searchDate) &&
+      (onlyWeekday === null ||
+        new Date(date + "T12:00:00").getDay() === onlyWeekday));
     if (eligible.length) return direction > 0
       ? eligible[0] : eligible[eligible.length - 1];
     searchDate = shiftIsoDate(weekStart, direction > 0 ? 7 : -1);
@@ -1532,7 +1574,8 @@ async function u12FindCalendarDate(groupId, anchor, direction, includeAnchor) {
   throw new Error("NO_CALENDAR_TRAINING_DAY");
 }
 
-async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false) {
+async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false,
+    onlyWeekday = null) {
   if (!u12Ui.date || !u12Ready || u12CalendarBusy || u12Loading || u12Saving) return;
   const groupId = u12Ui.group?.value || "";
   if (!groupId) return;
@@ -1548,7 +1591,8 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false)
         u12LoadId !== loadId) return;
     // A fresh navigation must observe schedule updates from other sessions.
     u12CalendarWeekCache = new Map();
-    const chosen = await u12FindCalendarDate(groupId, anchor, direction, includeAnchor);
+    const chosen = await u12FindCalendarDate(
+      groupId, anchor, direction, includeAnchor, onlyWeekday);
     if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
         u12LoadId !== loadId) return;
     // A native select ignores a value that is not yet in its option list.
@@ -1814,8 +1858,20 @@ async function u12FlushChanges() {
 async function u12MoveDate(offset) {
   if (u12FollowGroupCalendar) {
     if (!u12Ui.date || offset === 0) return;
-    await u12NavigateCalendarDate(
-      u12Ui.date.value || localIsoDate(new Date()), offset > 0 ? 1 : -1);
+    const selected = u12Ui.date.value || localIsoDate(new Date());
+    const direction = offset > 0 ? 1 : -1;
+    if (u12CalendarRuleWeekdays === null) {
+      // No stored weekly rule: the API's seven-day fallback is *not* proof of
+      // seven daily training sessions. Keep the user's weekday, jump 7 days,
+      // and state this fallback clearly instead of requiring seven clicks.
+      const weekday = new Date(selected + "T12:00:00").getDay();
+      await u12NavigateCalendarDate(
+        shiftIsoDate(selected, direction * 7), direction, true, weekday);
+    } else {
+      // A real schedule: jump to the next/previous authorized training, even
+      // when it is more than one calendar week away.
+      await u12NavigateCalendarDate(selected, direction, false);
+    }
     return;
   }
   if (!(await u12FlushChanges())) return;
