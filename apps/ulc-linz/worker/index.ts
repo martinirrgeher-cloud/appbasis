@@ -29,6 +29,7 @@ import {
 import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 
 import { createGeneratedApp } from "./app";
+import { attendanceWeekDates, selectAttendanceCalendarDates } from "./attendance-calendar";
 import { registrationCalendarHttpResponse } from "./registration-calendar-http";
 import { UlcLinzAuthorizationDeniedError } from "./authorization";
 import { UlcLinzCountdownAccessDeniedError } from "./countdown-access";
@@ -239,6 +240,8 @@ export function createGeneratedWorker(
           );
         } else if (url.pathname === "/api/modules/kindertraining") {
           response = await kindertrainingModuleResponse(request, runtime, url);
+        } else if (url.pathname === "/api/modules/kindertraining/calendar") {
+          response = await kindertrainingCalendarResponse(request, runtime, url);
         } else if (url.pathname === "/api/modules/kindertraining/session") {
           response = await kindertrainingSessionResponse(request, runtime, url);
         } else if (
@@ -1500,6 +1503,64 @@ async function kindertrainingModuleResponse(
       view: true,
     },
     trainingGroups,
+  });
+}
+
+async function kindertrainingCalendarResponse(
+  request: Request,
+  runtime: GeneratedPostgresApplicationRuntime,
+  url: URL,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return methodNotAllowedFor("GET", "Kindertraining calendar");
+  }
+  const access = await authorizeKindertrainingRequest(request, runtime, url, "view");
+  if (access instanceof Response) return access;
+  const keys = [...url.searchParams.keys()];
+  if (keys.length !== 2 || keys.some(key => key !== "groupId" && key !== "weekStart") ||
+      url.searchParams.getAll("groupId").length !== 1 ||
+      url.searchParams.getAll("weekStart").length !== 1) {
+    return Response.json({ error: { code: "INVALID_ATTENDANCE_CALENDAR" } },
+      { status: 400 });
+  }
+  const groupId = url.searchParams.get("groupId") || "";
+  const weekStart = url.searchParams.get("weekStart") || "";
+  let weekDates: readonly string[];
+  try {
+    weekDates = attendanceWeekDates(weekStart);
+  } catch {
+    return Response.json({ error: { code: "INVALID_ATTENDANCE_CALENDAR" } },
+      { status: 400 });
+  }
+  if (!groupId || groupId.trim() !== groupId || groupId.length > 200 ||
+      !kindertrainingGroupAllowed(access, groupId)) {
+    return kindertrainingGroupScopeDenied(runtime, access, "view");
+  }
+  // A scoped identity can see only an existing authorized training group.
+  const groups = await runtime.kindertraining.listGroups(access.organizationId);
+  if (!groups.some(group => group.id === groupId)) {
+    return kindertrainingGroupNotFound();
+  }
+  // Never fall back to showing arbitrary days if the enabled calendar is offline.
+  const calendar = runtime.registrationCalendar;
+  if (!calendar) {
+    return Response.json({ error: { code: "ATTENDANCE_CALENDAR_UNAVAILABLE" } },
+      { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
+  const [rule, ...exceptions] = await Promise.all([
+    calendar.readRule(access.organizationId, groupId),
+    ...weekDates.map(date => calendar.readException(access.organizationId, groupId, date)),
+  ]);
+  const dates = selectAttendanceCalendarDates({
+    weekStart,
+    weekdays: rule?.schedule.weekdays ?? null,
+    exceptions: weekDates.map((date, index) => ({
+      date,
+      kind: exceptions[index]?.kind ?? null,
+    })),
+  });
+  return Response.json({ groupId, weekStart, dates }, {
+    headers: { "Cache-Control": "private, no-store" },
   });
 }
 
