@@ -62,7 +62,7 @@ export async function loadG04CalendarPreviewPlan({ repositoryRoot = process.cwd(
   const statements = sql.split("--> statement-breakpoint")
     .map((statement) => statement.trim()).filter(Boolean);
   const lifecycleForeignKey =
-    /group_id\\s+text\\s+NOT NULL\\s+REFERENCES\\s+appbasis_training_group\\(id\\)\\s+ON DELETE CASCADE/i;
+    /group_id\s+text\s+NOT NULL\s+REFERENCES\s+appbasis_training_group\(id\)\s+ON DELETE CASCADE/i;
   if (statements.length !== 5 ||
       !statements[0].includes("CREATE TABLE " + RULE + " (") ||
       !statements[1].includes("CREATE TABLE " + EXCEPTION + " (") ||
