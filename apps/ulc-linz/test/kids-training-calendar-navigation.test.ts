@@ -128,6 +128,38 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
       .fetch("kids-group", "2026-11-09")).rejects.toThrow("INVALID_CALENDAR_DATES");
   });
 
+  it("locks existing attendance drafts until calendar navigation and target load finish", () => {
+    const refresh = ULC_KIDS_SCRIPT.slice(
+      ULC_KIDS_SCRIPT.indexOf("function refreshKidsControls()"),
+      ULC_KIDS_SCRIPT.indexOf("function renderKidsContentRows("),
+    );
+    const draft = ULC_KIDS_SCRIPT.slice(
+      ULC_KIDS_SCRIPT.indexOf("function kidsEditableDraft()"),
+      ULC_KIDS_SCRIPT.indexOf("function refreshKidsMatrixControls("),
+    );
+    const nav = ULC_KIDS_SCRIPT.slice(
+      ULC_KIDS_SCRIPT.indexOf("async function kidsNavigateCalendarDate("),
+      ULC_KIDS_SCRIPT.indexOf("async function loadKidsAttendance("),
+    );
+    const change = ULC_KIDS_SCRIPT.slice(
+      ULC_KIDS_SCRIPT.indexOf("async function kidsChangeDate()"),
+      ULC_KIDS_SCRIPT.indexOf("async function kidsChangeGroup("),
+    );
+    expect(refresh).toContain("!kidsCalendarBusy && !cancelled");
+    expect(draft).toContain("!kidsLoading && !kidsCalendarBusy");
+    const populate = nav.indexOf("await kidsPopulateCalendarChoices(");
+    const assignment = nav.indexOf("kidsUi.date.value = chosen");
+    const load = nav.indexOf("await loadKidsAttendance()");
+    const release = nav.indexOf("} finally {");
+    expect(populate).toBeGreaterThan(0);
+    expect(assignment).toBeGreaterThan(populate);
+    expect(load).toBeGreaterThan(assignment);
+    expect(release).toBeGreaterThan(load);
+    expect(change.indexOf("await loadKidsAttendance()")).toBeLessThan(
+      change.indexOf("} finally {"),
+    );
+  });
+
   it("renders seven small accessible day choices and separate optional panels", () => {
     const section = ULC_LINZ_APP_HTML.split('id="group-calendar-panel"')[1]
       ?.split('id="group-calendar-back"')[0] || "";
