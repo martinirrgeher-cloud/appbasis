@@ -168,7 +168,12 @@ export class PostgresUlcRegistrationCalendarRepository {
             deadline_days_before, deadline_local_time, late_mode, revision, updated_at)
          SELECT $1, $2, $3::smallint, $4::smallint, $5::smallint,
                 $6::text, $7::text, 1, now()
-           FROM eligible WHERE $8::integer IS NULL
+           FROM eligible
+          WHERE $8::integer IS NULL OR EXISTS (
+            SELECT 1 FROM ulc_linz_registration_calendar_rule
+             WHERE organization_id = $1 AND group_id = $2
+               AND revision = $8::integer
+          )
          ON CONFLICT (organization_id, group_id) DO UPDATE SET
            weekdays_mask = EXCLUDED.weekdays_mask,
            weeks_ahead = EXCLUDED.weeks_ahead,
@@ -217,7 +222,12 @@ export class PostgresUlcRegistrationCalendarRepository {
          INSERT INTO ulc_linz_registration_calendar_exception
            (organization_id, group_id, session_date, kind, revision, updated_at)
          SELECT $1, $2, $3::date, $4, 1, now()
-           FROM eligible WHERE $5::integer IS NULL
+           FROM eligible
+          WHERE $5::integer IS NULL OR EXISTS (
+            SELECT 1 FROM ulc_linz_registration_calendar_exception
+             WHERE organization_id = $1 AND group_id = $2
+               AND session_date = $3::date AND revision = $5::integer
+          )
          ON CONFLICT (organization_id, group_id, session_date) DO UPDATE SET
            kind = EXCLUDED.kind,
            revision = ulc_linz_registration_calendar_exception.revision + 1,
