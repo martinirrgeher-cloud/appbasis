@@ -696,7 +696,7 @@ function refreshU12Controls() {
     if (control) control.disabled = busy || !u12Ready;
   }
   const cancelled = u12Snapshot?.session?.state === "cancelled";
-  const editable = !!u12Snapshot && !u12Loading && !cancelled &&
+  const editable = !!u12Snapshot && !u12Loading && !u12CalendarBusy && !cancelled &&
     u12WriteAllowed && !u12Conflict;
   if (u12Ui.note) u12Ui.note.disabled = !editable;
   for (const input of u12Ui.trainerRows?.querySelectorAll("[data-u12-trainer-id]") ?? []) {
@@ -726,7 +726,7 @@ function refreshU12Controls() {
       (missing.content ? " · offen" : "");
   }
   if (u12Ui.contentAssign) {
-    u12Ui.contentAssign.disabled = !u12Snapshot || u12Loading || u12ContentTitles.length === 0;
+    u12Ui.contentAssign.disabled = !u12Snapshot || u12Loading || u12CalendarBusy || u12ContentTitles.length === 0;
   }
   if (u12Ui.statsOpen) u12Ui.statsOpen.disabled = !u12Ready || busy ||
     !u12Ui.group?.value || !u12Snapshot;
@@ -943,7 +943,7 @@ function u12PresentAthletes() {
 
 function u12EditableDraft() {
   return !!u12Snapshot && u12Ready && u12WriteAllowed && !u12Conflict &&
-    !u12Loading && u12Snapshot.session?.state !== "cancelled";
+    !u12Loading && !u12CalendarBusy && u12Snapshot.session?.state !== "cancelled";
 }
 
 function refreshU12MatrixControls(editable = u12EditableDraft()) {
@@ -1000,7 +1000,7 @@ function refreshU12AssignmentSummaries() {
 }
 
 function openU12AssignmentDialog() {
-  if (!u12Ui.matrixSection || !u12Snapshot || !u12Ready || u12Loading || u12Saving ||
+  if (!u12Ui.matrixSection || !u12Snapshot || !u12Ready || u12Loading || u12Saving || u12CalendarBusy ||
       u12ContentTitles.length === 0 || u12Ui.matrixSection.open) return;
   renderU12AssignmentMatrix();
   u12Ui.matrixSection.showModal();
@@ -1538,25 +1538,35 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false)
   const groupId = u12Ui.group?.value || "";
   if (!groupId) return;
   const generation = attendanceSessionGeneration;
+  const loadId = u12LoadId;
   u12CalendarBusy = true;
   refreshU12Controls();
   try {
     const chosen = await u12FindCalendarDate(groupId, anchor, direction, includeAnchor);
-    if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId) return;
+    if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
+        u12LoadId !== loadId) return;
+    // A native select ignores a value that is not yet in its option list.
+    // Expand from authorized calendar dates before assigning the target.
+    await u12PopulateCalendarChoices(groupId, chosen, () =>
+      generation === attendanceSessionGeneration &&
+      u12Ui.group?.value === groupId && u12LoadId === loadId);
+    if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
+        u12LoadId !== loadId) return;
     u12Ui.date.value = chosen;
+    // Keep the old draft locked throughout the destination load. Never clear
+    // calendarBusy between the last flush and the new attendance snapshot.
+    await loadU12Attendance();
   } catch {
     if (generation === attendanceSessionGeneration && u12Ui.group?.value === groupId) {
       showMessage(u12Ui.message,
         "Geplante Trainingstage konnten nicht ermittelt werden. Datum unverändert.");
     }
-    return;
   } finally {
     if (generation === attendanceSessionGeneration) {
       u12CalendarBusy = false;
       refreshU12Controls();
     }
   }
-  await loadU12Attendance();
 }
 
 async function loadU12Attendance() {
@@ -1803,35 +1813,41 @@ async function u12MoveDate(offset) {
 async function u12ChangeDate() {
   if (u12Saving || u12Loading || u12CalendarBusy) return;
   if (u12Ui.date?.value === u12LoadedDate) return;
-  if (u12FollowGroupCalendar && u12Ui.date?.value) {
+  if (u12FollowGroupCalendar) {
+    if (!u12Ui.date?.value || !(await u12FlushChanges())) {
+      if (u12Ui.date) u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
+      return;
+    }
     const groupId = u12Ui.group?.value || "";
     const selected = u12Ui.date.value;
     const generation = attendanceSessionGeneration;
+    const loadId = u12LoadId;
     u12CalendarBusy = true;
     refreshU12Controls();
     try {
       const dates = await u12FetchCalendarDates(
         groupId, u12CalendarWeekStart(selected));
       if (generation !== attendanceSessionGeneration ||
-          u12Ui.group?.value !== groupId) return;
+          u12Ui.group?.value !== groupId || loadId !== u12LoadId) return;
       if (!dates.includes(selected)) {
         u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
         showMessage(u12Ui.message,
           "Dieser Tag ist kein geplanter Trainingstag. Bitte einen Trainingstag wählen.");
         return;
       }
+      await loadU12Attendance();
     } catch {
-      if (generation === attendanceSessionGeneration) {
+      if (generation === attendanceSessionGeneration && u12Ui.group?.value === groupId) {
         u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
         showMessage(u12Ui.message, "Trainingskalender konnte nicht geladen werden.");
       }
-      return;
     } finally {
       if (generation === attendanceSessionGeneration) {
         u12CalendarBusy = false;
         refreshU12Controls();
       }
     }
+    return;
   }
   if (!(await u12FlushChanges())) {
     if (u12Ui.date) u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
