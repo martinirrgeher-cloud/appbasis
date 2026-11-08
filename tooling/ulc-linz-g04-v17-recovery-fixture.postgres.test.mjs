@@ -73,6 +73,56 @@ async function runPostgresContainer({ url, work, command }) {
   });
 }
 
+// Schema/row-count fingerprints deliberately do not cover privileges.
+async function readProtectedSecurityAcl(client) {
+  const rows = await client.unsafe(`
+    SELECT
+      procedure.prosecdef AS security_definer,
+      EXISTS (
+        SELECT 1
+        FROM pg_catalog.aclexplode(COALESCE(
+          procedure.proacl, pg_catalog.acldefault('f', procedure.proowner)
+        )) AS acl
+        WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
+      ) AS public_execute,
+      EXISTS (
+        SELECT 1
+        FROM pg_catalog.aclexplode(COALESCE(
+          procedure.proacl, pg_catalog.acldefault('f', procedure.proowner)
+        )) AS acl
+        JOIN pg_catalog.pg_roles AS role ON role.oid = acl.grantee
+        WHERE role.rolname = 'ulc_linz_security_event_cleanup'
+          AND acl.privilege_type = 'EXECUTE'
+      ) AS cleanup_execute,
+      EXISTS (
+        SELECT 1
+        FROM pg_catalog.aclexplode(COALESCE(
+          log.relacl, pg_catalog.acldefault('r', log.relowner)
+        )) AS acl
+        WHERE acl.grantee = 0 AND acl.privilege_type = 'SELECT'
+      ) AS public_log_select,
+      EXISTS (
+        SELECT 1
+        FROM pg_catalog.aclexplode(COALESCE(
+          log.relacl, pg_catalog.acldefault('r', log.relowner)
+        )) AS acl
+        JOIN pg_catalog.pg_roles AS role ON role.oid = acl.grantee
+        WHERE role.rolname = 'ulc_linz_security_event_read'
+          AND acl.privilege_type = 'SELECT'
+      ) AS audit_read_select
+    FROM pg_catalog.pg_proc AS procedure
+    JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+    JOIN pg_catalog.pg_class AS log ON log.relname = 'ulc_linz_security_event_log'
+    JOIN pg_catalog.pg_namespace AS log_namespace ON log_namespace.oid = log.relnamespace
+    WHERE namespace.nspname = 'public'
+      AND log_namespace.nspname = 'public'
+      AND procedure.proname = 'appbasis_ulc_linz_purge_expired_security_events'
+      AND pg_catalog.pg_get_function_identity_arguments(procedure.oid) = ''
+  `);
+  assert.equal(rows.length, 1, "Expected precisely one protected security function.");
+  return { ...rows[0] };
+}
+
 async function dropIsolatedDatabase(admin, name) {
   await admin.client.unsafe(
     "DROP DATABASE IF EXISTS " + identifier(name) + " WITH (FORCE)",
@@ -186,19 +236,28 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     const fixtureBefore = (await source.client.unsafe(selectFixture)).map((row) => ({ ...row }));
     assert.equal(fixtureBefore.length, 2);
     const before = await readUlcLinzRestoreFingerprint(sourceUrl);
+    const sourceAcl = await readProtectedSecurityAcl(source.client);
+    assert.deepEqual(sourceAcl, {
+      security_definer: true,
+      public_execute: false,
+      cleanup_execute: true,
+      public_log_select: false,
+      audit_read_select: true,
+    }, "Canonical v16 must restrict protected security-event access.");
+
 
     // pg_dump uses a consistent source snapshot. This is a fixture rehearsal,
     // not backup evidence for the real appbasis_ulc_linz_preview database.
     await runPostgresContainer({
       url: sourceUrl, work,
-      command: 'pg_dump --format=custom --no-owner --no-acl --dbname="$DATABASE_URL" --file=/evidence/v16-fixture.pgdump',
+      command: 'pg_dump --format=custom --no-owner --dbname="$DATABASE_URL" --file=/evidence/v16-fixture.pgdump',
     });
     assert.ok((await stat(dumpPath)).size > 0);
     const sha256 = createHash("sha256").update(await readFile(dumpPath)).digest("hex");
     assert.match(sha256, /^[0-9a-f]{64}$/);
     await runPostgresContainer({
       url: restoreUrl, work,
-      command: 'pg_restore --single-transaction --no-owner --no-acl --exit-on-error --dbname="$DATABASE_URL" /evidence/v16-fixture.pgdump',
+      command: 'pg_restore --single-transaction --no-owner --exit-on-error --dbname="$DATABASE_URL" /evidence/v16-fixture.pgdump',
     });
 
     restored = createPostgresDatabase(restoreUrl);
@@ -206,6 +265,10 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     assert.deepEqual(fixtureAfter, fixtureBefore);
     const after = await readUlcLinzRestoreFingerprint(restoreUrl);
     assert.deepEqual(after, before);
+    const restoreAcl = await readProtectedSecurityAcl(restored.client);
+    assert.deepEqual(restoreAcl, sourceAcl,
+      "The isolated restore must preserve explicit ACL grants and revocations.");
+
     const restoredState = await restored.client.unsafe(
       "SELECT to_regclass('public.ulc_linz_registration_calendar_rule') AS rule, " +
       "to_regclass('public.ulc_linz_registration_calendar_exception') AS exception",
