@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
 import { PostgresUlcTrainingSessionRepository } from "../worker/training-session-postgres";
+import v17Proposal from "../privacy/g04-v17-calendar-inventory-proposal.json";
 import {
   UlcRegistrationCalendarActivationError,
   verifyUlcG04PreviewCalendarReadiness,
@@ -203,6 +204,32 @@ if (!databaseUrl) {
     it("runs the actual v17 runtime attestation query and refuses a non-Preview database", async () => {
       await expect(verifyUlcG04PreviewCalendarReadiness(connection().client))
         .rejects.toBeInstanceOf(UlcRegistrationCalendarActivationError);
+    });
+
+    it("matches the staged v17 privacy field inventory to real PostgreSQL columns", async () => {
+      const rows = await connection().client.unsafe(`
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name IN (
+            'ulc_linz_registration_calendar_rule',
+            'ulc_linz_registration_calendar_exception'
+          )
+        ORDER BY table_name, ordinal_position
+      `);
+      const expected = v17Proposal.newTables.flatMap((table) =>
+        table.fields.map((field) => ({
+          table_name: table.id,
+          column_name: field,
+        })),
+      );
+      expect(rows.map(({ table_name, column_name }) => ({
+        table_name, column_name,
+      }))).toEqual(expected.sort((a,b) =>
+        a.table_name.localeCompare(b.table_name) ||
+        v17Proposal.newTables.find(t => t.id === a.table_name)!.fields.indexOf(a.column_name) -
+        v17Proposal.newTables.find(t => t.id === b.table_name)!.fields.indexOf(b.column_name)
+      ));
     });
 
     it("keeps the new calendar tables free of member identifiers and free text", async () => {
