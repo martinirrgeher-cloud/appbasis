@@ -552,23 +552,24 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                     </form>
                     <section class="card masterdata-form masterdata-overlay-form" id="group-calendar-panel" hidden>
                       <div class="section-heading"><div><p class="eyebrow">Trainingsgruppe</p><h3>Trainingskalender</h3></div></div>
-                      <p class="settings-note">Regelmäßige Trainingstage und Einzeltermine gelten für jede Trainingsgruppe. Anmeldefristen gelten nur bei Selbstanmeldung.</p>
-                      <p class="settings-note" id="group-calendar-status">Lade Gruppenregeln …</p>
+                      <p class="registration-calendar-summary">Lege die wöchentlichen Trainingstage deiner Gruppe fest.</p>
+                      <p class="registration-calendar-summary" id="group-calendar-status" role="status">Lade Gruppenregeln …</p>
                       <p class="message message--error" id="group-calendar-message" role="alert" hidden></p>
                       <p class="message message--success" id="group-calendar-success" role="status" hidden></p>
                       <form id="group-calendar-form">
                         <fieldset class="registration-calendar-weekdays" id="group-calendar-weekdays">
                           <legend>Regelmäßige Trainingstage</legend>
-                          <label><input type="checkbox" value="1" data-calendar-weekday="true" /> Montag</label>
-                            <label><input type="checkbox" value="2" data-calendar-weekday="true" /> Dienstag</label>
-                            <label><input type="checkbox" value="3" data-calendar-weekday="true" /> Mittwoch</label>
-                            <label><input type="checkbox" value="4" data-calendar-weekday="true" /> Donnerstag</label>
-                            <label><input type="checkbox" value="5" data-calendar-weekday="true" /> Freitag</label>
-                            <label><input type="checkbox" value="6" data-calendar-weekday="true" /> Samstag</label>
-                            <label><input type="checkbox" value="7" data-calendar-weekday="true" /> Sonntag</label>
+                          <label class="registration-calendar-day" title="Montag"><input type="checkbox" value="1" data-calendar-weekday="true" aria-label="Montag" /><span>Mo</span></label>
+                            <label class="registration-calendar-day" title="Dienstag"><input type="checkbox" value="2" data-calendar-weekday="true" aria-label="Dienstag" /><span>Di</span></label>
+                            <label class="registration-calendar-day" title="Mittwoch"><input type="checkbox" value="3" data-calendar-weekday="true" aria-label="Mittwoch" /><span>Mi</span></label>
+                            <label class="registration-calendar-day" title="Donnerstag"><input type="checkbox" value="4" data-calendar-weekday="true" aria-label="Donnerstag" /><span>Do</span></label>
+                            <label class="registration-calendar-day" title="Freitag"><input type="checkbox" value="5" data-calendar-weekday="true" aria-label="Freitag" /><span>Fr</span></label>
+                            <label class="registration-calendar-day" title="Samstag"><input type="checkbox" value="6" data-calendar-weekday="true" aria-label="Samstag" /><span>Sa</span></label>
+                            <label class="registration-calendar-day" title="Sonntag"><input type="checkbox" value="7" data-calendar-weekday="true" aria-label="Sonntag" /><span>So</span></label>
                         </fieldset>
-                        <div id="group-calendar-registration-settings">
-                        <div class="settings-grid">
+                        <details class="registration-calendar-details" id="group-calendar-registration-settings">
+                          <summary>Anmeldeeinstellungen <small>Nur für Gruppen mit Selbstanmeldung</small></summary>
+                          <div class="registration-calendar-details-body"><div class="settings-grid">
                           <label>Wochen im Voraus
                             <input id="group-calendar-weeks-ahead" type="number" min="0" max="26" step="1" value="4" required inputmode="numeric" />
                           </label>
@@ -586,15 +587,17 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                             <input id="group-calendar-deadline-time" type="time" value="18:00" />
                           </label>
                         </div>
-                        <p class="settings-note">Bei deaktiviertem Anmeldeschluss bleibt die Anmeldung bis zum Trainingstag möglich; abgesagte Termine bleiben gesperrt.</p>
-                        </div>
+                        <p class="registration-calendar-summary">Ohne Anmeldeschluss ist die Anmeldung bis zum Trainingstag möglich.</p>
+                          </div>
+                        </details>
                         <div class="masterdata-form-actions">
                           <button class="button button--primary" type="submit" id="group-calendar-save">Trainingstage speichern</button>
                         </div>
                       </form>
+                      <details class="registration-calendar-details">
+                        <summary>Einzeltermine <small>Zusatztraining oder Ausfall erfassen</small></summary>
+                        <div class="registration-calendar-details-body">
                       <form id="group-calendar-exception">
-                        <h3>Einzeltermine</h3>
-                        <p class="settings-note">Zusatztraining anlegen, regulären Termin absagen oder Abweichung zurücksetzen.</p>
                         <div class="settings-grid">
                           <label>Datum<input id="group-calendar-exception-date" type="date" required /></label>
                           <label>Terminstatus
@@ -611,6 +614,8 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                           <button class="button button--primary" type="submit" id="group-calendar-exception-save">Einzeltermin speichern</button>
                         </div>
                       </form>
+                        </div>
+                      </details>
                       <div class="masterdata-form-actions">
                         <button class="button button--secondary" id="group-calendar-back" type="button">Zurück zur Gruppe</button>
                       </div>
