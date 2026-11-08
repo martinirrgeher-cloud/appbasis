@@ -75,6 +75,9 @@ jobs:
       - name: Verify proposed G-04 calendar in isolated PostgreSQL
         run: pnpm --filter @appbasis/app-ulc-linz exec vitest run --maxWorkers=1 ./test/registration-calendar.postgres.e2e.test.ts
 
+      - name: G-04.2f restore v16 synthetic fixture into an isolated PostgreSQL 18 database
+        run: node --test ./tooling/ulc-linz-g04-v17-recovery-fixture.postgres.test.mjs
+
       - name: Run M5 exported snapshot PostgreSQL regression
         run: node --test ./tooling/ulc-linz-m5-exported-snapshot.postgres.test.mjs
 
