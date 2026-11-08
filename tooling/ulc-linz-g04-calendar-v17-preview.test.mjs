@@ -126,6 +126,16 @@ test("G-04.2c refuses apply without approval before opening any database", async
   assert.equal(calls, 0);
 });
 
+test("G-04.2d refuses even explicitly requested apply until privacy and restore evidence exist", async () => {
+  let factoryCalls = 0;
+  await assert.rejects(migrateG04CalendarPreview({ apply: true }, {
+    repositoryRoot: root,
+    now: new Date("2026-11-08T12:00:00.000Z"),
+    databaseFactory() { factoryCalls++; throw Error("must never open DB"); },
+  }), /migration evidence|pending|Preview/i);
+  assert.equal(factoryCalls, 0);
+});
+
 test("G-04.2c Preview workflow is manual, environment locked and requires explicit independent gates", async () => {
   const text = await readFile(resolve(
     root, ".github/workflows/ulc-linz-g04-v17-preview.yml",
@@ -140,6 +150,7 @@ test("G-04.2c Preview workflow is manual, environment locked and requires explic
     /G04_BACKUP_CONFIRMED/,
     /G04_RESTORE_CONFIRMED/,
     /G04_PRIVACY_CONFIRMED/,
+    /ulc-linz-g04-v17-activation-readiness\\.mjs/,
     /ulc-linz-youth-trainers-preview\.mjs verify/,
     /ulc-linz-g04-calendar-v17-preview\.mjs inspect/,
     /ulc-linz-g04-calendar-v17-preview\.mjs apply/,
