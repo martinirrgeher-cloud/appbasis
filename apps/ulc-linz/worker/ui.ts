@@ -528,7 +528,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                       <p class="masterdata-athlete-note" id="group-detail-description" hidden></p>
                       <div class="masterdata-athlete-actions masterdata-group-actions">
                         <button class="button button--secondary" id="group-detail-edit" type="button"><span aria-hidden="true">✎</span> Bearbeiten</button>
-                        <button class="button button--secondary" id="group-calendar-open" type="button" hidden>Trainingstage &amp; Anmeldefristen</button>
+                        <button class="button button--secondary" id="group-calendar-open" type="button" hidden>Trainingskalender</button>
                       </div>
                     </section>
                     <form class="card masterdata-form masterdata-overlay-form" id="group-form" hidden>
@@ -551,7 +551,8 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                       </div>
                     </form>
                     <section class="card masterdata-form masterdata-overlay-form" id="group-calendar-panel" hidden>
-                      <div class="section-heading"><div><p class="eyebrow">Selbstanmeldung</p><h3>Trainingstage &amp; Anmeldefristen</h3></div></div>
+                      <div class="section-heading"><div><p class="eyebrow">Trainingsgruppe</p><h3>Trainingskalender</h3></div></div>
+                      <p class="settings-note">Regelmäßige Trainingstage und Einzeltermine gelten für jede Trainingsgruppe. Anmeldefristen gelten nur bei Selbstanmeldung.</p>
                       <p class="settings-note" id="group-calendar-status">Lade Gruppenregeln …</p>
                       <p class="message message--error" id="group-calendar-message" role="alert" hidden></p>
                       <p class="message message--success" id="group-calendar-success" role="status" hidden></p>
@@ -566,6 +567,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                             <label><input type="checkbox" value="6" data-calendar-weekday="true" /> Samstag</label>
                             <label><input type="checkbox" value="7" data-calendar-weekday="true" /> Sonntag</label>
                         </fieldset>
+                        <div id="group-calendar-registration-settings">
                         <div class="settings-grid">
                           <label>Wochen im Voraus
                             <input id="group-calendar-weeks-ahead" type="number" min="0" max="26" step="1" value="4" required inputmode="numeric" />
@@ -585,6 +587,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                           </label>
                         </div>
                         <p class="settings-note">Bei deaktiviertem Anmeldeschluss bleibt die Anmeldung bis zum Trainingstag möglich; abgesagte Termine bleiben gesperrt.</p>
+                        </div>
                         <div class="masterdata-form-actions">
                           <button class="button button--primary" type="submit" id="group-calendar-save">Trainingstage speichern</button>
                         </div>
@@ -3504,6 +3507,13 @@ function selfRegistrationLabel(intention) {
   }[intention] || "Noch offen";
 }
 
+// A week is still queried in full to handle exceptions and stored records,
+// but days without any authorized registration option are not training days.
+function visibleSelfRegistrationDates(dates, options) {
+  const visible = new Set(options.map((option) => option.sessionDate));
+  return dates.filter((date) => visible.has(date));
+}
+
 function renderSelfRegistration() {
   const container = elements.registrationList;
   if (!container) return;
@@ -3530,7 +3540,7 @@ function renderSelfRegistration() {
     return;
   }
 
-  for (const sessionDate of dates) {
+  for (const sessionDate of visibleSelfRegistrationDates(dates, selfRegistrationOptions)) {
     const day = document.createElement("section");
     day.className = "registration-day";
 
@@ -3546,15 +3556,6 @@ function renderSelfRegistration() {
     const dayOptions = selfRegistrationOptions.filter(
       (option) => option.sessionDate === sessionDate,
     );
-    if (dayOptions.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "registration-empty";
-      empty.textContent = "Keine Anmeldung verfügbar.";
-      day.append(empty);
-      container.append(day);
-      continue;
-    }
-
     for (const option of dayOptions) {
       const card = document.createElement("article");
       card.className = "card registration-card";
