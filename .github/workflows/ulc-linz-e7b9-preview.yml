@@ -430,6 +430,17 @@ jobs:
           APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
         run: node ./tooling/ulc-linz-youth-trainers-preview.mjs verify
 
+      - name: Require v17 calendar schema and app privileges on existing Preview before deployment
+        if: inputs.operation == 'deploy' || inputs.operation == 'deploy-accept'
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node ./tooling/ulc-linz-g04-calendar-v17-preview.mjs verify
+          node ./tooling/ulc-linz-g04-direct-preview-preflight.mjs
+
 
       - name: Validate and mask preview runtime inputs
         if: inputs.operation == 'deploy' || inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
@@ -531,6 +542,7 @@ jobs:
             baseURL: process.env.APPBASIS_BASE_URL,
             buildSha: process.env.GITHUB_SHA,
             entrypoint: "./worker/preview-exercise-catalog-standard.ts",
+            registrationCalendarV17: true,
             r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
             r2Jurisdiction: "eu",
             outputPath: "./apps/ulc-linz/wrangler.preview.e7b9.generated.json",
