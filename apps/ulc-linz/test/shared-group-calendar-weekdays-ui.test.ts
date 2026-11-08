@@ -60,11 +60,11 @@ describe("G-04.8 shared group training days and actual registration days", () =>
       "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12",
       "2026-11-13", "2026-11-14", "2026-11-15",
     ];
-    const monToThuAndSun = [week[0], week[1], week[2], week[3], week[6]];
+    const monToThuAndSun = [week[0]!, week[1]!, week[2]!, week[3]!, week[6]!];
     const options = monToThuAndSun.map(sessionDate => ({ sessionDate }));
     expect(actual(week, options)).toEqual(monToThuAndSun);
-    expect(actual(week, [...options, { sessionDate: week[5] }]))
-      .toEqual([...monToThuAndSun.slice(0, 4), week[5], week[6]]);
+    expect(actual(week, [...options, { sessionDate: week[5]! }]))
+      .toEqual([...monToThuAndSun.slice(0, 4), week[5]!, week[6]!]);
     expect(actual(week, [])).toEqual([]);
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "for (const sessionDate of visibleSelfRegistrationDates(dates, selfRegistrationOptions))",
