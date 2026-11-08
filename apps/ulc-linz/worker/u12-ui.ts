@@ -1683,12 +1683,25 @@ async function u12ReloadAttendance() {
 function u12DialablePhone(rawPhone) {
   if (typeof rawPhone !== "string") return null;
   const phone = rawPhone.trim();
-  if (!phone || !phone.split("").every((char, index) =>
+  // The domestic trunk prefix in +43 (0)664 must not be dialed as +430664.
+  // Only strip the documented optional (0) pattern for known country codes
+  // that drop the leading zero internationally. For others, fail closed:
+  // some countries (e.g. Italy) use a significant domestic zero.
+  const optionalTrunk = /^\\+(43|49|41|44)\\s*\\(0\\)\\s*/.exec(phone);
+  let dial = phone;
+  if (optionalTrunk) {
+    const localNumber = phone.slice(optionalTrunk[0].length);
+    if (!/^[1-9]/.test(localNumber)) return null;
+    dial = "+" + optionalTrunk[1] + localNumber;
+  } else if (phone.includes("(0)")) {
+    return null; // Never guess whether a parenthesized zero is significant.
+  }
+  if (!dial || !dial.split("").every((char, index) =>
       (char >= "0" && char <= "9") ||
       " ()/.-".includes(char) || (index === 0 && char === "+"))) return null;
-  const digits = phone.split("").filter((char) => char >= "0" && char <= "9").join("");
+  const digits = dial.split("").filter((char) => char >= "0" && char <= "9").join("");
   if (digits.length < 3 || digits.length > 15) return null;
-  return "tel:" + (phone.startsWith("+") ? "+" : "") + digits;
+  return "tel:" + (dial.startsWith("+") ? "+" : "") + digits;
 }
 
 function openU12AthleteDetails(athleteId) {
