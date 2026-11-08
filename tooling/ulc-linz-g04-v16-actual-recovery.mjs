@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
@@ -156,9 +156,13 @@ async function verifyTargetEmpty(url, expectedDb) {
       " WHERE ns.nspname='public' AND c.relkind IN ('r','p','v','m','S','f')) AS objects," +
       " (SELECT count(*)::int FROM pg_catalog.pg_proc p" +
       " JOIN pg_catalog.pg_namespace ns ON p.pronamespace=ns.oid" +
-      " WHERE ns.nspname='public') AS functions");
+      " WHERE ns.nspname='public') AS functions," +
+      " (SELECT count(*)::int FROM pg_catalog.pg_namespace ns" +
+      " WHERE ns.nspname NOT IN ('public','information_schema')" +
+      " AND ns.nspname NOT LIKE 'pg_%') AS extra_schemas");
     if (rows.length !== 1 || rows[0].db !== expectedDb ||
-        rows[0].objects !== 0 || rows[0].functions !== 0) deny();
+        rows[0].objects !== 0 || rows[0].functions !== 0 ||
+        rows[0].extra_schemas !== 0) deny();
   } finally { await db.client.end().catch(() => {}); }
 }
 
@@ -198,8 +202,12 @@ async function waitSnapshot(path) {
 
 export async function runG045(action,env=process.env) {
   const {backupUrl,restoreUrl,work,restoreDb}=validateG045OperatorInput(env,action);
-  const dir=await stat(work);
-  if (!dir.isDirectory() || (dir.mode & 0o077) !== 0) deny();
+  const dir=await lstat(work);
+  const canonical=await realpath(work);
+  const repoRoot=await realpath(resolve(process.cwd()));
+  if (!dir.isDirectory() || dir.isSymbolicLink() ||
+      canonical!==resolve(work) || canonical===repoRoot ||
+      canonical.startsWith(repoRoot + "/") || (dir.mode & 0o077)!==0) deny();
   const dumpPath=join(work,DUMP);
   if(action==="backup") {
     if ((await readdir(work)).length !== 0) deny();
