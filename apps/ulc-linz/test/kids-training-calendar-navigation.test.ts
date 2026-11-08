@@ -36,7 +36,7 @@ function plannedDaysHarness(
   const factory = new Function(
     "requestJson", "localIsoDate", "localWeekStart",
     "registrationWeekDates", "shiftIsoDate",
-    code + "\nreturn { find: kidsFindCalendarDate, fetch: kidsFetchCalendarDates };",
+    "const kidsCalendarWeekCache = new Map();\n" + code + "\nreturn { find: kidsFindCalendarDate, fetch: kidsFetchCalendarDates };",
   ) as (...args: any[]) => {
     find: (groupId: string, anchor: string, direction: number, includeAnchor: boolean) => Promise<string>;
     fetch: (groupId: string, start: string) => Promise<string[]>;
@@ -62,6 +62,8 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     expect(ULC_KIDS_SCRIPT).toContain("if (!dates.includes(selected))");
     expect(ULC_KIDS_SCRIPT).toContain("await kidsNavigateCalendarDate(");
     expect(ULC_KIDS_HTML).toContain("Nächstes Training");
+    expect(ULC_KIDS_HTML).toContain('<select id="kids-date"');
+    expect(ULC_KIDS_HTML).not.toContain('<input type="date" id="kids-date"');
   });
 
   it("starts from the next Tuesday and skips other days with both arrows", async () => {
