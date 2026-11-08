@@ -39,20 +39,20 @@ describe("U12 attendance statistics aggregation", () => {
     const report = aggregateU12Statistics(sessions, roster, "2026-08-07", "2026-11-07");
     expect(report.summary).toEqual({
       trainings: 2, attendance: 2, trainerAttendances: 3,
-      unidentifiedTrainerAttendances: 3, categories: 2,
+      unidentifiedTrainerAttendances: 3, evaluatedStatuses: 3, openStatuses: 0, categories: 2,
     });
     expect(report.trainings).toEqual([
       { date: "2026-11-04", presentCount: 1, trainerPresentCount: 2,
-        registeredCount: 2, categoryCount: 2 },
+        registeredCount: 2, openCount: 0, categoryCount: 2 },
       { date: "2026-10-01", presentCount: 1, trainerPresentCount: 1,
-        registeredCount: 1, categoryCount: 1 },
+        registeredCount: 1, openCount: 0, categoryCount: 1 },
     ]);
     expect(report.months).toEqual([
       { month: "2026-11", trainings: 1, attendance: 1, trainerAttendances: 2 },
       { month: "2026-10", trainings: 1, attendance: 1, trainerAttendances: 1 },
     ]);
-    expect(report.athletes.map(a => [a.lastName, a.attended, a.evaluated, a.attendancePercent])).toEqual([
-      ["Binder", 0, 1, 0], ["Christ", 0, 0, null], ["Auer", 2, 2, 100],
+    expect(report.athletes.map(a => [a.lastName, a.attended, a.evaluated, a.openCount, a.attendancePercent])).toEqual([
+      ["Binder", 0, 1, 0, 0], ["Christ", 0, 0, 0, null], ["Auer", 2, 2, 0, 100],
     ]);
     expect(report.athletes[2]?.categories).toEqual([
       { code: "sprint", label: "Sprint / Schnelligkeit", count: 2 },
