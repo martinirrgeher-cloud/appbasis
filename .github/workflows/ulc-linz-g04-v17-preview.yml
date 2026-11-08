@@ -1,0 +1,160 @@
+name: ULC G-04 Training Calendar v17 isolated Preview
+
+run-name: G-04 v17 Preview ${{ inputs.operation }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Inspect or migrate v17 in isolated ULC Preview only
+        required: true
+        type: choice
+        options: [inspect, migrate]
+      apply:
+        description: Explicit operator authorization for migration
+        required: true
+        type: boolean
+        default: false
+      backupConfirmed:
+        description: Operator confirms separate pre-migration backup evidence exists
+        required: true
+        type: boolean
+        default: false
+      restoreConfirmed:
+        description: Operator confirms restore readiness and recovery point
+        required: true
+        type: boolean
+        default: false
+      approvalRef:
+        description: Exact operator gate phrase G04-V17-PREVIEW
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-preview-ulc-linz
+  cancel-in-progress: false
+
+jobs:
+  calendar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: generated-preview-ulc-linz
+    env:
+      APPBASIS_GENERATED_APP_ID: ulc-linz
+      APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+      APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+      APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+    steps:
+      - name: Require main and independent Preview migration approval
+        env:
+          OPERATION: ${{ inputs.operation }}
+          APPLY: ${{ inputs.apply && '1' || '0' }}
+          G04_BACKUP_CONFIRMED: ${{ inputs.backupConfirmed && '1' || '0' }}
+          G04_RESTORE_CONFIRMED: ${{ inputs.restoreConfirmed && '1' || '0' }}
+          APPROVAL_REF: ${{ inputs.approvalRef }}
+          EXPECTED_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$EXPECTED_REF" = "refs/heads/main"
+          test "$OPERATION" = "inspect" || test "$OPERATION" = "migrate"
+          if [ "$OPERATION" = "migrate" ]; then
+            test "$APPLY" = "1" || { echo "Operator approval required" >&2; exit 1; }
+            test "$G04_BACKUP_CONFIRMED" = "1" || { echo "Backup evidence required" >&2; exit 1; }
+            test "$G04_RESTORE_CONFIRMED" = "1" || { echo "Restore readiness required" >&2; exit 1; }
+            test "$APPROVAL_REF" = "G04-V17-PREVIEW" || {
+              echo "Exact independent migration gate required" >&2; exit 1;
+            }
+          fi
+
+      - name: Checkout exact main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Verify isolated Preview credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in APPBASIS_MIGRATION_DATABASE_URL APPBASIS_DATABASE_URL APPBASIS_SECURITY_LOG_DATABASE_URL; do
+            value="${!name:-}"
+            test -n "$value" || { echo "Missing Preview secret: $name" >&2; exit 1; }
+            echo "::add-mask::$value"
+          done
+          node --input-type=module <<'NODE'
+          import { validateUlcLinzD4PreviewDatabaseCredentials } from "./tooling/ulc-linz-d4-preview-hyperdrive.mjs";
+          const credentials = validateUlcLinzD4PreviewDatabaseCredentials({
+            migrationDatabaseUrl: process.env.APPBASIS_MIGRATION_DATABASE_URL,
+            applicationDatabaseUrl: process.env.APPBASIS_DATABASE_URL,
+            securityLogDatabaseUrl: process.env.APPBASIS_SECURITY_LOG_DATABASE_URL,
+          });
+          if (credentials.migration.database !== "appbasis_ulc_linz_preview" ||
+              credentials.migration.user !== "appbasis_ulc_linz_preview_migration") {
+            throw Error("Non-preview database or migration principal refused.");
+          }
+          NODE
+
+      - name: Verify installed v16 prerequisite
+        run: node ./tooling/ulc-linz-youth-trainers-preview.mjs verify
+
+      - name: Validate v17 migration plan
+        run: node ./tooling/ulc-linz-g04-calendar-v17-preview.mjs plan
+
+      - name: Inspect v17 Preview schema
+        id: v17
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="$(node ./tooling/ulc-linz-g04-calendar-v17-preview.mjs inspect)"
+          echo "$RESULT"
+          STATE="$(jq -r '.state' <<< "$RESULT")"
+          test "$STATE" = "current" || test "$STATE" = "migration-required"
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+
+      - name: Apply v17 to isolated Preview only when explicitly approved
+        if: ${{ inputs.operation == 'migrate' && steps.v17.outputs.state == 'migration-required' }}
+        env:
+          APPBASIS_APPLY_MIGRATIONS: "1"
+          APPBASIS_APPLY_G04_V17_PREVIEW: "1"
+        run: node ./tooling/ulc-linz-g04-calendar-v17-preview.mjs apply
+
+      - name: Reconcile Preview runtime DML permissions
+        if: ${{ inputs.operation == 'migrate' }}
+        env:
+          APPBASIS_APPLY_DATABASE_ACCESS: "1"
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs reconcile
+
+      - name: Verify v17 Preview after migration
+        if: ${{ inputs.operation == 'migrate' }}
+        run: node ./tooling/ulc-linz-g04-calendar-v17-preview.mjs verify
+
+      - name: Verify runtime database privileges
+        if: ${{ inputs.operation == 'migrate' }}
+        run: node ./tooling/ulc-linz-d4-preview-database-access.mjs preflight-existing
+
+      # Deliberately NO Worker runtime flag, deploy, traffic switch or
+      # production mutation. Runtime activation requires a separate approval.
