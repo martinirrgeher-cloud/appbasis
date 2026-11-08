@@ -2610,6 +2610,7 @@ let kindertrainingSnapshot = null;
 let kindertrainingWeekStart = "";
 let kindertrainingWeekSnapshots = [];
 let kindertrainingWeekCalendarDates = [];
+let kindertrainingWeekCalendarLoadError = false;
 let kindertrainingWeekDirtyDates = new Set();
 let kindertrainingWeekExpandedDates = new Set();
 let kindertrainingWeekFailedDates = new Set();
@@ -3096,6 +3097,7 @@ function resetAttendanceSessionState() {
   kindertrainingWeekStart = "";
   kindertrainingWeekSnapshots = [];
   kindertrainingWeekCalendarDates = [];
+  kindertrainingWeekCalendarLoadError = false;
   kindertrainingWeekDirtyDates = new Set();
   kindertrainingWeekExpandedDates = new Set();
   kindertrainingWeekFailedDates = new Set();
@@ -4109,6 +4111,7 @@ async function bootstrapKindertraining() {
   kindertrainingWeekStart = localWeekStart(new Date());
   kindertrainingWeekSnapshots = [];
   kindertrainingWeekCalendarDates = [];
+  kindertrainingWeekCalendarLoadError = false;
   kindertrainingWeekDirtyDates = new Set();
   kindertrainingWeekExpandedDates = new Set();
   kindertrainingLoadedGroupId = "";
@@ -4368,10 +4371,13 @@ function renderKindertrainingWeek() {
     return;
   }
 
-  if (kindertrainingWeekCalendarDates.length === 0 && kindertrainingWeekFailedDates.size === 0) {
+  if (kindertrainingWeekCalendarLoadError ||
+      (kindertrainingWeekCalendarDates.length === 0 && kindertrainingWeekFailedDates.size === 0)) {
     const empty = document.createElement("div");
     empty.className = "card kindertraining-week-empty";
-    empty.textContent = "Für diese Woche sind keine Trainingstage geplant.";
+    empty.textContent = kindertrainingWeekCalendarLoadError
+      ? "Trainingskalender nicht geladen. Bitte „Neu laden“ versuchen."
+      : "Für diese Woche sind keine Trainingstage geplant.";
     container.append(empty);
     refreshKindertrainingWeekControls();
     return;
@@ -4667,6 +4673,7 @@ async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
     }
     kindertrainingWeekStart = weekStart;
     kindertrainingWeekCalendarDates = [...dates];
+    kindertrainingWeekCalendarLoadError = false;
     kindertrainingWeekSnapshots = snapshots;
     kindertrainingWeekFailedDates = failedDates;
     if (failedDates.size > 0) {
@@ -4694,6 +4701,7 @@ async function loadKindertrainingWeek({ preserveExpansion = false } = {}) {
       loadId !== kindertrainingWeekLoadId
     ) return;
     kindertrainingWeekCalendarDates = [];
+    kindertrainingWeekCalendarLoadError = true;
     kindertrainingWeekSnapshots = [];
     kindertrainingWeekFailedDates = new Set();
     kindertrainingWeekDirtyDates = new Set();
@@ -4784,6 +4792,7 @@ async function handleKindertrainingWeekGroupChange() {
   }
   kindertrainingWeekSnapshots = [];
   kindertrainingWeekCalendarDates = [];
+  kindertrainingWeekCalendarLoadError = false;
   kindertrainingWeekExpandedDates = new Set();
   kindertrainingWeekFailedDates = new Set();
   kindertrainingLoadedGroupId = "";
