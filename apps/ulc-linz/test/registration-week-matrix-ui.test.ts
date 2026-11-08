@@ -42,12 +42,14 @@ function matrixHarness({
   loadedGroupId = "group-a",
   attendanceMode = "self_registration",
   snapshots = weekSnapshots(),
+  calendarDates,
   open = true,
 }: {
   selectedGroupId?: string;
   loadedGroupId?: string;
   attendanceMode?: "self_registration" | "trainer_roll_call";
   snapshots?: ReturnType<typeof weekSnapshots>;
+  calendarDates?: readonly string[];
   open?: boolean;
 } = {}) {
   if (sourceStart < 0 || sourceEnd <= sourceStart) {
@@ -73,14 +75,15 @@ function matrixHarness({
   const factory = new Function(
     "elements", "kindertrainingGroups", "kindertrainingReady",
     "kindertrainingLoading", "kindertrainingLoadedGroupId",
-    "kindertrainingWeekSnapshots", "kindertrainingWeekStart",
-    "kindertrainingWeekSaving", "kindertrainingMatrixOpen",
+    "kindertrainingWeekSnapshots", "kindertrainingWeekCalendarDates",
+    "kindertrainingWeekStart", "kindertrainingWeekSaving", "kindertrainingMatrixOpen",
     "registrationWeekDates", "localWeekStart", "germanDate",
     "germanWeekday", "kindertrainingRegistrationLabel", "document", program,
   ) as (...args: any[]) => () => void;
   const render = factory(
     elements, [{ id: selectedGroupId, attendanceMode }], true, false,
-    loadedGroupId, snapshots, "2026-11-02", false, open,
+    loadedGroupId, snapshots, calendarDates ?? dates("2026-11-02"),
+    "2026-11-02", false, open,
     dates, () => "2026-11-02", (date: string) => date,
     (date: string) => date, (intention: string) => intention,
     { createElement: testNode },
@@ -141,6 +144,19 @@ describe("A02 trainer registration week matrix", () => {
     expect(foot.children[0].children[2].textContent).toBe("Entfällt");
     expect(foot.children[0].children[4].textContent).toBe("–");
     expect(snapshots[0]?.participants[0]?.intention).toBe("attending");
+  });
+
+  it("keeps only calendar-authorized columns when the training week has fewer than seven days", () => {
+    const { scroll } = matrixHarness({ calendarDates: ["2026-11-02", "2026-11-04"] });
+    const table = scroll.children[0];
+    const [caption, head, body, foot] = table.children;
+    expect(caption.textContent).toContain("2026-11-02");
+    expect(caption.textContent).toContain("2026-11-08");
+    expect(head.children[0].children).toHaveLength(3);
+    expect(body.children[0].children).toHaveLength(3);
+    expect(body.children[0].children[1].textContent).toBe("Ja");
+    expect(body.children[0].children[2].textContent).toBe("Nein");
+    expect(foot.children[0].children).toHaveLength(3);
   });
 
   it("never shows previous group's snapshot after selecting a different group", () => {

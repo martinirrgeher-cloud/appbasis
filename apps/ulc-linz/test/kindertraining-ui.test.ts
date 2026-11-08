@@ -46,7 +46,7 @@ describe("ULC Kindertraining weekly attendance UI", () => {
     expect(ULC_LINZ_APP_HTML).not.toContain("<h1>Kindertraining</h1>");
   });
 
-  it("loads the Monday-to-Sunday week from server-owned Kindertraining contracts", () => {
+  it("loads only group-calendar-authorized days using protected Kindertraining endpoints", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       'requestJson("/api/modules/kindertraining")',
     );
@@ -54,15 +54,18 @@ describe("ULC Kindertraining weekly attendance UI", () => {
       '"/api/modules/kindertraining/session?groupId="',
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      "const dates = registrationWeekDates(weekStart);",
+      '"/api/modules/kindertraining/calendar?groupId="',
+    );
+    expect(ULC_LINZ_APP_SCRIPT).toContain(
+      "const dates = calendar.dates;",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain("const responses = await Promise.allSettled(");
     expect(ULC_LINZ_APP_SCRIPT).toContain("kindertrainingWeekFailedDates = failedDates;");
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      "for (const sessionDate of registrationWeekDates(kindertrainingWeekStart))",
+      "for (const sessionDate of kindertrainingWeekCalendarDates)",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
-      "Die übrigen Tage bleiben sichtbar.",
+      "Die übrigen geplanten Tage bleiben sichtbar.",
     );
     expect(ULC_LINZ_APP_SCRIPT).toContain(
       "kindertrainingWeekSnapshots = snapshots;",
