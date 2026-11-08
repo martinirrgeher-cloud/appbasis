@@ -106,3 +106,47 @@ Erst nach tatsächlicher Aktivierung sind Admin-Gruppenoverlay,
 Wochenansicht, Anmeldefrist, Sondertermine, Direkt-/Proxy-Anmeldung,
 Frist-Bypass, CAS, Abmeldeverhalten und Smartphone-Layout in einer
 isolierten Preview fachlich zu prüfen.
+
+## G-04.2e – Technischer Lebenszyklus der Kalenderkonfiguration (Entwurf)
+
+**Kein aktivierter Löschlauf und keine vorweggenommene rechtliche Frist.**
+Der Gruppenstamm bietet derzeit keinen öffentlichen Hard-Delete-Endpunkt.
+Die Gruppen-Deaktivierung ist reversibel; sie darf Kalenderregeln und
+CAS-Versionen daher **nicht löschen**. Damit bleiben bestehende
+Konfigurationen bei späterer Reaktivierung erhalten.
+
+Der v17-**Migrationskandidat** `0016` legt für beide
+Kalenderkonfigurationstabellen jeweils einen Foreign Key
+`group_id → appbasis_training_group(id) ON DELETE CASCADE` fest.
+**Nur falls** ein anderweitig autorisierter physischer Gruppendatensatz
+tatsächlich gelöscht werden kann, löscht PostgreSQL die zugehörigen
+Regel-/Ausnahmetabellenzeilen in derselben Transaktion. Wenn andere
+Owner-Tabellen die Gruppenlöschung blockieren, wird auch die
+Kalenderlöschung vollständig zurückgerollt.
+
+Dies ist **keine** allgemeine Athleten- oder Trainingsdatenlöschung:
+bestehende Anwesenheit, Trainingshistorie, Notizen und andere
+Modulbesitzer behalten ihre unabhängigen Aufbewahrungsverträge.
+Ein Versionierungs-Reset `kind='none'` wird absichtlich nicht als
+frei löschbarer Ausnahmedatensatz behandelt: sein CAS-Stand verhindert,
+dass eine veraltete Sitzung den Termin wiederherstellt.
+
+Die v17-Preview-Schemaprüfung lehnt fehlende, falsch zugeordnete,
+`NO ACTION`- oder doppelte Gruppen-Foreign-Keys ab und verifiziert
+den referenzierten Schlüssel und das `CASCADE`-Verhalten. Der isolierte
+PostgreSQL-E2E prüft beides: Deaktivieren **erhält** Daten,
+physisches Löschen **entfernt** ausschließlich Kalenderkonfiguration.
+Kein neuer Anwendungs-Endpunkt führt Hard Deletes aus.
+
+Die vorgeschlagene technische Entscheidung steht in
+`privacy/g04-v17-calendar-lifecycle-proposal.json`.
+**Noch offen** sind die fachliche und datenschutzrechtliche Entscheidung
+über Aufbewahrungsdauer, inaktive Gruppen, Fristen nach Trainingstag und
+eventuelle spätere automatisierte Bereinigung. Ein automatischer
+Zeitablauf-Purge wird nicht implementiert oder aktiviert, da dadurch
+bestehende CAS-Versionsstände verlorengehen könnten.
+
+Unverändert gesperrt bleiben v17-Migration, Preview-Featureflag,
+Deployments und Produktion. Die `g04-v17-preview-activation-evidence.json`
+bleibt `pending`, bis echte Controller-, Backup-, Restore- und
+Betreiberbelege unabhängig geprüft wurden.
