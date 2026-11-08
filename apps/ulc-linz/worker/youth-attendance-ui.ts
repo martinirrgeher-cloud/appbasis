@@ -33,7 +33,9 @@ function areaUi(source: string, prefix: "u14" | "kids", area: "u14" | "kindertra
   }
   if (source === ULC_U12_HTML) {
     if (area === "kindertraining") {
-      output = output.replace('>Heute</button>', '>Nächstes Training</button>');
+      output = output.replace('>Heute</button>', '>Nächstes Training</button>')
+        .replace('<input type="date" id="kids-date" required aria-label="Trainingstag auswählen" />',
+          '<select id="kids-date" required aria-label="Trainingstag auswählen"></select>');
     }
     output = output.replaceAll(
       'data-youth-category-area="' + prefix + '"',
