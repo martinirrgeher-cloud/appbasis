@@ -5059,8 +5059,9 @@ function findAttendanceTrainingGroup(kind) {
   return kindertrainingGroups.find((group) => {
     const name = group.name.trim().toLocaleLowerCase("de-AT");
     if (kind === "kindertraining") return name === "kindertraining";
-    if (kind === "irrgeher") return group.attendanceMode === "trainer_roll_call" &&
-      /\\b(?:irrgeher|irge)\\b/i.test(name);
+    // Attendance remains available in both modes. Self-registration changes
+    // who submits intentions; trainers must still record actual attendance.
+    if (kind === "irrgeher") return /\\b(?:irrgeher|irge)\\b/i.test(name);
     return false;
   }) || null;
 }
