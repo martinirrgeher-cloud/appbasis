@@ -70,7 +70,7 @@ describe("Operator refinement: youth attendance and navigation", () => {
 
   it("pauses autosave for unselected categories and resumes after selection", () => {
     const source = ULC_U12_SCRIPT.slice(
-      ULC_U12_SCRIPT.indexOf("function scheduleU12AutoSave()"),
+      ULC_U12_SCRIPT.indexOf("function u12IsOffline()"),
       ULC_U12_SCRIPT.indexOf("function markU12DraftDirty()"),
     );
     const pendingTitles = [""];
