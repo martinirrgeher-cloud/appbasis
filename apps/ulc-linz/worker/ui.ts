@@ -3857,7 +3857,8 @@ async function handleSelfRegistrationClick(event) {
       candidate.group.id === groupId &&
       candidate.sessionDate === sessionDate,
   );
-  if (!option || option.sessionState === "cancelled") return;
+  if (!option || option.sessionState === "cancelled" ||
+      option.registrationWindow?.mayEdit === false) return;
   const intention = noteOnly ? option.intention : clickedIntention;
   const noteDraft = selfRegistrationNoteDrafts.get(optionKey);
   const noteChanged = noteDraft !== undefined &&
@@ -3901,7 +3902,8 @@ async function handleSelfRegistrationClick(event) {
     selfRegistrationOptions = selfRegistrationOptions.map((candidate) =>
       candidate.group.id === groupId &&
       candidate.sessionDate === sessionDate
-        ? saved
+        ? { ...saved, ...(previous.registrationWindow
+            ? { registrationWindow: previous.registrationWindow } : {}) }
         : candidate,
     );
     if (noteChanged) selfRegistrationNoteDrafts.delete(optionKey);
