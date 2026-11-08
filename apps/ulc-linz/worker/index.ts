@@ -29,6 +29,7 @@ import {
 import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 
 import { createGeneratedApp } from "./app";
+import { registrationCalendarHttpResponse } from "./registration-calendar-http";
 import { UlcLinzAuthorizationDeniedError } from "./authorization";
 import { UlcLinzCountdownAccessDeniedError } from "./countdown-access";
 import type { UlcLinzExerciseCatalogAccessScope } from "./exercise-catalog-access";
@@ -298,6 +299,13 @@ export function createGeneratedWorker(
             request,
             runtime,
             url,
+          );
+        } else if (
+          url.pathname === "/api/modules/athletes/registration-calendar" ||
+          url.pathname === "/api/modules/athletes/registration-calendar/exception"
+        ) {
+          response = await registrationCalendarHttpResponse(
+            request, runtime, url, authorizeAthletesRequest,
           );
         } else if (url.pathname === "/api/modules/athletes/masterdata") {
           response = await athletesMasterdataResponse(request, runtime, url);
@@ -4587,7 +4595,10 @@ async function athletesMasterdataResponse(
   const masterdata = await runtime.athleteMasterdata.readOrganizationSnapshot(
     access.organizationId,
   );
-  return Response.json({ masterdata });
+  return Response.json({
+    masterdata,
+    calendarAvailable: runtime.registrationCalendar != null,
+  }, { headers: { "cache-control": "private, no-store" } });
 }
 
 async function athletesMasterdataMutationResponse(
