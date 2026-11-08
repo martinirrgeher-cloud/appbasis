@@ -121,6 +121,7 @@ test("G-04.2c Preview workflow is manual, environment locked and requires explic
     /APPBASIS_APPLY_MIGRATIONS: "1"/,
     /G04_BACKUP_CONFIRMED/,
     /G04_RESTORE_CONFIRMED/,
+    /G04_PRIVACY_CONFIRMED/,
     /ulc-linz-youth-trainers-preview\.mjs verify/,
     /ulc-linz-g04-calendar-v17-preview\.mjs inspect/,
     /ulc-linz-g04-calendar-v17-preview\.mjs apply/,
