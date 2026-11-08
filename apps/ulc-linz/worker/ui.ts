@@ -4253,6 +4253,7 @@ function renderKindertrainingRegistrationMatrix() {
   }
 
   const dates = kindertrainingWeekCalendarDates;
+  const weekDates = registrationWeekDates(kindertrainingWeekStart || localWeekStart(new Date()));
   const snapshots = new Map(kindertrainingWeekSnapshots.map((day) => [day.sessionDate, day]));
   const people = new Map();
   for (const date of dates) {
@@ -4273,7 +4274,7 @@ function renderKindertrainingRegistrationMatrix() {
   table.className = "kindertraining-registration-matrix__table";
   const caption = document.createElement("caption");
   caption.textContent = "Voranmeldungen vom " +
-    germanDate(dates[0]) + " bis " + germanDate(dates[6]);
+    germanDate(weekDates[0]) + " bis " + germanDate(weekDates[6]);
   table.append(caption);
 
   const head = document.createElement("thead");
