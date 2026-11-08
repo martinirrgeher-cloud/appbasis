@@ -71,6 +71,7 @@ import {
 import {
   UlcSelfRegistrationModeError,
   UlcSelfRegistrationNotFoundError,
+  UlcSelfRegistrationWindowError,
 } from "./self-registration-service";
 import {
   UlcTrainingBlockParameterError,
@@ -1282,6 +1283,16 @@ async function selfRegistrationResponse(
           status: 404,
           headers: { "cache-control": "private, no-store" },
         },
+      );
+    }
+    if (error instanceof UlcSelfRegistrationWindowError) {
+      return Response.json(
+        { error: {
+          code: error.code,
+          reason: error.reason,
+          message: "Training registration is outside the configured calendar.",
+        } },
+        { status: 409, headers: { "cache-control": "private, no-store" } },
       );
     }
     if (error instanceof UlcSelfRegistrationModeError) {
