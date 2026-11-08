@@ -111,6 +111,7 @@ export function classifyG04CalendarPreview(state) {
       ownedTriggers.length !== 1 ||
       ownedTriggers[0].tgenabled !== "O" ||
       ownedTriggers[0].table_name !== "ulc_linz_training_registration" ||
+      ownedTriggers[0].function_name !== FUNCTION ||
       ownedFunctions.length !== 1 ||
       ownedFunctions[0].schema_name !== "public") {
     refuse("G-04 schema is partial, unvalidated, or drifted.");
@@ -136,12 +137,15 @@ export async function readG04CalendarPreviewState(client) {
       JOIN pg_catalog.pg_class cl ON co.conrelid = cl.oid
       JOIN pg_catalog.pg_namespace ns ON cl.relnamespace = ns.oid
       WHERE ns.nspname = 'public' AND cl.relname IN ('${RULE}', '${EXCEPTION}')`),
-    client.unsafe(`SELECT tg.tgname, tg.tgenabled, cl.relname AS table_name
+    client.unsafe(`SELECT tg.tgname, tg.tgenabled, cl.relname AS table_name,
+        fn.proname AS function_name
       FROM pg_catalog.pg_trigger tg
       JOIN pg_catalog.pg_class cl ON tg.tgrelid = cl.oid
       JOIN pg_catalog.pg_namespace ns ON cl.relnamespace = ns.oid
-      WHERE ns.nspname = 'public' AND NOT tg.tgisinternal
-        AND tg.tgname = '${TRIGGER}'`),
+      JOIN pg_catalog.pg_proc fn ON tg.tgfoid = fn.oid
+      JOIN pg_catalog.pg_namespace fn_ns ON fn.pronamespace = fn_ns.oid
+      WHERE ns.nspname = 'public' AND fn_ns.nspname = 'public'
+        AND NOT tg.tgisinternal AND tg.tgname = '${TRIGGER}'`),
     client.unsafe(`SELECT proc.proname, ns.nspname AS schema_name
       FROM pg_catalog.pg_proc proc
       JOIN pg_catalog.pg_namespace ns ON proc.pronamespace = ns.oid
