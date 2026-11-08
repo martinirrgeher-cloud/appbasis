@@ -43,6 +43,11 @@ const current = {
       key_columns: ["organization_id", "group_id"] },
     { table_name: exceptions, contype: "p", convalidated: true,
       key_columns: ["organization_id", "group_id", "session_date"] },
+    ...[rules, exceptions].map((table_name) => ({
+      table_name, contype: "f", convalidated: true, confdeltype: "c",
+      foreign_table: "appbasis_training_group", foreign_schema: "public",
+      key_columns: ["group_id"], referenced_columns: ["id"],
+    })),
   ],
   triggers: [{
     tgname: "ulc_linz_registration_calendar_guard_trg",
@@ -80,6 +85,24 @@ test("G-04.2c plan is based on canonical v16 and an isolated additive v17 candid
   }
 });
 
+test("G-04.2e requires group-delete CASCADE in both candidate tables and no automatic purge", async () => {
+  const plan = await loadG04CalendarPreviewPlan({ repositoryRoot: root });
+  for (const statement of plan.statements.slice(0, 2)) {
+    assert.match(statement,
+      /group_id\s+text\s+NOT NULL\s+REFERENCES\s+appbasis_training_group\(id\)\s+ON DELETE CASCADE/i);
+  }
+  const policy = JSON.parse(await readFile(resolve(
+    root, "apps/ulc-linz/privacy/g04-v17-calendar-lifecycle-proposal.json",
+  ), "utf8"));
+  assert.equal(policy.status, "technical-candidate-controller-retention-decision-pending");
+  assert.equal(policy.technicalLifecycle.onGroupDeactivated,
+    "retain-configuration-and-CAS-revisions-no-deletion");
+  assert.equal(policy.technicalLifecycle.backgroundPurge, "disabled");
+  assert.equal(policy.technicalLifecycle.scheduledTimeBasedDeletion, "disabled");
+  assert.equal(policy.privacyStatus.retentionDuration, "UNDECIDED_BY_CONTROLLER");
+  assert.equal(policy.productionApproved, false);
+});
+
 test("G-04.2c rejects incomplete v16, partial v17, broken guard, or metadata drift", () => {
   assert.equal(classifyG04CalendarPreview(base), "migration-required");
   assert.equal(classifyG04CalendarPreview(current), "current");
@@ -89,6 +112,25 @@ test("G-04.2c rejects incomplete v16, partial v17, broken guard, or metadata dri
     { ...current, columns: current.columns.filter((x) =>
       !(x.table_name === exceptions && x.column_name === "kind")) },
     { ...current, constraints: current.constraints.slice(0, 1) },
+    { ...current, constraints: current.constraints.filter((x) =>
+      !(x.table_name === rules && x.contype === "f")) },
+    { ...current, constraints: current.constraints.map((x) =>
+      x.contype === "f" && x.table_name === exceptions
+        ? { ...x, confdeltype: "a" } : x) },
+    { ...current, constraints: current.constraints.map((x) =>
+      x.contype === "f" && x.table_name === rules
+        ? { ...x, foreign_table: "unrelated_group" } : x) },
+    { ...current, constraints: current.constraints.map((x) =>
+      x.contype === "f" && x.table_name === rules
+        ? { ...x, key_columns: ["organization_id"] } : x) },
+    { ...current, constraints: current.constraints.map((x) =>
+      x.contype === "f" && x.table_name === rules
+        ? { ...x, referenced_columns: ["organization_id"] } : x) },
+    { ...current, constraints: current.constraints.concat({
+      table_name: exceptions, contype: "f", convalidated: true, confdeltype: "c",
+      foreign_table: "appbasis_training_group", foreign_schema: "public",
+      key_columns: ["group_id"], referenced_columns: ["id"],
+    }) },
     { ...current, constraints: current.constraints.map((c) =>
       c.table_name === exceptions
         ? { ...c, key_columns: ["organization_id", "group_id"] }

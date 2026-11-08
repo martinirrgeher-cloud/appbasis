@@ -8,7 +8,10 @@ CREATE TABLE ulc_linz_registration_calendar_rule (
     char_length(organization_id) BETWEEN 1 AND 200
     AND organization_id = btrim(organization_id)
   ),
-  group_id text NOT NULL REFERENCES appbasis_training_group(id),
+  -- A physical group DELETE (not is_active=false) atomically removes only
+  -- this group's calendar configuration. Other training/registration owners
+  -- retain their own independent deletion and retention contracts.
+  group_id text NOT NULL REFERENCES appbasis_training_group(id) ON DELETE CASCADE,
   weekdays_mask smallint NOT NULL CHECK (weekdays_mask BETWEEN 1 AND 127),
   weeks_ahead smallint NOT NULL CHECK (weeks_ahead BETWEEN 0 AND 26),
   deadline_days_before smallint NULL CHECK (deadline_days_before BETWEEN 0 AND 14),
@@ -33,7 +36,10 @@ CREATE TABLE ulc_linz_registration_calendar_exception (
     char_length(organization_id) BETWEEN 1 AND 200
     AND organization_id = btrim(organization_id)
   ),
-  group_id text NOT NULL REFERENCES appbasis_training_group(id),
+  -- A physical group DELETE (not is_active=false) atomically removes only
+  -- this group's calendar configuration. Other training/registration owners
+  -- retain their own independent deletion and retention contracts.
+  group_id text NOT NULL REFERENCES appbasis_training_group(id) ON DELETE CASCADE,
   session_date date NOT NULL,
   kind text NOT NULL CHECK (kind IN ('extra', 'cancelled', 'none')),
   revision integer NOT NULL DEFAULT 1 CHECK (revision > 0),

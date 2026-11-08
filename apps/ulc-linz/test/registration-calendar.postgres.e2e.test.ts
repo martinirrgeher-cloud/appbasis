@@ -201,6 +201,48 @@ if (!databaseUrl) {
       });
     });
 
+    it("retains calendar rules on group deactivation but cascades both tables on physical group deletion", async () => {
+      const organizationId = "verein-g04-lifecycle";
+      const athletes = new PostgresAthleteMasterdataRepository(
+        connection().client, () => randomUUID(),
+      );
+      const group = await athletes.createTrainingGroup(organizationId, {
+        name: "Leistungsgruppe Retention G04", attendanceMode: "self_registration",
+      });
+      const calendar = new PostgresUlcRegistrationCalendarRepository(connection().client);
+      const retainedRule = await calendar.writeRule(organizationId, group.id, null, {
+        weekdays: [1, 3], weeksAhead: 4, deadline: null, lateMode: "allow",
+      });
+      await calendar.writeException(
+        organizationId, group.id, "2026-12-02", null, "cancelled",
+      );
+      // "none" must preserve a monotonic CAS revision even for inactive groups.
+      const retainedException = await calendar.writeException(
+        organizationId, group.id, "2026-12-02", 1, null,
+      );
+      await connection().client.unsafe(`
+        UPDATE appbasis_training_group SET is_active = false
+         WHERE organization_id = $1 AND id = $2
+      `, [organizationId, group.id]);
+      // Reversible group inactivation must never erase CAS revisions.
+      expect(await calendar.readRule(organizationId, group.id)).toEqual(retainedRule);
+      expect(await calendar.readException(organizationId, group.id, "2026-12-02"))
+        .toEqual(retainedException);
+      await expect(calendar.writeRule(organizationId, group.id, 1, {
+        weekdays: [2], weeksAhead: 3, deadline: null, lateMode: "block",
+      })).rejects.toBeInstanceOf(UlcRegistrationCalendarConflictError);
+
+      // The group is new and has no member / training references. This tests
+      // physical group deletion only, not a new public hard-delete endpoint.
+      await connection().client.unsafe(`
+        DELETE FROM appbasis_training_group
+         WHERE organization_id = $1 AND id = $2
+      `, [organizationId, group.id]);
+      expect(await calendar.readRule(organizationId, group.id)).toBeNull();
+      expect(await calendar.readException(organizationId, group.id, "2026-12-02"))
+        .toBeNull();
+    });
+
     it("runs the actual v17 runtime attestation query and refuses a non-Preview database", async () => {
       await expect(verifyUlcG04PreviewCalendarReadiness(connection().client))
         .rejects.toBeInstanceOf(UlcRegistrationCalendarActivationError);

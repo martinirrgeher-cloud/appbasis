@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "appId": "ulc-linz",
+  "status": "technical-candidate-controller-retention-decision-pending",
+  "targetSchemaVersion": 17,
+  "calendarTables": [
+    "ulc_linz_registration_calendar_rule",
+    "ulc_linz_registration_calendar_exception"
+  ],
+  "technicalLifecycle": {
+    "onGroupDeactivated": "retain-configuration-and-CAS-revisions-no-deletion",
+    "onGroupReactivated": "reuse-existing-group-configuration",
+    "onPhysicalGroupDeletion": "foreign-key-on-delete-cascade-removes-calendar-only-rows-atomically",
+    "noGroupDeleteEndpointAdded": true,
+    "preserveOtherModuleOwners": true,
+    "exceptionReset": "store-kind-none-with-incremented-revision-prevent-stale-revival",
+    "backgroundPurge": "disabled",
+    "scheduledTimeBasedDeletion": "disabled"
+  },
+  "privacyStatus": {
+    "indirectPersonalData": "organization-and-training-group-identifiers-may-link-to-existing-members",
+    "retentionDuration": "UNDECIDED_BY_CONTROLLER",
+    "deactivationRetention": "REQUIRES_CONTROLLER_DECISION",
+    "physicalDeletionRelease": "REQUIRES_CONTROLLER_DECISION",
+    "exceptionalHistoricRetention": "REQUIRES_CONTROLLER_DECISION",
+    "personalDataExport": "proposed-config-exclusion-awaiting-controller-approval",
+    "backupRestore": "independent-rehearsal-and-evidence-still-pending",
+    "approval": "pending"
+  },
+  "activationGate": "NO_V17_MIGRATION_OR_PREVIEW_RUNTIME_ACTIVATION_UNTIL_SEPARATELY_APPROVED",
+  "productionApproved": false
+}
