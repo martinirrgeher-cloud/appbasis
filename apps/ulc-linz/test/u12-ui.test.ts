@@ -62,7 +62,8 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_HTML).not.toContain("Wochenmatrix");
     expect(ULC_U12_SCRIPT).toContain('input.type = "checkbox"');
     expect(ULC_U12_SCRIPT).toContain('input.dataset.u12AthleteId = person.athleteId');
-    expect(ULC_U12_SCRIPT).toContain('status.textContent = input.checked ? "Ja" : "Nein"');
+    expect(ULC_U12_SCRIPT).toContain('updateU12AttendanceStatus(status, person);');
+    expect(ULC_U12_SCRIPT).toContain('u12DisplayedAttendanceStatus(');
     expect(ULC_U12_SCRIPT).toContain('row.className = "u12-person"');
     expect(ULC_U12_SCRIPT).toContain('label.className = "u12-person__toggle"');
     expect(ULC_U12_SCRIPT).not.toContain('registrationWeekDates(');
@@ -134,7 +135,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(hasUnconfirmed(snapshot("excused"), unchecked, titles, assignments)).toBe(true);
     expect(hasUnconfirmed(snapshot("present"), unchecked, titles, assignments)).toBe(true);
     expect(ULC_U12_SCRIPT).toContain(
-      'u12HasUnconfirmedAnswers() ? "Alte Antworten – beim Ändern automatisch übernehmen"'
+      'u12HasUnconfirmedAnswers() ? "Nicht bearbeitete Einträge bleiben unverändert"'
     );
     const saveStart = ULC_U12_SCRIPT.indexOf("async function saveU12Attendance()");
     const saveBody = ULC_U12_SCRIPT.slice(saveStart);

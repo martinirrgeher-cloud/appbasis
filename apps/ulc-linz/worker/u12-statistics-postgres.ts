@@ -36,6 +36,8 @@ export interface UlcU12AthleteStatistics {
   readonly attended: number;
   /** Only explicitly saved present, absent and excused statuses; open is excluded. */
   readonly evaluated: number;
+  /** Open entries exist in storage, but have no assessed attendance status. */
+  readonly openCount: number;
   readonly attendancePercent: number | null;
   readonly categories: readonly Readonly<{ code: string; label: string; count: number }>[];
 }
@@ -43,7 +45,9 @@ export interface UlcU12TrainingStatistics {
   readonly date: string;
   readonly presentCount: number;
   readonly trainerPresentCount: number;
+  /** Attendance rows existing for authorized group members, not expected sessions. */
   readonly registeredCount: number;
+  readonly openCount: number;
   readonly categoryCount: number;
 }
 export interface UlcU12StatisticsReport {
@@ -59,6 +63,9 @@ export interface UlcU12StatisticsReport {
     attendance: number;
     trainerAttendances: number;
     unidentifiedTrainerAttendances: number;
+    /** Assessed statuses and open rows, limited to actually stored authorized rows. */
+    evaluatedStatuses: number;
+    openStatuses: number;
     categories: number;
   }>;
 }
@@ -109,7 +116,8 @@ export function aggregateU12Statistics(
 ): UlcU12StatisticsReport {
   validateU12StatisticsDateRange(from, to);
   const athletesById = new Map<string, { athleteId: string; firstName: string; lastName: string;
-    attended: number; evaluated: number; categories: Map<string, number> }>();
+    attended: number; evaluated: number; openCount: number;
+    categories: Map<string, number> }>();
   const trainerNames = new Map(trainerRoster.map((trainer) => [
     identifier(trainer.trainerId), trainer,
   ]));
@@ -120,11 +128,12 @@ export function aggregateU12Statistics(
       athleteId: identifier(athlete.athleteId),
       firstName: athlete.firstName,
       lastName: athlete.lastName,
-      attended: 0, evaluated: 0, categories: new Map(),
+      attended: 0, evaluated: 0, openCount: 0, categories: new Map(),
     });
   }
   const sessions = new Map<string, { date: string; trainerPresentCount: number;
-    trainerIds: Set<string>; present: Set<string>; registered: Set<string>; categories: Set<string> }>();
+    trainerIds: Set<string>; present: Set<string>; registered: Set<string>;
+    open: Set<string>; categories: Set<string> }>();
   const categoryTotals = new Map<string, { code: string; label: string; trainings: Set<string>; assignments: number }>();
   for (const row of rows) {
     const sessionId = identifier(row.session_id as string);
@@ -155,7 +164,7 @@ export function aggregateU12Statistics(
     let session = sessions.get(sessionId);
     if (!session) {
       session = { date, trainerPresentCount: trainerCount, trainerIds,
-        present: new Set(), registered: new Set(), categories: new Set() };
+        present: new Set(), registered: new Set(), open: new Set(), categories: new Set() };
       sessions.set(sessionId, session);
       for (const trainerId of trainerIds) {
         trainerCounts.set(trainerId, (trainerCounts.get(trainerId) ?? 0) + 1);
@@ -197,7 +206,12 @@ export function aggregateU12Statistics(
     }
     if (session.registered.has(athleteId)) throw new UlcTrainingValidationError("Duplicate U12 attendance.");
     session.registered.add(athleteId);
-    if (row.status !== "open") athlete.evaluated += 1;
+    if (row.status === "open") {
+      athlete.openCount += 1;
+      session.open.add(athleteId);
+      continue;
+    }
+    athlete.evaluated += 1;
     if (row.status !== "present") continue;
     athlete.attended += 1;
     session.present.add(athleteId);
@@ -221,6 +235,7 @@ export function aggregateU12Statistics(
     presentCount: session.present.size,
     trainerPresentCount: session.trainerPresentCount,
     registeredCount: session.registered.size,
+    openCount: session.open.size,
     categoryCount: session.categories.size,
   })).sort((a,b) => b.date.localeCompare(a.date));
   const monthsByKey = new Map<string, { month: string; trainings: number;
@@ -254,6 +269,7 @@ export function aggregateU12Statistics(
     lastName: athlete.lastName,
     attended: athlete.attended,
     evaluated: athlete.evaluated,
+    openCount: athlete.openCount,
     attendancePercent: athlete.evaluated > 0
       ? Math.round(athlete.attended / athlete.evaluated * 100) : null,
     categories: Object.freeze([...athlete.categories].map(([code,count]) =>
@@ -278,6 +294,8 @@ export function aggregateU12Statistics(
       attendance: trainings.reduce((sum,session)=>sum+session.presentCount,0),
       trainerAttendances: trainings.reduce((sum,session)=>sum+session.trainerPresentCount,0),
       unidentifiedTrainerAttendances,
+      evaluatedStatuses: athletes.reduce((sum, athlete) => sum + athlete.evaluated, 0),
+      openStatuses: athletes.reduce((sum, athlete) => sum + athlete.openCount, 0),
       categories: categories.length,
     }),
   });

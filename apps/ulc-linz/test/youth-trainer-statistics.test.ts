@@ -30,7 +30,7 @@ describe("A04 youth trainer-presence statistics", () => {
     ], from, to);
     expect(report.summary).toEqual({
       trainings: 2, attendance: 2, trainerAttendances: 3,
-      unidentifiedTrainerAttendances: 3, categories: 0,
+      unidentifiedTrainerAttendances: 3, evaluatedStatuses: 2, openStatuses: 0, categories: 0,
     });
     expect(report.trainings.map(({ trainerPresentCount }) => trainerPresentCount))
       .toEqual([3, 0]);
