@@ -183,6 +183,9 @@ jobs:
       - name: Test trainer presence schema-v16 protected Preview migration and guards
         run: node --test ./tooling/ulc-linz-youth-trainers-preview.test.mjs
 
+      - name: Test G-04 schema-v17 isolated Preview migration guards (no migration)
+        run: node --test ./tooling/ulc-linz-g04-calendar-v17-preview.test.mjs
+
       - name: Typecheck
         run: pnpm run typecheck
 

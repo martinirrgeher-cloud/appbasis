@@ -176,3 +176,89 @@ Regression bestehen. Zusätzliche reine Trainer-Ausnahmerechte
 (`kindertraining:edit`) werden **noch nicht erweitert**: das würde
 gesonderte aktuelle Trainer-Gruppenzuordnung und atomare Scope-Prüfungen
 benötigen. Produktion bleibt gesperrt.
+
+## G-04.2c – V17 Preview-Migration und Laufzeit-Aktivierung **vorbereitet, nicht ausgeführt**
+
+**Betriebsstand dieses PR:** Der zentrale `ulc-linz-lifecycle`-Eigentümer
+und `apps/ulc-linz/appbasis.database.json` bleiben auf **v16**, damit die
+bestehenden exakt gepinnten Generator-, Privacy- und Restore-Verträge nicht
+heimlich ungültig werden. Die bereits geprüfte additive `0016`-Migration
+ist weiterhin nicht im Manifest registriert. `appbasis.production.json`
+bleibt `blocked`.
+
+### Manueller Preview-Migrationspfad (keine automatischen Ausführungen)
+
+`tooling/ulc-linz-g04-calendar-v17-preview.mjs` kann den aktuellen
+v16-Vertrag prüfen (`plan`), eine separate Datenbank **lesend**
+untersuchen (`inspect`), einen ausschließlich für die isolierte Preview
+freigegebenen v17-Schritt ausführen (`apply`) und `verify`. Die
+Klassifizierung kennt nur `migration-required` oder `current`:
+fehlende v16-Voraussetzungen, teilweise vorhandene v17-Tabellen,
+unvollständige PKs oder ein deaktivierter Trigger führen zum **Abbruch**.
+
+Das Skript verweigert jede Migration ohne `apply=true`, die beiden
+vorgesehenen Umgebungsfreigaben und die bewährte
+`validateUlcLinzD4PreviewDatabaseCredentials`-Prüfung. Im SQL wird
+außerdem **innerhalb einer Transaktion** Datenbank und
+`appbasis_ulc_linz_preview_migration`-Rolle nochmals geprüft,
+`pg_advisory_xact_lock` verwendet und der vollständige Zustand erneut
+gelesen, bevor ein Commit möglich ist. Bei Abweichung: Rollback.
+
+Die neue `.github/workflows/ulc-linz-g04-v17-preview.yml` ist
+`workflow_dispatch` **nur für main**, unter der bestehenden
+`generated-preview-ulc-linz`-Umgebung und mit demselben
+Preview-Concurrency-Lock. `migrate` setzt ein eigenes `apply`,
+Backup-/Restore-Bestätigung und eine explizite Gate-Phrase voraus.
+Die Eingabebestätigungen sind **kein technischer Backup-/Restore-Beweis**;
+Belege sind vor Freigabe durch den Betreiber separat zu prüfen.
+Nach freigegebener Migration würde der bestehende D4-Mechanismus die
+Runtime-Tabellenrechte erneut abstimmen und überprüfen. Das Workflow
+führt **keinen** Worker-Upload, Traffic-Switch oder Produktionsschritt aus.
+
+### Extra abgesicherte Runtime-Aktivierung
+
+Die Worker-Konfiguration setzt
+`registrationCalendarActivation="isolated-preview-v17"` nur bei drei
+passenden, **nicht standardmäßig gesetzten** Werten:
+
+- `APPBASIS_GENERATED_APP_ID=ulc-linz`
+- `APPBASIS_RUNTIME_ENVIRONMENT=generated-preview-ulc-linz`
+- `APPBASIS_REGISTRATION_CALENDAR_V17=enabled`
+
+Erst dann prüft `verifyUlcG04PreviewCalendarReadiness` direkt gegen
+PostgreSQL die **exakte Preview-Datenbank**, die Runtime-Datenbankrolle,
+beide neuen Tabellen, vorhandene Trigger-Funktion und **aktivierten**
+SQL-Schreibschutz sowie selektive Lese-/Schreibberechtigungen.
+Ein Fehler verhindert die Kalenderaktivierung; **ohne Schalter** wird
+weder dieser Test noch ein neuer Kalender-SQL-Zugriff ausgelöst.
+Bei Erfolg wird `registrationCalendar` an den Admin- und
+Selbstanmeldungs-Service übergeben. Damit gelten dieselben Regeln für
+direkte und stellvertretende Anmeldungen.
+
+**Weder der v17-Workflow noch der Runtime-Schalter wird mit diesem PR
+ausgeführt/gesetzt.** Ein bestandener Test ist noch keine Fachabnahme
+der freigeschalteten Kalenderansicht.
+
+### Offene, verpflichtende Vorbedingungen
+
+Die Privacy-Klassifikation liegt als **Vorschlag**
+`privacy/g04-v17-calendar-inventory-proposal.json` vor. Zwei
+Kalenderkonfigurationstabellen werden hinzugefügt, keine Member-/Actor-IDs.
+`organization_id` und `group_id` können in Kombination mit bestehenden
+Mitgliederdaten einen indirekten Personenbezug haben. Deshalb bleibt das
+Organisations-/Rollen-Scoping verbindlich.
+
+Vor einer **kanonischen** Manifest-Promotion auf v17 müssen das
+derzeit auf 64 Tabellen gepinnte M5-Inventar und die Exportausschlüsse
+um beide Tabellen ergänzt, Backup-/Restore-Evidenz bewertet sowie
+Generator-/Schema-/Release-Tests angepasst werden. Vor dem erstmaligen
+Anwenden der isolierten Preview-Migration werden die Datenschutz- und
+Wiederherstellungsentscheidung und die Betreiberfreigabe separat geprüft.
+**Keine Preview-Migration, kein Preview-Deployment und keine Produktion
+ohne diese Entscheidungen.**
+
+Gezielte Abnahme **nach** aktivierter Preview: Smartphone
+320–390px, Gruppen-Overlay mit allen sieben Tagen, Fristzeitpunkt und DST,
+Ausnahme/Absage/Zurücksetzen, CAS bei zwei parallel geöffneten Clients,
+direkte und stellvertretende Anmeldung (auch API-Bypass), bestehende
+Notizen/Anwesenheit/Statistik/Autosave und Abmeldung während Save.

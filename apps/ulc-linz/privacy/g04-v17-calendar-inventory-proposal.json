@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "appId": "ulc-linz",
+  "status": "proposal-not-in-canonical-v16-inventory",
+  "targetSchemaVersion": 17,
+  "owner": "ulc-linz-lifecycle",
+  "proposedPrivacyClass": "training-calendar-configuration",
+  "newTables": [
+    {
+      "id": "ulc_linz_registration_calendar_rule",
+      "personalIdentifiers": [],
+      "fields": [
+        "organization_id",
+        "group_id",
+        "weekdays_mask",
+        "weeks_ahead",
+        "deadline_days_before",
+        "deadline_local_time",
+        "late_mode",
+        "revision",
+        "updated_at"
+      ]
+    },
+    {
+      "id": "ulc_linz_registration_calendar_exception",
+      "personalIdentifiers": [],
+      "fields": [
+        "organization_id",
+        "group_id",
+        "session_date",
+        "kind",
+        "revision",
+        "updated_at"
+      ]
+    }
+  ],
+  "dataClassification": {
+    "directlyPersonal": false,
+    "indirectIdentifiability": "Group association can reveal membership if combined with other existing datasets; organization-scoped access mandatory.",
+    "retentionProposal": "linked-to-training-group-configuration-lifecycle",
+    "erasureProposal": "No athlete or actor subject foreign key; group configuration lifecycle to be assessed with the responsible controller.",
+    "memberDataExportProposal": "exclude-as-training-calendar-configuration, never include group rules in individual athlete export",
+    "proof": "G-04 isolated PostgreSQL table column test; only proposed until canonical v17 inventory review"
+  },
+  "beforeSchemaPromotion": [
+    "Review and extend apps/ulc-linz/privacy/m5-data-inventory.json (current v16 inventory 64 tables) to include both tables.",
+    "Review and extend apps/ulc-linz/privacy/m5-export-contract.json excludedTables/excludedPrivacyClasses with one matching classification per table.",
+    "Update canonical v17 owner in tooling/ulc-linz-database-contract.mjs and generated manifest with exact 0016 migration, after transition/backups and existing fixed-size tests are reconciled.",
+    "Verify backup evidence and isolated restore readiness before operator authorizes Preview migration.",
+    "Preserve apps/ulc-linz/appbasis.production.json status=blocked; no automatic production activation."
+  ],
+  "previewSchemaMigrationGate": "manual-only; not dispatched by this proposal",
+  "runtimeActivationGate": "isolated-preview-v17 plus verified preview DB, trigger and scoped DML privileges",
+  "productionApproved": false
+}

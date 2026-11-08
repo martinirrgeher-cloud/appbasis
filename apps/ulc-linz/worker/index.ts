@@ -5442,6 +5442,13 @@ function runtimeConfiguration(
     ...(exerciseCatalogMediaStore === null
       ? {}
       : { exerciseCatalogMediaStore }),
+    // Explicit two-key release gate plus DB identity/trigger/privileges
+    // attestation at runtime. No v17 access for existing Preview/Production.
+    ...(env.APPBASIS_REGISTRATION_CALENDAR_V17 === "enabled" &&
+        env.APPBASIS_RUNTIME_ENVIRONMENT === "generated-preview-ulc-linz" &&
+        env.APPBASIS_GENERATED_APP_ID === "ulc-linz"
+      ? { registrationCalendarActivation: "isolated-preview-v17" as const }
+      : {}),
   });
 }
 

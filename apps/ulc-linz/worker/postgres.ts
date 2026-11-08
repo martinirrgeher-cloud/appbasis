@@ -54,7 +54,8 @@ import {
   type UlcLinzSelfRegistrationAccessService,
 } from "./self-registration-access";
 import { createUlcSelfRegistrationService } from "./self-registration-service";
-import type { PostgresUlcRegistrationCalendarRepository } from "./registration-calendar-postgres";
+import { PostgresUlcRegistrationCalendarRepository } from "./registration-calendar-postgres";
+import { verifyUlcG04PreviewCalendarReadiness } from "./registration-calendar-activation";
 import {
   createUlcLinzU12AccessService,
   type UlcLinzU12AccessService,
@@ -203,6 +204,8 @@ export interface GeneratedPostgresApplicationRuntime {
 export interface GeneratedPostgresApplicationRuntimeOptions {
   connectionString: string;
   securityLogConnectionString: string;
+  /** Explicit isolated-preview-only activation, never the default. */
+  registrationCalendarActivation?: "isolated-preview-v17";
   baseURL: string;
   secret: string;
   exerciseCatalogRuntimeMode?: UlcExerciseCatalogRuntimeMode;
@@ -557,6 +560,15 @@ export async function createGeneratedPostgresApplicationRuntime(
     });
     const trainingSessions =
       new PostgresUlcTrainingSessionRepository(applicationSql);
+    // This branch does not turn on v17. Only the separately approved Preview
+    // Worker flag can request activation, and the DB attestation fails closed.
+    const registrationCalendar =
+      options.registrationCalendarActivation === "isolated-preview-v17"
+        ? await (async () => {
+            await verifyUlcG04PreviewCalendarReadiness(applicationSql);
+            return new PostgresUlcRegistrationCalendarRepository(applicationSql);
+          })()
+        : null;
     const trainingModuleGroups =
       new PostgresUlcLinzTrainingModuleGroupReader(applicationSql);
     const kindertraining = createUlcKindertrainingService({
@@ -566,6 +578,7 @@ export async function createGeneratedPostgresApplicationRuntime(
     const selfRegistration = createUlcSelfRegistrationService({
       masterdata: athleteMasterdata,
       sessions: trainingSessions,
+      ...(registrationCalendar === null ? {} : { registrationCalendar }),
     });
     const youthCategories = new PostgresUlcYouthCategoryRepository(applicationSql);
     const u12 = createUlcU12Service({
@@ -638,6 +651,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       athleteMasterdata,
       kindertraining,
       selfRegistration,
+      registrationCalendar,
       u12,
       u12Statistics,
       u14, kids,
