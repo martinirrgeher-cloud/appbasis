@@ -1541,11 +1541,15 @@ async function kindertrainingCalendarResponse(
   if (!groups.some(group => group.id === groupId)) {
     return kindertrainingGroupNotFound();
   }
-  // Never fall back to showing arbitrary days if the enabled calendar is offline.
+  // A null repository means the v17 feature is intentionally disabled
+  // (e.g. production). Preserve its existing seven-day attendance behavior.
+  // If v17 is enabled but the DB is broken, runtime startup already fails
+  // closed instead of returning a null repository.
   const calendar = runtime.registrationCalendar;
   if (!calendar) {
-    return Response.json({ error: { code: "ATTENDANCE_CALENDAR_UNAVAILABLE" } },
-      { status: 503, headers: { "Cache-Control": "no-store" } });
+    return Response.json({ groupId, weekStart, dates: weekDates }, {
+      headers: { "Cache-Control": "private, no-store" },
+    });
   }
   const [rule, exceptions] = await Promise.all([
     calendar.readRule(access.organizationId, groupId),
