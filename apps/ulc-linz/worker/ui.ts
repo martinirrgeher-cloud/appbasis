@@ -3144,7 +3144,9 @@ function resetMasterdataSessionState() {
   closeMasterdataImportPreview();
   closeMasterdataAthleteOverlay();
   closeMasterdataTrainerOverlay();
-  closeMasterdataGroupOverlay();
+  // Session teardown must invalidate even an in-flight calendar save. Late
+  // responses are ignored by masterdataSessionGeneration and request ID.
+  closeMasterdataGroupOverlay({ force: true });
 
   trainerIdentityAdminReady = false;
   trainerIdentityLoading = false;
@@ -3205,10 +3207,10 @@ async function handleSignOut() {
     showMessage(elements.appSessionMessage, "Kindertraining-Änderungen konnten nicht gespeichert werden.");
     return;
   }
-  if (masterdataExchangeBusy || trainerIdentityLoading) {
+  if (masterdataExchangeBusy || trainerIdentityLoading || groupCalendarState?.saving) {
     showMessage(
       elements.appSessionMessage,
-      "In den Stammdaten läuft noch ein Vorgang. Bitte zuerst abschließen lassen.",
+      "In den Stammdaten läuft noch ein Speichervorgang. Bitte zuerst abschließen lassen.",
     );
     return;
   }
@@ -7142,8 +7144,10 @@ function openNewMasterdataGroup() {
   elements.groupName?.focus();
 }
 
-function closeMasterdataGroupOverlay() {
-  if (groupCalendarState?.saving) {
+function closeMasterdataGroupOverlay({ force = false } = {}) {
+  // Interactive dismissal is blocked while saving; session teardown must
+  // always discard the pending UI state, even if a request never finishes.
+  if (groupCalendarState?.saving && !force) {
     showMessage(calendarUi.message, "Speichervorgang läuft noch.");
     return;
   }
