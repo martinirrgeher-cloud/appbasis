@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "environment": "generated-preview-ulc-linz",
+  "sourceDatabase": "appbasis_ulc_linz_preview",
+  "sourceSchemaVersion": 16,
+  "targetSchemaVersion": 17,
+  "status": "blocked-pending-independent-operator-evidence",
+  "privacyDecision": {
+    "status": "pending",
+    "controllerDecisionRef": null,
+    "retentionDecisionRef": null,
+    "exportDecisionRef": null
+  },
+  "preMigrationBackup": {
+    "status": "pending",
+    "evidenceRef": null,
+    "backupSha256": null,
+    "completedAt": null,
+    "sourceDatabase": "appbasis_ulc_linz_preview"
+  },
+  "isolatedRestore": {
+    "status": "pending",
+    "evidenceRef": null,
+    "verifiedBackupSha256": null,
+    "completedAt": null,
+    "restoreDatabase": null
+  },
+  "migrationAuthorization": {
+    "status": "pending",
+    "approvalRef": null
+  },
+  "productionApproved": false
+}
