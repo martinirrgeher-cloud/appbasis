@@ -86,7 +86,8 @@ export function validateG04V17StagedPrivacyContracts({
 
   const sourceTables = v16Inventory.persistentTables;
   const stagedTables = v17Inventory.persistentTables;
-  const newTables = proposal.newTables.map(({ id }) => id).sort();
+  const proposedNewTables = proposal.newTables.map(({ id }) => id);
+  const newTables = [...proposedNewTables].sort();
   const sourceIds = uniqueRecords(sourceTables, (t) => t.owner + ":" + t.id);
   const stagedIds = uniqueRecords(stagedTables, (t) => t.owner + ":" + t.id);
   const expectedIds = [...sourceIds,
@@ -109,7 +110,7 @@ export function validateG04V17StagedPrivacyContracts({
 
   const stagedExcluded = v17Export.excludedTables;
   const expectedExcluded = [...v16Export.excludedTables,
-    ...newTables.map((table) => ({
+    ...proposedNewTables.map((table) => ({
       owner: proposal.owner, table,
       privacyClass: proposal.proposedPrivacyClass,
     }))];
