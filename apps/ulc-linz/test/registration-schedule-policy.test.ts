@@ -22,7 +22,7 @@ function eligibility(sessionDate: string, overrides: Record<string, unknown> = {
     serverNow: new Date("2026-11-05T12:00:00Z"),
     sessionState: null,
     hasExistingRegistration: false,
-    authorizedExtraDay: false,
+    calendarException: null,
     ...overrides,
   });
 }
@@ -52,10 +52,15 @@ describe("G-04 registration day and deadline policy (not runtime activated)", ()
     expect(eligibility("2026-11-07", { hasExistingRegistration: true }))
       .toMatchObject({ visible: true, exceptionalTrainingDay: false,
         mayEdit: false, reason: "non-training-day" });
-    expect(eligibility("2026-11-07", { authorizedExtraDay: true }))
+    expect(eligibility("2026-11-07", { calendarException: "extra" }))
       .toMatchObject({ visible: true, exceptionalTrainingDay: true, mayEdit: true });
     expect(eligibility("2026-11-07", { sessionState: "cancelled" }))
       .toMatchObject({ visible: true, mayEdit: false, reason: "cancelled" });
+    expect(eligibility("2026-11-07", { calendarException: "cancelled" }))
+      .toMatchObject({ visible: true, mayEdit: false, reason: "cancelled" });
+    expect(eligibility("2026-11-06", { calendarException: "cancelled" }))
+      .toMatchObject({ visible: true, scheduledWeekday: true, mayEdit: false,
+        reason: "cancelled" });
   });
 
   it("keeps past days readable but locked when a policy is configured", () => {
@@ -130,6 +135,15 @@ describe("G-04 registration day and deadline policy (not runtime activated)", ()
       schedule: policy({ lateMode: "allow", deadline: null }),
       sessionState: "cancelled",
     })).toMatchObject({ mayEdit: false, reason: "cancelled" });
+  });
+
+  it("rejects forged calendar overrides and preserves cancellation precedence", () => {
+    expect(() => eligibility("2026-11-06", {
+      calendarException: "freebie",
+    })).toThrow(UlcRegistrationScheduleValidationError);
+    expect(eligibility("2026-11-07", {
+      calendarException: "extra", sessionState: "cancelled",
+    })).toMatchObject({ visible: true, mayEdit: false, reason: "cancelled" });
   });
 
   it("rejects malformed, unordered, duplicate, empty or excessive policy values", () => {
