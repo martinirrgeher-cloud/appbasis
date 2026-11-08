@@ -3,6 +3,10 @@ import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
 import { PostgresUlcTrainingSessionRepository } from "../worker/training-session-postgres";
+import {
+  UlcRegistrationCalendarActivationError,
+  verifyUlcG04PreviewCalendarReadiness,
+} from "../worker/registration-calendar-activation";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
 import {
   PostgresUlcRegistrationCalendarRepository,
@@ -194,6 +198,11 @@ if (!databaseUrl) {
           expect.objectContaining({ athleteId: "athlete-extra" }),
         ]),
       });
+    });
+
+    it("runs the actual v17 runtime attestation query and refuses a non-Preview database", async () => {
+      await expect(verifyUlcG04PreviewCalendarReadiness(connection().client))
+        .rejects.toBeInstanceOf(UlcRegistrationCalendarActivationError);
     });
 
     it("keeps the new calendar tables free of member identifiers and free text", async () => {
