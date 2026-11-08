@@ -142,6 +142,10 @@ jobs:
           test "$STATE" = "current" || test "$STATE" = "migration-required"
           echo "state=$STATE" >> "$GITHUB_OUTPUT"
 
+      - name: Verify v17 privacy, backup, isolated restore and operator evidence
+        if: ${{ inputs.operation == 'migrate' }}
+        run: node ./tooling/ulc-linz-g04-v17-activation-readiness.mjs
+
       - name: Apply v17 to isolated Preview only when explicitly approved
         if: ${{ inputs.operation == 'migrate' && steps.v17.outputs.state == 'migration-required' }}
         env:
