@@ -736,7 +736,7 @@ function refreshU12Controls() {
       !u12Snapshot ? "Training auswählen" :
       u12AutoSaveFailed ? "Automatisches Speichern fehlgeschlagen – erneut versuchen" :
       u12DirtyDates.size > 0 && u12IsOffline()
-        ? "Offline – Änderungen nur in dieser geöffneten Ansicht gesichert" :
+        ? "Offline – ungespeicherte Änderungen nur in dieser Ansicht" :
       u12DirtyDates.size > 0 && u12ContentTitles.some((title) => !title.trim())
         ? "Kategorie auswählen · Speichern pausiert" :
       u12DirtyDates.size > 0 ? "Änderungen werden automatisch gespeichert …" :
@@ -1502,7 +1502,7 @@ async function saveU12Attendance() {
   }
   if (u12IsOffline()) {
     showMessage(u12Ui.message,
-      "Keine Internetverbindung. Änderungen nur in dieser geöffneten Ansicht gespeichert; " +
+      "Keine Internetverbindung. Änderungen noch nicht gespeichert; " +
       "bitte nicht schließen. Nach Wiederverbindung wird erneut gespeichert.");
     refreshU12Controls();
     return false;
