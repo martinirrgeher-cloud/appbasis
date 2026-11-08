@@ -155,7 +155,9 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     const timer = ULC_KIDS_SCRIPT.slice(ULC_KIDS_SCRIPT.indexOf("function scheduleKidsAutoSave("),
       ULC_KIDS_SCRIPT.indexOf("function markKidsDraftDirty("));
     expect(add).toContain("kidsCalendarBusy");
-    expect(save).toContain("kidsCalendarBusy");
+    // Explicit CAS flush must still save a frozen draft; normal edits remain disabled.
+    expect(save).toContain("if (!kidsSnapshot || kidsLoading || !kidsReady");
+    expect(save).not.toContain("kidsLoading || kidsCalendarBusy || !kidsReady");
     expect(timer).toContain("kidsCalendarBusy");
     expect(ULC_KIDS_SCRIPT).toContain("kidsLoading || kidsCalendarBusy ||");
     expect(ULC_KIDS_SCRIPT).toContain("kidsLoading || kidsCalendarBusy || !kidsWriteAllowed");
@@ -163,6 +165,21 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     const assignment = nav.indexOf("kidsUi.date.value = chosen");
     const load = nav.indexOf("await loadKidsAttendance()");
     const release = nav.indexOf("} finally {");
+    const freeze = nav.indexOf("kidsCalendarBusy = true");
+    const flush = nav.indexOf("await kidsFlushChanges()");
+    expect(freeze).toBeGreaterThan(0);
+    expect(flush).toBeGreaterThan(freeze);
+    const selectionFreeze = change.indexOf("kidsCalendarBusy = true");
+    const selectionFlush = change.indexOf("await kidsFlushChanges()");
+    expect(selectionFreeze).toBeGreaterThan(0);
+    expect(selectionFlush).toBeGreaterThan(selectionFreeze);
+    const group = ULC_KIDS_SCRIPT.slice(
+      ULC_KIDS_SCRIPT.indexOf("async function kidsChangeGroup()"),
+      ULC_KIDS_SCRIPT.indexOf("async function kidsReloadAttendance()"),
+    );
+    expect(group.indexOf("kidsCalendarBusy = true")).toBeLessThan(
+      group.indexOf("await kidsFlushChanges()"),
+    );
     expect(populate).toBeGreaterThan(0);
     expect(assignment).toBeGreaterThan(populate);
     expect(load).toBeGreaterThan(assignment);
