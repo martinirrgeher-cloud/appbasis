@@ -13,6 +13,7 @@ import {
   loadRepositoryMigrationPlan,
 } from "./database-migration-executor.mjs";
 import { readUlcLinzRestoreFingerprint } from "./ulc-linz-m5-restore-fingerprint.mjs";
+import { readDataDigest, readProtectedAcl, verifyTargetEmpty } from "./ulc-linz-g04-v16-actual-recovery.mjs";
 
 // CI-only synthetic rehearsal. Never accept preview, production or a remote DB.
 const postgresImage =
@@ -213,6 +214,7 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     } finally {
       await emptyTarget.client.end();
     }
+    await verifyTargetEmpty(restoreUrl,restoreName);
     const notInstalled = await source.client.unsafe(
       "SELECT to_regclass('public.ulc_linz_registration_calendar_rule') AS rule, " +
       "to_regclass('public.ulc_linz_registration_calendar_exception') AS exception",
@@ -236,6 +238,8 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     const fixtureBefore = (await source.client.unsafe(selectFixture)).map((row) => ({ ...row }));
     assert.equal(fixtureBefore.length, 2);
     const before = await readUlcLinzRestoreFingerprint(sourceUrl);
+    const contentBefore = await readDataDigest(sourceUrl);
+    const sourceProtectedAcl = await readProtectedAcl(sourceUrl);
     const sourceAcl = await readProtectedSecurityAcl(source.client);
     assert.deepEqual(sourceAcl, {
       security_definer: true,
@@ -265,6 +269,10 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     assert.deepEqual(fixtureAfter, fixtureBefore);
     const after = await readUlcLinzRestoreFingerprint(restoreUrl);
     assert.deepEqual(after, before);
+    assert.equal(await readDataDigest(restoreUrl), contentBefore,
+      "G-04.5 SHA content digest must match after pg_restore.");
+    assert.deepEqual(await readProtectedAcl(restoreUrl), sourceProtectedAcl,
+      "G-04.5 protected ACLs must match after pg_restore.");
     const restoreAcl = await readProtectedSecurityAcl(restored.client);
     assert.deepEqual(restoreAcl, sourceAcl,
       "The isolated restore must preserve explicit ACL grants and revocations.");
