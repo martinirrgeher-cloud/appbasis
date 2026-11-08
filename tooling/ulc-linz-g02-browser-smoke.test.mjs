@@ -77,6 +77,47 @@ async function runBrowserScenarios() {
   check(await saveU12Attendance(), "Explicit retry after network failure failed");
   check(posts.length === 3 && u12DirtyDates.size === 0, "Manual retry did not persist");
 
+  // Regression: the connection returns *while a previous POST is unresolved*.
+  // If its response is lost, the reconnect must not queue a duplicate write.
+  u12EditVersion += 1;
+  u12DirtyDates.add(u12LoadedDate);
+  deferNextResponse = true;
+  scheduleU12AutoSave();
+  await sleep(950);
+  check(posts.length === 4 && u12Saving && pendingRequest,
+    "Deferred POST was not in flight");
+  online = false;
+  window.dispatchEvent(new Event("offline"));
+  online = true;
+  window.dispatchEvent(new Event("online"));
+  check(u12AutoSaveTimer === null, "Reconnect queued a duplicate while POST is in flight");
+  pendingRequest.reject(new Error("lost response after server may have committed"));
+  pendingRequest = null;
+  await sleep(950);
+  check(posts.length === 4 && u12AutoSaveFailed,
+    "Ambiguous in-flight POST automatically replayed after reconnect");
+  check(u12DirtyDates.size === 1, "In-flight failure discarded pending changes");
+  check(await saveU12Attendance(), "Explicit in-flight retry after failure failed");
+  check(posts.length === 5 && u12DirtyDates.size === 0, "In-flight retry did not settle");
+
+  // A successful in-flight POST must still flush edits made during that write.
+  u12EditVersion += 1;
+  u12DirtyDates.add(u12LoadedDate);
+  deferNextResponse = true;
+  scheduleU12AutoSave();
+  await sleep(950);
+  check(posts.length === 6 && u12Saving && pendingRequest, "Second POST was not in flight");
+  u12EditVersion += 1;
+  u12Note = "new edit during in-flight save";
+  scheduleU12AutoSave(); // Should defer until the in-flight write completes.
+  pendingRequest.resolve({ snapshot: u12Snapshot });
+  pendingRequest = null;
+  await sleep(950);
+  check(posts.length === 7 && u12DirtyDates.size === 0,
+    "A fresh edit was not saved after successful in-flight write");
+  check(posts[6].body.note === "new edit during in-flight save",
+    "Later draft was overwritten by in-flight response");
+
   // CAS conflict is not a network retry: never override another trainer.
   u12EditVersion += 1;
   u12DirtyDates.add(u12LoadedDate);
@@ -86,7 +127,7 @@ async function runBrowserScenarios() {
   check(u12Conflict === true, "CAS conflict not blocked");
   window.dispatchEvent(new Event("online"));
   await sleep(950);
-  check(posts.length === 4, "409 conflict silently retried");
+  check(posts.length === 8, "409 conflict silently retried");
   check(await saveU12Attendance() === false, "Conflicting draft allowed a write");
 
   const unload = new Event("beforeunload", { cancelable: true });
@@ -100,6 +141,8 @@ const setup = [
   'Object.defineProperty(navigator, "onLine", { configurable: true, get: () => online });',
   "let posts = [];",
   "let nextFailure = null;",
+  "let deferNextResponse = false;",
+  "let pendingRequest = null;",
   'let u12LoadedDate = "2026-11-08";',
   'let u12LoadedGroupId = "group-1";',
   "let u12DirtyDates = new Set();",
@@ -135,6 +178,10 @@ const setup = [
   "function u12ValidSnapshot() { return true; }",
   "async function requestJson(url, options) {",
   "  posts.push({ url: url, body: JSON.parse(options.body) });",
+  "  if (deferNextResponse) {",
+  "    deferNextResponse = false;",
+  "    return await new Promise((resolve, reject) => { pendingRequest = { resolve, reject }; });",
+  "  }",
   "  if (nextFailure !== null) {",
   "    const failure = nextFailure; nextFailure = null;",
   "    const error = new Error('simulated request failure');",
@@ -185,7 +232,7 @@ test("G-02: real Chromium smoke for youth autosave, reconnect, 409 and 360px tou
       "--no-first-run",
       "--hide-scrollbars",
       "--window-size=390,844",
-      "--virtual-time-budget=7200",
+      "--virtual-time-budget=14000",
       "--user-data-dir=" + path.join(root, "chrome-profile"),
       "--dump-dom",
       pathToFileURL(htmlFile).href,
