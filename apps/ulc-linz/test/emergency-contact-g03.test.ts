@@ -27,11 +27,17 @@ describe("G-03.1 emergency-contact call safety and youth UI parity", () => {
     it(area.id + ": normalizes only safe phone numbers before creating tel: links", () => {
       const normalize = dialer(area.script, area.id);
       expect(normalize("+43 664 123 45 67")).toBe("tel:+436641234567");
+      expect(normalize("+43 (0)664 123 45 67")).toBe("tel:+436641234567");
+      expect(normalize("+43(0)6641234567")).toBe("tel:+436641234567");
+      expect(normalize("+49 (0)151 234 567")).toBe("tel:+49151234567");
+      expect(normalize("+44 (0)20 7123 4567")).toBe("tel:+442071234567");
       expect(normalize("0732/123-45")).toBe("tel:073212345");
       expect(normalize("(0664) 99.88")).toBe("tel:06649988");
       for (const invalid of [
         null, "", "12", "123\n456", "123x456", "tel:+43664",
         "javascript:alert(1)", "+43;postd=123", "++431234", "123#45",
+        "+39 (0)6123456", "+1 (0)234567", "+43 (0)0664123",
+        "+43 (0)", "+43 (0) (0)6641234", "+43 (0)-6641234",
         "<img src=x onerror=alert(1)>", "0".repeat(16),
       ]) expect(normalize(invalid)).toBeNull();
     });
