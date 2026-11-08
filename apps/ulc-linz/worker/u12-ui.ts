@@ -1470,11 +1470,16 @@ function u12CalendarWeekStart(date) {
 }
 
 async function u12FetchCalendarDates(groupId, weekStart) {
+  const cache = u12CalendarWeekCache;
+  const generation = attendanceSessionGeneration;
   const cacheKey = groupId + "|" + weekStart;
-  if (u12CalendarWeekCache.has(cacheKey)) return u12CalendarWeekCache.get(cacheKey);
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
   const result = await requestJson(
     "/api/modules/kindertraining/calendar?groupId=" + encodeURIComponent(groupId) +
     "&weekStart=" + encodeURIComponent(weekStart));
+  if (generation !== attendanceSessionGeneration || cache !== u12CalendarWeekCache) {
+    throw new Error("STALE_CALENDAR_REQUEST");
+  }
   const validWeek = registrationWeekDates(weekStart);
   if (result?.groupId !== groupId || result?.weekStart !== weekStart ||
       !Array.isArray(result.dates)) throw new Error("INVALID_CALENDAR_RESPONSE");
@@ -1483,13 +1488,13 @@ async function u12FetchCalendarDates(groupId, weekStart) {
       (i === 0 || index > positions[i - 1]))) {
     throw new Error("INVALID_CALENDAR_DATES");
   }
-  u12CalendarWeekCache.set(cacheKey, result.dates);
+  cache.set(cacheKey, result.dates);
   return result.dates;
 }
 
 // An accessible, native select contains only verified training days, unlike
 // a browser date picker which cannot disable individual weekdays reliably.
-async function u12PopulateCalendarChoices(groupId, selected) {
+async function u12PopulateCalendarChoices(groupId, selected, isCurrent) {
   if (!u12FollowGroupCalendar || !u12Ui.date) return;
   const weekStart = u12CalendarWeekStart(selected);
   const weekStarts = Array.from({ length: 8 }, (_, i) =>
@@ -1500,6 +1505,7 @@ async function u12PopulateCalendarChoices(groupId, selected) {
       catch { return []; } // Keep other authorized weeks available.
     }),
   )).flat();
+  if (!isCurrent()) return;
   if (!days.includes(selected)) throw new Error("SELECTED_DATE_NOT_IN_CALENDAR");
   const select = u12Ui.date;
   select.replaceChildren();
@@ -1572,7 +1578,9 @@ async function loadU12Attendance() {
       }
       if (generation !== attendanceSessionGeneration ||
           loadId !== u12LoadId || u12Ui.group?.value !== groupId) return;
-      await u12PopulateCalendarChoices(groupId, date);
+      await u12PopulateCalendarChoices(groupId, date, () =>
+        generation === attendanceSessionGeneration &&
+        loadId === u12LoadId && u12Ui.group?.value === groupId);
       if (generation !== attendanceSessionGeneration ||
           loadId !== u12LoadId || u12Ui.group?.value !== groupId) return;
       u12Ui.date.value = date;
@@ -1845,7 +1853,7 @@ async function u12ChangeGroup() {
   u12LoadedGroupId = "";
   u12LoadedDate = "";
   if (u12FollowGroupCalendar) {
-    u12CalendarWeekCache.clear();
+    u12CalendarWeekCache = new Map();
     if (u12Ui.date) {
       u12Ui.date.replaceChildren();
       const placeholder = document.createElement("option");
@@ -1864,7 +1872,7 @@ async function u12ReloadAttendance() {
   if (u12Saving || u12Loading) return;
   if (u12DirtyDates.size > 0 &&
       !window.confirm("Ungespeicherte Anwesenheit und Trainingsinhalte verwerfen und neu laden?")) return;
-  if (u12FollowGroupCalendar) u12CalendarWeekCache.clear();
+  if (u12FollowGroupCalendar) u12CalendarWeekCache = new Map();
   u12DirtyDates.clear();
   u12Conflict = false;
   await loadU12Attendance();
