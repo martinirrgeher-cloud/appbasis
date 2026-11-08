@@ -43,12 +43,12 @@ function plannedDaysHarness(
     "requestJson", "localIsoDate", "localWeekStart",
     "registrationWeekDates", "shiftIsoDate",
     "kidsUi", "document", "germanWeekday", "germanDate", "kidsFollowGroupCalendar",
-    "const kidsCalendarWeekCache = new Map();\n" + code +
+    "const kidsCalendarWeekCache = new Map();\nconst attendanceSessionGeneration = 1;\n" + code +
       "\nreturn { find: kidsFindCalendarDate, fetch: kidsFetchCalendarDates, populate: kidsPopulateCalendarChoices };",
   ) as (...args: any[]) => {
     find: (groupId: string, anchor: string, direction: number, includeAnchor: boolean) => Promise<string>;
     fetch: (groupId: string, start: string) => Promise<string[]>;
-    populate: (groupId: string, selected: string) => Promise<void>;
+    populate: (groupId: string, selected: string, isCurrent: () => boolean) => Promise<void>;
   };
   const fns = factory(
     requestJson,
@@ -95,7 +95,7 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
       "2026-11-09": ["2026-11-10", "2026-11-14"],
       "2026-11-16": ["2026-11-17"],
     });
-    await populate("kids-group", "2026-11-10");
+    await populate("kids-group", "2026-11-10", () => true);
     expect(selectedDate.options.map(option => option.value)).toEqual([
       "2026-11-10", "2026-11-14", "2026-11-17",
     ]);
@@ -103,6 +103,16 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     expect(selectedDate.options).not.toContainEqual(
       expect.objectContaining({ value: "2026-11-11" }),
     );
+  });
+
+  it("ignores stale responses without changing options or the selected day", async () => {
+    const { populate, selectedDate } = plannedDaysHarness({
+      "2026-11-09": ["2026-11-10"],
+    });
+    selectedDate.value = "2026-11-03";
+    await populate("kids-group", "2026-11-10", () => false);
+    expect(selectedDate.value).toBe("2026-11-03");
+    expect(selectedDate.options).toHaveLength(0);
   });
 
   it("includes extra days, excludes cancellations, and denies invalid calendar responses", async () => {
