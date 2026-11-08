@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
+import { ULC_U12_SCRIPT, ULC_U12_CSS } from "../apps/ulc-linz/worker/u12-ui.ts";
 
-// Executes actual production functions. Component smoke, not an authenticated app E2E.
-const source = readFileSync(new URL("../apps/ulc-linz/worker/u12-ui.ts", import.meta.url), "utf8");
+// Execute the emitted production JavaScript, not the raw TypeScript template
+// source: literal regex backslashes are escaped one extra time in that source.
+// Component smoke, not an authenticated app E2E.
+const source = ULC_U12_SCRIPT;
 function productionFunction(signature) {
   const begin = source.indexOf(signature);
   assert.ok(begin >= 0, "Missing production function " + signature);
@@ -15,12 +18,7 @@ function productionFunction(signature) {
   assert.ok(end > begin, "Missing closing boundary " + signature);
   return source.slice(begin, end + 2);
 }
-const cssSignature = "export const ULC_U12_CSS = " + String.fromCharCode(96);
-const cssStart = source.indexOf(cssSignature);
-assert.ok(cssStart >= 0);
-const cssEnd = source.indexOf(String.fromCharCode(96) + ";", cssStart + cssSignature.length);
-assert.ok(cssEnd > cssStart);
-const css = source.slice(cssStart + cssSignature.length, cssEnd);
+const css = ULC_U12_CSS;
 const production = [
   productionFunction("function u12DialablePhone(rawPhone) {"),
   productionFunction("function openU12AthleteDetails(athleteId) {"),
