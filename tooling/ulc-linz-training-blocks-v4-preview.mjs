@@ -55,10 +55,14 @@ export async function loadUlcTrainingBlocksV4PreviewPlan(
     executionPlan.application !== APP_ID ||
     executionPlan.moduleId !== MODULE_ID ||
     executionPlan.repositoryState !== "published-target" ||
-    executionPlan.targetOwner?.schemaVersion !== 4 ||
-    JSON.stringify(executionPlan.targetOwner?.migrations) !==
+    !Number.isSafeInteger(executionPlan.targetOwner?.schemaVersion) ||
+    executionPlan.targetOwner.schemaVersion < EXPECTED_MIGRATIONS.length ||
+    !Array.isArray(executionPlan.targetOwner?.migrations) ||
+    executionPlan.targetOwner.migrations.length !==
+      executionPlan.targetOwner.schemaVersion ||
+    JSON.stringify(executionPlan.targetOwner.migrations.slice(0, EXPECTED_MIGRATIONS.length)) !==
       JSON.stringify(EXPECTED_MIGRATIONS) ||
-    executionPlan.migrations.length !== 4
+    executionPlan.migrations.length !== executionPlan.targetOwner.schemaVersion
   ) {
     throw new UlcTrainingBlocksV4PreviewConfigurationError(
       "Training-blocks v4 preview requires the canonical published schema-v4 repository contract.",
@@ -98,6 +102,14 @@ export async function loadUlcTrainingBlocksV4PreviewPlan(
     [migration],
     "training-blocks schema-v4 preview delta",
   );
+  // This verifier proves ONLY the original v4 feature contract. The published
+  // module may add subsequent migrations (currently v5/v6); they do not imply
+  // that this Preview database must already have those later tables. Never
+  // weaken the v4 catalog check or mistake it for complete v6 readiness.
+  const v4TargetCatalogContract = createCatalogContract(
+    [foundation, parity, multiAudience, migration],
+    "training-blocks schema-v4 preview target",
+  );
 
   return Object.freeze({
     schemaVersion: 1,
@@ -119,7 +131,7 @@ export async function loadUlcTrainingBlocksV4PreviewPlan(
     }),
     baselineCatalogContract,
     deltaCatalogContract,
-    targetCatalogContract: executionPlan.targetCatalogContract,
+    targetCatalogContract: v4TargetCatalogContract,
     productionChanged: false,
   });
 }
