@@ -248,7 +248,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
       "U12_STANDARD_CONTENT_CATALOG", "u12Loading", "u12Saving",
       "u12WriteAllowed", "u12Conflict", "u12Ui",
       "renderU12Attendance", "markU12DraftDirty", "showMessage",
-      source + "\nreturn addU12Content;",
+      "const u12CalendarBusy = false;\n" + source + "\nreturn addU12Content;",
     );
     const titles: string[] = [];
     const items: Array<{ code: string; detail: string }> = [];
