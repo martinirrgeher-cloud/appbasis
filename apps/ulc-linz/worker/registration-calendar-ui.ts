@@ -3,7 +3,7 @@
  * It stays hidden unless the server advertises an active v17 calendar
  * repository. No separate global permissions or implicit trainer edit rights.
  */
-export const ULC_REGISTRATION_CALENDAR_CSS = \`
+export const ULC_REGISTRATION_CALENDAR_CSS = `
 #group-calendar-panel { display: grid; gap: 12px; max-width: 100%; min-width: 0; }
 #group-calendar-panel[hidden], #group-calendar-exception[hidden] { display: none; }
 .registration-calendar-weekdays {
@@ -30,9 +30,9 @@ export const ULC_REGISTRATION_CALENDAR_CSS = \`
   #group-calendar-panel .settings-grid { grid-template-columns: minmax(0, 1fr); }
   .registration-calendar-weekdays { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-\`;
+`;
 
-export const ULC_REGISTRATION_CALENDAR_SCRIPT = \`
+export const ULC_REGISTRATION_CALENDAR_SCRIPT = `
 let groupCalendarState = null;
 let groupCalendarRequestId = 0;
 
@@ -327,4 +327,4 @@ calendarUi.form?.addEventListener("submit", (event) => void saveGroupCalendarRul
 calendarUi.exception?.addEventListener("submit", (event) => void saveGroupCalendarException(event));
 calendarUi.exceptionDate?.addEventListener("change", () => void loadGroupCalendarException());
 calendarUi.deadlineEnabled?.addEventListener("change", refreshGroupCalendarDeadline);
-\`;
+`;
