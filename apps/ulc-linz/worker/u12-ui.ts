@@ -1765,6 +1765,11 @@ async function saveU12Attendance() {
         u12Conflict = true;
         showMessage(u12Ui.message,
           "Die Liste wurde zwischenzeitlich geändert. Bitte neu laden, um Daten nicht zu überschreiben.");
+      } else if (u12FollowGroupCalendar && error?.status === 422) {
+        u12CalendarWeekCache = new Map();
+        showMessage(u12Ui.message,
+          "Dieser Trainingstag ist inzwischen entfallen. Änderungen nicht gespeichert. " +
+          "Bitte neu laden und einen gültigen Trainingstag wählen.");
       } else if (error?.status === 401 || error?.status === 403) {
         u12WriteAllowed = false;
         showMessage(u12Ui.message, "Keine Schreibberechtigung. Änderungen wurden nicht gespeichert.");
