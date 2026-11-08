@@ -99,12 +99,12 @@ jobs:
               "SELECT current_database() AS db,current_user AS role," +
               "to_regclass('public.ulc_linz_registration_calendar_rule') IS NOT NULL AS rule," +
               "to_regclass('public.ulc_linz_registration_calendar_exception') IS NOT NULL AS exception," +
-              "has_table_privilege(current_user,'public.ulc_linz_registration_calendar_rule','SELECT,INSERT,UPDATE') AS rw_rule," +
-              "has_table_privilege(current_user,'public.ulc_linz_registration_calendar_exception','SELECT,INSERT,UPDATE') AS rw_exception," +
+              "has_table_privilege(current_user,'public.ulc_linz_registration_calendar_rule','SELECT') AND has_table_privilege(current_user,'public.ulc_linz_registration_calendar_rule','INSERT') AND has_table_privilege(current_user,'public.ulc_linz_registration_calendar_rule','UPDATE') AS rw_rule," +
+              "has_table_privilege(current_user,'public.ulc_linz_registration_calendar_exception','SELECT') AND has_table_privilege(current_user,'public.ulc_linz_registration_calendar_exception','INSERT') AND has_table_privilege(current_user,'public.ulc_linz_registration_calendar_exception','UPDATE') AS rw_exception," +
               "has_table_privilege(current_user,'public.ulc_linz_security_event_log','SELECT') AS reads_security_log");
             const [s] = await sec.client.unsafe(
               "SELECT current_database() AS db,current_user AS role," +
-              "has_table_privilege(current_user,'public.ulc_linz_registration_calendar_rule','SELECT') AS calendar_read");
+              "has_table_privilege(current_user,'public.ulc_linz_registration_calendar_rule','SELECT') AS calendar_read,has_column_privilege(current_user,'public.ulc_linz_security_event_log','event_type','INSERT') AS can_log");
             const [guard] = await app.client.unsafe(
               "SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid" +
               " WHERE c.relname='ulc_linz_training_registration'" +
@@ -114,7 +114,7 @@ jobs:
                 !a.rule || !a.exception || !a.rw_rule || !a.rw_exception ||
                 a.reads_security_log || !guard?.present ||
                 s?.db!==a.db || s?.role!=="appbasis_ulc_g046_security_log" ||
-                s.calendar_read) throw Error("Unsafe sandbox role or v17 schema.");
+                s.calendar_read || !s.can_log) throw Error("Unsafe sandbox role or v17 schema.");
             console.log("G-04.6 sandbox database and least-privilege role check PASS.");
           } catch {
             console.error("G-04.6 sandbox SQL verification blocked.");
