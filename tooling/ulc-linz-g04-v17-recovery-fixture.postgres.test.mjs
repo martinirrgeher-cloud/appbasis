@@ -13,6 +13,7 @@ import {
   loadRepositoryMigrationPlan,
 } from "./database-migration-executor.mjs";
 import { readUlcLinzRestoreFingerprint } from "./ulc-linz-m5-restore-fingerprint.mjs";
+import { readDataDigest, readProtectedAcl, verifyTargetEmpty } from "./ulc-linz-g04-v16-actual-recovery.mjs";
 
 // CI-only synthetic rehearsal. Never accept preview, production or a remote DB.
 const postgresImage =
@@ -174,8 +175,22 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     sourceCreated = true;
     await admin.client.unsafe("CREATE DATABASE " + identifier(restoreName));
     restoreCreated = true;
+    // Different database defaults previously made equal timestamptz values hash differently.
+    await admin.client.unsafe("ALTER DATABASE " + identifier(sourceName) + " SET TIMEZONE TO 'Pacific/Auckland'");
+    await admin.client.unsafe("ALTER DATABASE " + identifier(restoreName) + " SET TIMEZONE TO 'America/Los_Angeles'");
     const sourceUrl = databaseUrlFor(baseUrl, sourceName);
     const restoreUrl = databaseUrlFor(baseUrl, restoreName);
+    const sourceTimezoneDb = createPostgresDatabase(sourceUrl);
+    const restoreTimezoneDb = createPostgresDatabase(restoreUrl);
+    try {
+      const srcZone = await sourceTimezoneDb.client.unsafe("SHOW TimeZone");
+      const dstZone = await restoreTimezoneDb.client.unsafe("SHOW TimeZone");
+      assert.equal(srcZone[0].TimeZone, "Pacific/Auckland");
+      assert.equal(dstZone[0].TimeZone, "America/Los_Angeles");
+    } finally {
+      await sourceTimezoneDb.client.end();
+      await restoreTimezoneDb.client.end();
+    }
     const plan = await loadRepositoryMigrationPlan({
       repositoryRoot,
       manifestPath: join(repositoryRoot, "apps", "ulc-linz", "appbasis.database.json"),
@@ -213,6 +228,7 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     } finally {
       await emptyTarget.client.end();
     }
+    await verifyTargetEmpty(restoreUrl,restoreName);
     const notInstalled = await source.client.unsafe(
       "SELECT to_regclass('public.ulc_linz_registration_calendar_rule') AS rule, " +
       "to_regclass('public.ulc_linz_registration_calendar_exception') AS exception",
@@ -224,18 +240,22 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     await source.client.unsafe(
       "CREATE TABLE public.g04_recovery_fixture (" +
       "id text PRIMARY KEY, group_key text NOT NULL, session_date date NOT NULL, " +
-      "revision integer NOT NULL CHECK (revision > 0))",
+      "revision integer NOT NULL CHECK (revision > 0), " +
+      "event_at timestamptz NOT NULL)",
     );
     await source.client.unsafe(
       "INSERT INTO public.g04_recovery_fixture VALUES " +
-      "('fixture-1','demo-U12','2026-11-09',1)," +
-      "('fixture-2','demo-U14','2026-11-11',3)",
+      "('fixture-1','demo-U12','2026-11-09',1,'2026-11-09T14:30:00Z')," +
+      "('fixture-2','demo-U14','2026-11-11',3,'2026-11-11T15:30:00Z')",
     );
-    const selectFixture = "SELECT id, group_key, session_date::text AS training_day, revision " +
+    const selectFixture = "SELECT id, group_key, session_date::text AS training_day, revision, " +
+      "event_at AT TIME ZONE 'UTC' AS utc_event_at " +
       "FROM public.g04_recovery_fixture ORDER BY id";
     const fixtureBefore = (await source.client.unsafe(selectFixture)).map((row) => ({ ...row }));
     assert.equal(fixtureBefore.length, 2);
     const before = await readUlcLinzRestoreFingerprint(sourceUrl);
+    const contentBefore = await readDataDigest(sourceUrl);
+    const sourceProtectedAcl = await readProtectedAcl(sourceUrl);
     const sourceAcl = await readProtectedSecurityAcl(source.client);
     assert.deepEqual(sourceAcl, {
       security_definer: true,
@@ -265,6 +285,10 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     assert.deepEqual(fixtureAfter, fixtureBefore);
     const after = await readUlcLinzRestoreFingerprint(restoreUrl);
     assert.deepEqual(after, before);
+    assert.equal(await readDataDigest(restoreUrl), contentBefore,
+      "G-04.5 SHA content digest must match after pg_restore.");
+    assert.deepEqual(await readProtectedAcl(restoreUrl), sourceProtectedAcl,
+      "G-04.5 protected ACLs must match after pg_restore.");
     const restoreAcl = await readProtectedSecurityAcl(restored.client);
     assert.deepEqual(restoreAcl, sourceAcl,
       "The isolated restore must preserve explicit ACL grants and revocations.");
