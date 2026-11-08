@@ -737,9 +737,12 @@ function refreshU12Controls() {
     u12Ui.addAthlete.hidden = !canCreate;
     u12Ui.addAthlete.disabled = busy || !groupIdOrValidU12Group();
   }
-  if (u12Ui.today) u12Ui.today.setAttribute(
-    "aria-pressed", String(u12Ui.date?.value === localIsoDate(new Date())),
-  );
+  if (u12Ui.today) {
+    if (u12FollowGroupCalendar) u12Ui.today.removeAttribute("aria-pressed");
+    else u12Ui.today.setAttribute(
+      "aria-pressed", String(u12Ui.date?.value === localIsoDate(new Date())),
+    );
+  }
   if (u12Ui.save) {
     u12Ui.save.hidden = !u12AutoSaveFailed || u12DirtyDates.size === 0;
     u12Ui.save.disabled = !editable || u12Saving || u12Conflict || u12IsOffline();
@@ -1503,7 +1506,7 @@ async function u12PopulateCalendarChoices(groupId, selected) {
   for (const day of [...new Set(days)].sort()) {
     const option = document.createElement("option");
     option.value = day;
-    option.textContent = germanWeekday(day) + " · " + germanDate(day);
+    option.textContent = germanWeekday(day).slice(0, 2) + " · " + germanDate(day);
     select.append(option);
   }
   select.value = selected;
@@ -1841,7 +1844,16 @@ async function u12ChangeGroup() {
   u12Present = new Map();
   u12LoadedGroupId = "";
   u12LoadedDate = "";
-  if (u12FollowGroupCalendar) u12CalendarWeekCache.clear();
+  if (u12FollowGroupCalendar) {
+    u12CalendarWeekCache.clear();
+    if (u12Ui.date) {
+      u12Ui.date.replaceChildren();
+      const placeholder = document.createElement("option");
+      placeholder.value = localIsoDate(new Date());
+      placeholder.textContent = "Trainingstage laden …";
+      u12Ui.date.append(placeholder);
+    }
+  }
   u12DirtyDates.clear();
   u12Conflict = false;
   if (next) await loadU12Attendance();
