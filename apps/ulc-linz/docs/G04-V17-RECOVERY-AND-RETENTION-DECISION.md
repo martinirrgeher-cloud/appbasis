@@ -6,7 +6,7 @@
 
 1. Die bestehende technische Entscheidung G-04.2e wird als Vorschlag übernommen, nicht als datenschutzrechtliche Freigabe.
 2. Ein automatisierter PostgreSQL-18-Test installiert die **aktuelle kanonische v16** in einer frisch erzeugten Datenbank, ergänzt ausschließlich künstliche Beispieldatensätze und erstellt mit echtem pg_dump ein Custom-Format-Backup.
-3. pg_restore stellt **genau dieses Backup** in einer zweiten, nachweislich leeren und verschiedenen Testdatenbank wieder her. Geprüft werden SHA-256-Form, vollständige Schema-/Tabellen-/Zeilenanzahl-Fingerprints und die konkreten synthetischen Testzeilen. Beide v17-Kalendertabellen müssen ausdrücklich fehlen.
+3. pg_restore stellt **genau dieses Backup** in einer zweiten, nachweislich leeren und verschiedenen Testdatenbank wieder her. Geprüft werden SHA-256-Form, vollständige Schema-/Tabellen-/Zeilenanzahl-Fingerprints, die konkreten synthetischen Testzeilen sowie zusätzlich explizite PostgreSQL-ACLs (Verbot von PUBLIC EXECUTE auf der SECURITY-DEFINER-Löschfunktion, Cleanup-Rollenfreigabe, kein PUBLIC SELECT auf dem Sicherheitslog und Leserecht der Audit-Rolle). Beide v17-Kalendertabellen müssen ausdrücklich fehlen.
 4. Test-Datenbanken und Backupdatei werden nach Abschluss gelöscht. Es werden keine Daten, keine Zugangsdaten und keine Backup-Artefakte in Git oder CI-Artefakte übernommen.
 5. Die CI-Prüfung akzeptiert nur den lokalen Testservice mit dem exakten Datenbanknamen appbasis_identity_e2e, PostgreSQL über localhost:5432 und GitHub-Actions-CI. Preview-/Produktionsdatenbanken werden vor jeder Verbindung abgewiesen.
 
@@ -33,7 +33,7 @@ Datenschutzentscheidung und technische Umsetzung müssen sich decken. Wenn ein z
 
 - **AC-1**: Der lokale PostgreSQL-18-Test startet nur gegen den exakten isolierten CI-Testservice; Preview, Produktion und fremde Hosts werden verweigert.
 - **AC-2**: Auf dem reinen Testservice wird eine neue v16-Quelldatenbank angelegt, v16 installiert und nur synthetischer Fixture-Inhalt geschrieben.
-- **AC-3**: Die Wiederherstellung erfolgt in einer zweiten, neuen und leeren Testdatenbank mit pg_dump/pg_restore. SHA-256 des Dump-Artefakts wird berechnet; Schema-/Zeilenanzahl-Fingerprints und konkrete Fixture-Datensätze stimmen nach Restore exakt überein.
+- **AC-3**: Die Wiederherstellung erfolgt in einer zweiten, neuen und leeren Testdatenbank mit pg_dump/pg_restore. SHA-256 des Dump-Artefakts wird berechnet; Schema-/Zeilenanzahl-Fingerprints, konkrete Fixture-Datensätze und explizit geprüfte Sicherheitsberechtigungen stimmen nach Restore exakt überein.
 - **AC-4**: v17 bleibt in Quelle und Ziel deinstalliert; alle Testdatenbanken und temporären Dateien werden nach dem Test entfernt.
 - **AC-5**: CI exact HEAD (PostgreSQL E2E, Quality Gate, Typecheck, Unit, Chromium-Smokes, Build) PASS.
 - **AC-6**: Aktives v16-Manifest, bestehende M5-Privacy-/Exportverträge, v17-Evidence-Ledger, Runtime-Flags und produktive Daten bleiben unverändert.
