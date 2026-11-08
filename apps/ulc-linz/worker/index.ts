@@ -29,7 +29,7 @@ import {
 import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 
 import { createGeneratedApp } from "./app";
-import { attendanceWeekDates, selectAttendanceCalendarDates } from "./attendance-calendar";
+import { attendanceWeekDates, isScheduledAttendanceDate, selectAttendanceCalendarDates } from "./attendance-calendar";
 import { registrationCalendarHttpResponse } from "./registration-calendar-http";
 import { UlcLinzAuthorizationDeniedError } from "./authorization";
 import { UlcLinzCountdownAccessDeniedError } from "./countdown-access";
@@ -1583,20 +1583,15 @@ async function kindertrainingScheduleAllowsDate(
 ): Promise<boolean> {
   const calendar = runtime.registrationCalendar;
   if (!calendar) return true;
-  const day = new Date(sessionDate + "T12:00:00.000Z");
-  if (!Number.isFinite(day.getTime()) ||
-      day.toISOString().slice(0, 10) !== sessionDate) return false;
-  day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7));
-  const weekStart = day.toISOString().slice(0, 10);
+  // Every mutation checks the *current* database-backed rule/exception.
+  // No browser cache or stale already-listed option can override this.
   const [rule, exception] = await Promise.all([
     calendar.readRule(organizationId, groupId),
     calendar.readException(organizationId, groupId, sessionDate),
   ]);
-  return selectAttendanceCalendarDates({
-    weekStart,
-    weekdays: rule?.schedule.weekdays ?? null,
-    exceptions: [{ date: sessionDate, kind: exception?.kind ?? null }],
-  }).includes(sessionDate);
+  return isScheduledAttendanceDate(
+    sessionDate, rule?.schedule.weekdays ?? null, exception?.kind ?? null,
+  );
 }
 
 function kindertrainingUnscheduledDayResponse(): Response {
