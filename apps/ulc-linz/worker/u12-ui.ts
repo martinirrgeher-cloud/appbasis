@@ -172,7 +172,7 @@ export const ULC_U12_CSS = `
 .u12-date-arrow { min-width:36px; height:42px; border:0; border-radius:9px; background:var(--muted); color:var(--text); font-size:1.2rem; font-weight:800; cursor:pointer; }
 .u12-date-field { display:grid; gap:0; min-width:0; text-align:center; }
 .u12-date-field span { font-size:.62rem; font-weight:750; color:var(--secondary); letter-spacing:.03em; }
-.u12-date-field input { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:38px; padding:0 1px; text-align:center; font-size:.8rem; font-weight:780; background:transparent; border:0; color:var(--text); }
+.u12-date-field input, .u12-date-field select { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:38px; padding:0 1px; text-align:center; font-size:.8rem; font-weight:780; background:transparent; border:0; color:var(--text); }
 .u12-date-shortcuts { display:flex; justify-content:center; gap:2px; align-items:center; }
 .u12-date-shortcuts button { min-height:var(--ab-touch-target); border:0; background:transparent; color:var(--accent); padding:3px 5px; font-size:.73rem; font-weight:750; border-radius:8px; cursor:pointer; }
 .u12-date-shortcuts button[aria-pressed="true"] { background:var(--muted); color:var(--secondary); }
@@ -473,6 +473,7 @@ let u12SaveInFlight = null;
 let u12StatisticsLoadId = 0;
 let u12LoadId = 0;
 let u12CalendarBusy = false;
+let u12CalendarWeekCache = new Map();
 
 function resetU12SessionState() {
   if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
@@ -487,6 +488,7 @@ function resetU12SessionState() {
   u12Ready = false;
   u12WriteAllowed = true;
   u12CalendarBusy = false;
+  u12CalendarWeekCache = new Map();
   u12Groups = [];
   u12LoadedGroupId = "";
   u12LoadedDate = "";
@@ -511,7 +513,18 @@ function resetU12SessionState() {
     placeholder.textContent = "Gruppe wählen";
     u12Ui.group.append(placeholder);
   }
-  if (u12Ui.date) u12Ui.date.value = localIsoDate(new Date());
+  if (u12Ui.date) {
+    const today = localIsoDate(new Date());
+    if (u12FollowGroupCalendar) {
+      u12Ui.date.replaceChildren();
+      const option = document.createElement("option");
+      option.value = today;
+      option.textContent = "Trainingstage laden …";
+      u12Ui.date.append(option);
+    } else {
+      u12Ui.date.value = today;
+    }
+  }
   if (u12Ui.detailsDialog?.open) u12Ui.detailsDialog.close();
   u12Ui.detailsContent?.replaceChildren();
   showMessage(u12Ui.message, "");
@@ -1454,6 +1467,8 @@ function u12CalendarWeekStart(date) {
 }
 
 async function u12FetchCalendarDates(groupId, weekStart) {
+  const cacheKey = groupId + "|" + weekStart;
+  if (u12CalendarWeekCache.has(cacheKey)) return u12CalendarWeekCache.get(cacheKey);
   const result = await requestJson(
     "/api/modules/kindertraining/calendar?groupId=" + encodeURIComponent(groupId) +
     "&weekStart=" + encodeURIComponent(weekStart));
@@ -1465,7 +1480,33 @@ async function u12FetchCalendarDates(groupId, weekStart) {
       (i === 0 || index > positions[i - 1]))) {
     throw new Error("INVALID_CALENDAR_DATES");
   }
+  u12CalendarWeekCache.set(cacheKey, result.dates);
   return result.dates;
+}
+
+// An accessible, native select contains only verified training days, unlike
+// a browser date picker which cannot disable individual weekdays reliably.
+async function u12PopulateCalendarChoices(groupId, selected) {
+  if (!u12FollowGroupCalendar || !u12Ui.date) return;
+  const weekStart = u12CalendarWeekStart(selected);
+  const weekStarts = Array.from({ length: 8 }, (_, i) =>
+    shiftIsoDate(weekStart, (i - 3) * 7));
+  const days = (await Promise.all(
+    weekStarts.map(async (monday) => {
+      try { return await u12FetchCalendarDates(groupId, monday); }
+      catch { return []; } // Keep other authorized weeks available.
+    }),
+  )).flat();
+  if (!days.includes(selected)) throw new Error("SELECTED_DATE_NOT_IN_CALENDAR");
+  const select = u12Ui.date;
+  select.replaceChildren();
+  for (const day of [...new Set(days)].sort()) {
+    const option = document.createElement("option");
+    option.value = day;
+    option.textContent = germanWeekday(day) + " · " + germanDate(day);
+    select.append(option);
+  }
+  select.value = selected;
 }
 
 async function u12FindCalendarDate(groupId, anchor, direction, includeAnchor) {
@@ -1526,6 +1567,9 @@ async function loadU12Attendance() {
       if (!dates.includes(date)) {
         date = await u12FindCalendarDate(groupId, date, 1, true);
       }
+      if (generation !== attendanceSessionGeneration ||
+          loadId !== u12LoadId || u12Ui.group?.value !== groupId) return;
+      await u12PopulateCalendarChoices(groupId, date);
       if (generation !== attendanceSessionGeneration ||
           loadId !== u12LoadId || u12Ui.group?.value !== groupId) return;
       u12Ui.date.value = date;
@@ -1797,6 +1841,7 @@ async function u12ChangeGroup() {
   u12Present = new Map();
   u12LoadedGroupId = "";
   u12LoadedDate = "";
+  if (u12FollowGroupCalendar) u12CalendarWeekCache.clear();
   u12DirtyDates.clear();
   u12Conflict = false;
   if (next) await loadU12Attendance();
@@ -1807,6 +1852,7 @@ async function u12ReloadAttendance() {
   if (u12Saving || u12Loading) return;
   if (u12DirtyDates.size > 0 &&
       !window.confirm("Ungespeicherte Anwesenheit und Trainingsinhalte verwerfen und neu laden?")) return;
+  if (u12FollowGroupCalendar) u12CalendarWeekCache.clear();
   u12DirtyDates.clear();
   u12Conflict = false;
   await loadU12Attendance();
