@@ -291,7 +291,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
   it("guards unsaved rows on navigation, date changes, reload and sign-out", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('current === "u12" && section !== "u12"');
     expect(ULC_LINZ_APP_SCRIPT).toContain("u12DirtyDates.size > 0 && !(await u12FlushChanges())");
-    expect(ULC_LINZ_APP_SCRIPT).toContain("if (u12Saving || u12DirtyDates.size > 0 ||");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("u12Saving || u12DirtyDates.size > 0 ||");
     expect(ULC_U12_SCRIPT).toContain('window.confirm("Ungespeicherte Anwesenheit und Trainingsinhalte verwerfen');
     expect(ULC_U12_SCRIPT).toContain("if (!(await u12FlushChanges())) return;");
     expect(ULC_U12_SCRIPT).toContain("if (!(await u12FlushChanges())) {");
