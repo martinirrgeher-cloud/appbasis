@@ -762,11 +762,16 @@ function scheduleU12AutoSave() {
   if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
   u12AutoSaveTimer = null;
   if (!u12DirtyDates.size || u12AutoSaveFailed || !u12Ready || u12Conflict ||
-      !u12WriteAllowed || u12Loading || u12IsOffline() ||
+      !u12WriteAllowed || u12Loading || u12Saving || u12IsOffline() ||
       u12ContentTitles.some((title) => !title.trim())) return;
   u12AutoSaveTimer = setTimeout(() => {
     u12AutoSaveTimer = null;
-    if (u12Saving) return; // In-flight save will queue the next draft.
+    // Network/revision/write state can change during debounce. In particular,
+    // a failed in-flight POST may commit before its response is lost. Never
+    // replay a draft after its failure flag was raised.
+    if (!u12DirtyDates.size || u12AutoSaveFailed || !u12Ready || u12Conflict ||
+        !u12WriteAllowed || u12Loading || u12Saving || u12IsOffline() ||
+        u12ContentTitles.some((title) => !title.trim())) return;
     void saveU12Attendance();
   }, 850);
 }
@@ -1752,7 +1757,7 @@ window.addEventListener("offline", () => {
 });
 window.addEventListener("online", () => {
   if (u12DirtyDates.size > 0 && !u12AutoSaveFailed &&
-      !u12Conflict && !u12IsOffline()) {
+      !u12Conflict && !u12Saving && !u12IsOffline()) {
     showMessage(u12Ui.message, "");
     scheduleU12AutoSave();
   }
