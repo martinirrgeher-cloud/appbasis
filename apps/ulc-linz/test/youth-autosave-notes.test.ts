@@ -44,7 +44,7 @@ describe("U12, U14 and Kindertraining autosave with per-training notes", () => {
     const schedule = new Function(
       "u12AutoSaveTimer", "u12DirtyDates", "u12AutoSaveFailed", "u12Ready",
       "u12Conflict", "u12WriteAllowed", "u12Loading", "u12Saving", "saveU12Attendance", "u12ContentTitles",
-      source + "\nreturn scheduleU12AutoSave;",
+      "const u12CalendarBusy = false;\n" + source + "\nreturn scheduleU12AutoSave;",
     )(
       null, new Set(["2026-11-07"]), false, true, false, true, false, false, save, [],
     ) as () => void;
@@ -57,7 +57,7 @@ describe("U12, U14 and Kindertraining autosave with per-training notes", () => {
     const empty = new Function(
       "u12AutoSaveTimer", "u12DirtyDates", "u12AutoSaveFailed", "u12Ready",
       "u12Conflict", "u12WriteAllowed", "u12Loading", "u12Saving", "saveU12Attendance", "u12ContentTitles",
-      source + "\nreturn scheduleU12AutoSave;",
+      "const u12CalendarBusy = false;\n" + source + "\nreturn scheduleU12AutoSave;",
     )(null, new Set(), false, true, false, true, false, false, save, []) as () => void;
     empty();
     vi.advanceTimersByTime(900);
