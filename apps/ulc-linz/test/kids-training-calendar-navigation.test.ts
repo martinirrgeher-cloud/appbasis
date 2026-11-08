@@ -133,7 +133,7 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
       ULC_KIDS_SCRIPT.indexOf("async function kidsChangeDate("),
     );
     expect(controller).toContain("shiftIsoDate(selected, direction * 7)");
-    expect(controller).toContain("Gleicher Wochentag");
+    expect(ULC_KIDS_SCRIPT).toContain("Gleicher Wochentag");
     expect(ULC_KIDS_SCRIPT).toContain("noch keine Wochenregel gespeichert");
   });
 
