@@ -52,7 +52,7 @@ describe("ULC U12 content assignment overlay and roster summary", () => {
     const create = new Function(
       "u12Ui", "u12Snapshot", "u12Ready", "u12Loading", "u12Saving",
       "u12ContentTitles", "renderU12AssignmentMatrix", "refreshU12MatrixControls",
-      source + "\nreturn openU12AssignmentDialog;",
+      "const u12CalendarBusy = false;\n" + source + "\nreturn openU12AssignmentDialog;",
     ) as (...args: unknown[]) => () => void;
 
     const dialog = { open: false, showModal: vi.fn() };
