@@ -147,6 +147,18 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     );
     expect(refresh).toContain("!kidsCalendarBusy && !cancelled");
     expect(draft).toContain("!kidsLoading && !kidsCalendarBusy");
+    // Inputs/handlers and delayed writes must all obey the same lock.
+    const add = ULC_KIDS_SCRIPT.slice(ULC_KIDS_SCRIPT.indexOf("function addKidsContent("),
+      ULC_KIDS_SCRIPT.indexOf("function kidsPresentAthletes("));
+    const save = ULC_KIDS_SCRIPT.slice(ULC_KIDS_SCRIPT.indexOf("async function saveKidsAttendance("),
+      ULC_KIDS_SCRIPT.indexOf("async function kidsFlushChanges("));
+    const timer = ULC_KIDS_SCRIPT.slice(ULC_KIDS_SCRIPT.indexOf("function scheduleKidsAutoSave("),
+      ULC_KIDS_SCRIPT.indexOf("function markKidsDraftDirty("));
+    expect(add).toContain("kidsCalendarBusy");
+    expect(save).toContain("kidsCalendarBusy");
+    expect(timer).toContain("kidsCalendarBusy");
+    expect(ULC_KIDS_SCRIPT).toContain("kidsLoading || kidsCalendarBusy ||");
+    expect(ULC_KIDS_SCRIPT).toContain("kidsLoading || kidsCalendarBusy || !kidsWriteAllowed");
     const populate = nav.indexOf("await kidsPopulateCalendarChoices(");
     const assignment = nav.indexOf("kidsUi.date.value = chosen");
     const load = nav.indexOf("await loadKidsAttendance()");
