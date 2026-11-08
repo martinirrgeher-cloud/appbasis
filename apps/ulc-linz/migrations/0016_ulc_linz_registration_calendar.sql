@@ -25,7 +25,7 @@ CREATE TABLE ulc_linz_registration_calendar_rule (
 );
 --> statement-breakpoint
 -- An explicit per-date exception. "extra" opens an unscheduled day;
--- "cancelled" closes a regular or exceptional day. No identity, note or
+-- "cancelled" closes a regular or exceptional day; "none" resets it\n-- without reusing a stale CAS revision. No identity, note or
 -- free-text field: calendar state is separated from member registrations.
 CREATE TABLE ulc_linz_registration_calendar_exception (
   organization_id text NOT NULL CHECK (
@@ -34,7 +34,7 @@ CREATE TABLE ulc_linz_registration_calendar_exception (
   ),
   group_id text NOT NULL REFERENCES appbasis_training_group(id),
   session_date date NOT NULL,
-  kind text NOT NULL CHECK (kind IN ('extra', 'cancelled')),
+  kind text NOT NULL CHECK (kind IN ('extra', 'cancelled', 'none')),
   revision integer NOT NULL DEFAULT 1 CHECK (revision > 0),
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (organization_id, group_id, session_date)
