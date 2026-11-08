@@ -192,6 +192,9 @@ jobs:
       - name: Test ULC registration and training planning in real Chromium
         run: node --test ./tooling/ulc-linz-g02-2-registration-planning-browser.test.mjs
 
+      - name: Test ULC emergency contacts in real Chromium
+        run: node --test ./tooling/ulc-linz-g03-emergency-call-browser.test.mjs
+
       - name: Test preview bootstrap contract
         run: node --test ./apps/reference/tooling/preview-bootstrap-contract.test.mjs
 

@@ -250,7 +250,19 @@ describe("ULC U12 service", () => {
                 id: "contact-a", organizationId: ORGANIZATION_ID,
                 athleteId: "athlete-1", contactName: "Mutter",
                 relationship: "Mutter", phone: "+43 123", isEmergency: true,
-                priority: 1, notes: "Nur abends",
+                priority: 5, notes: "Nur abends",
+              },
+              {
+                id: "contact-b", organizationId: ORGANIZATION_ID,
+                athleteId: "athlete-1", contactName: "Vater",
+                relationship: "Vater", phone: "+43 456", isEmergency: true,
+                priority: 1, notes: null,
+              },
+              {
+                id: "contact-c", organizationId: ORGANIZATION_ID,
+                athleteId: "athlete-1", contactName: "Nachbar",
+                relationship: "Nachbar", phone: "+43 789", isEmergency: false,
+                priority: 1, notes: null,
               },
               {
                 id: "contact-foreign", organizationId: ORGANIZATION_ID,
@@ -271,11 +283,20 @@ describe("ULC U12 service", () => {
     const roster = await service.readSnapshot(ORGANIZATION_ID, GROUP_ID, DATE);
     expect(roster.participants).toHaveLength(2);
     expect(roster.participants[0]?.notes).toBe("Allergie");
-    expect(roster.participants[0]?.contacts).toEqual([{
-      id: "contact-a", contactName: "Mutter",
-      relationship: "Mutter", phone: "+43 123",
-      isEmergency: true, notes: "Nur abends",
-    }]);
+    expect(roster.participants[0]?.contacts).toEqual([
+      {
+        id: "contact-b", contactName: "Vater", relationship: "Vater",
+        phone: "+43 456", isEmergency: true, priority: 1, notes: null,
+      },
+      {
+        id: "contact-a", contactName: "Mutter", relationship: "Mutter",
+        phone: "+43 123", isEmergency: true, priority: 5, notes: "Nur abends",
+      },
+      {
+        id: "contact-c", contactName: "Nachbar", relationship: "Nachbar",
+        phone: "+43 789", isEmergency: false, priority: 1, notes: null,
+      },
+    ]);
     expect(JSON.stringify(roster)).not.toContain("Nicht im Kader");
     expect(JSON.stringify(roster)).not.toContain("contact-foreign");
   });
