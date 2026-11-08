@@ -38,3 +38,27 @@ export function selectAttendanceCalendarDates(input: {
       input.weekdays === null || input.weekdays.includes(index + 1));
   }));
 }
+
+
+/**
+ * Single-day equivalent of the weekly projection, used to reject stale Kids
+ * attendance writes after a rule/exception was changed by another session.
+ * Invalid calendar dates never become authorized training days.
+ */
+export function isScheduledAttendanceDate(
+  sessionDate: string,
+  weekdays: readonly number[] | null,
+  exception: "extra" | "cancelled" | null,
+): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) return false;
+  const day = new Date(sessionDate + "T12:00:00.000Z");
+  if (!Number.isFinite(day.getTime()) ||
+      day.toISOString().slice(0, 10) !== sessionDate) return false;
+  day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7));
+  const weekStart = day.toISOString().slice(0, 10);
+  return selectAttendanceCalendarDates({
+    weekStart,
+    weekdays,
+    exceptions: [{ date: sessionDate, kind: exception }],
+  }).includes(sessionDate);
+}
