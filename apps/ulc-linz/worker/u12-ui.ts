@@ -715,7 +715,7 @@ function refreshU12Controls() {
   );
   if (u12Ui.save) {
     u12Ui.save.hidden = !u12AutoSaveFailed || u12DirtyDates.size === 0;
-    u12Ui.save.disabled = !editable || u12Saving || u12Conflict;
+    u12Ui.save.disabled = !editable || u12Saving || u12Conflict || u12IsOffline();
   }
   if (u12Ui.count) {
     const total = u12Snapshot?.participants.length ?? 0;
@@ -735,6 +735,8 @@ function refreshU12Controls() {
       u12Loading ? "Namensliste wird geladen …" :
       !u12Snapshot ? "Training auswählen" :
       u12AutoSaveFailed ? "Automatisches Speichern fehlgeschlagen – erneut versuchen" :
+      u12DirtyDates.size > 0 && u12IsOffline()
+        ? "Offline – Änderungen nur in dieser geöffneten Ansicht gesichert" :
       u12DirtyDates.size > 0 && u12ContentTitles.some((title) => !title.trim())
         ? "Kategorie auswählen · Speichern pausiert" :
       u12DirtyDates.size > 0 ? "Änderungen werden automatisch gespeichert …" :
@@ -751,11 +753,16 @@ function refreshU12Controls() {
 }
 
 
+function u12IsOffline() {
+  // Offline information is advisory: positive online status is not proof that
+  // the server is reachable. Never replay an uncertain failed POST on reconnection.
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
 function scheduleU12AutoSave() {
   if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
   u12AutoSaveTimer = null;
   if (!u12DirtyDates.size || u12AutoSaveFailed || !u12Ready || u12Conflict ||
-      !u12WriteAllowed || u12Loading ||
+      !u12WriteAllowed || u12Loading || u12IsOffline() ||
       u12ContentTitles.some((title) => !title.trim())) return;
   u12AutoSaveTimer = setTimeout(() => {
     u12AutoSaveTimer = null;
@@ -1493,6 +1500,13 @@ async function saveU12Attendance() {
     refreshU12Controls();
     return false;
   }
+  if (u12IsOffline()) {
+    showMessage(u12Ui.message,
+      "Keine Internetverbindung. Änderungen nur in dieser geöffneten Ansicht gespeichert; " +
+      "bitte nicht schließen. Nach Wiederverbindung wird erneut gespeichert.");
+    refreshU12Controls();
+    return false;
+  }
   const generation = attendanceSessionGeneration;
   const loadId = u12LoadId;
   const groupId = u12LoadedGroupId;
@@ -1560,6 +1574,10 @@ async function saveU12Attendance() {
       } else if (error?.status === 401 || error?.status === 403) {
         u12WriteAllowed = false;
         showMessage(u12Ui.message, "Keine Schreibberechtigung. Änderungen wurden nicht gespeichert.");
+      } else if (u12IsOffline()) {
+        showMessage(u12Ui.message,
+          "Verbindung während des Speicherns verloren. Ergebnis unklar; " +
+          "nach Wiederverbindung bitte manuell „Erneut versuchen“ wählen.");
       } else {
         showMessage(u12Ui.message, "Automatisches Speichern fehlgeschlagen. Änderungen bleiben erhalten.");
       }
@@ -1720,6 +1738,32 @@ function prepareU12View() {
       !u12Snapshot && !u12Loading) void loadU12Attendance();
 }
 
+// Only a confirmed offline state pauses unsent autosaves. A failed in-flight
+// request may have reached the server: never blindly replay that draft.
+window.addEventListener("offline", () => {
+  if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
+  u12AutoSaveTimer = null;
+  if (u12DirtyDates.size > 0) {
+    showMessage(u12Ui.message,
+      "Keine Internetverbindung. Ungespeicherte Änderungen bleiben nur in " +
+      "dieser geöffneten Ansicht erhalten.");
+  }
+  refreshU12Controls();
+});
+window.addEventListener("online", () => {
+  if (u12DirtyDates.size > 0 && !u12AutoSaveFailed &&
+      !u12Conflict && !u12IsOffline()) {
+    showMessage(u12Ui.message, "");
+    scheduleU12AutoSave();
+  }
+  refreshU12Controls();
+});
+window.addEventListener("beforeunload", (event) => {
+  if (!u12DirtyDates.size) return;
+  // Browser-controlled confirmation only; do not put personal data into storage.
+  event.preventDefault();
+  event.returnValue = "";
+});
 u12Ui.prev?.addEventListener("click", () => void u12MoveDate(-1));
 u12Ui.next?.addEventListener("click", () => void u12MoveDate(1));
 u12Ui.today?.addEventListener("click", () => void u12GoToday());
