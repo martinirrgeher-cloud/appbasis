@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { ULC_LINZ_LIFECYCLE_DATABASE_OWNER } from "./ulc-linz-database-contract.mjs";
 import { validateUlcLinzD4PreviewDatabaseCredentials } from "./ulc-linz-d4-preview-hyperdrive.mjs";
+import { verifyG04V17ActivationReadiness } from "./ulc-linz-g04-v17-activation-readiness.mjs";
 
 const DATABASE = "appbasis_ulc_linz_preview";
 const MIGRATION_ROLE = "appbasis_ulc_linz_preview_migration";
@@ -200,6 +201,13 @@ export async function migrateG04CalendarPreview(input, options = {}) {
   if (input?.apply !== true) {
     refuse("G-04 requires the operator's explicit apply=true approval.");
   }
+  // Never allow direct CLI or API apply to bypass the independent privacy,
+  // backed-up restore and operator-authorization evidence gate. The canonical
+  // v16 plan/inspect commands remain intentionally available and read-only.
+  await verifyG04V17ActivationReadiness({
+    repositoryRoot: options.repositoryRoot ?? process.cwd(),
+    now: options.now ?? new Date(),
+  });
   return withPreviewDatabase(input, options, async (client, plan) => {
     if (typeof client.begin !== "function") {
       refuse("G-04 schema changes require a database transaction.");
