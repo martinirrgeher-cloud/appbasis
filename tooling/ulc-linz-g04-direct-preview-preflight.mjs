@@ -36,8 +36,13 @@ export function validateG04ExistingPreviewCredentials({
     if (role.host !== DIRECT_G04_PREVIEW.host ||
         role.database !== DIRECT_G04_PREVIEW.database ||
         role.user !== name || role.port !== 5432 ||
-        uri.searchParams.size !== 1 ||
+        uri.searchParams.getAll("sslmode").length !== 1 ||
         !["require", "verify-ca", "verify-full"].includes(uri.searchParams.get("sslmode")) ||
+        uri.searchParams.size > 2 ||
+        [...uri.searchParams.keys()].some(k => k !== "sslmode" && k !== "channel_binding") ||
+        (uri.searchParams.has("channel_binding") &&
+          (uri.searchParams.getAll("channel_binding").length !== 1 ||
+           uri.searchParams.get("channel_binding") !== "require")) ||
         uri.hash.length > 0) deny();
   }
   return Object.freeze({
