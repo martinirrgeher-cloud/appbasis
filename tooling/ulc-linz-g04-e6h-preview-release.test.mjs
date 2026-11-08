@@ -45,8 +45,8 @@ test("G-04 E6H release checks expected SHA, ULC calendar UI and protected calend
   const content = await readFile(workflowUrl, "utf8");
   assert.match(content, /Verify exact deployed ULC app build/);
   assert.match(content, /\.gitSha == \$sha/);
-  assert.match(content, /id=\\"group-calendar-open\\"/);
-  assert.match(content, /id=\\"group-calendar-weekdays\\"/);
+  assert.match(content, /id="group-calendar-open"/);
+  assert.match(content, /id="group-calendar-weekdays"/);
   assert.match(content, /\/api\/modules\/athletes\/registration-calendar\?groupId=anonymous/);
   assert.match(content, /401\|403/);
   assert.match(content, /Verify preview application database binding/);
