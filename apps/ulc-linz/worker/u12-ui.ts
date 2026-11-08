@@ -172,7 +172,7 @@ export const ULC_U12_CSS = `
 .u12-date-arrow { min-width:36px; height:42px; border:0; border-radius:9px; background:var(--muted); color:var(--text); font-size:1.2rem; font-weight:800; cursor:pointer; }
 .u12-date-field { display:grid; gap:0; min-width:0; text-align:center; }
 .u12-date-field span { font-size:.62rem; font-weight:750; color:var(--secondary); letter-spacing:.03em; }
-.u12-date-field input { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:38px; padding:0 1px; text-align:center; font-size:.8rem; font-weight:780; background:transparent; border:0; color:var(--text); }
+.u12-date-field input, .u12-date-field select { display:block; box-sizing:border-box; width:100%; min-width:0; min-height:38px; padding:0 1px; text-align:center; font-size:.8rem; font-weight:780; background:transparent; border:0; color:var(--text); }
 .u12-date-shortcuts { display:flex; justify-content:center; gap:2px; align-items:center; }
 .u12-date-shortcuts button { min-height:var(--ab-touch-target); border:0; background:transparent; color:var(--accent); padding:3px 5px; font-size:.73rem; font-weight:750; border-radius:8px; cursor:pointer; }
 .u12-date-shortcuts button[aria-pressed="true"] { background:var(--muted); color:var(--secondary); }
@@ -408,6 +408,7 @@ const u12Ui = {
   message: document.querySelector("#u12-message"),
   success: document.querySelector("#u12-success"),
 };
+const u12FollowGroupCalendar = false; // Kids enables this in the generated youth adapter.
 const U12_SERVER_STATUSES = Object.freeze(["open", "present", "excused", "absent"]);
 const U12_ATTENDANCE_STATUS_TEXT = Object.freeze({
   open: { short: "Offen", long: "Offen – noch nicht erfasst" },
@@ -471,6 +472,8 @@ let u12AutoSaveFailed = false;
 let u12SaveInFlight = null;
 let u12StatisticsLoadId = 0;
 let u12LoadId = 0;
+let u12CalendarBusy = false;
+let u12CalendarWeekCache = new Map();
 
 function resetU12SessionState() {
   if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
@@ -484,6 +487,8 @@ function resetU12SessionState() {
   u12LoadId += 1;
   u12Ready = false;
   u12WriteAllowed = true;
+  u12CalendarBusy = false;
+  u12CalendarWeekCache = new Map();
   u12Groups = [];
   u12LoadedGroupId = "";
   u12LoadedDate = "";
@@ -508,7 +513,18 @@ function resetU12SessionState() {
     placeholder.textContent = "Gruppe wählen";
     u12Ui.group.append(placeholder);
   }
-  if (u12Ui.date) u12Ui.date.value = localIsoDate(new Date());
+  if (u12Ui.date) {
+    const today = localIsoDate(new Date());
+    if (u12FollowGroupCalendar) {
+      u12Ui.date.replaceChildren();
+      const option = document.createElement("option");
+      option.value = today;
+      option.textContent = "Trainingstage laden …";
+      u12Ui.date.append(option);
+    } else {
+      u12Ui.date.value = today;
+    }
+  }
   if (u12Ui.detailsDialog?.open) u12Ui.detailsDialog.close();
   u12Ui.detailsContent?.replaceChildren();
   showMessage(u12Ui.message, "");
@@ -675,12 +691,12 @@ function u12MissingTrainingDetails() {
 }
 
 function refreshU12Controls() {
-  const busy = u12Loading || u12Saving;
+  const busy = u12Loading || u12Saving || u12CalendarBusy;
   for (const control of [u12Ui.group, u12Ui.date, u12Ui.prev, u12Ui.next, u12Ui.reload, u12Ui.today]) {
     if (control) control.disabled = busy || !u12Ready;
   }
   const cancelled = u12Snapshot?.session?.state === "cancelled";
-  const editable = !!u12Snapshot && !u12Loading && !cancelled &&
+  const editable = !!u12Snapshot && !u12Loading && !u12CalendarBusy && !cancelled &&
     u12WriteAllowed && !u12Conflict;
   if (u12Ui.note) u12Ui.note.disabled = !editable;
   for (const input of u12Ui.trainerRows?.querySelectorAll("[data-u12-trainer-id]") ?? []) {
@@ -710,7 +726,7 @@ function refreshU12Controls() {
       (missing.content ? " · offen" : "");
   }
   if (u12Ui.contentAssign) {
-    u12Ui.contentAssign.disabled = !u12Snapshot || u12Loading || u12ContentTitles.length === 0;
+    u12Ui.contentAssign.disabled = !u12Snapshot || u12Loading || u12CalendarBusy || u12ContentTitles.length === 0;
   }
   if (u12Ui.statsOpen) u12Ui.statsOpen.disabled = !u12Ready || busy ||
     !u12Ui.group?.value || !u12Snapshot;
@@ -721,9 +737,12 @@ function refreshU12Controls() {
     u12Ui.addAthlete.hidden = !canCreate;
     u12Ui.addAthlete.disabled = busy || !groupIdOrValidU12Group();
   }
-  if (u12Ui.today) u12Ui.today.setAttribute(
-    "aria-pressed", String(u12Ui.date?.value === localIsoDate(new Date())),
-  );
+  if (u12Ui.today) {
+    if (u12FollowGroupCalendar) u12Ui.today.removeAttribute("aria-pressed");
+    else u12Ui.today.setAttribute(
+      "aria-pressed", String(u12Ui.date?.value === localIsoDate(new Date())),
+    );
+  }
   if (u12Ui.save) {
     u12Ui.save.hidden = !u12AutoSaveFailed || u12DirtyDates.size === 0;
     u12Ui.save.disabled = !editable || u12Saving || u12Conflict || u12IsOffline();
@@ -773,7 +792,7 @@ function scheduleU12AutoSave() {
   if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
   u12AutoSaveTimer = null;
   if (!u12DirtyDates.size || u12AutoSaveFailed || !u12Ready || u12Conflict ||
-      !u12WriteAllowed || u12Loading || u12Saving || u12IsOffline() ||
+      !u12WriteAllowed || u12Loading || u12Saving || u12CalendarBusy || u12IsOffline() ||
       u12ContentTitles.some((title) => !title.trim())) return;
   u12AutoSaveTimer = setTimeout(() => {
     u12AutoSaveTimer = null;
@@ -781,7 +800,7 @@ function scheduleU12AutoSave() {
     // a failed in-flight POST may commit before its response is lost. Never
     // replay a draft after its failure flag was raised.
     if (!u12DirtyDates.size || u12AutoSaveFailed || !u12Ready || u12Conflict ||
-        !u12WriteAllowed || u12Loading || u12Saving || u12IsOffline() ||
+        !u12WriteAllowed || u12Loading || u12Saving || u12CalendarBusy || u12IsOffline() ||
         u12ContentTitles.some((title) => !title.trim())) return;
     void saveU12Attendance();
   }, 850);
@@ -881,7 +900,7 @@ function renderU12ContentRows() {
 }
 
 function addU12Content() {
-  if (!u12Snapshot || u12ContentTitles.length >= 5 || u12Loading ||
+  if (!u12Snapshot || u12ContentTitles.length >= 5 || u12Loading || u12CalendarBusy ||
       !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return;
   const initial = U12_STANDARD_CONTENT_CATALOG[0];
@@ -902,7 +921,7 @@ function addU12Content() {
 function removeU12Content(index) {
   if (!u12Snapshot || !Number.isInteger(index) ||
       index < 0 || index >= u12ContentTitles.length ||
-      u12Loading || !u12WriteAllowed || u12Conflict ||
+      u12Loading || u12CalendarBusy || !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled") return;
   u12ContentTitles.splice(index, 1);
   u12ContentItems.splice(index, 1);
@@ -924,7 +943,7 @@ function u12PresentAthletes() {
 
 function u12EditableDraft() {
   return !!u12Snapshot && u12Ready && u12WriteAllowed && !u12Conflict &&
-    !u12Loading && u12Snapshot.session?.state !== "cancelled";
+    !u12Loading && !u12CalendarBusy && u12Snapshot.session?.state !== "cancelled";
 }
 
 function refreshU12MatrixControls(editable = u12EditableDraft()) {
@@ -981,7 +1000,7 @@ function refreshU12AssignmentSummaries() {
 }
 
 function openU12AssignmentDialog() {
-  if (!u12Ui.matrixSection || !u12Snapshot || !u12Ready || u12Loading || u12Saving ||
+  if (!u12Ui.matrixSection || !u12Snapshot || !u12Ready || u12Loading || u12Saving || u12CalendarBusy ||
       u12ContentTitles.length === 0 || u12Ui.matrixSection.open) return;
   renderU12AssignmentMatrix();
   u12Ui.matrixSection.showModal();
@@ -1436,15 +1455,168 @@ function renderU12Attendance() {
   refreshU12Controls();
 }
 
+
+/**
+ * Kids-only trainer calendar reader. The v17 calendar endpoint projects group
+ * weekdays plus explicit extra/cancelled exceptions; it never returns old test
+ * sessions as schedule exceptions. U12/U14 keep their accepted day-navigation.
+ */
+function u12CalendarWeekStart(date) {
+  const parsed = new Date(String(date) + "T12:00:00");
+  if (!Number.isFinite(parsed.getTime()) || localIsoDate(parsed) !== date) {
+    throw new Error("INVALID_CALENDAR_DATE");
+  }
+  return localWeekStart(parsed);
+}
+
+async function u12FetchCalendarDates(groupId, weekStart) {
+  const cache = u12CalendarWeekCache;
+  const generation = attendanceSessionGeneration;
+  const cacheKey = groupId + "|" + weekStart;
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
+  const result = await requestJson(
+    "/api/modules/kindertraining/calendar?groupId=" + encodeURIComponent(groupId) +
+    "&weekStart=" + encodeURIComponent(weekStart));
+  if (generation !== attendanceSessionGeneration || cache !== u12CalendarWeekCache) {
+    throw new Error("STALE_CALENDAR_REQUEST");
+  }
+  const validWeek = registrationWeekDates(weekStart);
+  if (result?.groupId !== groupId || result?.weekStart !== weekStart ||
+      !Array.isArray(result.dates)) throw new Error("INVALID_CALENDAR_RESPONSE");
+  const positions = result.dates.map((date) => validWeek.indexOf(date));
+  if (!positions.every((index, i) => index >= 0 &&
+      (i === 0 || index > positions[i - 1]))) {
+    throw new Error("INVALID_CALENDAR_DATES");
+  }
+  cache.set(cacheKey, result.dates);
+  return result.dates;
+}
+
+// An accessible, native select contains only verified training days, unlike
+// a browser date picker which cannot disable individual weekdays reliably.
+async function u12PopulateCalendarChoices(groupId, selected, isCurrent) {
+  if (!u12FollowGroupCalendar || !u12Ui.date) return;
+  const weekStart = u12CalendarWeekStart(selected);
+  const weekStarts = Array.from({ length: 8 }, (_, i) =>
+    shiftIsoDate(weekStart, (i - 3) * 7));
+  const days = (await Promise.all(
+    weekStarts.map(async (monday) => {
+      try { return await u12FetchCalendarDates(groupId, monday); }
+      catch { return []; } // Keep other authorized weeks available.
+    }),
+  )).flat();
+  if (!isCurrent()) return;
+  if (!days.includes(selected)) throw new Error("SELECTED_DATE_NOT_IN_CALENDAR");
+  const select = u12Ui.date;
+  select.replaceChildren();
+  for (const day of [...new Set(days)].sort()) {
+    const option = document.createElement("option");
+    option.value = day;
+    option.textContent = germanWeekday(day).slice(0, 2) + " · " + germanDate(day);
+    select.append(option);
+  }
+  select.value = selected;
+}
+
+async function u12FindCalendarDate(groupId, anchor, direction, includeAnchor) {
+  let searchDate = includeAnchor ? anchor : shiftIsoDate(anchor, direction);
+  for (let week = 0; week < 16; week += 1) {
+    const weekStart = u12CalendarWeekStart(searchDate);
+    const dates = await u12FetchCalendarDates(groupId, weekStart);
+    const eligible = dates.filter((date) => direction > 0
+      ? date >= searchDate : date <= searchDate);
+    if (eligible.length) return direction > 0
+      ? eligible[0] : eligible[eligible.length - 1];
+    searchDate = shiftIsoDate(weekStart, direction > 0 ? 7 : -1);
+  }
+  throw new Error("NO_CALENDAR_TRAINING_DAY");
+}
+
+async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false) {
+  if (!u12Ui.date || !u12Ready || u12CalendarBusy || u12Loading || u12Saving) return;
+  const groupId = u12Ui.group?.value || "";
+  if (!groupId) return;
+  const generation = attendanceSessionGeneration;
+  const loadId = u12LoadId;
+  // Lock all draft inputs *before* the potentially asynchronous CAS flush.
+  // saveU12Attendance must remain callable by this explicit flush.
+  u12CalendarBusy = true;
+  refreshU12Controls();
+  try {
+    if (!(await u12FlushChanges())) return;
+    if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
+        u12LoadId !== loadId) return;
+    // A fresh navigation must observe schedule updates from other sessions.
+    u12CalendarWeekCache = new Map();
+    const chosen = await u12FindCalendarDate(groupId, anchor, direction, includeAnchor);
+    if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
+        u12LoadId !== loadId) return;
+    // A native select ignores a value that is not yet in its option list.
+    // Expand from authorized calendar dates before assigning the target.
+    await u12PopulateCalendarChoices(groupId, chosen, () =>
+      generation === attendanceSessionGeneration &&
+      u12Ui.group?.value === groupId && u12LoadId === loadId);
+    if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
+        u12LoadId !== loadId) return;
+    u12Ui.date.value = chosen;
+    // Keep the old draft locked throughout the destination load. Never clear
+    // calendarBusy between the last flush and the new attendance snapshot.
+    await loadU12Attendance();
+  } catch {
+    if (generation === attendanceSessionGeneration && u12Ui.group?.value === groupId) {
+      showMessage(u12Ui.message,
+        "Geplante Trainingstage konnten nicht ermittelt werden. Datum unverändert.");
+    }
+  } finally {
+    if (generation === attendanceSessionGeneration) {
+      u12CalendarBusy = false;
+      refreshU12Controls();
+    }
+  }
+}
+
 async function loadU12Attendance() {
   const groupId = u12Ui.group?.value || "";
-  const date = u12Ui.date?.value || "";
+  let date = u12Ui.date?.value || "";
   if (!u12Ready || u12Loading || u12Saving || !groupId || !date) {
     renderU12Attendance();
     return;
   }
   const generation = attendanceSessionGeneration;
   const loadId = ++u12LoadId;
+  if (u12FollowGroupCalendar) {
+    // Revalidate on every new attendance read; never trust a prior visit.
+    u12CalendarWeekCache = new Map();
+    u12CalendarBusy = true;
+    refreshU12Controls();
+    try {
+      const dates = await u12FetchCalendarDates(groupId, u12CalendarWeekStart(date));
+      if (!dates.includes(date)) {
+        date = await u12FindCalendarDate(groupId, date, 1, true);
+      }
+      if (generation !== attendanceSessionGeneration ||
+          loadId !== u12LoadId || u12Ui.group?.value !== groupId) return;
+      await u12PopulateCalendarChoices(groupId, date, () =>
+        generation === attendanceSessionGeneration &&
+        loadId === u12LoadId && u12Ui.group?.value === groupId);
+      if (generation !== attendanceSessionGeneration ||
+          loadId !== u12LoadId || u12Ui.group?.value !== groupId) return;
+      u12Ui.date.value = date;
+    } catch {
+      if (generation === attendanceSessionGeneration && loadId === u12LoadId) {
+        u12Snapshot = null;
+        renderU12Attendance();
+        showMessage(u12Ui.message,
+          "Trainingskalender nicht verfügbar. Anwesenheit wurde nicht geladen.");
+      }
+      return;
+    } finally {
+      if (generation === attendanceSessionGeneration && loadId === u12LoadId) {
+        u12CalendarBusy = false;
+        refreshU12Controls();
+      }
+    }
+  }
   u12LoadedGroupId = groupId;
   u12LoadedDate = date;
   if (u12Ui.detailsDialog?.open) u12Ui.detailsDialog.close();
@@ -1508,6 +1680,8 @@ async function loadU12Attendance() {
 
 async function saveU12Attendance() {
   if (u12Saving) return u12SaveInFlight ?? false;
+  // Calendar navigation locks new edits before flushing the existing draft.
+  // The flush itself must still be able to save while calendarBusy is true.
   if (!u12Snapshot || u12Loading || !u12Ready || !u12WriteAllowed ||
       u12Conflict || u12Snapshot.session?.state === "cancelled") return false;
   if (u12DirtyDates.size === 0) return true;
@@ -1591,6 +1765,11 @@ async function saveU12Attendance() {
         u12Conflict = true;
         showMessage(u12Ui.message,
           "Die Liste wurde zwischenzeitlich geändert. Bitte neu laden, um Daten nicht zu überschreiben.");
+      } else if (u12FollowGroupCalendar && error?.status === 422) {
+        u12CalendarWeekCache = new Map();
+        showMessage(u12Ui.message,
+          "Dieser Trainingstag ist inzwischen entfallen. Änderungen nicht gespeichert. " +
+          "Bitte neu laden und einen gültigen Trainingstag wählen.");
       } else if (error?.status === 401 || error?.status === 403) {
         u12WriteAllowed = false;
         showMessage(u12Ui.message, "Keine Schreibberechtigung. Änderungen wurden nicht gespeichert.");
@@ -1633,6 +1812,12 @@ async function u12FlushChanges() {
 }
 
 async function u12MoveDate(offset) {
+  if (u12FollowGroupCalendar) {
+    if (!u12Ui.date || offset === 0) return;
+    await u12NavigateCalendarDate(
+      u12Ui.date.value || localIsoDate(new Date()), offset > 0 ? 1 : -1);
+    return;
+  }
   if (!(await u12FlushChanges())) return;
   if (!u12Ui.date) return;
   const selected = u12Ui.date.value || localIsoDate(new Date());
@@ -1641,8 +1826,50 @@ async function u12MoveDate(offset) {
 }
 
 async function u12ChangeDate() {
-  if (u12Saving || u12Loading) return;
+  if (u12Saving || u12Loading || u12CalendarBusy) return;
   if (u12Ui.date?.value === u12LoadedDate) return;
+  if (u12FollowGroupCalendar) {
+    if (!u12Ui.date?.value) return;
+    const groupId = u12Ui.group?.value || "";
+    const selected = u12Ui.date.value;
+    const generation = attendanceSessionGeneration;
+    const loadId = u12LoadId;
+    // Select change already altered the visible value; lock draft editing
+    // before flushing the old date to prevent late unsaved modifications.
+    u12CalendarBusy = true;
+    refreshU12Controls();
+    try {
+      if (!(await u12FlushChanges())) {
+        u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
+        return;
+      }
+      if (generation !== attendanceSessionGeneration ||
+          u12Ui.group?.value !== groupId || loadId !== u12LoadId) return;
+      u12CalendarWeekCache = new Map();
+      const dates = await u12FetchCalendarDates(
+        groupId, u12CalendarWeekStart(selected));
+      if (generation !== attendanceSessionGeneration ||
+          u12Ui.group?.value !== groupId || loadId !== u12LoadId) return;
+      if (!dates.includes(selected)) {
+        u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
+        showMessage(u12Ui.message,
+          "Dieser Tag ist kein geplanter Trainingstag. Bitte einen Trainingstag wählen.");
+        return;
+      }
+      await loadU12Attendance();
+    } catch {
+      if (generation === attendanceSessionGeneration && u12Ui.group?.value === groupId) {
+        u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
+        showMessage(u12Ui.message, "Trainingskalender konnte nicht geladen werden.");
+      }
+    } finally {
+      if (generation === attendanceSessionGeneration) {
+        u12CalendarBusy = false;
+        refreshU12Controls();
+      }
+    }
+    return;
+  }
   if (!(await u12FlushChanges())) {
     if (u12Ui.date) u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
     return;
@@ -1651,27 +1878,53 @@ async function u12ChangeDate() {
 }
 
 async function u12ChangeGroup() {
-  if (u12Saving || u12Loading) return;
+  if (u12Saving || u12Loading || u12CalendarBusy) return;
   const next = u12Ui.group?.value || "";
   if (next === u12LoadedGroupId) return;
-  if (!(await u12FlushChanges())) {
-    if (u12Ui.group) u12Ui.group.value = u12LoadedGroupId;
-    return;
+  const generation = attendanceSessionGeneration;
+  // Freeze Kids drafts before a potentially slow CAS flush, just as in day
+  // navigation. U12/U14 continue to use their existing group-change path.
+  if (u12FollowGroupCalendar) {
+    u12CalendarBusy = true;
+    refreshU12Controls();
   }
-  u12Snapshot = null;
-  u12Present = new Map();
-  u12LoadedGroupId = "";
-  u12LoadedDate = "";
-  u12DirtyDates.clear();
-  u12Conflict = false;
-  if (next) await loadU12Attendance();
-  else renderU12Attendance();
+  try {
+    if (!(await u12FlushChanges())) {
+      if (u12Ui.group) u12Ui.group.value = u12LoadedGroupId;
+      return;
+    }
+    if (generation !== attendanceSessionGeneration) return;
+    u12Snapshot = null;
+    u12Present = new Map();
+    u12LoadedGroupId = "";
+    u12LoadedDate = "";
+    if (u12FollowGroupCalendar) {
+      u12CalendarWeekCache = new Map();
+      if (u12Ui.date) {
+        u12Ui.date.replaceChildren();
+        const placeholder = document.createElement("option");
+        placeholder.value = localIsoDate(new Date());
+        placeholder.textContent = "Trainingstage laden …";
+        u12Ui.date.append(placeholder);
+      }
+    }
+    u12DirtyDates.clear();
+    u12Conflict = false;
+    if (next) await loadU12Attendance();
+    else renderU12Attendance();
+  } finally {
+    if (u12FollowGroupCalendar && generation === attendanceSessionGeneration) {
+      u12CalendarBusy = false;
+      refreshU12Controls();
+    }
+  }
 }
 
 async function u12ReloadAttendance() {
-  if (u12Saving || u12Loading) return;
+  if (u12Saving || u12Loading || u12CalendarBusy) return;
   if (u12DirtyDates.size > 0 &&
       !window.confirm("Ungespeicherte Anwesenheit und Trainingsinhalte verwerfen und neu laden?")) return;
+  if (u12FollowGroupCalendar) u12CalendarWeekCache = new Map();
   u12DirtyDates.clear();
   u12Conflict = false;
   await loadU12Attendance();
@@ -1779,8 +2032,12 @@ function openU12AthleteDetails(athleteId) {
 }
 
 async function u12GoToday() {
-  if (!u12Ui.date || u12Loading || u12Saving) return;
+  if (!u12Ui.date || u12Loading || u12Saving || u12CalendarBusy) return;
   const today = localIsoDate(new Date());
+  if (u12FollowGroupCalendar) {
+    await u12NavigateCalendarDate(today, 1, true);
+    return;
+  }
   if (u12Ui.date.value === today && u12LoadedDate === today) return;
   u12Ui.date.value = today;
   await u12ChangeDate();
@@ -1806,6 +2063,16 @@ async function openU12NewAthlete() {
 }
 
 function prepareU12View() {
+  if (u12FollowGroupCalendar) {
+    u12CalendarWeekCache = new Map();
+    // Returning from the group-calendar editor must refresh existing options,
+    // unless a draft is pending (never discard unsaved attendance).
+    if (u12Ready && u12Ui.group?.value && !u12Loading &&
+        !u12Saving && !u12CalendarBusy && u12DirtyDates.size === 0) {
+      void loadU12Attendance();
+    }
+    return;
+  }
   if (u12Ready && u12Ui.group?.value && u12Ui.date?.value &&
       !u12Snapshot && !u12Loading) void loadU12Attendance();
 }
@@ -1914,7 +2181,7 @@ u12Ui.contentRows?.addEventListener("input", (event) => {
   if (!input || !Object.prototype.hasOwnProperty.call(input.dataset, "u12DetailIndex")) return;
   const index = Number(input.dataset.u12DetailIndex);
   if (!Number.isInteger(index) || index < 0 || index >= u12ContentTitles.length ||
-      u12Loading || !u12WriteAllowed || u12Conflict ||
+      u12Loading || u12CalendarBusy || !u12WriteAllowed || u12Conflict ||
       u12Snapshot?.session?.state === "cancelled") return;
   u12ContentItems[index].detail = input.value;
   markU12DraftDirty();
@@ -1937,7 +2204,7 @@ u12Ui.reload?.addEventListener("click", () => void u12ReloadAttendance());
 u12Ui.days?.addEventListener("change", (event) => {
   const input = event.target;
   const athleteId = input?.dataset?.u12AthleteId;
-  if (!athleteId || !u12Snapshot || u12Loading ||
+  if (!athleteId || !u12Snapshot || u12Loading || u12CalendarBusy ||
       !u12WriteAllowed || u12Conflict ||
       u12Snapshot.session?.state === "cancelled" ||
       !u12Snapshot.participants.some((person) => person.athleteId === athleteId)) return;

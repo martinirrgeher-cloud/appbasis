@@ -30,7 +30,7 @@ function createMatrixHarness({
     "u12Snapshot", "u12Present", "u12ContentAssignments",
     "u12ContentTitles", "u12Ui", "u12Ready", "u12WriteAllowed",
     "u12Conflict", "u12Loading", "u12Saving", "markU12DraftDirty",
-    source + "\nreturn { u12PresentAthletes, changeU12MatrixAssignment, changeU12MatrixColumn };",
+    "const u12CalendarBusy = false;\n" + source + "\nreturn { u12PresentAthletes, changeU12MatrixAssignment, changeU12MatrixColumn };",
   ) as (...args: unknown[]) => MatrixHarness;
   const controls = create(
     { participants: persons, session: { state: "scheduled" } },

@@ -152,6 +152,7 @@ const setup = [
   "let u12Conflict = false;",
   "let u12WriteAllowed = true;",
   "let u12Loading = false;",
+  "let u12CalendarBusy = false;",
   "let u12Saving = false;",
   "let u12SaveInFlight = null;",
   "let u12EditVersion = 0;",

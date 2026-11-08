@@ -45,7 +45,7 @@ describe("G-02 youth attendance: offline safety and reconnection", () => {
       "u12AutoSaveTimer", "u12DirtyDates", "u12AutoSaveFailed",
       "u12Ready", "u12Conflict", "u12WriteAllowed", "u12Loading",
       "u12Saving", "saveU12Attendance", "u12ContentTitles",
-      source + "\nreturn scheduleU12AutoSave;",
+      "const u12CalendarBusy = false;\n" + source + "\nreturn scheduleU12AutoSave;",
     )(
       connection, null, new Set(["2026-11-08"]), false,
       true, false, true, false, false, save, [],
@@ -79,7 +79,7 @@ describe("G-02 youth attendance: offline safety and reconnection", () => {
     const schedulerStart = script.indexOf("function scheduleU12AutoSave()");
     const schedulerEnd = script.indexOf("function markU12DraftDirty()", schedulerStart);
     const scheduler = script.slice(schedulerStart, schedulerEnd);
-    expect(scheduler).toContain("u12Saving || u12IsOffline()");
+    expect(scheduler).toContain("u12Saving || u12CalendarBusy || u12IsOffline()");
     expect(scheduler).toContain("u12AutoSaveTimer = setTimeout");
     expect(scheduler).toContain("if (!u12DirtyDates.size || u12AutoSaveFailed");
     expect(scheduler).toContain("u12ContentTitles.some((title) => !title.trim())) return;");

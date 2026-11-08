@@ -66,7 +66,8 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(ULC_U12_SCRIPT).toContain('u12DisplayedAttendanceStatus(');
     expect(ULC_U12_SCRIPT).toContain('row.className = "u12-person"');
     expect(ULC_U12_SCRIPT).toContain('label.className = "u12-person__toggle"');
-    expect(ULC_U12_SCRIPT).not.toContain('registrationWeekDates(');
+    expect(ULC_U12_SCRIPT).toContain('const u12FollowGroupCalendar = false;');
+    // U12 remains on its already accepted day navigation; only Kids enables v17.
     expect(ULC_U12_SCRIPT).not.toContain('u12AutoTimer');
     expect(ULC_U12_SCRIPT).not.toContain("Promise.allSettled(");
   });
@@ -247,7 +248,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
       "U12_STANDARD_CONTENT_CATALOG", "u12Loading", "u12Saving",
       "u12WriteAllowed", "u12Conflict", "u12Ui",
       "renderU12Attendance", "markU12DraftDirty", "showMessage",
-      source + "\nreturn addU12Content;",
+      "const u12CalendarBusy = false;\n" + source + "\nreturn addU12Content;",
     );
     const titles: string[] = [];
     const items: Array<{ code: string; detail: string }> = [];

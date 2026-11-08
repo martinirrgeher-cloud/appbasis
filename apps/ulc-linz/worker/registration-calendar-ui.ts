@@ -4,32 +4,35 @@
  * repository. No separate global permissions or implicit trainer edit rights.
  */
 export const ULC_REGISTRATION_CALENDAR_CSS = `
-#group-calendar-panel { display: grid; gap: 12px; max-width: 100%; min-width: 0; }
-#group-calendar-panel[hidden], #group-calendar-exception[hidden],
-#group-calendar-registration-settings[hidden] { display: none; }
-.registration-calendar-weekdays {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
-  gap: 6px;
-  margin: 0;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.registration-calendar-weekdays label {
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-#group-calendar-panel .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-#group-calendar-panel .settings-grid label { min-width: 0; }
-#group-calendar-panel .settings-grid input,
-#group-calendar-panel .settings-grid select { min-width: 0; max-width: 100%; }
-#group-calendar-open { min-height: 42px; }
-@media(max-width: 430px) {
-  #group-calendar-panel .settings-grid { grid-template-columns: minmax(0, 1fr); }
-  .registration-calendar-weekdays { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#group-calendar-panel {display:grid;gap:12px;max-width:100%;min-width:0;padding:12px}
+#group-calendar-panel[hidden],#group-calendar-exception[hidden],#group-calendar-registration-settings[hidden]{display:none}
+#group-calendar-panel .section-heading{margin:0}
+#group-calendar-form{display:grid;gap:12px;min-width:0}
+.registration-calendar-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin:0;padding:0;min-width:0;min-inline-size:0;border:0}
+.registration-calendar-weekdays legend{font-size:.85rem;font-weight:750;padding:0 0 9px;color:var(--text)}
+.registration-calendar-day{position:relative;display:block;min-width:0;cursor:pointer}
+.registration-calendar-day input{position:absolute;opacity:0;width:1px;height:1px}
+.registration-calendar-day span{display:flex;align-items:center;justify-content:center;min-height:46px;min-width:0;padding:4px 1px;border:1px solid var(--border);border-radius:11px;background:var(--muted);color:var(--text);font-size:.8rem;font-weight:750}
+.registration-calendar-day input:checked+span{background:var(--accent);color:#fff;border-color:var(--accent)}
+.registration-calendar-day input:focus-visible+span{outline:3px solid var(--text);outline-offset:2px}
+.registration-calendar-day input:disabled+span{opacity:.5;cursor:not-allowed}
+.registration-calendar-summary{font-size:.78rem;color:var(--secondary);margin:0;line-height:1.4}
+#group-calendar-panel .settings-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#group-calendar-panel .settings-grid label{min-width:0}
+#group-calendar-panel .settings-grid input,#group-calendar-panel .settings-grid select{min-width:0;max-width:100%}
+#group-calendar-panel .masterdata-form-actions{margin:0}
+#group-calendar-panel .masterdata-form-actions .button{min-height:42px}
+.registration-calendar-details{margin:0;padding:0;min-width:0;border:1px solid var(--border);border-radius:12px;background:var(--surface,#fff)}
+.registration-calendar-details>summary{cursor:pointer;padding:12px;font-size:.88rem;font-weight:750}
+.registration-calendar-details>summary small{display:block;font-size:.72rem;font-weight:450;color:var(--secondary);margin-top:2px}
+.registration-calendar-details>.registration-calendar-details-body{display:grid;gap:10px;padding:0 12px 12px}
+#group-calendar-exception{display:grid;gap:9px;min-width:0}
+#group-calendar-open{min-height:42px}
+@media(max-width:430px){
+#group-calendar-panel .settings-grid{grid-template-columns:minmax(0,1fr)}
+.registration-calendar-weekdays{gap:3px}
+.registration-calendar-day span{min-height:44px;font-size:.76rem}
+#group-calendar-panel .masterdata-form-actions .button{width:100%}
 }
 `;
 
@@ -101,6 +104,18 @@ function fillGroupCalendarRule(schedule) {
   calendarUi.deadlineTime.value = rule.deadline?.localTime || "18:00";
   calendarUi.lateMode.value = rule.lateMode;
   refreshGroupCalendarDeadline();
+  refreshGroupCalendarDaySummary();
+}
+
+function refreshGroupCalendarDaySummary() {
+  if (!calendarUi.status || !calendarUi.weekdays) return;
+  const names = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+  const active = [...calendarUi.weekdays.querySelectorAll("[data-calendar-weekday]:checked")]
+    .map((input) => names[Number(input.value) - 1]).join(" · ");
+  const status = groupCalendarState?.dirty ? "Nicht gespeichert"
+    : groupCalendarState?.revision === null ? "Noch keine Regel gespeichert"
+    : "Aktive Trainingstage";
+  calendarUi.status.textContent = status + " · " + (active || "Kein Tag ausgewählt");
 }
 
 function refreshGroupCalendarDeadline() {
@@ -133,6 +148,7 @@ async function openGroupCalendar() {
   const state = { groupId: group.id, revision: null, loading: true, saving: false,
     exceptionDate: "", exceptionRevision: null, exceptionLoading: false };
   groupCalendarState = state;
+  state.dirty = false;
   showMasterdataGroupOverlayMode("calendar");
   showMessage(calendarUi.message, "");
   showMessage(calendarUi.success, "");
@@ -155,9 +171,7 @@ async function openGroupCalendar() {
     state.revision = result.revision;
     fillGroupCalendarRule(result.schedule);
     refreshGroupCalendarMode();
-    calendarUi.status.textContent = result.schedule === null
-      ? "Noch keine Trainingstage hinterlegt. Bisher sind alle Wochentage möglich."
-      : "Trainingstage gespeichert; Anmeldefristen gelten bei Selbstanmeldung.";
+    refreshGroupCalendarDaySummary();
     calendarUi.exceptionDate.value = localDateValue(new Date());
     state.loading = false;
     await loadGroupCalendarException();
@@ -221,7 +235,8 @@ async function saveGroupCalendarRule(event) {
       throw new Error("INVALID_CALENDAR_RULE_SAVE");
     }
     state.revision = result.revision;
-    calendarUi.status.textContent = "Trainingstage gespeichert; Anmeldefristen gelten bei Selbstanmeldung.";
+    state.dirty = false;
+    refreshGroupCalendarDaySummary();
     showMessage(calendarUi.success, "Regel für diese Gruppe gespeichert.");
   } catch (error) {
     if (generation !== masterdataSessionGeneration || id !== groupCalendarRequestId ||
@@ -337,4 +352,9 @@ calendarUi.form?.addEventListener("submit", (event) => void saveGroupCalendarRul
 calendarUi.exception?.addEventListener("submit", (event) => void saveGroupCalendarException(event));
 calendarUi.exceptionDate?.addEventListener("change", () => void loadGroupCalendarException());
 calendarUi.deadlineEnabled?.addEventListener("change", refreshGroupCalendarDeadline);
+calendarUi.weekdays?.addEventListener("change", () => {
+  if (!groupCalendarState || groupCalendarState.loading || groupCalendarState.saving) return;
+  groupCalendarState.dirty = true;
+  refreshGroupCalendarDaySummary();
+});
 `;

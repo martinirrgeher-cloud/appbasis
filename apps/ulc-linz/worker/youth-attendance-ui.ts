@@ -20,12 +20,23 @@ function areaUi(source: string, prefix: "u14" | "kids", area: "u14" | "kindertra
       .replaceAll("Kids-Gruppe", "Kindertraining-Gruppe");
   }
   if (source === ULC_U12_SCRIPT) {
+    if (area === "kindertraining") {
+      // Only the Kids page uses the shared v17 calendar for day navigation.
+      // Leave the already accepted U12/U14 date controls unchanged.
+      output = output.replace("const kidsFollowGroupCalendar = false;",
+        "const kidsFollowGroupCalendar = true;");
+    }
     output = output.replaceAll(
       "refreshYouthCategoryCatalog()",
       'refreshYouthCategoryCatalog("' + area + '")',
     );
   }
   if (source === ULC_U12_HTML) {
+    if (area === "kindertraining") {
+      output = output.replace('>Heute</button>', '>Nächstes Training</button>')
+        .replace('<input type="date" id="kids-date" required aria-label="Trainingstag auswählen" />',
+          '<select id="kids-date" required aria-label="Trainingstag auswählen"></select>');
+    }
     output = output.replaceAll(
       'data-youth-category-area="' + prefix + '"',
       'data-youth-category-area="' + area + '"',

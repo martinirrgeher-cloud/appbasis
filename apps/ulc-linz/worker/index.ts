@@ -29,7 +29,7 @@ import {
 import { createIdentityHttpHandlers } from "@appbasis/identity/http";
 
 import { createGeneratedApp } from "./app";
-import { attendanceWeekDates, selectAttendanceCalendarDates } from "./attendance-calendar";
+import { attendanceWeekDates, isScheduledAttendanceDate, selectAttendanceCalendarDates } from "./attendance-calendar";
 import { registrationCalendarHttpResponse } from "./registration-calendar-http";
 import { UlcLinzAuthorizationDeniedError } from "./authorization";
 import { UlcLinzCountdownAccessDeniedError } from "./countdown-access";
@@ -1569,6 +1569,37 @@ async function kindertrainingCalendarResponse(
   });
 }
 
+/**
+ * Check Kids writes against the current DB-backed calendar (not the browser
+ * option list). Existing historical sessions remain readable via GET, but new
+ * writes to a newly cancelled/non-training day are rejected. With no active
+ * v17 repository the prior unrestricted attendance behavior remains valid.
+ */
+async function kindertrainingScheduleAllowsDate(
+  runtime: GeneratedPostgresApplicationRuntime,
+  organizationId: string,
+  groupId: string,
+  sessionDate: string,
+): Promise<boolean> {
+  const calendar = runtime.registrationCalendar;
+  if (!calendar) return true;
+  // Every mutation checks the *current* database-backed rule/exception.
+  // No browser cache or stale already-listed option can override this.
+  const [rule, exception] = await Promise.all([
+    calendar.readRule(organizationId, groupId),
+    calendar.readException(organizationId, groupId, sessionDate),
+  ]);
+  return isScheduledAttendanceDate(
+    sessionDate, rule?.schedule.weekdays ?? null, exception?.kind ?? null,
+  );
+}
+
+function kindertrainingUnscheduledDayResponse(): Response {
+  return Response.json({ error: { code: "TRAINING_DAY_NOT_SCHEDULED" } }, {
+    status: 422, headers: { "Cache-Control": "private, no-store" },
+  });
+}
+
 async function kindertrainingSessionResponse(
   request: Request,
   runtime: GeneratedPostgresApplicationRuntime,
@@ -1604,6 +1635,10 @@ async function kindertrainingSessionResponse(
     const body = await kindertrainingJsonBody(request);
     if (!kindertrainingGroupAllowed(access, body.groupId as string)) {
       return kindertrainingGroupScopeDenied(runtime, access, action);
+    }
+    if (!(await kindertrainingScheduleAllowsDate(runtime, access.organizationId,
+      body.groupId as string, body.sessionDate as string))) {
+      return kindertrainingUnscheduledDayResponse();
     }
     const snapshot = await runtime.kindertraining.saveSession(
       access.organizationId,
@@ -2016,6 +2051,11 @@ async function detailedYouthAreaResponse(
       if (!groupAllowed(groupId) ||
           !(await scopedGroups()).some((group) => group.id === groupId)) {
         return Response.json({ error: { code: "YOUTH_GROUP_NOT_FOUND" } }, { status: 404 });
+      }
+      if (area === "kids" && !(await kindertrainingScheduleAllowsDate(
+        runtime, access.organizationId, groupId, body.sessionDate as string,
+      ))) {
+        return kindertrainingUnscheduledDayResponse();
       }
       const snapshot = await service.saveSession(access.organizationId, {
         groupId,

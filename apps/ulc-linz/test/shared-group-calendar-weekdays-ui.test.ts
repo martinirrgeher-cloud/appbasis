@@ -33,7 +33,7 @@ describe("G-04.8 shared group training days and actual registration days", () =>
     expect(ULC_LINZ_APP_HTML).toContain('id="group-calendar-open"');
     expect(ULC_LINZ_APP_HTML).toContain('id="group-calendar-registration-settings"');
     expect(ULC_REGISTRATION_CALENDAR_CSS).toContain(
-      "#group-calendar-registration-settings[hidden] { display: none; }",
+      "#group-calendar-registration-settings[hidden]{display:none}",
     );
   });
 
