@@ -3764,6 +3764,41 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(closeCalls).toBe(1);
   });
 
+  it("G-04.2c activates calendar only with exact isolated-Preview release bindings", async () => {
+    let received: unknown = null;
+    const worker = createGeneratedWorker(async (options) => {
+      received = options;
+      return runtime();
+    });
+    const fetchWith = async (env: Record<string, unknown>) => {
+      received = null;
+      const result = await worker.fetch(
+        new Request("https://ulc.example.test/api/auth/session", {
+          headers: { cookie: currentIdentity.sessionToken },
+        }), env,
+      );
+      expect(result.status).toBe(200);
+      return received as { registrationCalendarActivation?: string } | null;
+    };
+    const approved = {
+      ...validEnv,
+      APPBASIS_GENERATED_APP_ID: "ulc-linz",
+      APPBASIS_RUNTIME_ENVIRONMENT: "generated-preview-ulc-linz",
+      APPBASIS_REGISTRATION_CALENDAR_V17: "enabled",
+    };
+    expect(await fetchWith(approved)).toMatchObject({
+      registrationCalendarActivation: "isolated-preview-v17",
+    });
+    for (const invalid of [
+      { ...approved, APPBASIS_GENERATED_APP_ID: "unknown" },
+      { ...approved, APPBASIS_RUNTIME_ENVIRONMENT: "production" },
+      { ...approved, APPBASIS_REGISTRATION_CALENDAR_V17: "disabled" },
+      validEnv,
+    ]) {
+      expect(await fetchWith(invalid)).not.toHaveProperty("registrationCalendarActivation");
+    }
+  });
+
   it("returns a generic runtime failure without leaking provider error details", async () => {
     const originalError = console.error;
     const logged: string[] = [];
