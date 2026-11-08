@@ -38,6 +38,8 @@ describe("G-01 clarified youth attendance statuses", () => {
     expect(ULC_U12_SCRIPT).toContain(': person.status,');
     expect(ULC_U12_SCRIPT).toContain('u12TouchedAthletes.clear();');
     expect(ULC_U12_SCRIPT).toContain("scheduleU12AutoSave()");
+    expect(ULC_U12_SCRIPT).toContain("Nicht bearbeitete Einträge bleiben unverändert");
+    expect(ULC_U12_SCRIPT).not.toContain("Alte Antworten – beim Ändern automatisch übernehmen");
   });
 
   it("counts only scoped, existing attendance rows as assessed or open, with no invented missed trainings", () => {
