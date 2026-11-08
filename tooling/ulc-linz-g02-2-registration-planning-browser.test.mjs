@@ -40,6 +40,13 @@ function chromiumBinary() {
   ].filter(Boolean).find(existsSync);
 }
 const setup = [
+  // DOM dispatch reports exceptions from event listeners without throwing to
+  // the caller. Capture both synchronous and asynchronous browser failures,
+  // so a broken production handler cannot cause a false PASS.
+  "const browserErrors = [];",
+  'function recordBrowserError(value) { const message = String(value); browserErrors.push(message); const result = document.querySelector("#result"); if (result) result.textContent = "G02_2_FAIL: " + browserErrors.join("; "); }',
+  'window.addEventListener("error", (event) => recordBrowserError(event.error?.message || event.message || "Uncaught browser error"));',
+  'window.addEventListener("unhandledrejection", (event) => recordBrowserError(event.reason?.message || event.reason || "Unhandled rejection"));',
   'let runMode = "idle";',
   "let u12Saving = false, u14Saving = false, kidsSaving = false;",
   "let u12DirtyDates = new Set(), u14DirtyDates = new Set(), kidsDirtyDates = new Set();",
@@ -67,7 +74,7 @@ const setup = [
   'let trainingPlanDraft = { note: "First", items: [] };',
   'let trainingPlanEditorDate = date1, trainingPlanSelectedSubjectId = "athlete-a";',
   "let trainingPlansCanEdit = true, trainingPlanConflict = false, trainingPlanDirty = false;",
-  "let trainingPlanSaveBusy = false, trainingPlanTemplateBusy = false, trainingPlanSaveBackBusy = false;",
+  "let trainingPlanSaveBusy = false, trainingPlanTemplateBusy = false, trainingPlanSaveBackBusy = false, trainingPlanDistributeBusy = false;",
   "let trainingPlanChangeVersion = 1, trainingPlanLeaveResolver = null;",
   'let trainingPlanSelected = { id: "plan-1", currentRevision: 1 };',
   "let clearBackups = 0;",
@@ -89,7 +96,10 @@ async function browserScenarios() {
   const check = (value, message) => { if (!value) throw Error(message); };
   const warning = () => {
     const e = new Event("beforeunload", { cancelable: true });
+    const errorsBefore = browserErrors.length;
     window.dispatchEvent(e);
+    check(browserErrors.length === errorsBefore,
+      "beforeunload handler threw: " + browserErrors.slice(errorsBefore).join("; "));
     return e.defaultPrevented;
   };
   const click = (date, intention) => {
@@ -106,6 +116,10 @@ async function browserScenarios() {
   check(document.documentElement.scrollWidth <= document.documentElement.clientWidth,
     "Mobile test fixture overflows horizontally");
   check(!warning(), "Clean registration and plan warn on unload");
+  trainingPlanDistributeBusy = true;
+  check(warning(), "In-flight plan distribution not guarded");
+  trainingPlanDistributeBusy = false;
+  check(!warning(), "Clean plan unexpectedly warns after distribution");
 
   selfRegistrationNoteDrafts.set(groupId + "|" + date1, "Arrive later");
   check(warning(), "Unsaved registration note not protected");
@@ -188,7 +202,7 @@ async function browserScenarios() {
 }
 
 const runner = "(" + browserScenarios.toString() + ")().then(" +
-  "() => { document.querySelector('#result').textContent = 'G02_2_PASS'; }," +
+  "() => { document.querySelector('#result').textContent = browserErrors.length ? 'G02_2_FAIL: ' + browserErrors.join('; ') : 'G02_2_PASS'; }," +
   "(error) => { document.querySelector('#result').textContent = 'G02_2_FAIL: ' + error.message; });";
 const script = [setup, production, runner].join("\n");
 const html = [
