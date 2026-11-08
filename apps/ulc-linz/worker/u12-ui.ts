@@ -1546,6 +1546,8 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false)
     if (!(await u12FlushChanges())) return;
     if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
         u12LoadId !== loadId) return;
+    // A fresh navigation must observe schedule updates from other sessions.
+    u12CalendarWeekCache = new Map();
     const chosen = await u12FindCalendarDate(groupId, anchor, direction, includeAnchor);
     if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
         u12LoadId !== loadId) return;
@@ -1583,6 +1585,8 @@ async function loadU12Attendance() {
   const generation = attendanceSessionGeneration;
   const loadId = ++u12LoadId;
   if (u12FollowGroupCalendar) {
+    // Revalidate on every new attendance read; never trust a prior visit.
+    u12CalendarWeekCache = new Map();
     u12CalendarBusy = true;
     refreshU12Controls();
     try {
@@ -1836,6 +1840,7 @@ async function u12ChangeDate() {
       }
       if (generation !== attendanceSessionGeneration ||
           u12Ui.group?.value !== groupId || loadId !== u12LoadId) return;
+      u12CalendarWeekCache = new Map();
       const dates = await u12FetchCalendarDates(
         groupId, u12CalendarWeekStart(selected));
       if (generation !== attendanceSessionGeneration ||
@@ -2053,6 +2058,16 @@ async function openU12NewAthlete() {
 }
 
 function prepareU12View() {
+  if (u12FollowGroupCalendar) {
+    u12CalendarWeekCache = new Map();
+    // Returning from the group-calendar editor must refresh existing options,
+    // unless a draft is pending (never discard unsaved attendance).
+    if (u12Ready && u12Ui.group?.value && !u12Loading &&
+        !u12Saving && !u12CalendarBusy && u12DirtyDates.size === 0) {
+      void loadU12Attendance();
+    }
+    return;
+  }
   if (u12Ready && u12Ui.group?.value && u12Ui.date?.value &&
       !u12Snapshot && !u12Loading) void loadU12Attendance();
 }
