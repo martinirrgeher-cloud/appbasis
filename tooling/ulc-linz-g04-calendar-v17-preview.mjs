@@ -117,6 +117,23 @@ export function classifyG04CalendarPreview(state) {
         constraint.key_columns.length === PRIMARY_KEYS[table].length &&
         PRIMARY_KEYS[table].every((name, index) =>
           constraint.key_columns[index] === name)).length === 1) ||
+      // A soft-inactive group is retained. Only a successful *physical*
+      // group deletion should cascade to both configuration tables.
+      !expected.every((table) => {
+        const foreignKeys = ownedConstraints.filter((constraint) =>
+          constraint.table_name === table && constraint.contype === "f");
+        return foreignKeys.length === 1 &&
+          foreignKeys[0].convalidated === true &&
+          foreignKeys[0].confdeltype === "c" &&
+          foreignKeys[0].foreign_table === "appbasis_training_group" &&
+          foreignKeys[0].foreign_schema === "public" &&
+          Array.isArray(foreignKeys[0].key_columns) &&
+          foreignKeys[0].key_columns.length === 1 &&
+          foreignKeys[0].key_columns[0] === "group_id" &&
+          Array.isArray(foreignKeys[0].referenced_columns) &&
+          foreignKeys[0].referenced_columns.length === 1 &&
+          foreignKeys[0].referenced_columns[0] === "id";
+      }) ||
       ownedTriggers.length !== 1 ||
       ownedTriggers[0].tgenabled !== "O" ||
       ownedTriggers[0].table_name !== "ulc_linz_training_registration" ||
@@ -142,16 +159,28 @@ export async function readG04CalendarPreviewState(client) {
       FROM information_schema.columns WHERE table_schema = 'public'
         AND table_name IN ('${RULE}', '${EXCEPTION}')`),
     client.unsafe(`SELECT cl.relname AS table_name, co.contype, co.convalidated,
+        co.confdeltype, foreign_cl.relname AS foreign_table,
+        foreign_ns.nspname AS foreign_schema,
         ARRAY(
           SELECT att.attname::text
           FROM pg_catalog.unnest(co.conkey) WITH ORDINALITY AS key(attnum, pos)
           JOIN pg_catalog.pg_attribute att
             ON att.attrelid = cl.oid AND att.attnum = key.attnum
           ORDER BY key.pos
-        ) AS key_columns
+        ) AS key_columns,
+        ARRAY(
+          SELECT att.attname::text
+          FROM pg_catalog.unnest(co.confkey) WITH ORDINALITY AS key(attnum, pos)
+          JOIN pg_catalog.pg_attribute att
+            ON att.attrelid = foreign_cl.oid AND att.attnum = key.attnum
+          ORDER BY key.pos
+        ) AS referenced_columns
       FROM pg_catalog.pg_constraint co
       JOIN pg_catalog.pg_class cl ON co.conrelid = cl.oid
       JOIN pg_catalog.pg_namespace ns ON cl.relnamespace = ns.oid
+      LEFT JOIN pg_catalog.pg_class foreign_cl ON co.confrelid = foreign_cl.oid
+      LEFT JOIN pg_catalog.pg_namespace foreign_ns ON
+        foreign_cl.relnamespace = foreign_ns.oid
       WHERE ns.nspname = 'public' AND cl.relname IN ('${RULE}', '${EXCEPTION}')`),
     client.unsafe(`SELECT tg.tgname, tg.tgenabled, cl.relname AS table_name,
         fn.proname AS function_name
