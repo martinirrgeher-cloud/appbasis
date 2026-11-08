@@ -5,7 +5,8 @@
  */
 export const ULC_REGISTRATION_CALENDAR_CSS = `
 #group-calendar-panel { display: grid; gap: 12px; max-width: 100%; min-width: 0; }
-#group-calendar-panel[hidden], #group-calendar-exception[hidden] { display: none; }
+#group-calendar-panel[hidden], #group-calendar-exception[hidden],
+#group-calendar-registration-settings[hidden] { display: none; }
 .registration-calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
