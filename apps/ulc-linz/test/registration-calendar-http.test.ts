@@ -86,7 +86,7 @@ describe("G-04.2b calendar administration security contract", () => {
     expect(a.rule).not.toHaveBeenCalled();
   });
 
-  it("reads only active same-organization self-registration groups", async () => {
+  it("reads the same protected group calendar for self-registration and trainer-only groups", async () => {
     const a = fixture();
     const url = new URL(origin + base + "?groupId=" + groupId);
     const response = await registrationCalendarHttpResponse(
@@ -97,14 +97,24 @@ describe("G-04.2b calendar administration security contract", () => {
       groupId, schedule: null, revision: null,
     });
     expect(a.rule).toHaveBeenCalledWith("verein", groupId);
-    for (const wrong of ["andere", "kids", "missing"]) {
+    const trainerUrl = new URL(origin + base + "?groupId=kids");
+    const trainerRead = await registrationCalendarHttpResponse(
+      get(trainerUrl.pathname + trainerUrl.search),
+      a.runtime, trainerUrl, a.authorize,
+    );
+    expect(trainerRead.status).toBe(200);
+    expect(await trainerRead.json()).toEqual({
+      groupId: "kids", schedule: null, revision: null,
+    });
+    expect(a.rule).toHaveBeenCalledWith("verein", "kids");
+    for (const wrong of ["andere", "missing"]) {
       const bad = new URL(origin + base + "?groupId=" + wrong);
       const denied = await registrationCalendarHttpResponse(
         get(bad.pathname + bad.search), a.runtime, bad, a.authorize,
       );
       expect(denied.status).toBe(404);
     }
-    expect(a.rule).toHaveBeenCalledTimes(1);
+    expect(a.rule).toHaveBeenCalledTimes(2);
     expect(a.actions).toEqual(["view", "view", "view", "view"]);
   });
 
@@ -130,6 +140,24 @@ describe("G-04.2b calendar administration security contract", () => {
       expect(bad.status).toBe(400);
     }
     expect(a.saveRule).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets an authorized editor save weekdays in trainer-only groups without enabling self-registration", async () => {
+    const a = fixture();
+    const url = new URL(origin + base);
+    const trainerSchedule = {
+      weekdays: [1, 2, 3, 4, 7],
+      weeksAhead: 4, deadline: null, lateMode: "allow",
+    };
+    const result = await registrationCalendarHttpResponse(
+      post(base, { groupId: "kids", expectedRevision: null,
+        schedule: trainerSchedule }), a.runtime, url, a.authorize,
+    );
+    expect(result.status).toBe(200);
+    expect(a.saveRule).toHaveBeenCalledWith(
+      "verein", "kids", null, trainerSchedule,
+    );
+    expect(a.actions).toEqual(["edit"]);
   });
 
   it("allows extra/cancelled/reset with revision and refuses invalid dates", async () => {
