@@ -25,6 +25,11 @@ on:
         required: true
         type: boolean
         default: false
+      privacyConfirmed:
+        description: Operator confirms v17 inventory, retention and export decisions have been reviewed
+        required: true
+        type: boolean
+        default: false
       approvalRef:
         description: Exact operator gate phrase G04-V17-PREVIEW
         required: false
@@ -56,6 +61,7 @@ jobs:
           APPLY: ${{ inputs.apply && '1' || '0' }}
           G04_BACKUP_CONFIRMED: ${{ inputs.backupConfirmed && '1' || '0' }}
           G04_RESTORE_CONFIRMED: ${{ inputs.restoreConfirmed && '1' || '0' }}
+          G04_PRIVACY_CONFIRMED: ${{ inputs.privacyConfirmed && '1' || '0' }}
           APPROVAL_REF: ${{ inputs.approvalRef }}
           EXPECTED_REF: ${{ github.ref }}
         shell: bash
@@ -67,6 +73,7 @@ jobs:
             test "$APPLY" = "1" || { echo "Operator approval required" >&2; exit 1; }
             test "$G04_BACKUP_CONFIRMED" = "1" || { echo "Backup evidence required" >&2; exit 1; }
             test "$G04_RESTORE_CONFIRMED" = "1" || { echo "Restore readiness required" >&2; exit 1; }
+            test "$G04_PRIVACY_CONFIRMED" = "1" || { echo "Privacy decision required" >&2; exit 1; }
             test "$APPROVAL_REF" = "G04-V17-PREVIEW" || {
               echo "Exact independent migration gate required" >&2; exit 1;
             }
