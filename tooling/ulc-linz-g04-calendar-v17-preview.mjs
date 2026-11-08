@@ -13,6 +13,10 @@ const RULE = "ulc_linz_registration_calendar_rule";
 const EXCEPTION = "ulc_linz_registration_calendar_exception";
 const FUNCTION = "ulc_linz_registration_calendar_guard";
 const TRIGGER = "ulc_linz_registration_calendar_guard_trg";
+const PRIMARY_KEYS = Object.freeze({
+  [RULE]: Object.freeze(["organization_id", "group_id"]),
+  [EXCEPTION]: Object.freeze(["organization_id", "group_id", "session_date"]),
+});
 const COLUMNS = Object.freeze({
   [RULE]: Object.freeze([
     "organization_id", "group_id", "weekdays_mask", "weeks_ahead",
@@ -105,9 +109,13 @@ export function classifyG04CalendarPreview(state) {
       !expected.every((table) =>
         COLUMNS[table].every((name) => ownedColumns.some((column) =>
           column.table_name === table && column.column_name === name))) ||
-      !expected.every((table) => ownedConstraints.some((constraint) =>
+      !expected.every((table) => ownedConstraints.filter((constraint) =>
         constraint.table_name === table && constraint.contype === "p" &&
-        constraint.convalidated === true)) ||
+        constraint.convalidated === true &&
+        Array.isArray(constraint.key_columns) &&
+        constraint.key_columns.length === PRIMARY_KEYS[table].length &&
+        PRIMARY_KEYS[table].every((name, index) =>
+          constraint.key_columns[index] === name)).length === 1) ||
       ownedTriggers.length !== 1 ||
       ownedTriggers[0].tgenabled !== "O" ||
       ownedTriggers[0].table_name !== "ulc_linz_training_registration" ||
@@ -132,7 +140,14 @@ export async function readG04CalendarPreviewState(client) {
     client.unsafe(`SELECT table_name, column_name, is_nullable, data_type
       FROM information_schema.columns WHERE table_schema = 'public'
         AND table_name IN ('${RULE}', '${EXCEPTION}')`),
-    client.unsafe(`SELECT cl.relname AS table_name, co.contype, co.convalidated
+    client.unsafe(`SELECT cl.relname AS table_name, co.contype, co.convalidated,
+        ARRAY(
+          SELECT att.attname::text
+          FROM pg_catalog.unnest(co.conkey) WITH ORDINALITY AS key(attnum, pos)
+          JOIN pg_catalog.pg_attribute att
+            ON att.attrelid = cl.oid AND att.attnum = key.attnum
+          ORDER BY key.pos
+        ) AS key_columns
       FROM pg_catalog.pg_constraint co
       JOIN pg_catalog.pg_class cl ON co.conrelid = cl.oid
       JOIN pg_catalog.pg_namespace ns ON cl.relnamespace = ns.oid
