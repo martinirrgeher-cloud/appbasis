@@ -33,7 +33,7 @@ const script = [
   'const dialog = document.querySelector("#details-dialog");',
   'const u12Ui = { detailsDialog: dialog, detailsContent: document.querySelector("#details-content"), detailsTitle: document.querySelector("#details-title") };',
   'const u12Snapshot = { participants: [{ athleteId: "a", firstName: "Anna", lastName: "Auer", notes: "<img src=x onerror=alert(1)>", contacts: [',
-  '  { id:"b", contactName:"Vater", relationship:"Vater", phone:"+43 664 123-45", isEmergency:true, priority:1, notes:"Wochentags" },',
+  '  { id:"b", contactName:"Vater", relationship:"Vater", phone:"+43 (0)664 123-45", isEmergency:true, priority:1, notes:"Wochentags" },',
   '  { id:"a", contactName:"Mutter", relationship:"Mutter", phone:"0732/123456", isEmergency:true, priority:2, notes:null },',
   '  { id:"c", contactName:"Nachbar", relationship:null, phone:"javascript:alert(1)", isEmergency:false, priority:1, notes:"Kein Anruf möglich" },',
   '] }] };',
