@@ -85,6 +85,24 @@ test("G-04.2c plan is based on canonical v16 and an isolated additive v17 candid
   }
 });
 
+test("G-04.2e requires group-delete CASCADE in both candidate tables and no automatic purge", async () => {
+  const plan = await loadG04CalendarPreviewPlan({ repositoryRoot: root });
+  for (const statement of plan.statements.slice(0, 2)) {
+    assert.match(statement,
+      /group_id\\s+text\\s+NOT NULL\\s+REFERENCES\\s+appbasis_training_group\\(id\\)\\s+ON DELETE CASCADE/i);
+  }
+  const policy = JSON.parse(await readFile(resolve(
+    root, "apps/ulc-linz/privacy/g04-v17-calendar-lifecycle-proposal.json",
+  ), "utf8"));
+  assert.equal(policy.status, "technical-candidate-controller-retention-decision-pending");
+  assert.equal(policy.technicalLifecycle.onGroupDeactivated,
+    "retain-configuration-and-CAS-revisions-no-deletion");
+  assert.equal(policy.technicalLifecycle.backgroundPurge, "disabled");
+  assert.equal(policy.technicalLifecycle.scheduledTimeBasedDeletion, "disabled");
+  assert.equal(policy.privacyStatus.retentionDuration, "UNDECIDED_BY_CONTROLLER");
+  assert.equal(policy.productionApproved, false);
+});
+
 test("G-04.2c rejects incomplete v16, partial v17, broken guard, or metadata drift", () => {
   assert.equal(classifyG04CalendarPreview(base), "migration-required");
   assert.equal(classifyG04CalendarPreview(current), "current");
