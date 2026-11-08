@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { chmod, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
+  G045_REPOSITORY_ROOT, assertG045PrivateEvidenceDirectory,
   validateG045OperatorInput, validateG045BackupManifest, runG045,
 } from "./ulc-linz-g04-v16-actual-recovery.mjs";
 
@@ -89,4 +93,28 @@ test("G-04.5 backup/restore cannot start with missing operator authorization", a
   await assert.rejects(()=>runG045("backup",{}),/G-04.5 blocked/);
   await assert.rejects(()=>runG045("restore",good()),/G-04.5 blocked/);
   await assert.rejects(()=>runG045("apply",good()),/G-04.5 blocked/);
+});
+
+test("G-04.5 rejects worktree folders, symlinks and world-accessible evidence paths", async () => {
+  const outsideParent = await mkdtemp(join(tmpdir(), "g045-private-evidence-"));
+  const inside = await mkdtemp(join(G045_REPOSITORY_ROOT, ".g045-private-evidence-test-"));
+  const external = join(outsideParent, "private");
+  const link = join(outsideParent, "linked");
+  try {
+    await mkdir(external, { mode: 0o700 });
+    assert.equal(await assertG045PrivateEvidenceDirectory(external), external);
+    await assert.rejects(() => assertG045PrivateEvidenceDirectory(inside),
+      /G-04.5 blocked/);
+    await assert.rejects(() => assertG045PrivateEvidenceDirectory(G045_REPOSITORY_ROOT),
+      /G-04.5 blocked/);
+    await symlink(external, link);
+    await assert.rejects(() => assertG045PrivateEvidenceDirectory(link),
+      /G-04.5 blocked/);
+    await chmod(external, 0o755);
+    await assert.rejects(() => assertG045PrivateEvidenceDirectory(external),
+      /G-04.5 blocked/);
+  } finally {
+    await rm(outsideParent, { recursive: true, force: true });
+    await rm(inside, { recursive: true, force: true });
+  }
 });
