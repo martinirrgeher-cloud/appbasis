@@ -36,6 +36,7 @@ export interface UlcU12ParticipantContact {
   readonly relationship: string | null;
   readonly phone: string;
   readonly isEmergency: boolean;
+  readonly priority: number;
   readonly notes: string | null;
 }
 
@@ -456,6 +457,7 @@ async function resolveContext(
       relationship: contact.relationship,
       phone: contact.phone,
       isEmergency: contact.isEmergency,
+      priority: contact.priority,
       notes: contact.notes,
     }));
     contactsByAthlete.set(contact.athleteId, contacts);
@@ -463,6 +465,7 @@ async function resolveContext(
   for (const contacts of contactsByAthlete.values()) {
     contacts.sort((a, b) =>
       Number(b.isEmergency) - Number(a.isEmergency) ||
+      a.priority - b.priority ||
       a.contactName.localeCompare(b.contactName, "de"));
   }
 
