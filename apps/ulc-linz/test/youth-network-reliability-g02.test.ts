@@ -74,7 +74,15 @@ describe("G-02 youth attendance: offline safety and reconnection", () => {
     expect(start).toBeGreaterThan(0);
     expect(onlineHandler).toContain("!u12AutoSaveFailed");
     expect(onlineHandler).toContain("!u12Conflict");
+    expect(onlineHandler).toContain("!u12Saving");
     expect(onlineHandler).toContain("!u12IsOffline()");
+    const schedulerStart = script.indexOf("function scheduleU12AutoSave()");
+    const schedulerEnd = script.indexOf("function markU12DraftDirty()", schedulerStart);
+    const scheduler = script.slice(schedulerStart, schedulerEnd);
+    expect(scheduler).toContain("u12Saving || u12IsOffline()");
+    expect(scheduler).toContain("u12AutoSaveTimer = setTimeout");
+    expect(scheduler).toContain("if (!u12DirtyDates.size || u12AutoSaveFailed");
+    expect(scheduler).toContain("u12ContentTitles.some((title) => !title.trim())) return;");
     const saveStart = script.indexOf("async function saveU12Attendance()");
     const saveEnd = script.indexOf("async function u12FlushChanges()", saveStart);
     const saver = script.slice(saveStart, saveEnd);
