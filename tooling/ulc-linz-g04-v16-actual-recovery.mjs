@@ -168,10 +168,13 @@ export async function verifyTargetEmpty(url, expectedDb) {
 
 async function runPg(action, url, work, snapshotId) {
   const command = action === "backup"
-    ? 'pg_dump --format=custom --no-owner --snapshot="$DATABASE_SNAPSHOT" --dbname="$DATABASE_URL" --file=/evidence/' + DUMP
-    : 'pg_restore --single-transaction --no-owner --exit-on-error --dbname="$DATABASE_URL" /evidence/' + DUMP;
+    ? 'umask 077; pg_dump --format=custom --no-owner --snapshot="$DATABASE_SNAPSHOT" --dbname="$DATABASE_URL" --file=/evidence/' + DUMP
+    : 'umask 077; pg_restore --single-transaction --no-owner --exit-on-error --dbname="$DATABASE_URL" /evidence/' + DUMP;
+  const uid=process.getuid?.(), gid=process.getgid?.();
+  if (!Number.isInteger(uid) || !Number.isInteger(gid)) deny();
   await new Promise((done, fail) => {
     const child = spawn("docker", ["run","--rm","--network","host",
+      "--user",String(uid)+":"+String(gid),
       "--env","DATABASE_URL","--env","DATABASE_SNAPSHOT",
       "--volume",work + ":/evidence",PG_IMAGE,"sh","-ceu",command],
     {env:{...process.env,DATABASE_URL:url,DATABASE_SNAPSHOT:snapshotId || ""},
