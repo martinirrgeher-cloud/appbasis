@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
+import { PostgresUlcTrainingSessionRepository } from "../worker/training-session-postgres";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
 import {
   PostgresUlcRegistrationCalendarRepository,
@@ -133,6 +134,66 @@ if (!databaseUrl) {
         .rejects.toBeInstanceOf(UlcRegistrationCalendarDataError);
       await expect(repo.writeException("verein-g04-extra", group.id, day, 3, "unsafe" as "extra"))
         .rejects.toBeInstanceOf(UlcRegistrationCalendarDataError);
+    });
+
+    it("blocks direct SQL registration writes and rolls back rejected orphan sessions", async () => {
+      const athletes = new PostgresAthleteMasterdataRepository(
+        connection().client, () => randomUUID(),
+      );
+      const group = await athletes.createTrainingGroup("verein-g04-write", {
+        name: "Leistungsgruppe Write G04", attendanceMode: "self_registration",
+      });
+      const calendar = new PostgresUlcRegistrationCalendarRepository(connection().client);
+      const sessions = new PostgresUlcTrainingSessionRepository(
+        connection().client, () => randomUUID(),
+      );
+      const today = new Date();
+      const dateAt = (offset: number) => {
+        const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(),
+          today.getUTCDate() + offset, 12));
+        return d.toISOString().slice(0, 10);
+      };
+      const allowed = dateAt(9);
+      const denied = dateAt(10);
+      const dayOfWeek = (new Date(allowed + "T12:00:00Z").getUTCDay() || 7);
+      await calendar.writeRule("verein-g04-write", group.id, null, {
+        weekdays: [dayOfWeek], weeksAhead: 26, deadline: null, lateMode: "block",
+      });
+
+      const attempt = (day: string, athleteId: string, proxy?: string) =>
+        sessions.withRegistrationTransaction(async (transaction) => {
+          const created = await transaction.ensureScheduledSession(
+            "verein-g04-write", "kindertraining", group.id, day,
+          );
+          return transaction.saveRegistration(
+            "verein-g04-write", created.session.id, athleteId,
+            "attending", null, "identity-g04", proxy,
+          );
+        });
+      const rejected = await attempt(denied, "athlete-direct")
+        .then(() => null, (error: unknown) => error);
+      expect(rejected).toMatchObject({ code: "UL024" });
+      expect(await sessions.readSession(
+        "verein-g04-write", "kindertraining", group.id, denied,
+      )).toBeNull();
+
+      const created = await attempt(allowed, "athlete-direct");
+      expect(created).toMatchObject({ intention: "attending", revision: 1 });
+      await calendar.writeException("verein-g04-write", group.id, allowed, null, "cancelled");
+      const cancelled = await attempt(allowed, "athlete-after-cancellation")
+        .then(() => null, (error: unknown) => error);
+      expect(cancelled).toMatchObject({ code: "UL024" });
+      await calendar.writeException("verein-g04-write", group.id, allowed, 1, null);
+      await calendar.writeException("verein-g04-write", group.id, denied, null, "extra");
+      const extra = await attempt(denied, "athlete-extra");
+      expect(extra).toMatchObject({ intention: "attending", revision: 1 });
+      expect(await sessions.readSession(
+        "verein-g04-write", "kindertraining", group.id, denied,
+      )).toMatchObject({
+        registrations: expect.arrayContaining([
+          expect.objectContaining({ athleteId: "athlete-extra" }),
+        ]),
+      });
     });
 
     it("keeps the new calendar tables free of member identifiers and free text", async () => {

@@ -330,6 +330,34 @@ export class PostgresUlcTrainingSessionRepository {
     return snapshot;
   }
 
+  /**
+   * G-04: ensure a rejected registration never leaves behind an orphan session.
+   * The candidate v17 trigger checks deadlines under the same transaction.
+   * Fail closed if PostgreSQL transactions are unavailable.
+   */
+  async withRegistrationTransaction<T>(
+    callback: (sessions: Pick<PostgresUlcTrainingSessionRepository,
+      "ensureScheduledSession" | "saveRegistration">) => Promise<T>,
+  ): Promise<T> {
+    const transactionalSql = this.#sql as UlcTrainingSessionSqlClient & {
+      begin?: <R>(
+        callback: (transaction: UlcTrainingSessionSqlClient) => Promise<R>,
+      ) => Promise<R>;
+    };
+    if (typeof transactionalSql.begin !== "function") {
+      throw new UlcTrainingSessionPersistenceError(
+        "Atomic registration requires a PostgreSQL transaction.",
+      );
+    }
+    return transactionalSql.begin(async (transaction) => {
+      const scopedSessions = new PostgresUlcTrainingSessionRepository(
+        transaction,
+        this.#createId,
+      );
+      return callback(scopedSessions);
+    });
+  }
+
   async listAttendanceForAthleteDateRange(
     organizationId: string,
     athleteId: string,

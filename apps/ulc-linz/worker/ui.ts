@@ -3390,8 +3390,40 @@ function isSelfRegistrationOption(option, sessionDate) {
       (Number.isSafeInteger(option.revision) && option.revision >= 1)) &&
     (!("note" in option) || option.note === null ||
       (typeof option.note === "string" && option.note.length <= 160 &&
-        !/[\x00-\x1f\x7f]/.test(option.note)))
+        !/[\x00-\x1f\x7f]/.test(option.note))) &&
+    (!("registrationWindow" in option) ||
+      isRegistrationWindowContract(option.registrationWindow))
   );
+}
+
+function isRegistrationWindowContract(window) {
+  return window !== null && typeof window === "object" &&
+    typeof window.visible === "boolean" &&
+    typeof window.scheduledWeekday === "boolean" &&
+    typeof window.exceptionalTrainingDay === "boolean" &&
+    typeof window.isLate === "boolean" &&
+    typeof window.mayEdit === "boolean" &&
+    ["open", "non-training-day", "too-far-ahead",
+     "cancelled", "deadline-passed", "past-training-day"].includes(window.reason) &&
+    (window.deadlineLocal === null ||
+      (typeof window.deadlineLocal === "string" &&
+       /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(window.deadlineLocal)));
+}
+
+function registrationWindowExplanation(window) {
+  const messages = {
+    "non-training-day": "Kein regulärer Trainingstag.",
+    "too-far-ahead": "Anmeldung für diesen Tag noch nicht freigegeben.",
+    "past-training-day": "Der Trainingstag liegt in der Vergangenheit.",
+    "deadline-passed": "Der Anmeldeschluss ist abgelaufen.",
+    "cancelled": "Dieses Training wurde abgesagt.",
+  };
+  const deadline = window.deadlineLocal
+    ? "Anmeldeschluss: " + germanDate(window.deadlineLocal.slice(0, 10)) +
+      " um " + window.deadlineLocal.slice(11) + " Uhr."
+    : "";
+  const late = window.isLate && window.mayEdit ? "Nachmeldung möglich." : "";
+  return [messages[window.reason], deadline, late].filter(Boolean).join(" ");
 }
 
 function selfRegistrationLabel(intention) {
@@ -3482,8 +3514,17 @@ function renderSelfRegistration() {
       );
       head.append(identity, current);
       card.append(head);
+      const registrationWindow = option.registrationWindow;
+      const canEditRegistration = registrationWindow?.mayEdit !== false;
+      if (registrationWindow) {
+        const hint = document.createElement("p");
+        hint.className = "settings-note";
+        hint.textContent = registrationWindowExplanation(registrationWindow);
+        if (hint.textContent) card.append(hint);
+      }
 
-      if (option.sessionState === "cancelled") {
+      if (option.sessionState === "cancelled" ||
+          registrationWindow?.reason === "cancelled") {
         const cancelled = document.createElement("p");
         cancelled.className = "registration-cancelled";
         cancelled.textContent = "Dieses Training wurde abgesagt.";
@@ -3513,7 +3554,8 @@ function renderSelfRegistration() {
         );
         button.disabled =
           optionSaving ||
-          selfRegistrationLoading;
+          selfRegistrationLoading ||
+          !canEditRegistration;
         actions.append(button);
       }
       card.append(actions);
@@ -3529,7 +3571,8 @@ function renderSelfRegistration() {
       noteInput.value = selfRegistrationNoteDrafts.has(optionKey)
         ? selfRegistrationNoteDrafts.get(optionKey)
         : option.note || "";
-      noteInput.disabled = optionSaving || selfRegistrationLoading;
+      noteInput.disabled = optionSaving || selfRegistrationLoading ||
+        !canEditRegistration;
       const noteSave = document.createElement("button");
       noteSave.type = "button";
       noteSave.className = "button button--secondary";
@@ -3537,7 +3580,7 @@ function renderSelfRegistration() {
       noteSave.dataset.registrationGroup = option.group.id;
       noteSave.dataset.registrationDate = option.sessionDate;
       noteSave.dataset.registrationNoteSave = "true";
-      noteSave.disabled = optionSaving ||
+      noteSave.disabled = optionSaving || !canEditRegistration ||
         noteInput.value.trim() === (option.note || "");
       noteInput.addEventListener("input", () => {
         if (noteInput.value.trim() === (option.note || "")) {
@@ -3559,7 +3602,8 @@ function renderSelfRegistration() {
       proxy.dataset.registrationProxyGroup = option.group.id;
       proxy.dataset.registrationProxyDate = option.sessionDate;
       proxy.textContent = "Für Kollegen anmelden";
-      proxy.disabled = optionSaving || selfRegistrationLoading;
+      proxy.disabled = optionSaving || selfRegistrationLoading ||
+        !canEditRegistration;
       card.append(proxy);
       day.append(card);
     }
@@ -3595,7 +3639,9 @@ function isSelfRegistrationProxyRoster(roster, groupId, sessionDate) {
   if (!roster || roster.group?.id !== groupId ||
       roster.sessionDate !== sessionDate ||
       !["scheduled", "cancelled", null].includes(roster.sessionState) ||
-      !Array.isArray(roster.options)) return false;
+      !Array.isArray(roster.options) ||
+      ("registrationWindow" in roster &&
+       !isRegistrationWindowContract(roster.registrationWindow))) return false;
   const seen = new Set();
   for (const entry of roster.options) {
     const athlete = entry?.athlete;
@@ -3633,6 +3679,7 @@ function renderSelfRegistrationProxy() {
     selector.value = previousId;
   }
   const selected = options.find((option) => option.athlete.id === selector.value);
+  const policyLocked = state.roster?.registrationWindow?.mayEdit === false;
   selector.disabled = state.loading || state.saving || options.length === 0;
   const noteInput = elements.registrationProxyNote;
   const noteSave = elements.registrationProxyNoteSave;
@@ -3642,16 +3689,19 @@ function renderSelfRegistrationProxy() {
           ? state.noteDrafts.get(selected.athlete.id) : selected.note || "")
       : "";
     noteInput.disabled = state.loading || state.saving || !selected ||
-      state.roster?.sessionState === "cancelled";
+      state.roster?.sessionState === "cancelled" || policyLocked;
   }
   if (noteSave) {
     noteSave.disabled = state.loading || state.saving || !selected ||
-      state.roster?.sessionState === "cancelled" ||
+      state.roster?.sessionState === "cancelled" || policyLocked ||
       !state.noteDrafts.has(selected?.athlete.id);
   }
   if (elements.registrationProxyContext) {
     elements.registrationProxyContext.textContent =
-      state.groupName + " · " + germanDate(state.sessionDate);
+      state.groupName + " · " + germanDate(state.sessionDate) +
+      (state.roster?.registrationWindow
+        ? " · " + registrationWindowExplanation(state.roster.registrationWindow)
+        : "");
   }
   if (elements.registrationProxyCurrent) {
     elements.registrationProxyCurrent.textContent = state.loading
@@ -3668,7 +3718,7 @@ function renderSelfRegistrationProxy() {
     "[data-registration-proxy-intention]",
   ) || []) {
     button.disabled = state.loading || state.saving || !selected ||
-      state.roster?.sessionState === "cancelled";
+      state.roster?.sessionState === "cancelled" || policyLocked;
     button.setAttribute("aria-pressed",
       selected?.intention === button.dataset.registrationProxyIntention ? "true" : "false");
   }
@@ -3679,7 +3729,8 @@ async function openSelfRegistrationProxy(groupId, sessionDate) {
       selfRegistrationSavingKeys.size > 0) return;
   const option = selfRegistrationOptions.find((entry) =>
     entry.group.id === groupId && entry.sessionDate === sessionDate);
-  if (!option || option.sessionState === "cancelled") return;
+  if (!option || option.sessionState === "cancelled" ||
+      option.registrationWindow?.mayEdit === false) return;
   const generation = attendanceSessionGeneration;
   const requestId = ++selfRegistrationProxyRequestId;
   selfRegistrationProxy = {
@@ -3722,6 +3773,7 @@ async function saveSelfRegistrationProxy(intention) {
   const id = elements.registrationProxyAthlete?.value || "";
   if (!state || !state.roster || state.saving || state.loading ||
       state.roster.sessionState === "cancelled" ||
+      state.roster.registrationWindow?.mayEdit === false ||
       !["unknown", "attending", "not_attending", "maybe"].includes(intention)) return;
   const selected = state.roster.options.find((option) => option.athlete.id === id);
   if (!selected) return;
@@ -3805,7 +3857,8 @@ async function handleSelfRegistrationClick(event) {
       candidate.group.id === groupId &&
       candidate.sessionDate === sessionDate,
   );
-  if (!option || option.sessionState === "cancelled") return;
+  if (!option || option.sessionState === "cancelled" ||
+      option.registrationWindow?.mayEdit === false) return;
   const intention = noteOnly ? option.intention : clickedIntention;
   const noteDraft = selfRegistrationNoteDrafts.get(optionKey);
   const noteChanged = noteDraft !== undefined &&
@@ -3849,7 +3902,8 @@ async function handleSelfRegistrationClick(event) {
     selfRegistrationOptions = selfRegistrationOptions.map((candidate) =>
       candidate.group.id === groupId &&
       candidate.sessionDate === sessionDate
-        ? saved
+        ? { ...saved, ...(previous.registrationWindow
+            ? { registrationWindow: previous.registrationWindow } : {}) }
         : candidate,
     );
     if (noteChanged) selfRegistrationNoteDrafts.delete(optionKey);
