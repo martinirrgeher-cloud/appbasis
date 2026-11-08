@@ -26,8 +26,7 @@ describe("G-02 youth attendance: offline safety and reconnection", () => {
     expect(script).toContain(prefix + "AutoSaveFailed = true;");
     expect(script).toContain(prefix + "Conflict = true;");
     expect(script).toContain("function schedule" + method + "AutoSave()");
-    expect(script).toContain("u12" === prefix ? "/api/modules/u12/session" :
-      "/api/modules/" + (prefix === "kids" ? "kindertraining" : prefix) + "/session");
+    expect(script).toContain("/api/modules/" + prefix + "/session");
     expect(script).toContain("Keine Internetverbindung.");
     expect(script).toContain("Ergebnis unklar;");
     expect(script).not.toContain("localStorage");
