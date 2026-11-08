@@ -18,6 +18,7 @@ export function renderGeneratedPreviewWranglerConfig({
   r2BucketName,
   r2Binding = "EXERCISE_MEDIA",
   r2Jurisdiction,
+  registrationCalendarV17 = false,
 } = {}) {
   const normalizedAppId = requiredIdentifier(appId, "appId");
   const workerName = generatedPreviewWorkerName(normalizedAppId);
@@ -42,6 +43,18 @@ export function renderGeneratedPreviewWranglerConfig({
     normalizedR2BucketName === null
       ? optionalR2Jurisdiction(r2Jurisdiction, { bucketConfigured: false })
       : optionalR2Jurisdiction(r2Jurisdiction, { bucketConfigured: true });
+  if (typeof registrationCalendarV17 !== "boolean") {
+    throw new Error("registrationCalendarV17 must be a boolean.");
+  }
+  if (registrationCalendarV17 && (
+    normalizedAppId !== "ulc-linz" ||
+    workerName !== "appbasis-ulc-linz" ||
+    normalizedEntrypoint !== "./worker/preview-exercise-catalog-standard.ts" ||
+    normalizedSecurityLogHyperdriveId === null ||
+    !/^https:\/\/appbasis-ulc-linz\.[a-z0-9-]+\.workers\.dev$/.test(normalizedBaseURL)
+  )) {
+    throw new Error("v17 calendar is restricted to the existing ULC Linz Preview Worker.");
+  }
 
   return Object.freeze({
     $schema: "./node_modules/wrangler/config-schema.json",
@@ -54,6 +67,11 @@ export function renderGeneratedPreviewWranglerConfig({
     keep_vars: true,
     vars: Object.freeze({
       APPBASIS_BASE_URL: normalizedBaseURL,
+      ...(registrationCalendarV17 ? {
+        APPBASIS_GENERATED_APP_ID: "ulc-linz",
+        APPBASIS_RUNTIME_ENVIRONMENT: "generated-preview-ulc-linz",
+        APPBASIS_REGISTRATION_CALENDAR_V17: "enabled",
+      } : {}),
       ...(normalizedBuildSha === null
         ? {}
         : { APPBASIS_BUILD_SHA: normalizedBuildSha }),

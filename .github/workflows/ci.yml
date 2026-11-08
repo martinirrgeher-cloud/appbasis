@@ -186,6 +186,9 @@ jobs:
       - name: Test trainer presence schema-v16 protected Preview migration and guards
         run: node --test ./tooling/ulc-linz-youth-trainers-preview.test.mjs
 
+      - name: Test G-04 direct existing Preview origin and calendar activation (no provider access)
+        run: node --test ./tooling/ulc-linz-g04-direct-preview-preflight.test.mjs ./tooling/generated-preview-deploy-config.test.mjs
+
       - name: Test G-04.5 real recovery operator safety (no provider access)
         run: node --test ./tooling/ulc-linz-g04-v16-actual-recovery.test.mjs
 
