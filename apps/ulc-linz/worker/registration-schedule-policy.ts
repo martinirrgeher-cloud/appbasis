@@ -172,7 +172,7 @@ export function evaluateUlcRegistrationSchedule(input: {
   readonly sessionState: "scheduled" | "cancelled" | null;
   readonly hasExistingRegistration: boolean;
   /** Trusted app-owned exception approved through the trainer/admin path. */
-  readonly authorizedExtraDay: boolean;
+  readonly calendarException: "extra" | "cancelled" | null;
 }): UlcRegistrationScheduleEvaluation {
   const day = validDate(input.sessionDate);
   const nowLocal = viennaLocalDateTime(input.serverNow);
@@ -182,16 +182,18 @@ export function evaluateUlcRegistrationSchedule(input: {
   if (input.sessionState !== null && input.sessionState !== "scheduled" &&
       input.sessionState !== "cancelled") invalid("Invalid session state.");
   if (typeof input.hasExistingRegistration !== "boolean" ||
-      typeof input.authorizedExtraDay !== "boolean") {
+      ![null, "extra", "cancelled"].includes(input.calendarException)) {
     invalid("Registration visibility flags are invalid.");
   }
   const scheduledWeekday = schedule === null ||
     schedule.weekdays.includes(weekday(day));
-  // A previously auto-created session is NOT an authorization to bypass the
-  // training-day policy. Only a separately approved exception permits edits.
-  const exceptionalTrainingDay = input.authorizedExtraDay;
+  // Only the explicit calendar exception authorizes an unscheduled day.
+  // A stored session/registration remains visible but never bypasses policy.
+  const exceptionalTrainingDay = input.calendarException === "extra";
+  const cancelledByCalendar = input.calendarException === "cancelled";
   const visible = scheduledWeekday || exceptionalTrainingDay ||
-    input.sessionState !== null || input.hasExistingRegistration;
+    cancelledByCalendar || input.sessionState !== null ||
+    input.hasExistingRegistration;
   const nowWeek = weekMonday(today);
   const targetWeek = weekMonday(day);
   const weeksBetween = Math.round(
@@ -207,7 +209,7 @@ export function evaluateUlcRegistrationSchedule(input: {
   const isLate = deadlineLocal !== null &&
     input.serverNow.getTime() > viennaDeadlineInstant(deadlineLocal);
   const reason: UlcRegistrationScheduleEvaluation["reason"] =
-    input.sessionState === "cancelled" ? "cancelled" :
+    (input.sessionState === "cancelled" || cancelledByCalendar) ? "cancelled" :
     !scheduledWeekday && !exceptionalTrainingDay ? "non-training-day" :
     !visible ? "non-training-day" :
     inPast ? "past-training-day" :
