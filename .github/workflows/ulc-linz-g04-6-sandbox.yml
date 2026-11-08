@@ -1,0 +1,242 @@
+name: ULC G-04.6 Dedicated Calendar Sandbox
+run-name: G04.6 sandbox ${{ inputs.operation }}
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Inspect isolated DB, provision named Hyperdrives, or explicitly deploy sandbox Worker
+        required: true
+        type: choice
+        options: [inspect, provision, deploy]
+      apply:
+        description: Explicit authorization required for provision or deploy
+        required: true
+        type: boolean
+        default: false
+      approvalRef:
+        description: For mutations type exact phrase G04-6-SANDBOX
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+concurrency:
+  group: ulc-g046-dedicated-calendar-sandbox
+  cancel-in-progress: false
+
+jobs:
+  sandbox:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: ulc-g04-6-calendar-sandbox
+    env:
+      APPBASIS_G046_APP_DATABASE_URL: ${{ secrets.APPBASIS_G046_APP_DATABASE_URL }}
+      APPBASIS_G046_SECURITY_DATABASE_URL: ${{ secrets.APPBASIS_G046_SECURITY_DATABASE_URL }}
+    steps:
+      - name: Require main and a separate explicit sandbox release authorization
+        env:
+          REF: ${{ github.ref }}
+          OP: ${{ inputs.operation }}
+          APPLY: ${{ inputs.apply && '1' || '0' }}
+          PHRASE: ${{ inputs.approvalRef }}
+        run: |
+          set -euo pipefail
+          test "$REF" = "refs/heads/main"
+          if [ "$OP" != "inspect" ]; then
+            test "$APPLY" = "1" && test "$PHRASE" = "G04-6-SANDBOX" || {
+              echo "Independent G04 sandbox operator approval missing." >&2
+              exit 1
+            }
+          fi
+
+      - name: Check out exact main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify repository
+        run: pnpm run verify:repo
+
+      - name: Validate distinct sandbox-only DB origins and mask secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in APPBASIS_G046_APP_DATABASE_URL APPBASIS_G046_SECURITY_DATABASE_URL; do
+            val="${!name:-}"
+            test -n "$val" || { echo "Missing dedicated sandbox secret: $name" >&2; exit 1; }
+            echo "::add-mask::$val"
+          done
+          node tooling/ulc-linz-g04-sandbox-target.mjs preflight
+
+      - name: Verify v17 sandbox tables, guard and separate least-privileged roles
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { createPostgresDatabase } from "./packages/database/src/node-runtime.mjs";
+          const app = createPostgresDatabase(process.env.APPBASIS_G046_APP_DATABASE_URL);
+          const sec = createPostgresDatabase(process.env.APPBASIS_G046_SECURITY_DATABASE_URL);
+          try {
+            const [a] = await app.client.unsafe(
+              "SELECT current_database() AS db,current_user AS role," +
+              "to_regclass('public.ulc_linz_registration_calendar_rule') IS NOT NULL AS rule," +
+              "to_regclass('public.ulc_linz_registration_calendar_exception') IS NOT NULL AS exception," +
+              "has_table_privilege(current_user,'public.ulc_linz_registration_calendar_rule','SELECT,INSERT,UPDATE') AS rw_rule," +
+              "has_table_privilege(current_user,'public.ulc_linz_registration_calendar_exception','SELECT,INSERT,UPDATE') AS rw_exception," +
+              "has_table_privilege(current_user,'public.ulc_linz_security_event_log','SELECT') AS reads_security_log");
+            const [s] = await sec.client.unsafe(
+              "SELECT current_database() AS db,current_user AS role," +
+              "has_table_privilege(current_user,'public.ulc_linz_registration_calendar_rule','SELECT') AS calendar_read");
+            const [guard] = await app.client.unsafe(
+              "SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid" +
+              " WHERE c.relname='ulc_linz_training_registration'" +
+              " AND t.tgname='ulc_linz_registration_calendar_guard_trg' AND t.tgenabled='O') AS present");
+            if (a?.db!=="appbasis_ulc_linz_preview" ||
+                a?.role!=="appbasis_ulc_g046_application" ||
+                !a.rule || !a.exception || !a.rw_rule || !a.rw_exception ||
+                a.reads_security_log || !guard?.present ||
+                s?.db!==a.db || s?.role!=="appbasis_ulc_g046_security_log" ||
+                s.calendar_read) throw Error("Unsafe sandbox role or v17 schema.");
+            console.log("G-04.6 sandbox database and least-privilege role check PASS.");
+          } catch {
+            console.error("G-04.6 sandbox SQL verification blocked.");
+            process.exitCode=1;
+          } finally {
+            await app.client.end().catch(()=>{});
+            await sec.client.end().catch(()=>{});
+          }
+          NODE
+
+      - name: Resolve dedicated Hyperdrives; provision only under explicit approval
+        if: inputs.operation != 'inspect'
+        id: hyperdrives
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_G046_PROVIDER_APPROVED: ${{ inputs.operation == 'provision' && '1' || '0' }}
+          OP: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN; do
+            val="${!name:-}"
+            test -n "$val" || { echo "Missing sandbox Cloudflare input." >&2; exit 1; }
+            echo "::add-mask::$val"
+          done
+          MODE=resolve
+          if [ "$OP" = "provision" ]; then MODE=provision; fi
+          RESULT="$(node tooling/ulc-linz-g04-sandbox-target.mjs "$MODE")"
+          APP_ID="$(jq -er '.applicationId' <<<"$RESULT")"
+          SEC_ID="$(jq -er '.securityLogId' <<<"$RESULT")"
+          test "$APP_ID" != "$SEC_ID"
+          echo "::add-mask::$APP_ID"
+          echo "::add-mask::$SEC_ID"
+          printf 'app=%s\nsecurity=%s\n' "$APP_ID" "$SEC_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve separate Cloudflare workers.dev test origin
+        if: inputs.operation == 'deploy'
+        id: origin
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain")"
+          SUBDOMAIN="$(jq -er 'if .success==true then .result.subdomain else empty end' <<<"$RESPONSE")"
+          [[ "$SUBDOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]
+          printf 'url=https://appbasis-ulc-linz-g04-sandbox.%s.workers.dev\n' "$SUBDOMAIN" >> "$GITHUB_OUTPUT"
+
+      - name: Render dedicated sandbox Worker config and v17 flag
+        if: inputs.operation == 'deploy'
+        env:
+          APPBASIS_G046_APP_HYPERDRIVE_ID: ${{ steps.hyperdrives.outputs.app }}
+          APPBASIS_G046_SECURITY_HYPERDRIVE_ID: ${{ steps.hyperdrives.outputs.security }}
+          APPBASIS_G046_BASE_URL: ${{ steps.origin.outputs.url }}
+        run: node tooling/ulc-linz-g04-sandbox-target.mjs render
+
+      - name: Validate separate sandbox bundle without deployment
+        if: inputs.operation == 'deploy'
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          pnpm exec wrangler deploy
+          --cwd ../ulc-linz
+          --config wrangler.g04-sandbox.generated.json
+          --dry-run
+          --experimental-provision=false
+          --experimental-auto-create=false
+
+      - name: Write independent sandbox auth secret ONLY to the dedicated Worker
+        if: inputs.operation == 'deploy'
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APPBASIS_G046_BETTER_AUTH_SECRET: ${{ secrets.APPBASIS_G046_BETTER_AUTH_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${#APPBASIS_G046_BETTER_AUTH_SECRET}" -ge 32 || {
+            echo "Dedicated sandbox auth secret required." >&2
+            exit 1
+          }
+          echo "::add-mask::$APPBASIS_G046_BETTER_AUTH_SECRET"
+          printf '%s' "$APPBASIS_G046_BETTER_AUTH_SECRET" | \
+            pnpm exec wrangler secret put BETTER_AUTH_SECRET \
+              --name appbasis-ulc-linz-g04-sandbox >/dev/null
+
+      - name: Deploy ONLY newly named sandbox Worker
+        if: inputs.operation == 'deploy'
+        working-directory: apps/reference
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          pnpm exec wrangler deploy
+          --cwd ../ulc-linz
+          --config wrangler.g04-sandbox.generated.json
+          --experimental-provision=false
+          --experimental-auto-create=false
+
+      - name: Smoke exact sandbox build and anonymous API denial
+        if: inputs.operation == 'deploy'
+        env:
+          BASE_URL: ${{ steps.origin.outputs.url }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error "$BASE_URL/api/health/build" |
+            jq -e --arg sha "$EXPECTED_SHA" '.status=="ok" and .appId=="ulc-linz" and .gitSha==$sha' >/dev/null
+          status="$(curl --silent --show-error -o "$RUNNER_TEMP/g046-unauth.json" \
+            -w '%{http_code}' "$BASE_URL/api/modules/athletes/registration-calendar?groupId=anonymous")"
+          test "$status" = 401 || test "$status" = 403 || {
+            echo "Sandbox must not expose calendar APIs anonymously." >&2
+            exit 1
+          }
+
+      - name: Cleanup temporary sandbox config
+        if: always()
+        run: rm -f apps/ulc-linz/wrangler.g04-sandbox.generated.json
