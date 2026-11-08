@@ -64,7 +64,7 @@ describe("ULC attendance: group overlay instead of an intermediate page", () => 
     expect(ULC_LINZ_APP_SCRIPT).toContain('void navigateToAttendanceGroup(control.dataset.attendanceGroup || "")');
   });
 
-  it("finds Irrgeher only from the authorized trainer roster, never from a fixed ID or self-registration group", () => {
+  it("finds Irrgeher only from the authorized group roster, in both trainer and self-registration modes", () => {
     const source = extractRuntimeFunction(
       "function findAttendanceTrainingGroup(kind) {",
       "\nfunction setAppNavAttendanceOpen(open)",
@@ -83,10 +83,16 @@ describe("ULC attendance: group overlay instead of an intermediate page", () => 
 
     const denied = makeLookup(trainingGroups, false);
     expect(denied("irrgeher")).toBeNull();
-    const wrongMode = makeLookup([
+    // Switching who submits registration must never hide the trainer's
+    // actual-attendance page for the same server-authorized group.
+    const selfRegistration = makeLookup([
       { id: "self-irrgeher", name: "Gruppe Irrgeher", attendanceMode: "self_registration" },
     ], true);
-    expect(wrongMode("irrgeher")).toBeNull();
+    expect(selfRegistration("irrgeher")?.id).toBe("self-irrgeher");
+    const unrelatedGroup = makeLookup([
+      { id: "other", name: "Preview Selbstanmeldung", attendanceMode: "self_registration" },
+    ], true);
+    expect(unrelatedGroup("irrgeher")).toBeNull();
   });
 
   it("opens the existing group attendance handler and respects an aborted navigation", async () => {
