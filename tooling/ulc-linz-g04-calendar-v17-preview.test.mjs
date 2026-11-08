@@ -43,6 +43,11 @@ const current = {
       key_columns: ["organization_id", "group_id"] },
     { table_name: exceptions, contype: "p", convalidated: true,
       key_columns: ["organization_id", "group_id", "session_date"] },
+    ...[rules, exceptions].map((table_name) => ({
+      table_name, contype: "f", convalidated: true, confdeltype: "c",
+      foreign_table: "appbasis_training_group", foreign_schema: "public",
+      key_columns: ["group_id"], referenced_columns: ["id"],
+    })),
   ],
   triggers: [{
     tgname: "ulc_linz_registration_calendar_guard_trg",
@@ -89,6 +94,25 @@ test("G-04.2c rejects incomplete v16, partial v17, broken guard, or metadata dri
     { ...current, columns: current.columns.filter((x) =>
       !(x.table_name === exceptions && x.column_name === "kind")) },
     { ...current, constraints: current.constraints.slice(0, 1) },
+    { ...current, constraints: current.constraints.filter((x) =>
+      !(x.table_name === rules && x.contype === "f")) },
+    { ...current, constraints: current.constraints.map((x) =>
+      x.contype === "f" && x.table_name === exceptions
+        ? { ...x, confdeltype: "a" } : x) },
+    { ...current, constraints: current.constraints.map((x) =>
+      x.contype === "f" && x.table_name === rules
+        ? { ...x, foreign_table: "unrelated_group" } : x) },
+    { ...current, constraints: current.constraints.map((x) =>
+      x.contype === "f" && x.table_name === rules
+        ? { ...x, key_columns: ["organization_id"] } : x) },
+    { ...current, constraints: current.constraints.map((x) =>
+      x.contype === "f" && x.table_name === rules
+        ? { ...x, referenced_columns: ["organization_id"] } : x) },
+    { ...current, constraints: current.constraints.concat({
+      table_name: exceptions, contype: "f", convalidated: true, confdeltype: "c",
+      foreign_table: "appbasis_training_group", foreign_schema: "public",
+      key_columns: ["group_id"], referenced_columns: ["id"],
+    }) },
     { ...current, constraints: current.constraints.map((c) =>
       c.table_name === exceptions
         ? { ...c, key_columns: ["organization_id", "group_id"] }
