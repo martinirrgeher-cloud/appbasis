@@ -141,7 +141,7 @@ export class PostgresUlcRegistrationCalendarRepository {
 
   /**
    * Revision CAS. Only a trusted, already authorized server handler may call
-   * this method. The SQL itself requires an active self-registration group in
+   * this method. The SQL itself requires an active training group in
    * the same organization and locks it to serialize policy writers.
    * Initial creation requires expectedRevision=null; modification requires
    * the exact stored revision. No replacement on stale/missing revisions.
@@ -160,7 +160,8 @@ export class PostgresUlcRegistrationCalendarRepository {
       `WITH eligible AS MATERIALIZED (
          SELECT id FROM appbasis_training_group
           WHERE organization_id = $1 AND id = $2
-            AND is_active = true AND attendance_mode = 'self_registration'
+            AND is_active = true
+            AND attendance_mode IN ('self_registration', 'trainer_roll_call')
           FOR UPDATE
        ), written AS (
          INSERT INTO ulc_linz_registration_calendar_rule
@@ -216,7 +217,8 @@ export class PostgresUlcRegistrationCalendarRepository {
       `WITH eligible AS MATERIALIZED (
          SELECT id FROM appbasis_training_group
           WHERE organization_id = $1 AND id = $2
-            AND is_active = true AND attendance_mode = 'self_registration'
+            AND is_active = true
+            AND attendance_mode IN ('self_registration', 'trainer_roll_call')
           FOR UPDATE
        ), written AS (
          INSERT INTO ulc_linz_registration_calendar_exception
