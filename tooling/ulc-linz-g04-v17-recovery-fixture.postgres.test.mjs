@@ -175,8 +175,22 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     sourceCreated = true;
     await admin.client.unsafe("CREATE DATABASE " + identifier(restoreName));
     restoreCreated = true;
+    // Different database defaults previously made equal timestamptz values hash differently.
+    await admin.client.unsafe("ALTER DATABASE " + identifier(sourceName) + " SET TIMEZONE TO 'Pacific/Auckland'");
+    await admin.client.unsafe("ALTER DATABASE " + identifier(restoreName) + " SET TIMEZONE TO 'America/Los_Angeles'");
     const sourceUrl = databaseUrlFor(baseUrl, sourceName);
     const restoreUrl = databaseUrlFor(baseUrl, restoreName);
+    const sourceTimezoneDb = createPostgresDatabase(sourceUrl);
+    const restoreTimezoneDb = createPostgresDatabase(restoreUrl);
+    try {
+      const srcZone = await sourceTimezoneDb.client.unsafe("SHOW TimeZone");
+      const dstZone = await restoreTimezoneDb.client.unsafe("SHOW TimeZone");
+      assert.equal(srcZone[0].TimeZone, "Pacific/Auckland");
+      assert.equal(dstZone[0].TimeZone, "America/Los_Angeles");
+    } finally {
+      await sourceTimezoneDb.client.end();
+      await restoreTimezoneDb.client.end();
+    }
     const plan = await loadRepositoryMigrationPlan({
       repositoryRoot,
       manifestPath: join(repositoryRoot, "apps", "ulc-linz", "appbasis.database.json"),
@@ -226,14 +240,16 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     await source.client.unsafe(
       "CREATE TABLE public.g04_recovery_fixture (" +
       "id text PRIMARY KEY, group_key text NOT NULL, session_date date NOT NULL, " +
-      "revision integer NOT NULL CHECK (revision > 0))",
+      "revision integer NOT NULL CHECK (revision > 0), " +
+      "event_at timestamptz NOT NULL)",
     );
     await source.client.unsafe(
       "INSERT INTO public.g04_recovery_fixture VALUES " +
-      "('fixture-1','demo-U12','2026-11-09',1)," +
-      "('fixture-2','demo-U14','2026-11-11',3)",
+      "('fixture-1','demo-U12','2026-11-09',1,'2026-11-09T14:30:00Z')," +
+      "('fixture-2','demo-U14','2026-11-11',3,'2026-11-11T15:30:00Z')",
     );
-    const selectFixture = "SELECT id, group_key, session_date::text AS training_day, revision " +
+    const selectFixture = "SELECT id, group_key, session_date::text AS training_day, revision, " +
+      "event_at AT TIME ZONE 'UTC' AS utc_event_at " +
       "FROM public.g04_recovery_fixture ORDER BY id";
     const fixtureBefore = (await source.client.unsafe(selectFixture)).map((row) => ({ ...row }));
     assert.equal(fixtureBefore.length, 2);
