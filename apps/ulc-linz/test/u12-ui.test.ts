@@ -135,7 +135,7 @@ describe("ULC A03: one training date, one binary trainer name list", () => {
     expect(hasUnconfirmed(snapshot("excused"), unchecked, titles, assignments)).toBe(true);
     expect(hasUnconfirmed(snapshot("present"), unchecked, titles, assignments)).toBe(true);
     expect(ULC_U12_SCRIPT).toContain(
-      'u12HasUnconfirmedAnswers() ? "Alte Antworten – beim Ändern automatisch übernehmen"'
+      'u12HasUnconfirmedAnswers() ? "Nicht bearbeitete Einträge bleiben unverändert"'
     );
     const saveStart = ULC_U12_SCRIPT.indexOf("async function saveU12Attendance()");
     const saveBody = ULC_U12_SCRIPT.slice(saveStart);
