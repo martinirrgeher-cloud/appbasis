@@ -9,6 +9,7 @@ import type { UlcRegistrationCalendarSqlClient } from "../worker/registration-ca
 const ready = {
   database_name: "appbasis_ulc_linz_preview",
   principal_name: "appbasis_ulc_linz_preview_application",
+  least_privilege_role: true,
   rule_table: true,
   exception_table: true,
   guard_function: true,
@@ -27,6 +28,7 @@ describe("G-04.2c isolated Preview calendar runtime attestation", () => {
     const rejected = [
       { ...ready, database_name: "production" },
       { ...ready, principal_name: "appbasis_ulc_linz_preview_migration" },
+      { ...ready, least_privilege_role: false },
       { ...ready, rule_table: false },
       { ...ready, exception_table: false },
       { ...ready, guard_function: false },
@@ -54,6 +56,8 @@ describe("G-04.2c isolated Preview calendar runtime attestation", () => {
       expect(sql).toContain("current_user");
       expect(sql).toContain("ulc_linz_registration_calendar_guard_trg");
       expect(sql).toContain("has_table_privilege");
+      expect(sql).toContain("NOT r.rolsuper");
+      expect(sql).toContain("t.tgfoid = p.oid");
       return [ready];
     });
     await expect(verifyUlcG04PreviewCalendarReadiness({
