@@ -739,7 +739,7 @@ function refreshU12Controls() {
         ? "Kategorie auswählen · Speichern pausiert" :
       u12DirtyDates.size > 0 ? "Änderungen werden automatisch gespeichert …" :
       u12Snapshot.session === null ? "Noch kein Training erfasst" :
-      u12HasUnconfirmedAnswers() ? "Alte Antworten – beim Ändern automatisch übernehmen" :
+      u12HasUnconfirmedAnswers() ? "Nicht bearbeitete Einträge bleiben unverändert" :
       "Automatisch gespeichert";
   }
   const participantsById = new Map((u12Snapshot?.participants ?? [])
