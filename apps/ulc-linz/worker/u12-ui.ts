@@ -1534,14 +1534,18 @@ async function u12FindCalendarDate(groupId, anchor, direction, includeAnchor) {
 
 async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false) {
   if (!u12Ui.date || !u12Ready || u12CalendarBusy || u12Loading || u12Saving) return;
-  if (!(await u12FlushChanges())) return;
   const groupId = u12Ui.group?.value || "";
   if (!groupId) return;
   const generation = attendanceSessionGeneration;
   const loadId = u12LoadId;
+  // Lock all draft inputs *before* the potentially asynchronous CAS flush.
+  // saveU12Attendance must remain callable by this explicit flush.
   u12CalendarBusy = true;
   refreshU12Controls();
   try {
+    if (!(await u12FlushChanges())) return;
+    if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
+        u12LoadId !== loadId) return;
     const chosen = await u12FindCalendarDate(groupId, anchor, direction, includeAnchor);
     if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
         u12LoadId !== loadId) return;
@@ -1672,7 +1676,9 @@ async function loadU12Attendance() {
 
 async function saveU12Attendance() {
   if (u12Saving) return u12SaveInFlight ?? false;
-  if (!u12Snapshot || u12Loading || u12CalendarBusy || !u12Ready || !u12WriteAllowed ||
+  // Calendar navigation locks new edits before flushing the existing draft.
+  // The flush itself must still be able to save while calendarBusy is true.
+  if (!u12Snapshot || u12Loading || !u12Ready || !u12WriteAllowed ||
       u12Conflict || u12Snapshot.session?.state === "cancelled") return false;
   if (u12DirtyDates.size === 0) return true;
   const titles = u12ContentTitles.map((title) => title.trim());
@@ -1814,17 +1820,22 @@ async function u12ChangeDate() {
   if (u12Saving || u12Loading || u12CalendarBusy) return;
   if (u12Ui.date?.value === u12LoadedDate) return;
   if (u12FollowGroupCalendar) {
-    if (!u12Ui.date?.value || !(await u12FlushChanges())) {
-      if (u12Ui.date) u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
-      return;
-    }
+    if (!u12Ui.date?.value) return;
     const groupId = u12Ui.group?.value || "";
     const selected = u12Ui.date.value;
     const generation = attendanceSessionGeneration;
     const loadId = u12LoadId;
+    // Select change already altered the visible value; lock draft editing
+    // before flushing the old date to prevent late unsaved modifications.
     u12CalendarBusy = true;
     refreshU12Controls();
     try {
+      if (!(await u12FlushChanges())) {
+        u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
+        return;
+      }
+      if (generation !== attendanceSessionGeneration ||
+          u12Ui.group?.value !== groupId || loadId !== u12LoadId) return;
       const dates = await u12FetchCalendarDates(
         groupId, u12CalendarWeekStart(selected));
       if (generation !== attendanceSessionGeneration ||
