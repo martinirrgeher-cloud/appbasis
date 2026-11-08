@@ -30,7 +30,8 @@ describe("G-04.2b gated mobile group calendar editor", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain("masterdataCalendarAvailable");
     expect(ULC_LINZ_APP_SCRIPT).toContain("groupCalendarRequestId");
     expect(ULC_LINZ_APP_CSS).toContain("min-height: 42px;");
-    expect(ULC_LINZ_APP_CSS).toContain("@media(max-width: 430px)");
+    expect(ULC_LINZ_APP_CSS).toContain("@media(max-width:430px)");
+    expect(ULC_LINZ_APP_CSS).toContain("grid-template-columns:repeat(7,minmax(0,1fr))");
     expect(ULC_LINZ_APP_CSS).toContain(".registration-calendar-weekdays");
   });
 
