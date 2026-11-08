@@ -181,7 +181,7 @@ export const ULC_U12_CSS = `
 .u12-info--emergency { color:var(--accent); border-color:var(--accent); }
 .u12-info:focus-visible, .u12-contact-call:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .u12-person__toggle { display: flex; gap: 10px; flex: 1 1 auto; align-items: center; min-width: 0; cursor: pointer; }
-.u12-details-dialog { width: min(96vw, 480px); max-height: min(85dvh, 690px); border-radius: 16px; border: 1px solid var(--border); padding: 18px; color: inherit; background: var(--surface, #fff); overflow-y: auto; }
+.u12-details-dialog { box-sizing:border-box; width: min(96vw, 480px); max-height: min(85dvh, 690px); border-radius: 16px; border: 1px solid var(--border); padding: 18px; color: inherit; background: var(--surface, #fff); overflow-y: auto; }
 .u12-details-dialog::backdrop { background: rgba(0, 0, 0, .6); }
 .u12-details-header { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .u12-details-header h2 { margin: 0; font-size: 1.2rem; }
