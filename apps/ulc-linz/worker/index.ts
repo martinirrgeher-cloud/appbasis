@@ -4597,7 +4597,7 @@ async function athletesMasterdataResponse(
   );
   return Response.json({
     masterdata,
-    calendarAvailable: runtime.registrationCalendar != null,
+    ...(runtime.registrationCalendar ? { calendarAvailable: true } : {}),
   }, { headers: { "cache-control": "private, no-store" } });
 }
 
