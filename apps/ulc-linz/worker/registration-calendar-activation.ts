@@ -16,8 +16,8 @@ export class UlcRegistrationCalendarActivationError extends Error {
 export interface UlcCalendarReadiness {
   readonly database_name: string;
   readonly principal_name: string;
-  readonly rule_table: string | null;
-  readonly exception_table: string | null;
+  readonly rule_table: boolean;
+  readonly exception_table: boolean;
   readonly guard_function: boolean;
   readonly guard_trigger: boolean;
   readonly rule_read: boolean;
@@ -38,8 +38,8 @@ export function assertUlcG04PreviewCalendarReadiness(value: unknown): asserts va
     typeof row.principal_name === "string" &&
     row.principal_name.length > 0 &&
     row.principal_name !== "appbasis_ulc_linz_preview_migration" &&
-    row.rule_table === "ulc_linz_registration_calendar_rule" &&
-    row.exception_table === "ulc_linz_registration_calendar_exception" &&
+    row.rule_table === true &&
+    row.exception_table === true &&
     [
       "guard_function", "guard_trigger", "rule_read", "rule_insert",
       "rule_update", "exception_read", "exception_insert", "exception_update",
@@ -54,8 +54,8 @@ export async function verifyUlcG04PreviewCalendarReadiness(
     SELECT
       current_database() AS database_name,
       current_user AS principal_name,
-      to_regclass('public.ulc_linz_registration_calendar_rule')::text AS rule_table,
-      to_regclass('public.ulc_linz_registration_calendar_exception')::text AS exception_table,
+      to_regclass('public.ulc_linz_registration_calendar_rule') IS NOT NULL AS rule_table,
+      to_regclass('public.ulc_linz_registration_calendar_exception') IS NOT NULL AS exception_table,
       EXISTS (
         SELECT 1 FROM pg_catalog.pg_proc p
         JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
@@ -72,17 +72,17 @@ export async function verifyUlcG04PreviewCalendarReadiness(
           AND t.tgenabled = 'O' AND NOT t.tgisinternal
       ) AS guard_trigger,
       has_table_privilege(current_user,
-        'public.ulc_linz_registration_calendar_rule', 'SELECT') AS rule_read,
+        to_regclass('public.ulc_linz_registration_calendar_rule'), 'SELECT') AS rule_read,
       has_table_privilege(current_user,
-        'public.ulc_linz_registration_calendar_rule', 'INSERT') AS rule_insert,
+        to_regclass('public.ulc_linz_registration_calendar_rule'), 'INSERT') AS rule_insert,
       has_table_privilege(current_user,
-        'public.ulc_linz_registration_calendar_rule', 'UPDATE') AS rule_update,
+        to_regclass('public.ulc_linz_registration_calendar_rule'), 'UPDATE') AS rule_update,
       has_table_privilege(current_user,
-        'public.ulc_linz_registration_calendar_exception', 'SELECT') AS exception_read,
+        to_regclass('public.ulc_linz_registration_calendar_exception'), 'SELECT') AS exception_read,
       has_table_privilege(current_user,
-        'public.ulc_linz_registration_calendar_exception', 'INSERT') AS exception_insert,
+        to_regclass('public.ulc_linz_registration_calendar_exception'), 'INSERT') AS exception_insert,
       has_table_privilege(current_user,
-        'public.ulc_linz_registration_calendar_exception', 'UPDATE') AS exception_update
+        to_regclass('public.ulc_linz_registration_calendar_exception'), 'UPDATE') AS exception_update
   `);
   if (rows.length !== 1) throw new UlcRegistrationCalendarActivationError();
   assertUlcG04PreviewCalendarReadiness(rows[0]);
