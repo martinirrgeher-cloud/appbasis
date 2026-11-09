@@ -1590,6 +1590,9 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false,
     if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
         u12LoadId !== loadId) return;
     // A fresh navigation must observe schedule updates from other sessions.
+    // Remember the prior rule only for deciding whether the displayed
+    // dropdown can be reused. It never substitutes for server validation.
+    const previousRuleWeekdays = JSON.stringify(u12CalendarRuleWeekdays);
     u12CalendarWeekCache = new Map();
     let selectedAnchor = anchor;
     let includeSelectedAnchor = includeAnchor;
@@ -1610,11 +1613,38 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false,
       groupId, selectedAnchor, direction, includeSelectedAnchor, onlyWeekday);
     if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
         u12LoadId !== loadId) return;
-    // A native select ignores a value that is not yet in its option list.
-    // Expand from authorized calendar dates before assigning the target.
-    await u12PopulateCalendarChoices(groupId, chosen, () =>
-      generation === attendanceSessionGeneration &&
-      u12Ui.group?.value === groupId && u12LoadId === loadId);
+    // The next/previous arrow normally selects a date already in the
+    // dropdown. Avoid an eight-week network burst when the freshly verified
+    // target week matches the current authorized options exactly.
+    // Rule changes, added/cancelled dates and dates outside the visible range
+    // still rebuild the options from the server. No write uses this shortcut.
+    const chosenWeek = u12CalendarWeekStart(chosen);
+    await u12FetchCalendarDates(groupId, chosenWeek);
+    const optionValues = Array.from(u12Ui.date.options ?? [],
+      (option) => option.value);
+    // Compare every freshly visited week, not just the destination. For
+    // example, a cancelled Tuesday that the search skipped must disappear
+    // from the dropdown even when the next Tuesday was already displayed.
+    const verifiedWeeks = [...u12CalendarWeekCache.entries()].filter(
+      ([key]) => key.startsWith(groupId + "|"),
+    );
+    const displayedWeeksMatch = verifiedWeeks.every(([key, verifiedDays]) => {
+      const weekStart = key.slice(groupId.length + 1);
+      const weekEnd = shiftIsoDate(weekStart, 6);
+      const displayedDays = optionValues.filter((day) =>
+        day >= weekStart && day <= weekEnd);
+      return displayedDays.length === verifiedDays.length &&
+        verifiedDays.every((day, index) => displayedDays[index] === day);
+    });
+    const choicesStillCurrent =
+      previousRuleWeekdays === JSON.stringify(u12CalendarRuleWeekdays) &&
+      optionValues.includes(chosen) &&
+      displayedWeeksMatch;
+    if (!choicesStillCurrent) {
+      await u12PopulateCalendarChoices(groupId, chosen, () =>
+        generation === attendanceSessionGeneration &&
+        u12Ui.group?.value === groupId && u12LoadId === loadId);
+    }
     if (generation !== attendanceSessionGeneration || u12Ui.group?.value !== groupId ||
         u12LoadId !== loadId) return;
     u12Ui.date.value = chosen;
