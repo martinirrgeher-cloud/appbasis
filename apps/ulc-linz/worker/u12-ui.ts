@@ -1620,7 +1620,7 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false,
     u12Ui.date.value = chosen;
     // Keep the old draft locked throughout the destination load. Never clear
     // calendarBusy between the last flush and the new attendance snapshot.
-    await loadU12Attendance();
+    await loadU12Attendance({ calendarChoicesReady: true });
   } catch {
     if (generation === attendanceSessionGeneration && u12Ui.group?.value === groupId) {
       showMessage(u12Ui.message,
@@ -1634,7 +1634,7 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false,
   }
 }
 
-async function loadU12Attendance() {
+async function loadU12Attendance({ calendarChoicesReady = false } = {}) {
   const groupId = u12Ui.group?.value || "";
   let date = u12Ui.date?.value || "";
   if (!u12Ready || u12Loading || u12Saving || !groupId || !date) {
@@ -1649,15 +1649,21 @@ async function loadU12Attendance() {
     u12CalendarBusy = true;
     refreshU12Controls();
     try {
+      const requestedDate = date;
       const dates = await u12FetchCalendarDates(groupId, u12CalendarWeekStart(date));
       if (!dates.includes(date)) {
         date = await u12FindCalendarDate(groupId, date, 1, true);
       }
       if (generation !== attendanceSessionGeneration ||
           loadId !== u12LoadId || u12Ui.group?.value !== groupId) return;
-      await u12PopulateCalendarChoices(groupId, date, () =>
-        generation === attendanceSessionGeneration &&
-        loadId === u12LoadId && u12Ui.group?.value === groupId);
+      // Arrow navigation has already populated the authorized options. Recheck
+      // the target week freshly, but do not issue another eight-week request
+      // burst unless the selected training day was removed in the meantime.
+      if (!calendarChoicesReady || date !== requestedDate) {
+        await u12PopulateCalendarChoices(groupId, date, () =>
+          generation === attendanceSessionGeneration &&
+          loadId === u12LoadId && u12Ui.group?.value === groupId);
+      }
       if (generation !== attendanceSessionGeneration ||
           loadId !== u12LoadId || u12Ui.group?.value !== groupId) return;
       u12Ui.date.value = date;
