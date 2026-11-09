@@ -7,6 +7,32 @@ import {
 } from "../worker/ui";
 
 describe("ULC weekly self-registration and account switching", () => {
+  it("shows ISO calendar week and week-year across year boundaries without changing navigation", () => {
+    const start = ULC_LINZ_APP_SCRIPT.indexOf("function isoRegistrationWeekLabel(isoDate)");
+    const end = ULC_LINZ_APP_SCRIPT.indexOf("\nfunction renderSelfRegistrationWeekLabel()", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const functionSource = ULC_LINZ_APP_SCRIPT.slice(start, end);
+    const weekLabel = new Function(functionSource + "\nreturn isoRegistrationWeekLabel;")() as
+      (date: string) => string;
+
+    expect(weekLabel("2020-12-28")).toBe("KW 53/2020");
+    expect(weekLabel("2021-01-01")).toBe("KW 53/2020");
+    expect(weekLabel("2021-01-04")).toBe("KW 01/2021");
+    expect(weekLabel("2026-12-28")).toBe("KW 53/2026");
+    expect(weekLabel("2027-01-04")).toBe("KW 01/2027");
+    const labelSource = ULC_LINZ_APP_SCRIPT.slice(
+      ULC_LINZ_APP_SCRIPT.indexOf("function renderSelfRegistrationWeekLabel()"),
+      ULC_LINZ_APP_SCRIPT.indexOf("\nfunction prepareSelfRegistrationView()"),
+    );
+    expect(labelSource).toContain("isoRegistrationWeekLabel(start)");
+    expect(labelSource).toContain("germanDate(start) + \" – \" + germanDate(end)");
+    expect(ULC_LINZ_APP_HTML).toContain('id="registration-week-prev"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="registration-week-next"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="registration-week-current"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="registration-reload"');
+  });
+
   it("announces the entire selected week without replacing the existing navigation", () => {
     expect(ULC_LINZ_APP_HTML).toContain(
       'id="registration-week-label" role="status" aria-live="polite" aria-atomic="true"',
