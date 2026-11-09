@@ -33,7 +33,7 @@ describe("N01 guarded registration transaction boundary", () => {
     };
     let active = false;
 
-    const repository = new PostgresUlcTrainingSessionRepository({
+    const transactionalClient = {
       async unsafe() {
         throw new Error("Unscoped SQL should never run.");
       },
@@ -47,7 +47,8 @@ describe("N01 guarded registration transaction boundary", () => {
           active = false;
         }
       },
-    });
+    };
+    const repository = new PostgresUlcTrainingSessionRepository(transactionalClient);
 
     const result = await repository.withAuthorizedRegistrationTransaction(
       async (sql) => {
@@ -81,7 +82,7 @@ describe("N01 guarded registration transaction boundary", () => {
     const transaction: UlcTrainingSessionSqlClient = {
       async unsafe() { return []; },
     };
-    const repository = new PostgresUlcTrainingSessionRepository({
+    const transactionalClient = {
       async unsafe() { throw new Error("Unscoped SQL should never run."); },
       async begin<T>(callback: (sql: UlcTrainingSessionSqlClient) => Promise<T>): Promise<T> {
         events.push("begin");
@@ -91,7 +92,8 @@ describe("N01 guarded registration transaction boundary", () => {
           events.push("end");
         }
       },
-    });
+    };
+    const repository = new PostgresUlcTrainingSessionRepository(transactionalClient);
 
     await expect(repository.withAuthorizedRegistrationTransaction(
       async () => {
