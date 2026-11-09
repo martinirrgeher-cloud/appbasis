@@ -33,6 +33,17 @@ describe("ULC weekly self-registration and account switching", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="registration-reload"');
   });
 
+  it("announces the entire selected week without replacing the existing navigation", () => {
+    expect(ULC_LINZ_APP_HTML).toContain(
+      'id="registration-week-label" role="status" aria-live="polite" aria-atomic="true"',
+    );
+    expect(ULC_LINZ_APP_HTML).toContain('id="registration-week-prev"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="registration-week-next"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="registration-week-current"');
+    expect(ULC_LINZ_APP_HTML).toContain('id="registration-list" aria-live="polite"');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("elements.registrationWeekLabel.textContent");
+  });
+
   it("uses explicit 160-character day notes with draft recovery for own and colleague registration", () => {
     expect(ULC_LINZ_APP_HTML).toContain('id="registration-proxy-note"');
     expect(ULC_LINZ_APP_HTML).toContain('id="registration-proxy-note-save"');
