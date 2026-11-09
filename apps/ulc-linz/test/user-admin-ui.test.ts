@@ -54,6 +54,19 @@ describe("ULC administration onboarding UI", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('resetUserAdminSessionState();');
   });
 
+  it("shows failed rights reads on the affected account without weakening access checks", () => {
+    expect(ULC_LINZ_APP_SCRIPT).toContain("const userAdminAccessReadFailures = new Map()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("userAdminAccessReadFailures.get(user.identityId)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('note.setAttribute("role", "alert")');
+    expect(ULC_LINZ_APP_SCRIPT).toContain("userAdminAccessReadFailures.set(identityId, reason)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("userAdminAccessReadFailures.delete(identityId)");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("userAdminAccessReadFailures.clear()");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Mitgliedschaft, technische Rolle und eigene Administratorrechte prüfen.");
+    expect(ULC_LINZ_APP_SCRIPT).toContain("Keine passende Organisationsmitgliedschaft gefunden.");
+    expect(ULC_LINZ_APP_SCRIPT).toContain('requestJson("/api/admin/users/" +');
+    expect(ULC_LINZ_APP_SCRIPT).not.toContain("repairPrincipalAccess");
+  });
+
   it("clears temporary invitation text on logout and never sends emails automatically", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('resetUserAdminSessionState();');
     expect(ULC_LINZ_APP_SCRIPT).toContain('userAdminInviteText = ""');
