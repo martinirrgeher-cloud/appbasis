@@ -1,6 +1,6 @@
 export const ULC_EXERCISE_CATALOG_HTML = `
           <section class="app-section" data-app-section="exercise-catalog" id="exercise-catalog" hidden>
-            <section class="hero exercise-catalog-hero">
+            <section class="hero exercise-catalog-hero ab-training-page-header">
               <div>
                 <p class="eyebrow">Training</p>
                 <h1>Übungskatalog</h1>
@@ -261,6 +261,27 @@ export const ULC_EXERCISE_CATALOG_HTML = `
 `;
 
 export const ULC_EXERCISE_CATALOG_CSS = `
+/* Shared mobile training-header geometry: compact copy, reachable actions, no horizontal overflow. */
+@media (max-width: 600px) {
+  .exercise-catalog-hero.ab-training-page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    margin-bottom: 10px;
+    padding-block: 8px;
+  }
+  .exercise-catalog-hero.ab-training-page-header > div:first-child { min-width: 0; flex: 1 1 170px; }
+  .exercise-catalog-hero.ab-training-page-header .eyebrow,
+  .exercise-catalog-hero.ab-training-page-header .summary { display: none; }
+  .exercise-catalog-hero.ab-training-page-header h1 { margin: 0; overflow-wrap: anywhere; }
+  .exercise-catalog-hero-actions { justify-content: flex-start; width: 100%; }
+  .exercise-catalog-hero-actions .button:not([hidden]) { min-height: 40px; }
+  .exercise-catalog-hero-actions #exercise-catalog-new { margin-left: auto; }
+}
+
 .exercise-catalog-hero {
   display: flex;
   align-items: end;
