@@ -23,7 +23,7 @@ function plannedDaysHarness(
   initiallyLoadedWeekdays: number[] | null = null,
 ) {
   const sourceStart = ULC_KIDS_SCRIPT.indexOf("function kidsCalendarWeekStart(");
-  const sourceEnd = ULC_KIDS_SCRIPT.indexOf("async function loadKidsAttendance()", sourceStart);
+  const sourceEnd = ULC_KIDS_SCRIPT.indexOf("async function loadKidsAttendance(", sourceStart);
   expect(sourceStart).toBeGreaterThan(0);
   expect(sourceEnd).toBeGreaterThan(sourceStart);
   const code = ULC_KIDS_SCRIPT.slice(sourceStart, sourceEnd);
