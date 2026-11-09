@@ -33,8 +33,35 @@ function areaUi(source: string, prefix: "u14" | "kids", area: "u14" | "kindertra
   }
   if (source === ULC_U12_CSS && area === "kindertraining") {
     output += `
-.kids-date-nav { grid-column:1; grid-row:1; }
-.kids-date-shortcuts { grid-column:2; grid-row:1; }
+/* Kids only: a full-width date row keeps the entire date readable on phones. */
+@media (max-width: 560px) {
+  .kids-date-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 5px;
+  }
+  .kids-date-nav {
+    grid-column: 1;
+    grid-row: 1;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    gap: 6px;
+  }
+  .kids-date-arrow { min-width: 44px; min-height: 44px; }
+  .kids-date-field select { font-size: .88rem; text-overflow: clip; }
+  .kids-date-shortcuts {
+    grid-column: 1;
+    grid-row: 2;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+  .kids-date-shortcuts #kids-today {
+    text-align: left;
+    white-space: normal;
+    line-height: 1.25;
+    padding: 5px 8px;
+  }
+  .kids-date-shortcuts #kids-reload { flex: 0 0 44px; }
+}
 .kids-calendar-hint { grid-column:1 / -1; margin:0; padding:4px 6px; font-size:.76rem; line-height:1.35; color:var(--secondary); background:var(--muted); border-radius:7px; }
 .kids-calendar-hint[hidden] { display:none; }
 `;

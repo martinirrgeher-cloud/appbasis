@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ULC_KIDS_HTML, ULC_KIDS_CSS, ULC_KIDS_SCRIPT, ULC_U14_SCRIPT } from "../worker/youth-attendance-ui";
-import { ULC_U12_SCRIPT } from "../worker/u12-ui";
+import { ULC_U12_CSS, ULC_U12_SCRIPT } from "../worker/u12-ui";
 import { ULC_LINZ_APP_HTML } from "../worker/ui";
 
 function dateShift(date: string, days: number): string {
@@ -23,7 +23,7 @@ function plannedDaysHarness(
   initiallyLoadedWeekdays: number[] | null = null,
 ) {
   const sourceStart = ULC_KIDS_SCRIPT.indexOf("function kidsCalendarWeekStart(");
-  const sourceEnd = ULC_KIDS_SCRIPT.indexOf("async function loadKidsAttendance()", sourceStart);
+  const sourceEnd = ULC_KIDS_SCRIPT.indexOf("async function loadKidsAttendance(", sourceStart);
   expect(sourceStart).toBeGreaterThan(0);
   expect(sourceEnd).toBeGreaterThan(sourceStart);
   const code = ULC_KIDS_SCRIPT.slice(sourceStart, sourceEnd);
@@ -101,6 +101,39 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     expect(ULC_KIDS_CSS).toContain(".kids-calendar-hint[hidden]");
     expect(ULC_KIDS_HTML).toContain('<select id="kids-date"');
     expect(ULC_KIDS_HTML).not.toContain('<input type="date" id="kids-date"');
+  });
+
+
+  it("places the complete Kids date above the shortcut on narrow screens only", () => {
+    expect(ULC_KIDS_CSS).toContain("@media (max-width: 560px)");
+    expect(ULC_KIDS_CSS).toContain(".kids-date-toolbar {");
+    expect(ULC_KIDS_CSS).toContain("grid-template-columns: minmax(0, 1fr);");
+    expect(ULC_KIDS_CSS).toContain("grid-row: 2;");
+    expect(ULC_KIDS_CSS).toContain(".kids-date-field select { font-size: .88rem;");
+    expect(ULC_U12_CSS).not.toContain(".kids-date-toolbar");
+    expect(ULC_U14_SCRIPT).toContain("const u14FollowGroupCalendar = false;");
+    expect(ULC_KIDS_HTML).toContain('id="kids-today">Zum aktuellen Training</button>');
+  });
+
+  it("does not reload eight calendar weeks after a guarded arrow navigation", () => {
+    const nav = ULC_KIDS_SCRIPT.slice(
+      ULC_KIDS_SCRIPT.indexOf("async function kidsNavigateCalendarDate("),
+      ULC_KIDS_SCRIPT.indexOf("async function loadKidsAttendance("),
+    );
+    const load = ULC_KIDS_SCRIPT.slice(
+      ULC_KIDS_SCRIPT.indexOf("async function loadKidsAttendance("),
+      ULC_KIDS_SCRIPT.indexOf("async function saveKidsAttendance("),
+    );
+    expect(nav).toContain("await kidsPopulateCalendarChoices(");
+    expect(nav).toContain("await loadKidsAttendance({ calendarChoicesReady: true });");
+    // Existing CAS/autosave guard must still lock the old draft.
+    expect(nav).toContain("if (!(await kidsFlushChanges())) return;");
+    // The destination week is still read fresh, never accepted from the cache.
+    expect(load).toContain("kidsCalendarWeekCache = new Map();");
+    expect(load).toContain("const dates = await kidsFetchCalendarDates(groupId, kidsCalendarWeekStart(date));");
+    expect(load).toContain("if (!dates.includes(date))");
+    // A removed day must rebuild choices from current server-authorized dates.
+    expect(load).toContain("if (!calendarChoicesReady || date !== requestedDate)");
   });
 
   it("starts from the next Tuesday and skips other days with both arrows", async () => {
@@ -236,7 +269,7 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     expect(ULC_KIDS_SCRIPT).toContain("kidsLoading || kidsCalendarBusy || !kidsWriteAllowed");
     const populate = nav.indexOf("await kidsPopulateCalendarChoices(");
     const assignment = nav.indexOf("kidsUi.date.value = chosen");
-    const load = nav.indexOf("await loadKidsAttendance()");
+    const load = nav.indexOf("await loadKidsAttendance({ calendarChoicesReady: true });");
     const release = nav.indexOf("} finally {");
     const freeze = nav.indexOf("kidsCalendarBusy = true");
     const flush = nav.indexOf("await kidsFlushChanges()");
