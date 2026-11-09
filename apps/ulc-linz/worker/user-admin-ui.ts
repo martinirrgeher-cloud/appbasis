@@ -317,6 +317,7 @@ function resetUserAdminSessionState() {
   userAdminReady = false;
   userAdminBusy = false;
   userAdminUsers = [];
+  userAdminAccessReadFailures.clear();
   userAdminTargets = null;
   closeUserAdminInvitation();
   closeUserAdminCreate(true);
