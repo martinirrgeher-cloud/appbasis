@@ -122,7 +122,11 @@ export async function assertUlcStaffRegistrationGuard(
 
   const groups = await transaction.unsafe(
     `SELECT id FROM appbasis_training_group
-     WHERE organization_id = $1 AND id = $2 AND is_active = true FOR SHARE`,
+     WHERE organization_id = $1
+       AND id = $2
+       AND is_active = true
+       AND attendance_mode = 'self_registration'
+     FOR SHARE`,
     [organizationId, groupId],
   );
   if (groups.length !== 1) deny();
