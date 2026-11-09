@@ -662,7 +662,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <div class="registration-week-nav">
                 <button class="button button--secondary registration-week-arrow" id="registration-week-prev" type="button" aria-label="Vorherige Woche">‹</button>
                 <div class="registration-week-title">
-                  <strong id="registration-week-label">Diese Woche</strong>
+                  <strong id="registration-week-label" role="status" aria-live="polite" aria-atomic="true">Diese Woche</strong>
                   <small>Montag bis Sonntag</small>
                 </div>
                 <button class="button button--secondary registration-week-arrow" id="registration-week-next" type="button" aria-label="Nächste Woche">›</button>
