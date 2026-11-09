@@ -120,6 +120,8 @@ export async function assertUlcStaffRegistrationGuard(
   });
   if (!permission) deny();
 
+  // The group row lock also pins attendance_mode until the staff write commits.
+  // A trainer-roll-call group is never a self-registration target, even for admin.
   const groups = await transaction.unsafe(
     `SELECT id FROM appbasis_training_group
      WHERE organization_id = $1
