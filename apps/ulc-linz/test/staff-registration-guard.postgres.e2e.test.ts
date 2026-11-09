@@ -132,10 +132,10 @@ if (!databaseUrl?.trim()) {
       }
 
       await a().unsafe(
-        `INSERT INTO appbasis_training_group (id, organization_id, name)
-         VALUES ($1, $2, 'N01 Guard Group'),
-                ($3, $2, 'N01 Other Group'),
-                ($4, $5, 'N01 Foreign Group')`,
+        `INSERT INTO appbasis_training_group (id, organization_id, name, attendance_mode)
+         VALUES ($1, $2, 'N01 Guard Group', 'self_registration'),
+                ($3, $2, 'N01 Other Group', 'trainer_roll_call'),
+                ($4, $5, 'N01 Foreign Group', 'self_registration')`,
         [groupId, organizationId, otherGroupId, foreignGroupId, foreignOrganizationId],
       );
       await a().unsafe(
@@ -263,6 +263,84 @@ if (!databaseUrl?.trim()) {
         await a().unsafe("UPDATE appbasis_training_group SET is_active=true WHERE id=$1", [groupId]);
       }
     }, 30_000);
+
+    it("denies trainer-roll-call mode for both admin and trainer, even with valid membership", async () => {
+      try {
+        await a().unsafe(
+          "UPDATE appbasis_training_group SET attendance_mode='trainer_roll_call' WHERE id=$1",
+          [groupId],
+        );
+        await expect(guarded(request(actorAdmin)))
+          .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+        await expect(guarded(request(actorTrainer)))
+          .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      } finally {
+        await a().unsafe(
+          "UPDATE appbasis_training_group SET attendance_mode='self_registration' WHERE id=$1",
+          [groupId],
+        );
+      }
+      expect((await guarded()).sourceRole).toBe("trainer");
+    });
+
+    it("holds group attendance-mode lock through transaction commit and rejects the changed mode", async () => {
+      let signalReady!: () => void;
+      let release!: () => void;
+      const ready = new Promise<void>((resolve) => { signalReady = resolve; });
+      const held = new Promise<void>((resolve) => { release = resolve; });
+
+      const guardTransaction = a().begin(async (transaction) => {
+        const scope = await assertUlcStaffRegistrationGuard(
+          transaction,
+          request(actorAdmin),
+        );
+        signalReady();
+        await held;
+        return scope;
+      });
+
+      try {
+        await Promise.race([
+          ready,
+          guardTransaction.then(() => {
+            throw new Error("N01 mode guard ended before ready.");
+          }),
+        ]);
+        await expect(b().begin(async (transaction) => {
+          await transaction.unsafe("SET LOCAL lock_timeout='750ms'");
+          await transaction.unsafe("SET LOCAL statement_timeout='5s'");
+          return transaction.unsafe(
+            "UPDATE appbasis_training_group SET attendance_mode='trainer_roll_call' WHERE id=$1",
+            [groupId],
+          );
+        })).rejects.toMatchObject({ code: "55P03" });
+        const rows = await b().unsafe(
+          "SELECT attendance_mode FROM appbasis_training_group WHERE id=$1",
+          [groupId],
+        );
+        expect(rows[0]?.attendance_mode).toBe("self_registration");
+      } finally {
+        release();
+      }
+
+      expect((await guardTransaction).sourceRole).toBe("admin");
+
+      try {
+        await b().unsafe(
+          "UPDATE appbasis_training_group SET attendance_mode='trainer_roll_call' WHERE id=$1",
+          [groupId],
+        );
+        await expect(guarded(request(actorAdmin)))
+          .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+        await expect(guarded(request(actorTrainer)))
+          .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      } finally {
+        await b().unsafe(
+          "UPDATE appbasis_training_group SET attendance_mode='self_registration' WHERE id=$1",
+          [groupId],
+        );
+      }
+    }, 25_000);
 
     it("holds account row lock until the guarded transaction commits", async () => {
       let signalReady!: () => void;
