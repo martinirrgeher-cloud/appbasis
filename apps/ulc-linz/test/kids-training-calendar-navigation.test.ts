@@ -136,6 +136,66 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     expect(load).toContain("if (!calendarChoicesReady || date !== requestedDate)");
   });
 
+
+  it("reuses the existing 8-week options on adjacent training arrows after fresh calendar reads", async () => {
+    const weeks = {
+      "2026-11-02": ["2026-11-03"],
+      "2026-11-09": ["2026-11-10"],
+      "2026-11-16": ["2026-11-17"],
+      "2026-11-23": ["2026-11-24"],
+    };
+    const { move, populate, requested, selectedDate, loadState } =
+      plannedDaysHarness(weeks);
+    await populate("kids-group", "2026-11-10", () => true);
+    const beforeMove = requested.length;
+    await move(1);
+    expect(selectedDate.value).toBe("2026-11-17");
+    expect(loadState.calls).toBe(1);
+    // Navigation must re-read both selected and target calendar weeks,
+    // but must not request 8 weeks again for unchanged dropdown options.
+    expect(requested.slice(beforeMove)).toEqual(["2026-11-09", "2026-11-16"]);
+    const beforeReturn = requested.length;
+    await move(-1);
+    expect(selectedDate.value).toBe("2026-11-10");
+    expect(requested.slice(beforeReturn)).toEqual(["2026-11-16", "2026-11-09"]);
+  });
+
+  it("refreshes the dropdown if the server added a training day in the destination week", async () => {
+    const weeks = {
+      "2026-11-09": ["2026-11-10"],
+      "2026-11-16": ["2026-11-17"],
+    };
+    const { move, populate, requested, selectedDate } = plannedDaysHarness(weeks);
+    await populate("kids-group", "2026-11-10", () => true);
+    weeks["2026-11-16"] = ["2026-11-17", "2026-11-19"];
+    const beforeMove = requested.length;
+    await move(1);
+    expect(selectedDate.value).toBe("2026-11-17");
+    expect(selectedDate.options.map((option) => option.value))
+      .toContain("2026-11-19");
+    // A changed target week triggers the original complete dropdown reload.
+    expect(requested.length - beforeMove).toBeGreaterThan(2);
+  });
+
+  it("never trusts a stale date after group-rule change or a cancelled destination", async () => {
+    const weeks = {
+      "2026-11-09": ["2026-11-10"],
+      "2026-11-16": ["2026-11-17"],
+      "2026-11-23": ["2026-11-24"],
+    };
+    const { move, populate, requested, selectedDate } = plannedDaysHarness(weeks);
+    await populate("kids-group", "2026-11-10", () => true);
+    // Cancellation of 17th must be discovered by the server during navigation.
+    weeks["2026-11-16"] = [];
+    const beforeMove = requested.length;
+    await move(1);
+    expect(selectedDate.value).toBe("2026-11-24");
+    expect(requested.slice(beforeMove)).toContain("2026-11-23");
+    // The removed day must not survive in the freshly rebuilt dropdown.
+    expect(selectedDate.options.map((option) => option.value))
+      .not.toContain("2026-11-17");
+  });
+
   it("starts from the next Tuesday and skips other days with both arrows", async () => {
     const { find, requested } = plannedDaysHarness({
       "2026-11-02": ["2026-11-03"],
