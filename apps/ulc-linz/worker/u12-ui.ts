@@ -1619,17 +1619,27 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false,
     // Rule changes, added/cancelled dates and dates outside the visible range
     // still rebuild the options from the server. No write uses this shortcut.
     const chosenWeek = u12CalendarWeekStart(chosen);
-    const verifiedDays = await u12FetchCalendarDates(groupId, chosenWeek);
+    await u12FetchCalendarDates(groupId, chosenWeek);
     const optionValues = Array.from(u12Ui.date.options ?? [],
       (option) => option.value);
-    const chosenWeekEnd = shiftIsoDate(chosenWeek, 6);
-    const displayedDays = optionValues.filter((day) =>
-      day >= chosenWeek && day <= chosenWeekEnd);
+    // Compare every freshly visited week, not just the destination. For
+    // example, a cancelled Tuesday that the search skipped must disappear
+    // from the dropdown even when the next Tuesday was already displayed.
+    const verifiedWeeks = [...u12CalendarWeekCache.entries()].filter(
+      ([key]) => key.startsWith(groupId + "|"),
+    );
+    const displayedWeeksMatch = verifiedWeeks.every(([key, verifiedDays]) => {
+      const weekStart = key.slice(groupId.length + 1);
+      const weekEnd = shiftIsoDate(weekStart, 6);
+      const displayedDays = optionValues.filter((day) =>
+        day >= weekStart && day <= weekEnd);
+      return displayedDays.length === verifiedDays.length &&
+        verifiedDays.every((day, index) => displayedDays[index] === day);
+    });
     const choicesStillCurrent =
       previousRuleWeekdays === JSON.stringify(u12CalendarRuleWeekdays) &&
       optionValues.includes(chosen) &&
-      displayedDays.length === verifiedDays.length &&
-      verifiedDays.every((day, index) => displayedDays[index] === day);
+      displayedWeeksMatch;
     if (!choicesStillCurrent) {
       await u12PopulateCalendarChoices(groupId, chosen, () =>
         generation === attendanceSessionGeneration &&
