@@ -340,6 +340,7 @@ async function bootstrapUserAdmin() {
     if (!Array.isArray(payload?.users)) throw new Error("INVALID_USER_ADMIN_RESPONSE");
     userAdminReady = true;
     userAdminUsers = payload.users;
+    userAdminAccessReadFailures.clear();
     renderUserAdminList();
   } catch (error) {
     if (generation !== userAdminGeneration) return;
@@ -375,6 +376,18 @@ async function loadUserAdmin() {
       updateUserAdminControls();
     }
   }
+}
+
+// Per-account read failures remain visible next to the affected account until a retry
+// or list refresh. They are never treated as permission grants or repair requests.
+const userAdminAccessReadFailures = new Map();
+
+function userAdminAccessReadError(error) {
+  if (error?.status === 404) return "Keine passende Organisationsmitgliedschaft gefunden. Kontozuordnung prüfen.";
+  if (error?.status === 403) return "Rechtezugriff verweigert. Mitgliedschaft, technische Rolle und eigene Administratorrechte prüfen.";
+  if (error?.status === 401) return "Sitzung abgelaufen. Bitte erneut anmelden.";
+  if (error?.status === 503) return "Rechteverwaltung derzeit nicht verfügbar. Bitte später erneut versuchen.";
+  return "Modulrechte konnten nicht geladen werden. Bitte erneut versuchen.";
 }
 
 function renderUserAdminList() {
@@ -423,6 +436,14 @@ function renderUserAdminList() {
       status.classList.add("user-admin-row__status--active");
     }
     main.append(title, meta, status);
+    const accessFailure = userAdminAccessReadFailures.get(user.identityId);
+    if (accessFailure) {
+      const note = document.createElement("small");
+      note.className = "user-admin-row__meta";
+      note.setAttribute("role", "alert");
+      note.textContent = "Rechte: " + accessFailure;
+      main.append(note);
+    }
     if (incomplete) {
       const note = document.createElement("small");
       note.className = "user-admin-row__meta";
@@ -634,14 +655,17 @@ async function openUserAdminAccess(identityId) {
     if (generation !== userAdminGeneration) return;
     if (!Array.isArray(payload?.permissions?.modules)) throw new Error("INVALID_ACCESS");
     userAdminAccessSnapshot = payload.permissions;
+    userAdminAccessReadFailures.delete(identityId);
+    renderUserAdminList();
     renderUserAdminAccess();
     showMessage(userAdminElements.accessMessage, "");
     userAdminElements.accessEditor?.showModal();
   } catch (error) {
     if (generation === userAdminGeneration) {
-      showMessage(userAdminElements.message, error?.status === 403
-        ? "Die Modulrechte dieses Kontos können derzeit nicht geladen werden (Sicherheits- oder Rollenprüfung)."
-        : "Modulrechte konnten nicht geladen werden.");
+      const reason = userAdminAccessReadError(error);
+      userAdminAccessReadFailures.set(identityId, reason);
+      renderUserAdminList();
+      showMessage(userAdminElements.message, "Modulrechte für den ausgewählten Benutzer: " + reason);
     }
   } finally {
     if (generation === userAdminGeneration) {
