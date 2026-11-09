@@ -4049,11 +4049,24 @@ async function moveSelfRegistrationWeek(offset) {
   await loadSelfRegistration();
 }
 
+function isoRegistrationWeekLabel(isoDate) {
+  // The ISO week-year is the year containing Thursday of the selected week.
+  const thursday = new Date(isoDate + "T12:00:00Z");
+  thursday.setUTCDate(thursday.getUTCDate() + 4 - (thursday.getUTCDay() || 7));
+  const weekYear = thursday.getUTCFullYear();
+  const firstDay = new Date(Date.UTC(weekYear, 0, 1));
+  const weekNumber = Math.ceil(
+    ((thursday.getTime() - firstDay.getTime()) / 86400000 + 1) / 7,
+  );
+  return "KW " + String(weekNumber).padStart(2, "0") + "/" + weekYear;
+}
+
 function renderSelfRegistrationWeekLabel() {
   if (!elements.registrationWeekLabel) return;
   const start = selfRegistrationWeekStart || localWeekStart(new Date());
   const end = shiftIsoDate(start, 6);
   elements.registrationWeekLabel.textContent =
+    isoRegistrationWeekLabel(start) + " · " +
     germanDate(start) + " – " + germanDate(end);
 }
 
