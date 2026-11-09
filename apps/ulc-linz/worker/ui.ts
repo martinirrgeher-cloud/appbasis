@@ -4054,10 +4054,13 @@ function isoRegistrationWeekLabel(isoDate) {
   const thursday = new Date(isoDate + "T12:00:00Z");
   thursday.setUTCDate(thursday.getUTCDate() + 4 - (thursday.getUTCDay() || 7));
   const weekYear = thursday.getUTCFullYear();
-  const firstDay = new Date(Date.UTC(weekYear, 0, 1));
-  const weekNumber = Math.ceil(
-    ((thursday.getTime() - firstDay.getTime()) / 86400000 + 1) / 7,
+  // ISO week 1 contains January 4; compare Thursdays to avoid partial weeks.
+  const firstThursday = new Date(Date.UTC(weekYear, 0, 4, 12));
+  firstThursday.setUTCDate(
+    firstThursday.getUTCDate() + 4 - (firstThursday.getUTCDay() || 7),
   );
+  const weekNumber =
+    1 + Math.round((thursday.getTime() - firstThursday.getTime()) / 604800000);
   return "KW " + String(weekNumber).padStart(2, "0") + "/" + weekYear;
 }
 
