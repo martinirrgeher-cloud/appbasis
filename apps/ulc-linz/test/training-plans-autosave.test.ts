@@ -26,6 +26,7 @@ describe("ULC N07 debounced training-plan autosave", () => {
       let trainingPlanAutoSaveTimer = null;
       let trainingPlanTemplateBusy = false;
       let trainingPlanSaveBackBusy = false;
+      let trainingPlanPickerMode = null;
       const TRAINING_PLAN_AUTOSAVE_DELAY_MS = 850;
       const trainingPlanSelected = null;
       function trainingPlanWriteLeaveBackup() { backupWrites.push("saved"); }
@@ -41,6 +42,7 @@ describe("ULC N07 debounced training-plan autosave", () => {
         setConflict: v => { trainingPlanConflict = v; },
         setPaused: v => { trainingPlanAutoSavePaused = v; },
         setTemplateBusy: v => { trainingPlanTemplateBusy = v; },
+        setPickerMode: v => { trainingPlanPickerMode = v; },
       };
     `);
     const app = make(
@@ -62,6 +64,7 @@ describe("ULC N07 debounced training-plan autosave", () => {
       setConflict: (value: boolean) => void;
       setPaused: (value: boolean) => void;
       setTemplateBusy: (value: boolean) => void;
+      setPickerMode: (value: string | null) => void;
     };
     return {
       ...app, timers, backupWrites, saves,
@@ -99,6 +102,20 @@ describe("ULC N07 debounced training-plan autosave", () => {
     run.setConflict(true);
     run.scheduleTrainingPlanSave();
     expect(run.timers.size).toBe(0);
+  });
+
+  it("defers persistence until a structural exercise picker is closed", () => {
+    const run = editorScheduler();
+    run.markTrainingPlanDirty();
+    run.setPickerMode("exercise");
+    run.fire();
+    expect(run.saves).toHaveLength(0);
+    expect(run.timers.size).toBe(1);
+    run.setPickerMode(null);
+    run.fire();
+    expect(run.saves).toEqual([1]);
+    expect(script).toContain("if (!item || !trainingPlanDraft || trainingPlanSaveBusy) return;");
+    expect(script).toContain("if (!trainingPlanDraft || trainingPlanSaveBusy) return;");
   });
 
   it("joins simultaneous save callers, only starts one writer, then queues remaining edits", async () => {

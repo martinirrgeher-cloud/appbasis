@@ -3180,6 +3180,7 @@ function closeTrainingPlanPicker() {
   if (trainingPlanElements.picker) trainingPlanElements.picker.hidden = true;
   document.body.classList.remove("training-plan-picker-open");
   if (trainingPlanElements.pickerList) trainingPlanElements.pickerList.replaceChildren();
+  if (trainingPlanDirty) scheduleTrainingPlanSave();
 }
 
 function renderTrainingPlanPickerCategories() {
@@ -3404,7 +3405,7 @@ async function handleTrainingPlanPickerClick(event) {
         candidate.id === exerciseButton.dataset.trainingPlanPickExercise &&
         candidate.isActive,
     );
-    if (!item || !trainingPlanDraft) return;
+    if (!item || !trainingPlanDraft || trainingPlanSaveBusy) return;
     trainingPlanDraft.items.push(trainingPlanExerciseDraftFromCatalog(item));
     markTrainingPlanDirty(true);
     trainingPlanSetSaveState("dirty", "Übung hinzugefügt");
@@ -3539,7 +3540,10 @@ function scheduleTrainingPlanSave() {
       !trainingPlansCanEdit || trainingPlanConflict || trainingPlanAutoSavePaused) return;
   trainingPlanAutoSaveTimer = setTimeout(() => {
     trainingPlanAutoSaveTimer = null;
-    if (trainingPlanTemplateBusy || trainingPlanSaveBackBusy) {
+    if (trainingPlanTemplateBusy || trainingPlanSaveBackBusy ||
+        trainingPlanPickerMode !== null) {
+      // Choosing exercises/blocks changes the item structure. Defer the
+      // snapshot until the picker closes to avoid an ID-shape mismatch.
       scheduleTrainingPlanSave();
       return;
     }
@@ -4561,7 +4565,7 @@ trainingPlanElements.pickerSearch?.addEventListener("input", renderTrainingPlanP
 trainingPlanElements.pickerCategory?.addEventListener("change", renderTrainingPlanPicker);
 trainingPlanElements.pickerList?.addEventListener("click", handleTrainingPlanPickerClick);
 trainingPlanElements.pickerManual?.addEventListener("click", () => {
-  if (!trainingPlanDraft) return;
+  if (!trainingPlanDraft || trainingPlanSaveBusy) return;
   trainingPlanDraft.items.push(newTrainingPlanExerciseDraft());
   closeTrainingPlanPicker();
   markTrainingPlanDirty(true);
