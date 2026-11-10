@@ -526,7 +526,7 @@ describe("ULC E7B6 training plan block template UI", () => {
       "editable &&\n    !trainingPlanSaveBusy &&\n    !trainingPlanTemplateBusy &&\n    !trainingPlanSaveBackBusy;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("trainingPlanBlockDraftFromTemplate(template)");
-    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("if (trainingPlanTemplateBusy || trainingPlanSaveBackBusy) {\n      scheduleTrainingPlanSave();");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("if (trainingPlanTemplateBusy || trainingPlanSaveBackBusy ||\n        trainingPlanPickerMode !== null) {\n      scheduleTrainingPlanSave();");
   });
 
 
