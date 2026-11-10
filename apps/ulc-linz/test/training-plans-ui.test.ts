@@ -394,7 +394,7 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
-  it("keeps active draft inputs mounted across successful manual save", () => {
+  it("keeps active draft inputs mounted across successful automatic save", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "trainingPlanApplySavedIds(draft, saved.revision.items);",
     );
@@ -402,7 +402,7 @@ describe("ULC E7B6 training plan block template UI", () => {
       "trainingPlanDraft = trainingPlanDraftFromSnapshot(saved);",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "if (trainingPlanConflict) {\n      renderTrainingPlanItems();\n    }",
+      "if (trainingPlanConflict) {\n        renderTrainingPlanItems();\n      }",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
       "trainingPlanChangeVersion === version\n    ) {\n      renderTrainingPlanItems();",
@@ -609,7 +609,7 @@ describe("ULC E7B6 training plan block template UI", () => {
   });
 
 
-  it("enables save-back after manual save assigns a previously missing block item id", () => {
+  it("enables save-back after autosave assigns a previously missing block item id", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "saveTemplate.dataset.trainingPlanSaveTemplateIndex = String(itemIndex);",
     );
