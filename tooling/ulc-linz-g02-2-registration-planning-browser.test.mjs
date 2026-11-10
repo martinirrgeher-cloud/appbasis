@@ -30,7 +30,8 @@ const production = [
   productionListener(registrationSource, 'window.addEventListener("beforeunload", (event) => {'),
   productionFunction(planSource, "function requestTrainingPlanLeaveDecision() {"),
   productionFunction(planSource, "function resolveTrainingPlanLeaveDecision(decision) {"),
-  productionFunction(planSource, "async function saveTrainingPlan() {"),
+  productionFunction(planSource, "function saveTrainingPlan() {"),
+  productionFunction(planSource, "async function performTrainingPlanSave() {"),
   productionListener(planSource, 'window.addEventListener("beforeunload", (event) => {'),
 ].join("\n");
 function chromiumBinary() {
@@ -75,6 +76,12 @@ const setup = [
   'let trainingPlanEditorDate = date1, trainingPlanSelectedSubjectId = "athlete-a";',
   "let trainingPlansCanEdit = true, trainingPlanConflict = false, trainingPlanDirty = false;",
   "let trainingPlanSaveBusy = false, trainingPlanTemplateBusy = false, trainingPlanSaveBackBusy = false, trainingPlanDistributeBusy = false;",
+  "let trainingPlanSessionGeneration = 1, trainingPlanSessionIdentityId = 'trainer-a';",
+  "let trainingPlanSaveInFlight = null, trainingPlanAutoSavePaused = false;",
+  "let scheduledPlanSaves = 0;",
+  "function cancelTrainingPlanAutoSave() {}",
+  "function scheduleTrainingPlanSave() { scheduledPlanSaves += 1; }",
+  "function trainingPlanWriteLeaveBackup() {}",
   "let trainingPlanChangeVersion = 1, trainingPlanLeaveResolver = null;",
   'let trainingPlanSelected = { id: "plan-1", currentRevision: 1 };',
   "let clearBackups = 0;",
@@ -173,18 +180,22 @@ async function browserScenarios() {
   resolveTrainingPlanLeaveDecision("stay");
   check((await leave) === "stay" && trainingPlanDirty, "Stay discarded the plan");
 
-  // Network failure preserves dirty state and manual retry. CAS 409 blocks
-  // further writes until the conflict has been dealt with.
+  // Network failure preserves the dirty draft for explicit retry. CAS 409
+  // blocks writes until the conflict has been dealt with. Both code paths
+  // execute the actual serialized auto-save wrapper and CAS writer.
   let operation = saveTrainingPlan();
   check(trainingPlanSaveBusy && warning(), "In-flight plan write not guarded");
   pendingPlans[0].reject(new Error("network failure"));
   check((await operation) === false && trainingPlanDirty &&
-    !trainingPlanElements.retry.hidden, "Plan network failure not retriable");
+    trainingPlanAutoSavePaused && !trainingPlanElements.retry.hidden,
+    "Plan network failure not retriable");
 
   operation = saveTrainingPlan();
   pendingPlans[1].resolve({ plan: savedPlan() });
   check(await operation && !trainingPlanDirty && clearBackups === 1,
     "Plan retry did not persist and clear backup");
+  check(scheduledPlanSaves === 0,
+    "Clean plan unexpectedly scheduled another network write");
   check(!warning(), "Saved plan still triggers unload warning");
 
   trainingPlanDirty = true;

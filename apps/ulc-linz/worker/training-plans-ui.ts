@@ -4,7 +4,7 @@ export const ULC_TRAINING_PLANS_HTML = `
               <div>
                 <p class="eyebrow">Training</p>
                 <h1>Trainingsplanung</h1>
-                <p class="summary">Wochenpläne für Gruppen und Athleten – Änderungen gezielt speichern.</p>
+                <p class="summary">Wochenpläne für Gruppen und Athleten – Änderungen werden automatisch gespeichert.</p>
               </div>
             </section>
 
@@ -78,7 +78,7 @@ export const ULC_TRAINING_PLANS_HTML = `
                     <button class="button button--secondary training-plan-mini" id="training-plan-next-athlete" type="button" aria-label="Nächster Athlet" title="Nächster Athlet">→</button>
                     <button class="button button--secondary training-plan-distribute-button" id="training-plan-distribute-open" type="button" aria-label="Plan verteilen" title="Plan verteilen"><span aria-hidden="true">↗</span><span>Verteilen</span></button>
                     <button class="button button--secondary training-plan-document-button" id="training-plan-document-open" type="button" aria-label="Training dokumentieren" title="Training dokumentieren"><span aria-hidden="true">✓</span><span>Dokumentieren</span></button>
-                    <button class="button button--primary training-plan-save-icon" id="training-plan-save" type="button" aria-label="Trainingsplan speichern" title="Speichern"><span aria-hidden="true">💾</span></button>
+                    <button class="button button--primary training-plan-save-icon" id="training-plan-save" type="button" hidden aria-label="Jetzt speichern" title="Jetzt speichern, falls Autosave fehlschlägt"><span aria-hidden="true">💾</span></button>
                     <button class="button button--secondary training-plan-icon-close" id="training-plan-close" type="button" aria-label="Tagesplan schließen" title="Schließen"><span aria-hidden="true">✕</span><span class="training-plan-close-label">Schließen</span></button>
                   </div>
                 </header>
@@ -118,7 +118,7 @@ export const ULC_TRAINING_PLANS_HTML = `
                 <footer class="training-plan-footer">
                   <div class="training-plan-footer__meta">
                     <span id="training-plan-editor-meta"></span>
-                    <span>Ungespeicherte Änderungen werden beim Verlassen bestätigt.</span>
+                    <span>Änderungen werden automatisch gespeichert. Bei Fehlern bleibt der Entwurf erhalten.</span>
                   </div>
                 </footer>
               </section>
@@ -997,6 +997,11 @@ let trainingPlanDraft = null;
 let trainingPlanDirty = false;
 let trainingPlanConflict = false;
 let trainingPlanSaveBusy = false;
+let trainingPlanSaveInFlight = null;
+let trainingPlanAutoSaveTimer = null;
+let trainingPlanAutoSavePaused = false;
+let trainingPlanRecoveredConflict = false;
+const TRAINING_PLAN_AUTOSAVE_DELAY_MS = 850;
 let trainingPlanTemplateBusy = false;
 let trainingPlanSaveBackBusy = false;
 let trainingPlanSaveBackItemId = null;
@@ -1267,7 +1272,7 @@ async function bootstrapTrainingPlans() {
       payload?.module?.capabilities?.view !== "training-plans:view" ||
       payload?.module?.capabilities?.edit !== "training-plans:edit" ||
       features?.weekView !== true ||
-      features?.autosave !== false ||
+      features?.autosave !== true ||
       features?.manualSave !== true ||
       features?.confirmOnLeave !== true ||
       features?.planCopy !== true ||
@@ -2215,6 +2220,8 @@ function trainingPlanExerciseCount(items) {
 
 function openTrainingPlanEditor(date, planOverride) {
   if (!trainingPlansReady || !trainingPlanSelectedSubjectId) return;
+  cancelTrainingPlanAutoSave();
+  trainingPlanAutoSavePaused = false;
   const plan =
     planOverride === undefined
       ? trainingPlanWeekPlans.find((value) => value.planDate === date) || null
@@ -2224,21 +2231,37 @@ function openTrainingPlanEditor(date, planOverride) {
   trainingPlanDraft = plan
     ? trainingPlanDraftFromSnapshot(plan)
     : { note: "", items: [] };
-  const recoveredDraft = trainingPlanRestoreLeaveBackup(plan, date);
-  if (recoveredDraft) {
-    trainingPlanDraft = recoveredDraft;
+  const recovered = trainingPlanRestoreLeaveBackup(plan, date);
+  if (recovered) {
+    trainingPlanDraft = recovered.draft;
   }
-  trainingPlanDirty = recoveredDraft !== null;
-  trainingPlanConflict = false;
+  trainingPlanDirty = recovered !== null;
+  trainingPlanRecoveredConflict = recovered?.conflict === true;
+  trainingPlanConflict = trainingPlanRecoveredConflict;
+  trainingPlanAutoSavePaused = trainingPlanRecoveredConflict;
   trainingPlanSaveBusy = false;
   trainingPlanTemplateBusy = false;
   trainingPlanSaveBackBusy = false;
   trainingPlanSaveBackItemId = null;
   trainingPlanSaveBackAudiences = [];
-  trainingPlanChangeVersion = recoveredDraft ? 1 : 0;
+  trainingPlanChangeVersion = recovered ? 1 : 0;
   populateTrainingPlanEditor();
-  if (recoveredDraft) {
-    trainingPlanSetSaveState("dirty", "Wiederhergestellt – bitte speichern");
+  if (trainingPlanRecoveredConflict) {
+    // The previous request may have reached the server after the browser
+    // closed. Never replay a stale backup against a newer revision.
+    trainingPlanSetSaveState("conflict", "Entwurf gesichert – Konflikt");
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Eine neuere Planversion liegt vor. Dein lokaler Entwurf wird hier schreibgeschützt angezeigt und bleibt gesichert. Übertrage benötigte Änderungen, bevor du den aktuellen Stand lädst.",
+    );
+    if (trainingPlanElements.reload) {
+      trainingPlanElements.reload.hidden = false;
+      trainingPlanElements.reload.textContent =
+        "Aktuellen Stand laden (lokalen Entwurf verwerfen)";
+    }
+  } else if (recovered) {
+    trainingPlanSetSaveState("dirty", "Wiederhergestellt – speichert automatisch");
+    scheduleTrainingPlanSave();
   }
 }
 
@@ -2300,11 +2323,16 @@ async function closeTrainingPlanEditor(force) {
   closeTrainingPlanPicker();
   closeTrainingPlanDistribution();
   if (!force) {
-    if (
-      trainingPlanSaveBusy ||
-      trainingPlanTemplateBusy ||
-      trainingPlanSaveBackBusy
-    ) return false;
+    if (trainingPlanTemplateBusy || trainingPlanSaveBackBusy) return false;
+    if (trainingPlanSaveInFlight) {
+      await trainingPlanSaveInFlight;
+    }
+    // Flush the pending debounce before leaving, including when navigating to
+    // another athlete/week. On a failed or conflicting write, keep the draft
+    // and ask whether to retry, discard or remain here.
+    if (trainingPlanDirty && !trainingPlanConflict && !trainingPlanAutoSavePaused) {
+      await saveTrainingPlanUntilClean();
+    }
     if (trainingPlanDirty) {
       const decision = await requestTrainingPlanLeaveDecision();
       if (decision === "stay") return false;
@@ -2321,6 +2349,10 @@ async function closeTrainingPlanEditor(force) {
   } else {
     resolveTrainingPlanLeaveDecision("stay");
   }
+  cancelTrainingPlanAutoSave();
+  trainingPlanSaveInFlight = null;
+  trainingPlanAutoSavePaused = false;
+  trainingPlanRecoveredConflict = false;
   closeTrainingPlanSaveTemplate(true);
   trainingPlanEditorDate = null;
   trainingPlanSelected = null;
@@ -3165,6 +3197,7 @@ function closeTrainingPlanPicker() {
   if (trainingPlanElements.picker) trainingPlanElements.picker.hidden = true;
   document.body.classList.remove("training-plan-picker-open");
   if (trainingPlanElements.pickerList) trainingPlanElements.pickerList.replaceChildren();
+  if (trainingPlanDirty) scheduleTrainingPlanSave();
 }
 
 function renderTrainingPlanPickerCategories() {
@@ -3389,7 +3422,7 @@ async function handleTrainingPlanPickerClick(event) {
         candidate.id === exerciseButton.dataset.trainingPlanPickExercise &&
         candidate.isActive,
     );
-    if (!item || !trainingPlanDraft) return;
+    if (!item || !trainingPlanDraft || trainingPlanSaveBusy) return;
     trainingPlanDraft.items.push(trainingPlanExerciseDraftFromCatalog(item));
     markTrainingPlanDirty(true);
     trainingPlanSetSaveState("dirty", "Übung hinzugefügt");
@@ -3500,13 +3533,43 @@ function markTrainingPlanDirty(render) {
   ) return;
   trainingPlanDirty = true;
   trainingPlanChangeVersion += 1;
-  trainingPlanSetSaveState("dirty", "Ungespeichert");
+  trainingPlanAutoSavePaused = false;
+  // Keep a same-identity, same-day recovery copy before any delayed network
+  // write. Never persist a session token or a whole organization snapshot.
+  trainingPlanWriteLeaveBackup(trainingPlanSelected);
+  trainingPlanSetSaveState("dirty", "Speichert automatisch …");
   refreshTrainingPlanSaveBackButtons();
   refreshTrainingPlanEditorState();
   if (render) renderTrainingPlanItems();
+  scheduleTrainingPlanSave();
+}
+
+function cancelTrainingPlanAutoSave() {
+  if (trainingPlanAutoSaveTimer !== null) {
+    clearTimeout(trainingPlanAutoSaveTimer);
+    trainingPlanAutoSaveTimer = null;
+  }
+}
+
+function scheduleTrainingPlanSave() {
+  cancelTrainingPlanAutoSave();
+  if (!trainingPlanDraft || !trainingPlanEditorDate || !trainingPlanDirty ||
+      !trainingPlansCanEdit || trainingPlanConflict || trainingPlanAutoSavePaused) return;
+  trainingPlanAutoSaveTimer = setTimeout(() => {
+    trainingPlanAutoSaveTimer = null;
+    if (trainingPlanTemplateBusy || trainingPlanSaveBackBusy ||
+        trainingPlanPickerMode !== null) {
+      // Choosing exercises/blocks changes the item structure. Defer the
+      // snapshot until the picker closes to avoid an ID-shape mismatch.
+      scheduleTrainingPlanSave();
+      return;
+    }
+    void saveTrainingPlan();
+  }, TRAINING_PLAN_AUTOSAVE_DELAY_MS);
 }
 
 async function saveTrainingPlanUntilClean() {
+  cancelTrainingPlanAutoSave();
   while (trainingPlanDirty) {
     const saved = await saveTrainingPlan();
     if (!saved) return false;
@@ -3514,7 +3577,25 @@ async function saveTrainingPlanUntilClean() {
   return true;
 }
 
-async function saveTrainingPlan() {
+// All manual, automatic and leave-triggered writes join one active request.
+// The trailing dirty revision is saved only after the first request has
+// returned its new CAS revision; no parallel writes against a stale revision.
+function saveTrainingPlan() {
+  cancelTrainingPlanAutoSave();
+  if (trainingPlanSaveInFlight) return trainingPlanSaveInFlight;
+  const generation = trainingPlanSessionGeneration;
+  const attempt = performTrainingPlanSave();
+  trainingPlanSaveInFlight = attempt;
+  return attempt.finally(() => {
+    if (generation !== trainingPlanSessionGeneration) return;
+    if (trainingPlanSaveInFlight === attempt) trainingPlanSaveInFlight = null;
+    if (trainingPlanDirty && !trainingPlanConflict && !trainingPlanAutoSavePaused) {
+      scheduleTrainingPlanSave();
+    }
+  });
+}
+
+async function performTrainingPlanSave() {
   if (
     !trainingPlanDraft ||
     !trainingPlanEditorDate ||
@@ -3536,6 +3617,15 @@ async function saveTrainingPlan() {
   const existing = trainingPlanSelected;
   const subjectId = trainingPlanSelectedSubjectId;
   const planDate = trainingPlanEditorDate;
+  const generation = trainingPlanSessionGeneration;
+  const identityId = trainingPlanSessionIdentityId;
+  const draft = trainingPlanDraft;
+  const isCurrent = () =>
+    generation === trainingPlanSessionGeneration &&
+    identityId === trainingPlanSessionIdentityId &&
+    draft === trainingPlanDraft &&
+    subjectId === trainingPlanSelectedSubjectId &&
+    planDate === trainingPlanEditorDate;
   trainingPlanSetSaveState("saving", "Speichert …");
 
   try {
@@ -3571,15 +3661,20 @@ async function saveTrainingPlan() {
       throw new Error("INVALID_TRAINING_PLAN_SAVE");
     }
 
-    trainingPlanApplySavedIds(trainingPlanDraft, saved.revision.items);
+    if (!isCurrent()) return false;
+    trainingPlanApplySavedIds(draft, saved.revision.items);
     trainingPlanSelected = saved;
-    trainingPlanClearLeaveBackup(subjectId, planDate);
     replaceTrainingPlanWeekSnapshot(saved);
     if (trainingPlanChangeVersion === version) {
       trainingPlanDirty = false;
-      trainingPlanSetSaveState("saved", "Gespeichert");
+      trainingPlanClearLeaveBackup(subjectId, planDate);
+      trainingPlanSetSaveState("saved", "Automatisch gespeichert");
     } else {
+      // A user can continue typing while a request is in flight. The first
+      // server response supplies the next expectedRevision for the trailing
+      // save; the newer local draft must stay in recovery storage.
       trainingPlanDirty = true;
+      trainingPlanWriteLeaveBackup(saved);
       trainingPlanSetSaveState("dirty", "Weitere Änderungen …");
     }
     showMessage(trainingPlanElements.editorMessage, "");
@@ -3589,6 +3684,8 @@ async function saveTrainingPlan() {
     if (trainingPlanViewMode === "group") renderTrainingPlanOverview();
     return true;
   } catch (error) {
+    if (!isCurrent()) return false;
+    trainingPlanAutoSavePaused = true;
     if (
       error?.status === 409 &&
       (error?.code === "TRAINING_PLAN_CONFLICT" ||
@@ -3615,11 +3712,13 @@ async function saveTrainingPlan() {
     }
     return false;
   } finally {
-    trainingPlanSaveBusy = false;
-    if (trainingPlanConflict) {
-      renderTrainingPlanItems();
+    if (isCurrent()) {
+      trainingPlanSaveBusy = false;
+      if (trainingPlanConflict) {
+        renderTrainingPlanItems();
+      }
+      refreshTrainingPlanEditorState();
     }
-    refreshTrainingPlanEditorState();
   }
 }
 
@@ -3760,6 +3859,12 @@ async function reloadTrainingPlanEditor() {
   trainingPlanDraft = plan
     ? trainingPlanDraftFromSnapshot(plan)
     : { note: "", items: [] };
+  if (trainingPlanRecoveredConflict) {
+    // The user explicitly chose to discard the preserved local draft.
+    trainingPlanClearLeaveBackup(trainingPlanSelectedSubjectId, date);
+  }
+  trainingPlanRecoveredConflict = false;
+  trainingPlanAutoSavePaused = false;
   trainingPlanConflict = false;
   trainingPlanDirty = false;
   trainingPlanChangeVersion = 0;
@@ -3893,12 +3998,12 @@ async function openTrainingPlanDistribution() {
   if (!trainingPlanOverview || !trainingPlanEditorDate || !trainingPlansCanEdit) {
     return;
   }
-  if (trainingPlanDirty) {
+  if ((trainingPlanDirty || trainingPlanSaveInFlight) &&
+      !(await saveTrainingPlanUntilClean())) {
     showMessage(
       trainingPlanElements.editorMessage,
-      "Bitte den Plan zuerst mit 💾 speichern. Ungespeicherte Änderungen werden nicht automatisch verteilt.",
+      "Der Plan konnte noch nicht gespeichert werden. Verteilung erst nach erfolgreichem Speichern möglich.",
     );
-    trainingPlanElements.save?.focus();
     return;
   }
   if (!trainingPlanSelected) {
@@ -4024,9 +4129,9 @@ async function distributeTrainingPlan() {
 
 function refreshTrainingPlanEditorState() {
   const readonly = !trainingPlansCanEdit;
-  if (trainingPlanElements.editor) {
-    trainingPlanElements.editor.inert = trainingPlanSaveBusy;
-  }
+  // Keep field input responsive during network saves; structural operations
+  // are guarded individually against a busy save.
+  if (trainingPlanElements.editor) trainingPlanElements.editor.inert = false;
   if (trainingPlanElements.note) {
     trainingPlanElements.note.disabled =
       readonly || trainingPlanConflict;
@@ -4041,6 +4146,7 @@ function refreshTrainingPlanEditorState() {
         : "Neuer Plan";
   }
   if (trainingPlanElements.save) {
+    trainingPlanElements.save.hidden = !trainingPlanAutoSavePaused || trainingPlanConflict;
     trainingPlanElements.save.disabled =
       readonly ||
       trainingPlanConflict ||
@@ -4069,6 +4175,9 @@ function refreshTrainingPlanEditorState() {
 }
 
 function resetTrainingPlanSessionState() {
+  // A revoked or changed session must not start a delayed write or reuse an
+  // in-flight response to mutate the next user's editor state.
+  cancelTrainingPlanAutoSave();
   trainingPlanSessionGeneration += 1;
   trainingPlanWeekRequestId += 1;
   trainingPlanDayRequestId += 1;
@@ -4190,15 +4299,16 @@ function trainingPlanRestoreLeaveBackup(plan, date) {
       : plan !== null &&
         plan.id === backup.planId &&
         plan.currentRevision === backup.expectedRevision;
-  if (!baseStillCurrent) {
-    trainingPlanClearLeaveBackup(trainingPlanSelectedSubjectId, date);
-    return null;
-  }
 
   try {
     return {
-      note: backup.draft.note,
-      items: backup.draft.items.map(trainingPlanCloneItem),
+      draft: {
+        note: backup.draft.note,
+        items: backup.draft.items.map(trainingPlanCloneItem),
+      },
+      // A revision mismatch can be our own save finishing after pagehide or
+      // another writer. Preserve the draft but NEVER auto-replay it.
+      conflict: !baseStillCurrent,
     };
   } catch {
     trainingPlanClearLeaveBackup(trainingPlanSelectedSubjectId, date);
@@ -4455,7 +4565,13 @@ trainingPlanElements.reload?.addEventListener("click", () => void reloadTraining
 trainingPlanElements.retry?.addEventListener("click", () => {
   if (trainingPlanConflict) return;
   trainingPlanDirty = true;
-  void saveTrainingPlan();
+  trainingPlanAutoSavePaused = false;
+  void saveTrainingPlanUntilClean();
+});
+window.addEventListener("online", () => {
+  if (!trainingPlanDirty || trainingPlanConflict || !trainingPlansCanEdit) return;
+  trainingPlanAutoSavePaused = false;
+  scheduleTrainingPlanSave();
 });
 trainingPlanElements.note?.addEventListener("input", () => {
   if (!trainingPlanDraft) return;
@@ -4473,7 +4589,7 @@ trainingPlanElements.pickerSearch?.addEventListener("input", renderTrainingPlanP
 trainingPlanElements.pickerCategory?.addEventListener("change", renderTrainingPlanPicker);
 trainingPlanElements.pickerList?.addEventListener("click", handleTrainingPlanPickerClick);
 trainingPlanElements.pickerManual?.addEventListener("click", () => {
-  if (!trainingPlanDraft) return;
+  if (!trainingPlanDraft || trainingPlanSaveBusy) return;
   trainingPlanDraft.items.push(newTrainingPlanExerciseDraft());
   closeTrainingPlanPicker();
   markTrainingPlanDirty(true);
