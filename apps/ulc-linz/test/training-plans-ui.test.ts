@@ -27,9 +27,9 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
-  it("uses manual-save language and a resilient compact editor heading", () => {
+  it("explains automatic saving and keeps a resilient compact editor heading", () => {
     expect(ULC_TRAINING_PLANS_HTML).toContain(
-      "Änderungen gezielt speichern.",
+      "Änderungen werden automatisch gespeichert.",
     );
     expect(ULC_TRAINING_PLANS_HTML).not.toContain(
       "konfliktfestem Autosave",
@@ -230,7 +230,7 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
   });
 
-  it("uses manual save, prompts on controlled leave and keeps optimistic concurrency", () => {
+  it("uses automatic saving, prompts on failed leave and keeps optimistic concurrency", () => {
     expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-save"');
     expect(ULC_TRAINING_PLANS_HTML).toContain('id="training-plan-leave-dialog"');
     expect(ULC_TRAINING_PLANS_HTML).toContain("Speichern &amp; verlassen");
@@ -252,7 +252,7 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       '"TRAINING_PLAN_TARGET_OCCUPIED"',
     );
-    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "scheduleTrainingPlanSave",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
@@ -278,7 +278,7 @@ describe("ULC E7B6 training plan block template UI", () => {
       "localStorage.setItem(",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "trainingPlanElements.editor.inert = trainingPlanSaveBusy;",
+      "trainingPlanElements.editor.inert = false;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "trainingPlanSaveBusy = true;\n  refreshTrainingPlanEditorState();",

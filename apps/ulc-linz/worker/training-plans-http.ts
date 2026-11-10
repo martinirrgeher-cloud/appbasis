@@ -210,7 +210,7 @@ async function trainingPlansModuleResponse(
           capabilities: TRAINING_PLAN_CAPABILITIES,
           features: {
             weekView: true,
-            autosave: false,
+            autosave: true,
             manualSave: true,
             confirmOnLeave: true,
             optimisticConcurrency: true,
