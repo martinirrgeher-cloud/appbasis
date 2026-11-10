@@ -1,6 +1,6 @@
 export const ULC_EXERCISE_CATALOG_HTML = `
           <section class="app-section" data-app-section="exercise-catalog" id="exercise-catalog" hidden>
-            <section class="hero exercise-catalog-hero">
+            <section class="hero exercise-catalog-hero ab-training-page-header">
               <div>
                 <p class="eyebrow">Training</p>
                 <h1>Übungskatalog</h1>

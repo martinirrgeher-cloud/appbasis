@@ -1,6 +1,6 @@
 export const ULC_TRAINING_BLOCKS_HTML = `
           <section class="app-section" data-app-section="training-blocks" id="training-blocks" hidden>
-            <section class="hero training-blocks-hero">
+            <section class="hero training-blocks-hero ab-training-page-header">
               <div>
                 <p class="eyebrow">Training</p>
                 <h1>Trainingsblöcke</h1>
