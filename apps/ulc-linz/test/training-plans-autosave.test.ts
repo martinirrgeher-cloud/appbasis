@@ -181,4 +181,48 @@ describe("ULC N07 debounced training-plan autosave", () => {
     expect(script).toContain("await saveTrainingPlanUntilClean();");
     expect(ULC_TRAINING_PLANS_HTML).toContain("Änderungen werden automatisch gespeichert.");
   });
+
+  it("preserves a newer local backup on a revision mismatch without silently discarding or replaying it", () => {
+    const begin = script.indexOf("function trainingPlanRestoreLeaveBackup(plan, date) {");
+    const end = script.indexOf("\\nfunction trainingPlanWriteLeaveBackup(existing)", begin);
+    expect(begin).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(begin);
+    const restoreSource = script.slice(begin, end);
+    const clearCalls: string[] = [];
+    const backup = {
+      subjectId: "athlete-a",
+      planDate: "2026-11-10",
+      planId: "plan-1",
+      expectedRevision: 5,
+      draft: {
+        note: "Neuere Änderung während des Speicherns",
+        items: [{ kind: "exercise", itemId: "exercise-1", name: "Sprint" }],
+      },
+    };
+    const make = new Function("backup", "clearCalls", `
+      let trainingPlanSelectedSubjectId = "athlete-a";
+      function trainingPlanReadLeaveBackup() { return backup; }
+      function trainingPlanClearLeaveBackup() { clearCalls.push("removed"); }
+      function trainingPlanCloneItem(item) { return { ...item }; }
+      ${restoreSource}
+      return trainingPlanRestoreLeaveBackup;
+    `);
+    const restore = make(backup, clearCalls) as (
+      plan: { id: string; currentRevision: number } | null,
+      date: string
+    ) => { draft: typeof backup.draft; conflict: boolean } | null;
+    const current = restore({ id: "plan-1", currentRevision: 6 }, "2026-11-10");
+    expect(current).toEqual({ draft: backup.draft, conflict: true });
+    expect(clearCalls).toEqual([]);
+    expect(restore({ id: "plan-1", currentRevision: 5 }, "2026-11-10"))
+      .toEqual({ draft: backup.draft, conflict: false });
+    expect(restore({ id: "another-plan", currentRevision: 1 }, "2026-11-10"))
+      .toEqual({ draft: backup.draft, conflict: true });
+    expect(clearCalls).toEqual([]);
+
+    expect(script).toContain("trainingPlanRecoveredConflict = recovered?.conflict === true;");
+    expect(script).toContain("trainingPlanAutoSavePaused = trainingPlanRecoveredConflict;");
+    expect(script).toContain("Aktuellen Stand laden (lokalen Entwurf verwerfen)");
+    expect(script).toContain("if (trainingPlanRecoveredConflict) {\\n    // The user explicitly chose");
+  });
 });
