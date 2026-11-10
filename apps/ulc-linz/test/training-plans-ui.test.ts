@@ -175,7 +175,7 @@ describe("ULC E7B6 training plan block template UI", () => {
       "} else {\n      renderTrainingPlanDistribution();",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "Ungespeicherte Änderungen werden nicht automatisch verteilt.",
+      "Verteilung erst nach erfolgreichem Speichern möglich.",
     );
     const distributionStart = ULC_TRAINING_PLANS_SCRIPT.indexOf(
       "async function openTrainingPlanDistribution()",
@@ -396,7 +396,7 @@ describe("ULC E7B6 training plan block template UI", () => {
 
   it("keeps active draft inputs mounted across successful manual save", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "trainingPlanApplySavedIds(trainingPlanDraft, saved.revision.items);",
+      "trainingPlanApplySavedIds(draft, saved.revision.items);",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain(
       "trainingPlanDraft = trainingPlanDraftFromSnapshot(saved);",
@@ -517,7 +517,7 @@ describe("ULC E7B6 training plan block template UI", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("/api/modules/training-blocks");
   });
 
-  it("serializes template adoption without triggering background saves", () => {
+  it("serializes template adoption and defers autosave until template operations finish", () => {
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("let trainingPlanTemplateBusy = false;");
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "trainingPlanSaveBusy ||\n    trainingPlanTemplateBusy ||\n    trainingPlanSaveBackBusy",
@@ -526,7 +526,7 @@ describe("ULC E7B6 training plan block template UI", () => {
       "editable &&\n    !trainingPlanSaveBusy &&\n    !trainingPlanTemplateBusy &&\n    !trainingPlanSaveBackBusy;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain("trainingPlanBlockDraftFromTemplate(template)");
-    expect(ULC_TRAINING_PLANS_SCRIPT).not.toContain("scheduleTrainingPlanSave");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain("if (trainingPlanTemplateBusy || trainingPlanSaveBackBusy) {\n      scheduleTrainingPlanSave();");
   });
 
 
@@ -620,7 +620,7 @@ describe("ULC E7B6 training plan block template UI", () => {
       "button.dataset.trainingPlanSaveTemplate = item.itemId;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "trainingPlanApplySavedIds(trainingPlanDraft, saved.revision.items);",
+      "trainingPlanApplySavedIds(draft, saved.revision.items);",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "refreshTrainingPlanSaveBackButtons();",

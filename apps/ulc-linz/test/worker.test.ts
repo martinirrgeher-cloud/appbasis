@@ -5659,7 +5659,7 @@ describe("U12 runtime API", () => {
         },
         features: {
           weekView: true,
-          autosave: false,
+          autosave: true,
           manualSave: true,
           confirmOnLeave: true,
           optimisticConcurrency: true,
