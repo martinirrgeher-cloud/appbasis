@@ -207,26 +207,6 @@ export const ULC_TRAINING_PLANS_HTML = `
 `;
 
 export const ULC_TRAINING_PLANS_CSS = `
-/* Shared mobile training-header geometry: compact copy, reachable actions, no horizontal overflow. */
-@media (max-width: 600px) {
-  .training-plans-hero.ab-training-page-header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 8px;
-    min-width: 0;
-    margin-bottom: 10px;
-    padding-block: 8px;
-  }
-  .training-plans-hero.ab-training-page-header > div:first-child { min-width: 0; flex: 1 1 170px; }
-  .training-plans-hero.ab-training-page-header .eyebrow,
-  .training-plans-hero.ab-training-page-header .summary { display: none; }
-  .training-plans-hero.ab-training-page-header h1 { margin: 0; overflow-wrap: anywhere; }
-  .training-plan-week-nav { min-width: 0; }
-  .training-plan-week-nav .button { min-height: 40px; }
-}
-
 .training-plans-hero { margin-bottom: 12px; }
 .training-plan-toolbar {
   display: grid;

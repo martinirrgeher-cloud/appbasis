@@ -38,7 +38,7 @@ import {
   ULC_KIDS_HTML, ULC_KIDS_CSS, ULC_KIDS_SCRIPT,
 } from "./youth-attendance-ui";
 import { generatedPwaResponse } from "./pwa";
-import { ULC_DESIGN_SYSTEM_CSS } from "./design-system";
+import { ULC_DESIGN_SYSTEM_CSS, ULC_TRAINING_PAGE_HEADER_CSS } from "./design-system";
 import { ULC_REGISTRATION_CALENDAR_CSS, ULC_REGISTRATION_CALENDAR_SCRIPT } from "./registration-calendar-ui";
 
 export const ULC_LINZ_APP_HTML = `<!doctype html>
@@ -1859,6 +1859,7 @@ ${ULC_EXERCISE_CATALOG_CSS}
 ${ULC_TRAINING_BLOCKS_CSS}
 ${ULC_TRAINING_PLANS_CSS}
 ${ULC_TRAINING_DOCUMENTATION_CSS}
+${ULC_TRAINING_PAGE_HEADER_CSS}
 
 .kindertraining-week-toolbar {
   display: grid;

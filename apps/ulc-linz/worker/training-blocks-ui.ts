@@ -162,25 +162,6 @@ export const ULC_TRAINING_BLOCKS_HTML = `
 `;
 
 export const ULC_TRAINING_BLOCKS_CSS = `
-/* Shared mobile training-header geometry: compact copy, reachable actions, no horizontal overflow. */
-@media (max-width: 600px) {
-  .training-blocks-hero.ab-training-page-header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 8px;
-    min-width: 0;
-    margin-bottom: 10px;
-    padding-block: 8px;
-  }
-  .training-blocks-hero.ab-training-page-header > div:first-child { min-width: 0; flex: 1 1 170px; }
-  .training-blocks-hero.ab-training-page-header .eyebrow,
-  .training-blocks-hero.ab-training-page-header .summary { display: none; }
-  .training-blocks-hero.ab-training-page-header h1 { margin: 0; overflow-wrap: anywhere; }
-  #training-block-new:not([hidden]) { flex: 0 0 40px; min-height: 40px; }
-}
-
 .training-blocks-hero {
   display: flex;
   min-width: 0;
