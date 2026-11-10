@@ -116,4 +116,53 @@ describe("ULC N03 membership and principal readiness (no DB writes)", () => {
     })).rejects.toMatchObject({ code: "DENIED" });
     expect(writes()).toBe(0);
   });
+
+  it.each(["admin", "trainer", "athlete", "parent", "functionary"] as UlcUserSourceRole[])(
+    "rejects permission writes to inactive and blocked %s accounts", async sourceRole => {
+      for (const state of [{ active: false }, { blocked: true }]) {
+        const { service, writes } = scenario({ sourceRole, ...state });
+        const snapshot = await service.read(ORG, USER);
+        await expect(service.update(ORG, "actor-admin", USER, {
+          modules: snapshot.modules.map(module => ({ key: module.key, level: module.level })),
+          expectedGrants: snapshot.expectedGrants,
+          expectedRevokes: snapshot.expectedRevokes,
+        })).rejects.toMatchObject({ code: "DENIED" });
+        expect(writes()).toBe(0);
+      }
+    },
+  );
+
+  it.each(["trainer", "athlete", "parent", "functionary"] as UlcUserSourceRole[])(
+    "rejects non-admin %s self-elevation even with unchanged module rights", async sourceRole => {
+      const { service, writes } = scenario({ sourceRole });
+      const snapshot = await service.read(ORG, USER);
+      await expect(service.update(ORG, USER, USER, {
+        modules: snapshot.modules.map(module => ({ key: module.key, level: module.level })),
+        expectedGrants: snapshot.expectedGrants,
+        expectedRevokes: snapshot.expectedRevokes,
+      })).rejects.toMatchObject({ code: "DENIED" });
+      expect(writes()).toBe(0);
+    },
+  );
+
+  it.each(["trainer", "athlete", "parent", "functionary"] as UlcUserSourceRole[])(
+    "rejects changes to modules outside the %s authorization boundary", async sourceRole => {
+      const { service, writes } = scenario({ sourceRole });
+      const snapshot = await service.read(ORG, USER);
+      const locked = snapshot.modules.find(module => !module.editable);
+      if (!locked) {
+        expect(sourceRole).toBe("trainer");
+        return;
+      }
+      await expect(service.update(ORG, "actor-admin", USER, {
+        modules: snapshot.modules.map(module => ({
+          key: module.key,
+          level: module.key === locked.key ? "edit" as const : module.level,
+        })),
+        expectedGrants: snapshot.expectedGrants,
+        expectedRevokes: snapshot.expectedRevokes,
+      })).rejects.toMatchObject({ code: "DENIED" });
+      expect(writes()).toBe(0);
+    },
+  );
 });
