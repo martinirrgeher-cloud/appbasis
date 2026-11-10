@@ -110,6 +110,7 @@ export const ULC_U12_HTML = `
                   <input id="u12-statistics-to" type="date" required />
                 </label>
                 <button type="submit" class="button button--primary" aria-label="Zeitraum auswerten" title="Zeitraum auswerten">↻</button>
+                <button type="button" class="button button--secondary" id="u12-statistics-export" disabled title="Alle fünf Statistikbereiche als CSV exportieren">CSV</button>
               </form>
               <p class="message message--error" id="u12-statistics-error" role="alert" hidden></p>
               <p class="u12-statistics-state" id="u12-statistics-state" role="status"></p>
@@ -370,6 +371,7 @@ const u12Ui = {
   statsDialog: document.querySelector("#u12-statistics-dialog"),
   statsClose: document.querySelector("#u12-statistics-close"),
   statsFilter: document.querySelector("#u12-statistics-filter"),
+  statsExport: document.querySelector("#u12-statistics-export"),
   statsFrom: document.querySelector("#u12-statistics-from"),
   statsTo: document.querySelector("#u12-statistics-to"),
   statsError: document.querySelector("#u12-statistics-error"),
@@ -472,6 +474,7 @@ let u12AutoSaveTimer = null;
 let u12AutoSaveFailed = false;
 let u12SaveInFlight = null;
 let u12StatisticsLoadId = 0;
+let u12StatisticsExport = null;
 let u12LoadId = 0;
 let u12CalendarBusy = false;
 let u12CalendarWeekCache = new Map();
@@ -479,6 +482,8 @@ let u12CalendarEnabled = false;
 let u12CalendarRuleWeekdays = null;
 
 function resetU12SessionState() {
+  u12StatisticsExport = null;
+  if (u12Ui.statsExport) u12Ui.statsExport.disabled = true;
   if (u12AutoSaveTimer !== null) clearTimeout(u12AutoSaveTimer);
   u12AutoSaveTimer = null;
   u12EditVersion = 0;
@@ -1163,6 +1168,70 @@ function appendU12StatisticsLine(container, left, right, helper = "") {
   container.append(row);
 }
 
+function u12StatisticsCsvValue(value) {
+  const text = String(value ?? "");
+  // Protect spreadsheet consumers against formula injection in names and labels.
+  const safe = /^[\\s]*[=+@\\-\\t\\r]/.test(text) ? "'" + text : text;
+  return '"' + safe.replace(/"/g, '""') + '"';
+}
+
+function exportU12StatisticsCsv() {
+  const saved = u12StatisticsExport;
+  if (!saved || !u12Ui.statsDialog?.open || saved.groupId !== u12Ui.group?.value ||
+      saved.from !== u12Ui.statsFrom?.value || saved.to !== u12Ui.statsTo?.value) return;
+  const report = saved.report;
+  const rows = [["Bereich", "Datum/Monat", "Name/Kategorie", "Kennzahl", "Wert", "Zusatz"]];
+  const add = (...cells) => rows.push(cells);
+  add("Übersicht", "", "", "Trainings", report.summary.trainings, "");
+  add("Übersicht", "", "", "Anwesenheiten", report.summary.attendance, "");
+  add("Übersicht", "", "", "Trainer-Einsätze", report.summary.trainerAttendances, "");
+  add("Übersicht", "", "", "Kategorien", report.summary.categories, "");
+  add("Übersicht", "", "", "Geklärte Status", report.summary.evaluatedStatuses, "");
+  add("Übersicht", "", "", "Offene Status", report.summary.openStatuses, "");
+  for (const month of report.months) {
+    add("Monate", month.month, "", "Trainings", month.trainings, "");
+    add("Monate", month.month, "", "Anwesenheiten", month.attendance, "");
+    add("Monate", month.month, "", "Trainer-Einsätze", month.trainerAttendances, "");
+  }
+  for (const training of report.trainings) {
+    add("Trainings", training.date, "", "Anwesende", training.presentCount, "");
+    add("Trainings", training.date, "", "Erfasste", training.registeredCount, "");
+    add("Trainings", training.date, "", "Offene", training.openCount, "");
+    add("Trainings", training.date, "", "Kategorien", training.categoryCount, "");
+    add("Trainings", training.date, "", "Trainer", training.trainerPresentCount, "");
+  }
+  for (const athlete of report.athletes) {
+    const name = athlete.lastName + " " + athlete.firstName;
+    add("Athleten", "", name, "Anwesend", athlete.attended, "");
+    add("Athleten", "", name, "Gewertet", athlete.evaluated, "");
+    add("Athleten", "", name, "Offen", athlete.openCount, "");
+    add("Athleten", "", name, "Quote (%)", athlete.attendancePercent ?? "", "");
+    for (const category of athlete.categories || []) {
+      add("Athleten-Kategorien", "", name, category.label, category.count, "");
+    }
+  }
+  for (const category of report.categories) {
+    add("Kategorien", "", category.label, "Trainings", category.trainings, "");
+    add("Kategorien", "", category.label, "Zuordnungen", category.assignments, "");
+  }
+  for (const trainer of report.trainers) {
+    add("Trainer", "", trainer.lastName + " " + trainer.firstName, "Einsätze", trainer.attended, "");
+  }
+  if (report.summary.unidentifiedTrainerAttendances > 0) {
+    add("Trainer", "", "Nicht mehr zuordenbar", "Einsätze",
+      report.summary.unidentifiedTrainerAttendances, "");
+  }
+  const csv = "\\uFEFF" + rows.map(row => row.map(u12StatisticsCsvValue).join(";")).join("\\r\\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "ulc-statistik-" + saved.from + "-" + saved.to + ".csv";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function renderU12Statistics(report) {
   if (!report || !report.summary || !Array.isArray(report.trainings) ||
       !Array.isArray(report.months) || !Array.isArray(report.athletes) ||
@@ -1305,6 +1374,8 @@ async function loadU12Statistics() {
   const id = ++u12StatisticsLoadId;
   if (!groupId || !u12Ui.statsDialog?.open) return;
   showMessage(u12Ui.statsError, "");
+  u12StatisticsExport = null;
+  if (u12Ui.statsExport) u12Ui.statsExport.disabled = true;
   u12Ui.statsState.textContent = "Statistik wird geladen …";
   u12Ui.statsSummary?.replaceChildren();
   if (u12Ui.statsCompleteness) u12Ui.statsCompleteness.textContent = "";
@@ -1322,6 +1393,8 @@ async function loadU12Statistics() {
     if (id !== u12StatisticsLoadId || !u12Ui.statsDialog.open ||
         groupId !== u12Ui.group?.value) return;
     renderU12Statistics(payload?.report);
+    u12StatisticsExport = { groupId, from, to, report: payload.report };
+    if (u12Ui.statsExport) u12Ui.statsExport.disabled = false;
     u12Ui.statsState.textContent = "Nur gespeicherte Anwesenheiten · " +
       germanDate(from) + " – " + germanDate(to) + ".";
   } catch {
@@ -2208,7 +2281,12 @@ u12Ui.today?.addEventListener("click", () => void u12GoToday());
 u12Ui.addAthlete?.addEventListener("click", () => void openU12NewAthlete());
 u12Ui.statsOpen?.addEventListener("click", () => openU12Statistics());
 u12Ui.statsClose?.addEventListener("click", () => u12Ui.statsDialog?.close());
-u12Ui.statsDialog?.addEventListener("close", () => { u12StatisticsLoadId += 1; });
+u12Ui.statsDialog?.addEventListener("close", () => {
+  u12StatisticsLoadId += 1;
+  u12StatisticsExport = null;
+  if (u12Ui.statsExport) u12Ui.statsExport.disabled = true;
+});
+u12Ui.statsExport?.addEventListener("click", exportU12StatisticsCsv);
 u12Ui.statsFilter?.addEventListener("submit", (event) => {
   event.preventDefault();
   void loadU12Statistics();
