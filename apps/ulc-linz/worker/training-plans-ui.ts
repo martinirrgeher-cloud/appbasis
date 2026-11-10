@@ -1000,6 +1000,7 @@ let trainingPlanSaveBusy = false;
 let trainingPlanSaveInFlight = null;
 let trainingPlanAutoSaveTimer = null;
 let trainingPlanAutoSavePaused = false;
+let trainingPlanRecoveredConflict = false;
 const TRAINING_PLAN_AUTOSAVE_DELAY_MS = 850;
 let trainingPlanTemplateBusy = false;
 let trainingPlanSaveBackBusy = false;
@@ -2230,20 +2231,35 @@ function openTrainingPlanEditor(date, planOverride) {
   trainingPlanDraft = plan
     ? trainingPlanDraftFromSnapshot(plan)
     : { note: "", items: [] };
-  const recoveredDraft = trainingPlanRestoreLeaveBackup(plan, date);
-  if (recoveredDraft) {
-    trainingPlanDraft = recoveredDraft;
+  const recovered = trainingPlanRestoreLeaveBackup(plan, date);
+  if (recovered) {
+    trainingPlanDraft = recovered.draft;
   }
-  trainingPlanDirty = recoveredDraft !== null;
-  trainingPlanConflict = false;
+  trainingPlanDirty = recovered !== null;
+  trainingPlanRecoveredConflict = recovered?.conflict === true;
+  trainingPlanConflict = trainingPlanRecoveredConflict;
+  trainingPlanAutoSavePaused = trainingPlanRecoveredConflict;
   trainingPlanSaveBusy = false;
   trainingPlanTemplateBusy = false;
   trainingPlanSaveBackBusy = false;
   trainingPlanSaveBackItemId = null;
   trainingPlanSaveBackAudiences = [];
-  trainingPlanChangeVersion = recoveredDraft ? 1 : 0;
+  trainingPlanChangeVersion = recovered ? 1 : 0;
   populateTrainingPlanEditor();
-  if (recoveredDraft) {
+  if (trainingPlanRecoveredConflict) {
+    // The previous request may have reached the server after the browser
+    // closed. Never replay a stale backup against a newer revision.
+    trainingPlanSetSaveState("conflict", "Entwurf gesichert – Konflikt");
+    showMessage(
+      trainingPlanElements.editorMessage,
+      "Eine neuere Planversion liegt vor. Dein lokaler Entwurf wird hier schreibgeschützt angezeigt und bleibt gesichert. Übertrage benötigte Änderungen, bevor du den aktuellen Stand lädst.",
+    );
+    if (trainingPlanElements.reload) {
+      trainingPlanElements.reload.hidden = false;
+      trainingPlanElements.reload.textContent =
+        "Aktuellen Stand laden (lokalen Entwurf verwerfen)";
+    }
+  } else if (recovered) {
     trainingPlanSetSaveState("dirty", "Wiederhergestellt – speichert automatisch");
     scheduleTrainingPlanSave();
   }
@@ -2336,6 +2352,7 @@ async function closeTrainingPlanEditor(force) {
   cancelTrainingPlanAutoSave();
   trainingPlanSaveInFlight = null;
   trainingPlanAutoSavePaused = false;
+  trainingPlanRecoveredConflict = false;
   closeTrainingPlanSaveTemplate(true);
   trainingPlanEditorDate = null;
   trainingPlanSelected = null;
@@ -3842,6 +3859,12 @@ async function reloadTrainingPlanEditor() {
   trainingPlanDraft = plan
     ? trainingPlanDraftFromSnapshot(plan)
     : { note: "", items: [] };
+  if (trainingPlanRecoveredConflict) {
+    // The user explicitly chose to discard the preserved local draft.
+    trainingPlanClearLeaveBackup(trainingPlanSelectedSubjectId, date);
+  }
+  trainingPlanRecoveredConflict = false;
+  trainingPlanAutoSavePaused = false;
   trainingPlanConflict = false;
   trainingPlanDirty = false;
   trainingPlanChangeVersion = 0;
@@ -4276,15 +4299,16 @@ function trainingPlanRestoreLeaveBackup(plan, date) {
       : plan !== null &&
         plan.id === backup.planId &&
         plan.currentRevision === backup.expectedRevision;
-  if (!baseStillCurrent) {
-    trainingPlanClearLeaveBackup(trainingPlanSelectedSubjectId, date);
-    return null;
-  }
 
   try {
     return {
-      note: backup.draft.note,
-      items: backup.draft.items.map(trainingPlanCloneItem),
+      draft: {
+        note: backup.draft.note,
+        items: backup.draft.items.map(trainingPlanCloneItem),
+      },
+      // A revision mismatch can be our own save finishing after pagehide or
+      // another writer. Preserve the draft but NEVER auto-replay it.
+      conflict: !baseStillCurrent,
     };
   } catch {
     trainingPlanClearLeaveBackup(trainingPlanSelectedSubjectId, date);
