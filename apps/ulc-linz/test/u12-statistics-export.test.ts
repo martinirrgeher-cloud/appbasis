@@ -27,4 +27,33 @@ describe("ULC Nachwuchsstatistik CSV-Export", () => {
     expect(ULC_LINZ_APP_SCRIPT).toContain('URL.revokeObjectURL(url)');
     expect(ULC_LINZ_APP_SCRIPT).toContain('link.remove()');
   });
+  it("emits real BOM and CRLF delimiters instead of literal backslash sequences", () => {
+    // Extract the actual generated worker code so escaped template-string output
+    // cannot accidentally satisfy a superficial source assertion.
+    const csvLine = ULC_LINZ_APP_SCRIPT.split("\n").find(line => line.includes("const csv = "));
+    expect(csvLine).toBeDefined();
+    const makeCsv = new Function("rows", "u12StatisticsCsvValue", csvLine! + "\nreturn csv;");
+    const csv = makeCsv([["Bereich", "Wert"], ["Trainer", "Müller"]], (value: unknown) =>
+      '"' + String(value).replace(/"/g, '""') + '"') as string;
+    expect(csv.charCodeAt(0)).toBe(0xfeff);
+    expect(csv).toContain("\r\n");
+    expect(csv).not.toContain(String.raw`\\uFEFF`);
+    expect(csv).not.toContain(String.raw`\\r\\n`);
+  });
+
+  it("prevents spreadsheet formula execution even after leading whitespace", () => {
+    const start = ULC_LINZ_APP_SCRIPT.indexOf("function u12StatisticsCsvValue(value)");
+    const end = ULC_LINZ_APP_SCRIPT.indexOf("\nfunction exportU12StatisticsCsv()", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const csvValue = new Function(
+      ULC_LINZ_APP_SCRIPT.slice(start, end) + "\nreturn u12StatisticsCsvValue;",
+    )() as (value: unknown) => string;
+    for (const input of ["=1+1", "+SUM(A1)", "-1+2", "@cmd", " \t=1+1", "\r+1"]) {
+      expect(csvValue(input)).toBe('"' + "'" + input + '"');
+    }
+    expect(csvValue('Müller "Test"')).toBe('"Müller ""Test"""');
+    expect(csvValue("Trainer")).toBe('"Trainer"');
+  });
+
 });
