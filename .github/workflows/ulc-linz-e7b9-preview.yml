@@ -670,6 +670,15 @@ jobs:
 
       # On deploy-accept, these checks only run after provider deployment,
       # exact-SHA verification, runtime/database smoke and anonymous API guards.
+      # Fail before authenticated acceptance if a previous run left persistent
+      # E7B9 fixtures behind. This is a SELECT-only check, not a cleanup.
+      # Keep the existing post-acceptance guard to detect newly created rows.
+      - name: Preflight no existing E7B9 preview fixtures (read-only)
+        if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
+        env:
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-preview-fixture-audit.mjs verify-clean
+
       - name: Run authenticated attendance dual-mode acceptance
         if: inputs.operation == 'accept' || inputs.operation == 'deploy-accept'
         env:
