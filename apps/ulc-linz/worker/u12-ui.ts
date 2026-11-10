@@ -1171,7 +1171,7 @@ function appendU12StatisticsLine(container, left, right, helper = "") {
 function u12StatisticsCsvValue(value) {
   const text = String(value ?? "");
   // Protect spreadsheet consumers against formula injection in names and labels.
-  const safe = /^[\\s]*[=+@\\-\\t\\r]/.test(text) ? "'" + text : text;
+  const safe = /^\s*[=+@-]/.test(text) ? "'" + text : text;
   return '"' + safe.replace(/"/g, '""') + '"';
 }
 
@@ -1221,7 +1221,7 @@ function exportU12StatisticsCsv() {
     add("Trainer", "", "Nicht mehr zuordenbar", "Einsätze",
       report.summary.unidentifiedTrainerAttendances, "");
   }
-  const csv = "\\uFEFF" + rows.map(row => row.map(u12StatisticsCsvValue).join(";")).join("\\r\\n");
+  const csv = "\uFEFF" + rows.map(row => row.map(u12StatisticsCsvValue).join(";")).join("\r\n");
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
