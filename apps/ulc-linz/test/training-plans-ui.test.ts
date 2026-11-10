@@ -186,7 +186,10 @@ describe("ULC E7B6 training plan block template UI", () => {
     );
     expect(
       ULC_TRAINING_PLANS_SCRIPT.slice(distributionStart, distributionEnd),
-    ).not.toContain("saveTrainingPlanUntilClean()");
+    ).toContain("saveTrainingPlanUntilClean()");
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanAutoSavePaused = true;",
+    );
   });
 
   it("loads only Monday-based week data without client-owned organization scope", () => {
