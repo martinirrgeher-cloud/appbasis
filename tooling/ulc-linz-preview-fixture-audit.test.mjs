@@ -1,218 +1,70 @@
+import { test } from "node:test";
 import assert from "node:assert/strict";
-import test from "node:test";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
-  classifyUlcPreviewFixture,
-  selectUlcPreviewBlockCandidates,
-  countUnexpectedUlcPreviewFixtures,
-  assertNoUlcPreviewE7B9Fixtures,
-  auditUlcPreviewFixtures,
+  inspectUlcPreviewFixtureLabels,
+  AUDIT_TABLES,
 } from "./ulc-linz-preview-fixture-audit.mjs";
+import { DIRECT_G04_PREVIEW } from "./ulc-linz-g04-direct-preview-preflight.mjs";
 
-const ROOT = resolve(fileURLToPath(new URL("../", import.meta.url)));
-
-test("fixture classification preserves canonical athlete and self-registration group", () => {
-  assert.equal(classifyUlcPreviewFixture("group", "Preview Selbstanmeldung"), "protected");
-  assert.equal(classifyUlcPreviewFixture("athlete", "Preview Athlet"), "protected");
-  assert.equal(classifyUlcPreviewFixture("athlete", "Athlet Preview"), "protected");
-  assert.equal(classifyUlcPreviewFixture("athlete", "preview.athlete"), "review");
+const connection = role => "postgresql://" + role + ":example@" +
+  DIRECT_G04_PREVIEW.host + ":5432/" + DIRECT_G04_PREVIEW.database + "?sslmode=require";
+const input = {
+  migrationDatabaseUrl: connection(DIRECT_G04_PREVIEW.migrationRole),
+  applicationDatabaseUrl: connection(DIRECT_G04_PREVIEW.applicationRole),
+  securityLogDatabaseUrl: connection(DIRECT_G04_PREVIEW.securityRole),
+};
+test("rejects unverified targets before opening any database", async () => {
+  let opened = false;
+  await assert.rejects(inspectUlcPreviewFixtureLabels({
+    ...input, applicationDatabaseUrl: input.applicationDatabaseUrl.replace(
+      DIRECT_G04_PREVIEW.database, "production"),
+  }, { databaseFactory: () => { opened = true; throw Error("must not open"); } }));
+  assert.equal(opened, false);
 });
-
-test("only exact 12-hex E7B9 acceptance names are unambiguous candidates", () => {
-  const marker = "2f4ab302910e";
-  for (const [kind, name] of [
-    ["group", "E7B9 Preview Group " + marker],
-    ["athlete", "E7B9 Preview-" + marker],
-    ["exercise", "E7B9 Preview Exercise " + marker],
-    ["block", "E7B9 Preview Block " + marker + " changed"],
-    ["block", "E7B9 Save-back " + marker],
-  ]) {
-    assert.equal(classifyUlcPreviewFixture(kind, name), "e7b9");
-  }
-  for (const [kind, name] of [
-    ["group", "Preview Hobbygruppe"],
-    ["athlete", "Preview Person"],
-    ["exercise", "Preview Bewegung"],
-    ["block", "Preview Zirkel"],
-  ]) {
-    assert.equal(classifyUlcPreviewFixture(kind, name), "review");
-  }
-  assert.equal(classifyUlcPreviewFixture("group", "E7B9 Preview Group arbitrary"), "review");
-  assert.equal(classifyUlcPreviewFixture("exercise", "Sprintübung"), "ignore");
-});
-
-test("audit uses a read-only transaction and cannot perform deletion", async () => {
-  const source = await readFile(resolve(ROOT,"tooling/ulc-linz-preview-fixture-audit.mjs"), "utf8");
-  assert.match(source, /SET TRANSACTION READ ONLY/);
-  assert.match(source, /READ_ONLY_DRY_RUN/);
-  assert.match(source, /allowedToPermanentlyDelete: false/);
-  assert.match(source, /Only dry-run and read-only verify-clean are implemented/);
-  assert.doesNotMatch(source, /tx\.unsafe\(\s*["`][^"`]*(DELETE FROM|TRUNCATE |UPDATE |INSERT INTO)/i);
-  for(const x of ["athletePlans","athleteAttendance","athleteRegistrations","athleteDocumentation","athleteIdentities","groupSessions","exerciseBlockOccurrences","exercisePlanOccurrences","blockPlanReferences"]) {
-    assert.match(source,new RegExp(x));
-  }
-});
-
-test("a block with any non-test revision is never a deletion candidate", () => {
-  const exact = "E7B9 Preview Block 2f4ab302910e";
-  const records = [
-    { id: "block-a", name: exact },
-    { id: "block-a", name: exact + " changed" },
-    { id: "block-b", name: exact },
-    { id: "block-b", name: "Echte Sprintübungen" },
-    { id: "block-c", name: "Preview Zirkel" },
-    { id: "block-d", name: "Echte Sprintübungen" },
-  ];
-  assert.deepEqual(selectUlcPreviewBlockCandidates(records), [
-    { id: "block-a", name: exact, classification: "e7b9" },
-    { id: "block-b", name: exact, classification: "review" },
-    { id: "block-c", name: "Preview Zirkel", classification: "review" },
-  ]);
-});
-
-test("audit explicitly reports cross-links and stays entirely read-only", async () => {
-  const source = await readFile(resolve(ROOT, "tooling/ulc-linz-preview-fixture-audit.mjs"), "utf8");
-  for (const risk of [
-    "candidateGroupsOtherAthletes",
-    "candidateAthletesOtherGroups",
-    "candidateGroupsOtherAttendance",
-    "candidateGroupsOtherRegistrations",
-    "candidateAthletesOtherAttendance",
-    "candidateAthletesOtherRegistrations",
-    "candidateAthleteContacts",
-    "candidateAthleteIdentities",
-    "candidateGroupsOtherExercises",
-    "candidateGroupsOtherBlocks",
-    "candidateExercisesOtherBlocks",
-    "candidateExercisesOtherPlans",
-    "candidateBlocksOtherPlans",
-    "candidateExercisesPrivateMedia",
-    "candidateBlocksFavorites",
-    "existingProtectedGroupLinks",
-    "LINKED_DATA_REVIEW_REQUIRED",
-  ]) assert.ok(source.includes(risk), risk);
-  assert.match(source, /SET TRANSACTION READ ONLY/);
-  assert.match(source, /allowedToPermanentlyDelete: false/);
-});
-
-test("post-deploy guard tolerates protected canonical records and ordinary preview labels", () => {
-  const entries = {
-    groups: [{ id: "grp-1", name: "Preview Selbstanmeldung", classification: "protected" }],
-    athletes: [{ id: "ath-1", name: "Preview Athlet", classification: "protected" }],
-    exercises: [{ id: "ex-1", name: "Preview Warmup", classification: "review" }],
-    blocks: [{ id: "b-1", name: "Preview Sprint", classification: "review" }],
-  };
-  const unexpectedE7B9 = countUnexpectedUlcPreviewFixtures(entries, [
-    { id: "b-1", name: "Preview Sprint" },
-  ]);
-  assert.deepEqual(unexpectedE7B9, {
-    groups: 0, athletes: 0, exercises: 0, blocks: 0,
-  });
-  assert.ok(assertNoUlcPreviewE7B9Fixtures({ unexpectedE7B9 }));
-});
-
-test("post-deploy guard refuses one regenerated fixture, including mixed-revision blocks", () => {
-  const marker = "2f4ab302910e";
-  const entities = {
-    groups: [{ id: "new", name: "E7B9 Preview Group " + marker, classification: "e7b9" }],
-    athletes: [],
-    exercises: [],
-    blocks: [{ id: "mixed", name: "Actual interval set", classification: "review" }],
-  };
-  const unexpectedE7B9 = countUnexpectedUlcPreviewFixtures(entities, [
-    { id: "mixed", name: "E7B9 Preview Block " + marker },
-    { id: "mixed", name: "Actual interval set" },
-    { id: "mixed", name: "E7B9 Save-back " + marker },
-  ]);
-  assert.deepEqual(unexpectedE7B9, {
-    groups: 1, athletes: 0, exercises: 0, blocks: 1,
-  });
-  assert.throws(
-    () => assertNoUlcPreviewE7B9Fixtures({ unexpectedE7B9 }),
-    /Unexpected persistent E7B9 acceptance fixtures/,
-  );
-  assert.throws(
-    () => assertNoUlcPreviewE7B9Fixtures({ unexpectedE7B9: { groups: 0 } }),
-    /inventory is incomplete/,
-  );
-});
-
-test("regression guard is read-only and has a single fail-closed workflow gate", async () => {
-  const source = await readFile(resolve(ROOT, "tooling/ulc-linz-preview-fixture-audit.mjs"), "utf8");
-  const workflow = await readFile(
-    resolve(ROOT, ".github/workflows/ulc-linz-e7b9-preview.yml"), "utf8",
-  );
-  assert.match(source, /SET TRANSACTION READ ONLY/);
-  assert.match(source, /if \(mode === "verify-clean"\)/);
-  assert.match(source, /Do not auto-delete any data/);
-  assert.match(workflow, /- name: Verify no regenerated E7B9 preview fixtures \(read-only\)/);
-  assert.match(workflow, /node \.\/tooling\/ulc-linz-preview-fixture-audit\.mjs verify-clean/);
-  assert.match(workflow, /if: inputs\.operation == 'accept' \|\| inputs\.operation == 'deploy-accept'/);
-  const guard = workflow.indexOf("Verify no regenerated E7B9 preview fixtures (read-only)");
-  assert.ok(guard > workflow.indexOf("Run authenticated E7B9 training-planning acceptance"));
-  assert.ok(guard < workflow.indexOf("Record E7B9 preview operation"));
-  assert.doesNotMatch(workflow, /run: node \.\/tooling\/ulc-linz-training-plans-preview-acceptance\.mjs/);
-  assert.match(workflow, /run: node \.\/tooling\/ulc-linz-training-plans-preview-readonly-acceptance\.mjs/);
-});
-
-test("read-only fixture guard releases postgres-js pool after successful verification", async () => {
+test("counts preview labels without fetching or exposing row identities", async () => {
   const queries = [];
-  const closed = [];
-  const databaseUrl = "postgresql://preview_fixture_role:testing@ep-preview-test.eu-central-1.aws.neon.tech/appbasis_ulc_linz_preview";
-  const db = {
-    client: {
-      begin: async (callback) => callback({
-        async unsafe(sql, params = []) {
-          queries.push({ sql, params });
-          if (sql.includes("current_database()")) {
-            return [{ db: "appbasis_ulc_linz_preview", principal: "preview_fixture_role" }];
-          }
-          // Empty E7B9 inventory: aggregate count SELECT always returns one row.
-          if (sql.startsWith("SELECT count(*)::int AS total")) return [{ total: 0 }];
-          if (sql.startsWith("SELECT")) return [];
-          if (sql === "SET TRANSACTION READ ONLY") return [];
-          throw new Error("Write attempted by preview audit.");
-        },
-      }),
-      end: async () => { closed.push(true); },
-    },
-  };
-  const result = await auditUlcPreviewFixtures(
-    { connectionString: databaseUrl },
-    { databaseFactory: () => db },
-  );
-  assert.deepEqual(result.unexpectedE7B9, { groups: 0, athletes: 0, exercises: 0, blocks: 0 });
-  assertNoUlcPreviewE7B9Fixtures(result);
-  assert.deepEqual(closed, [true], "postgres-js pool must be closed once after success");
-  assert.equal(queries[0].sql, "SET TRANSACTION READ ONLY");
-  assert.ok(queries.every(x => x.sql.startsWith("SELECT") || x.sql === "SET TRANSACTION READ ONLY"));
+  let closed = false;
+  const result = await inspectUlcPreviewFixtureLabels(input, {
+    databaseFactory: () => ({ client: {
+      async unsafe(sql, params) {
+        queries.push({ sql, params });
+        if (sql.includes("information_schema.columns")) return [
+          { table_name: "ulc_linz_athlete", column_name: "first_name" },
+          { table_name: "ulc_linz_group", column_name: "name" },
+          { table_name: "ulc_linz_group", column_name: "secret_token" },
+          { table_name: "unknown_table", column_name: "name" },
+        ];
+        return [{ candidate_count: 3 }];
+      },
+      async end() { closed = true; },
+    } }),
+  });
+  assert.equal(closed, true);
+  assert.equal(result.mode, "read-only");
+  assert.equal(result.provenanceEstablished, false);
+  assert.equal(result.cleanupPerformed, false);
+  assert.equal(result.tables.length, Object.keys(AUDIT_TABLES).length);
+  assert.equal(result.tables.find(x => x.table === "ulc_linz_athlete").candidateCount, 3);
+  assert.equal(result.tables.find(x => x.table === "ulc_linz_group").candidateCount, 3);
+  assert.equal(result.tables.filter(x => x.status === "not-inspectable").length, 2);
+  assert.equal(queries.length, 3);
+  assert.ok(queries.every(x => /^SELECT /.test(x.sql)));
+  assert.ok(queries.every(x => !/INSERT|UPDATE|DELETE|CREATE|DROP|ALTER/i.test(x.sql)));
+  assert.ok(queries.slice(1).every(x => x.params[0] === "%preview%" &&
+    x.params[1] === "athlet.preview"));
+  assert.ok(!JSON.stringify(result).includes("secret_token"));
 });
-
-test("read-only fixture guard closes postgres-js pool even when audit query fails", async () => {
-  let closed = 0;
-  const databaseUrl = "postgresql://preview_fixture_role:testing@ep-preview-test.eu-central-1.aws.neon.tech/appbasis_ulc_linz_preview";
-  const db = {
-    client: {
-      begin: async () => { throw new Error("audit query failed"); },
-      end: async () => { closed += 1; },
-    },
-  };
-  await assert.rejects(
-    auditUlcPreviewFixtures(
-      { connectionString: databaseUrl },
-      { databaseFactory: () => db },
-    ),
-    /audit query failed/,
-  );
-  assert.equal(closed, 1);
-});
-
-test("production database adapter exposes client.end and not database.close", async () => {
-  const client = await readFile(resolve(ROOT, "packages/database/src/client.ts"), "utf8");
-  const source = await readFile(resolve(ROOT, "tooling/ulc-linz-preview-fixture-audit.mjs"), "utf8");
-  assert.match(client, /client,\s*database: drizzle\(client\)/);
-  assert.match(source, /await database\.client\.end\(\)/);
-  assert.doesNotMatch(source, /database\.close\(\)/);
+test("closes the database after an invalid query response", async () => {
+  let closed = false;
+  await assert.rejects(inspectUlcPreviewFixtureLabels(input, {
+    databaseFactory: () => ({ client: {
+      async unsafe(sql) {
+        return sql.includes("information_schema.columns")
+          ? [{ table_name: "ulc_linz_group", column_name: "name" }]
+          : [{ candidate_count: -1 }];
+      },
+      async end() { closed = true; },
+    } }),
+  }), /Invalid read-only/);
+  assert.equal(closed, true);
 });
