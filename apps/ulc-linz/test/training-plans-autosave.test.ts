@@ -184,7 +184,7 @@ describe("ULC N07 debounced training-plan autosave", () => {
 
   it("preserves a newer local backup on a revision mismatch without silently discarding or replaying it", () => {
     const begin = script.indexOf("function trainingPlanRestoreLeaveBackup(plan, date) {");
-    const end = script.indexOf("\\nfunction trainingPlanWriteLeaveBackup(existing)", begin);
+    const end = script.indexOf("function trainingPlanWriteLeaveBackup(existing)", begin);
     expect(begin).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(begin);
     const restoreSource = script.slice(begin, end);
@@ -223,6 +223,6 @@ describe("ULC N07 debounced training-plan autosave", () => {
     expect(script).toContain("trainingPlanRecoveredConflict = recovered?.conflict === true;");
     expect(script).toContain("trainingPlanAutoSavePaused = trainingPlanRecoveredConflict;");
     expect(script).toContain("Aktuellen Stand laden (lokalen Entwurf verwerfen)");
-    expect(script).toContain("if (trainingPlanRecoveredConflict) {\\n    // The user explicitly chose");
+    expect(script).toContain("// The user explicitly chose to discard the preserved local draft.");
   });
 });
