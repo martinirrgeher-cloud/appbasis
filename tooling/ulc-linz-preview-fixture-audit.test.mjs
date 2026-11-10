@@ -216,3 +216,26 @@ test("production database adapter exposes client.end and not database.close", as
   assert.match(source, /await database\.client\.end\(\)/);
   assert.doesNotMatch(source, /database\.close\(\)/);
 });
+
+test("E7B9 acceptance rejects persisted fixtures both before and after authenticated tests", async () => {
+  const workflow = await readFile(
+    resolve(ROOT, ".github/workflows/ulc-linz-e7b9-preview.yml"), "utf8",
+  );
+  const preflight = "Preflight no existing E7B9 preview fixtures (read-only)";
+  const postflight = "Verify no regenerated E7B9 preview fixtures (read-only)";
+  const attendance = "Run authenticated attendance dual-mode acceptance";
+  const planning = "Run authenticated E7B9 training-planning acceptance";
+  const pre = workflow.indexOf("- name: " + preflight);
+  const post = workflow.indexOf("- name: " + postflight);
+  assert.ok(pre >= 0 && pre < workflow.indexOf("- name: " + attendance));
+  assert.ok(pre < workflow.indexOf("- name: " + planning));
+  assert.ok(post > workflow.indexOf("- name: " + planning));
+  assert.equal(workflow.split("- name: " + preflight).length, 2);
+  assert.equal(workflow.split("- name: " + postflight).length, 2);
+  const gate = workflow.slice(pre, workflow.indexOf("\n      - name:", pre + 1));
+  assert.match(gate, /if: inputs\.operation == 'accept' \|\| inputs\.operation == 'deploy-accept'/);
+  assert.match(gate, /node \.\/tooling\/ulc-linz-preview-fixture-audit\.mjs verify-clean/);
+  assert.doesNotMatch(gate, /apply|migrate|DELETE|TRUNCATE|UPDATE|INSERT/);
+  const postGate = workflow.slice(post, workflow.indexOf("\n      - name:", post + 1));
+  assert.match(postGate, /node \.\/tooling\/ulc-linz-preview-fixture-audit\.mjs verify-clean/);
+});
