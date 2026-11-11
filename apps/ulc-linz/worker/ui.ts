@@ -2879,7 +2879,9 @@ window.addEventListener("beforeunload", (event) => {
       u12Saving || u12DirtyDates.size > 0 ||
       u14Saving || u14DirtyDates.size > 0 ||
       kidsSaving || kidsDirtyDates.size > 0 ||
-      kindertrainingWeekSaving || kindertrainingWeekDirtyDates.size > 0) {
+      (typeof kindertrainingWeekSaving !== "undefined" && kindertrainingWeekSaving) ||
+      (typeof kindertrainingWeekDirtyDates !== "undefined" &&
+        kindertrainingWeekDirtyDates.size > 0)) {
     event.preventDefault();
     event.returnValue = "";
     return;
