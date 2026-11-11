@@ -4968,7 +4968,6 @@ async function saveKindertrainingWeek() {
 
     const failedDates = [];
     let conflictCount = 0;
-    let uncertainCount = 0;
     let savedCount = 0;
     results.forEach((result, index) => {
       const sessionDate = dirtySnapshots[index].sessionDate;
@@ -4979,7 +4978,6 @@ async function saveKindertrainingWeek() {
       } else {
         failedDates.push(germanDate(sessionDate));
         if (result.reason?.status === 409) conflictCount += 1;
-        else uncertainCount += 1;
       }
     });
 
