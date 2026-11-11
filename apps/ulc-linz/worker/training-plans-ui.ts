@@ -3551,10 +3551,15 @@ function cancelTrainingPlanAutoSave() {
   }
 }
 
+function trainingPlanIsOffline() {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
 function scheduleTrainingPlanSave() {
   cancelTrainingPlanAutoSave();
   if (!trainingPlanDraft || !trainingPlanEditorDate || !trainingPlanDirty ||
-      !trainingPlansCanEdit || trainingPlanConflict || trainingPlanAutoSavePaused) return;
+      !trainingPlansCanEdit || trainingPlanConflict || trainingPlanAutoSavePaused ||
+      trainingPlanIsOffline()) return;
   trainingPlanAutoSaveTimer = setTimeout(() => {
     trainingPlanAutoSaveTimer = null;
     if (trainingPlanTemplateBusy || trainingPlanSaveBackBusy ||
@@ -3603,6 +3608,13 @@ async function performTrainingPlanSave() {
     trainingPlanConflict
   ) return false;
   if (!trainingPlanDirty) return true;
+  if (trainingPlanIsOffline()) {
+    // No request was sent: the same-day recovery draft remains intact.
+    trainingPlanSetSaveState("dirty", "Offline – noch nicht gespeichert");
+    showMessage(trainingPlanElements.editorMessage,
+      "Keine Internetverbindung. Der Entwurf bleibt auf diesem Gerät erhalten.");
+    return false;
+  }
   if (
     trainingPlanSaveBusy ||
     trainingPlanTemplateBusy ||
@@ -3706,7 +3718,7 @@ async function performTrainingPlanSave() {
         trainingPlanElements.editorMessage,
         error?.status === 400
           ? "Bitte Eingaben prüfen. Der Plan wurde nicht gespeichert."
-          : "Der Plan konnte nicht gespeichert werden.",
+          : "Speicherergebnis unklar. Bitte Verbindung und aktuellen Plan prüfen, bevor du erneut speicherst.",
       );
       if (trainingPlanElements.retry) trainingPlanElements.retry.hidden = false;
     }
@@ -4568,9 +4580,23 @@ trainingPlanElements.retry?.addEventListener("click", () => {
   trainingPlanAutoSavePaused = false;
   void saveTrainingPlanUntilClean();
 });
+window.addEventListener("offline", () => {
+  if (!trainingPlanDirty || !trainingPlanDraft) return;
+  cancelTrainingPlanAutoSave();
+  if (!trainingPlanSaveBusy) {
+    trainingPlanSetSaveState("dirty", "Offline – noch nicht gespeichert");
+    showMessage(trainingPlanElements.editorMessage,
+      "Keine Internetverbindung. Der Entwurf bleibt auf diesem Gerät erhalten.");
+  }
+});
 window.addEventListener("online", () => {
   if (!trainingPlanDirty || trainingPlanConflict || !trainingPlansCanEdit) return;
-  trainingPlanAutoSavePaused = false;
+  // A failed request may already have committed. Never replay it on reconnect.
+  if (trainingPlanAutoSavePaused) {
+    trainingPlanSetSaveState("error", "Speicherstand prüfen");
+    return;
+  }
+  showMessage(trainingPlanElements.editorMessage, "");
   scheduleTrainingPlanSave();
 });
 trainingPlanElements.note?.addEventListener("input", () => {
