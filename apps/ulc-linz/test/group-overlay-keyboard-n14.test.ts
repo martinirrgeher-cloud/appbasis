@@ -100,8 +100,8 @@ describe("N14 group modal keyboard contract", () => {
       activeElement: unknown;
       body: { classList: { add: () => void; remove: () => void } };
     } = { activeElement: null, body: { classList: { add: vi.fn(), remove: vi.fn() } } };
-    const opener = { isConnected: true, closest: () => null,
-      focus: vi.fn(() => { document.activeElement = opener; }) };
+    const opener = { isConnected: true, closest: () => null, focus: vi.fn() };
+    opener.focus.mockImplementation(() => { document.activeElement = opener; });
     document.activeElement = opener;
     const groupOverlay = { hidden: true };
     const closeButton = control(document);
