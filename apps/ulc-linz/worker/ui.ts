@@ -4967,6 +4967,7 @@ async function saveKindertrainingWeek() {
     if (generation !== attendanceSessionGeneration) return false;
 
     const failedDates = [];
+    let conflictCount = 0;
     let savedCount = 0;
     results.forEach((result, index) => {
       const sessionDate = dirtySnapshots[index].sessionDate;
@@ -4976,15 +4977,18 @@ async function saveKindertrainingWeek() {
         updateKindertrainingWeekSnapshot(sessionDate, () => result.value);
       } else {
         failedDates.push(germanDate(sessionDate));
+        if (result.reason?.status === 409) conflictCount += 1;
       }
     });
 
     if (failedDates.length > 0) {
+      const guidance = conflictCount > 0
+        ? "Mindestens ein Training wurde zwischenzeitlich geändert. Nicht neu laden, bevor die lokalen Änderungen gesichert sind."
+        : "Der Speicherstatus ist unklar (z. B. bei Verbindungsabbruch). Bitte nicht mehrfach auf Speichern drücken; zuerst Verbindung und Serverstand prüfen.";
       showMessage(
         elements.kindertrainingMessage,
-        "Nicht alle Tage konnten gespeichert werden: " +
-          failedDates.join(", ") +
-          ". Die übrigen Änderungen bleiben markiert.",
+        "Nicht bestätigt gespeichert: " + failedDates.join(", ") +
+          ". Die Entwürfe bleiben markiert. " + guidance,
       );
     }
     if (savedCount > 0) {
