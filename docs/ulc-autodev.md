@@ -1,4 +1,6 @@
-# ULC Linz – lokaler Entwicklungsagent (Pilot ohne zusätzliche API-Kosten)
+# ULC Linz – lokaler Entwicklungsagent (optionaler Windows-Pilot)
+
+> **Primärweg: Handy-First ohne PC.** Für den üblichen ULC-Betrieb ist die Anleitung [Codex Cloud](ulc-autodev-cloud.md) maßgeblich. Der nachfolgend beschriebene Windows-Runner ist nur eine **optionale**, derzeit nicht aktivierte Alternative. Die Cloud-Version benötigt keinen Windows-Rechner und startet weitere Codex-Aufträge nicht automatisch.
 
 ## Was tatsächlich automatisiert ist
 
