@@ -79,6 +79,8 @@ const setup = [
   "let trainingPlanSessionGeneration = 1, trainingPlanSessionIdentityId = 'trainer-a';",
   "let trainingPlanSaveInFlight = null, trainingPlanAutoSavePaused = false;",
   "let scheduledPlanSaves = 0;",
+  // Production reads navigator.onLine; the browser fixture runs on file:// and is online.
+  "function trainingPlanIsOffline() { return !navigator.onLine; }",
   "function cancelTrainingPlanAutoSave() {}",
   "function scheduleTrainingPlanSave() { scheduledPlanSaves += 1; }",
   "function trainingPlanWriteLeaveBackup() {}",
