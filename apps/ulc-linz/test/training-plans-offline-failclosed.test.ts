@@ -27,6 +27,12 @@ describe("ULC N10: offline training-plan autosave remains fail-closed", () => {
       const TRAINING_PLAN_AUTOSAVE_DELAY_MS = 850;
       const setTimeout = (fn) => { timers.push(fn); return timers.length; };
       const clearTimeout = () => {};
+      function cancelTrainingPlanAutoSave() {
+        if (trainingPlanAutoSaveTimer !== null) {
+          clearTimeout(trainingPlanAutoSaveTimer);
+          trainingPlanAutoSaveTimer = null;
+        }
+      }
       const saveTrainingPlan = save;
       ${source}
       return { scheduleTrainingPlanSave, trainingPlanIsOffline };
