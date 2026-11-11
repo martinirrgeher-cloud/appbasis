@@ -19,8 +19,9 @@ function control(document: { activeElement: unknown }, options: {
     closest: () => options.excluded ? {} : null,
     getAttribute: () => options.excluded ? "-1" : null,
     getClientRects: () => options.noLayout ? [] : [{}],
-    focus: vi.fn(() => { document.activeElement = element; }),
+    focus: vi.fn(),
   };
+  element.focus.mockImplementation(() => { document.activeElement = element; });
   return element;
 }
 
