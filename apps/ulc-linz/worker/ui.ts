@@ -2765,6 +2765,7 @@ elements.trainerDetailReactivate?.addEventListener("click", () => {
 elements.groupForm?.addEventListener("submit", (event) => void createMasterdataGroup(event));
 elements.groupNew?.addEventListener("click", openNewMasterdataGroup);
 elements.groupOverlayClose?.addEventListener("click", closeMasterdataGroupOverlay);
+elements.groupOverlay?.addEventListener("keydown", handleMasterdataGroupOverlayKeydown);
 elements.groupDetailEdit?.addEventListener("click", () => {
   const group = selectedMasterdataGroup();
   if (group) beginMasterdataEdit({ type: "group", id: group.id, item: group });
@@ -7178,6 +7179,9 @@ function selectedMasterdataGroup() {
   );
 }
 
+// Keep keyboard users within the group sheet and return to the opener on dismissal.
+let masterdataGroupReturnFocus = null;
+
 function openMasterdataGroupOverlay(groupId) {
   if (!masterdataSnapshot) return;
   const group = masterdataSnapshot.trainingGroups.find((item) => item.id === groupId);
@@ -7203,6 +7207,42 @@ function openNewMasterdataGroup() {
   elements.groupName?.focus();
 }
 
+function masterdataGroupFocusableControls() {
+  const dialog = elements.groupOverlay?.querySelector('[role="dialog"]');
+  if (!dialog) return [];
+  return [...dialog.querySelectorAll('a[href], button, input, select, textarea, [tabindex]')]
+    .filter((control) => !control.disabled && !control.hidden &&
+      !control.closest('[hidden], [inert]') &&
+      control.getAttribute('tabindex') !== '-1' &&
+      control.getClientRects().length > 0);
+}
+
+function handleMasterdataGroupOverlayKeydown(event) {
+  if (elements.groupOverlay?.hidden !== false ||
+      masterdataGroupOverlayMode === "closed") return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeMasterdataGroupOverlay();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const controls = masterdataGroupFocusableControls();
+  if (!controls.length) {
+    event.preventDefault();
+    elements.groupOverlayClose?.focus();
+    return;
+  }
+  const first = controls[0], last = controls[controls.length - 1];
+  const current = document.activeElement;
+  if (event.shiftKey && (current === first || !controls.includes(current))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (current === last || !controls.includes(current))) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 function closeMasterdataGroupOverlay({ force = false } = {}) {
   // Interactive dismissal is blocked while saving; session teardown must
   // always discard the pending UI state, even if a request never finishes.
@@ -7222,9 +7262,22 @@ function closeMasterdataGroupOverlay({ force = false } = {}) {
   refreshMasterdataEditMode();
   if (elements.groupOverlay) elements.groupOverlay.hidden = true;
   document.body.classList.remove("masterdata-athlete-overlay-open");
+  const returnFocus = masterdataGroupReturnFocus;
+  masterdataGroupReturnFocus = null;
+  if (!force && returnFocus?.isConnected &&
+      !returnFocus.closest?.('[hidden], [inert]')) {
+    returnFocus.focus();
+  }
 }
 
 function showMasterdataGroupOverlayMode(mode) {
+  const previousMode = masterdataGroupOverlayMode;
+  const wasHidden = elements.groupOverlay?.hidden !== false;
+  if (wasHidden) {
+    const opener = document.activeElement;
+    masterdataGroupReturnFocus =
+      opener && typeof opener.focus === "function" ? opener : null;
+  }
   masterdataGroupOverlayMode = mode;
   if (elements.groupOverlay) elements.groupOverlay.hidden = false;
   document.body.classList.add("masterdata-athlete-overlay-open");
@@ -7232,6 +7285,10 @@ function showMasterdataGroupOverlayMode(mode) {
   if (elements.groupForm) elements.groupForm.hidden = mode !== "group";
   if (calendarUi.panel) calendarUi.panel.hidden = mode !== "calendar";
   if (masterdataSnapshot) renderMasterdataGroupOverlay(masterdataSnapshot);
+  if (mode === "calendar") calendarUi.back?.focus();
+  else if (mode === "group") elements.groupName?.focus();
+  else if (previousMode === "calendar") calendarUi.open?.focus();
+  else if (wasHidden) elements.groupOverlayClose?.focus();
 }
 
 function renderMasterdataGroupOverlay(snapshot) {
