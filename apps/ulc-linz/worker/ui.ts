@@ -4935,6 +4935,18 @@ async function saveKindertrainingWeek() {
   );
   if (!groupId || dirtySnapshots.length === 0) return false;
 
+  // Offline drafts stay in memory. Never dispatch a POST while the browser
+  // reports offline; reconnect alone must not trigger a silent replay.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    showMessage(elements.kindertrainingSuccess, "");
+    showMessage(
+      elements.kindertrainingMessage,
+      "Keine Verbindung: Änderungen sind noch nicht gespeichert und bleiben in dieser Ansicht erhalten. Nach Wiederherstellung der Verbindung bewusst speichern; Seite nicht schließen.",
+    );
+    refreshKindertrainingWeekControls();
+    return false;
+  }
+
   kindertrainingWeekSaving = true;
   showMessage(elements.kindertrainingMessage, "");
   showMessage(elements.kindertrainingSuccess, "");
