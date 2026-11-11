@@ -8,7 +8,9 @@ describe("N15.3 youth attendance unload warning", () => {
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const handler = ULC_LINZ_APP_SCRIPT.slice(start, end);
-    expect(handler).toContain("kindertrainingWeekSaving || kindertrainingWeekDirtyDates.size > 0");
+    expect(handler).toContain('typeof kindertrainingWeekSaving !== "undefined" && kindertrainingWeekSaving');
+    expect(handler).toContain('typeof kindertrainingWeekDirtyDates !== "undefined"');
+    expect(handler).toContain("kindertrainingWeekDirtyDates.size > 0");
     expect(handler).toContain("event.preventDefault();");
     expect(handler).toContain('event.returnValue = "";');
     expect(handler).not.toContain("saveKindertrainingWeek()");
