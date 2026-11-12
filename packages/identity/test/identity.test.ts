@@ -106,6 +106,25 @@ describe("IdentityService", () => {
     ).resolves.toMatchObject({ access: "full" });
   });
 
+  it("preserves only the backend-validated session row ID in the internal identity", async () => {
+    const auth = new FakeAuthProvider();
+    const state = new FakeStateStore();
+    await new IdentityService(auth, state, () => fixedNow).createInitialUser({
+      username: "trainer.user",
+      temporaryPassword: "temporary-value",
+      displayName: "Trainer User",
+    });
+    const service = new IdentityService(auth, state, () => fixedNow);
+    // Old or mocked identity backends remain compatible, but staff-write code
+    // must treat the absence of sessionId as DENY.
+    expect((await service.getCurrentIdentity("better-auth.session_token=x"))?.sessionId)
+      .toBeUndefined();
+    auth.verifiedSessionId = "canonical-session-row-id";
+    const current = await service.getCurrentIdentity("better-auth.session_token=x");
+    expect(current?.sessionId).toBe("canonical-session-row-id");
+    expect(current?.identity.identityId).toBe("identity-1");
+  });
+
   it("ends the requested session explicitly", async () => {
     const auth = new FakeAuthProvider();
     const service = new IdentityService(
@@ -330,6 +349,7 @@ class FakeAuthProvider {
   endedSessions: string[] = [];
   signInError: Error | null = null;
   accountStatus: "active" | "disabled" = "active";
+  verifiedSessionId: string | null = null;
   sessionValid = true;
   createCalls = 0;
   passwordChangeCalls = 0;
@@ -360,7 +380,10 @@ class FakeAuthProvider {
 
   async getSession(sessionToken: string): Promise<AuthSession | null> {
     return this.sessionValid
-      ? { identityId: this.identityId, sessionToken }
+      ? {
+        identityId: this.identityId, sessionToken,
+        ...(this.verifiedSessionId === null ? {} : { sessionId: this.verifiedSessionId }),
+      }
       : null;
   }
 
