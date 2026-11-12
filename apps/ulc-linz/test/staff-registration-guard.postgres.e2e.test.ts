@@ -399,8 +399,8 @@ if (!databaseUrl?.trim()) {
     it("N16 denies absent, mismatched, expired and impersonated Better Auth sessions", async () => {
       const sessionId = "n16-auth-session";
       await a().unsafe(
-        `INSERT INTO "session" (id, token, user_id, expires_at)
-         VALUES ($1, $2, $3, now() + interval '1 hour')`,
+        `INSERT INTO "session" (id, token, user_id, expires_at, updated_at)
+         VALUES ($1, $2, $3, now() + interval '1 hour', now())`,
         [sessionId, "n16-auth-token", actorTrainer],
       );
       await a().begin(async (tx) => {
@@ -433,8 +433,8 @@ if (!databaseUrl?.trim()) {
     it("N16 locks the exact Better Auth session row against concurrent logout/revoke DELETE", async () => {
       const sessionId = "n16-revoke-locked-session";
       await a().unsafe(
-        `INSERT INTO "session" (id, token, user_id, expires_at)
-         VALUES ($1, $2, $3, now() + interval '1 hour')`,
+        `INSERT INTO "session" (id, token, user_id, expires_at, updated_at)
+         VALUES ($1, $2, $3, now() + interval '1 hour', now())`,
         [sessionId, "n16-revoke-locked-token", actorTrainer],
       );
       let release!: () => void;
@@ -484,8 +484,8 @@ if (!databaseUrl?.trim()) {
       const sessionId = "n16-short-lived-session";
       const sessionDate = "2026-11-25";
       await a().unsafe(
-        `INSERT INTO "session" (id, token, user_id, expires_at)
-         VALUES ($1, $2, $3, clock_timestamp() + interval '2 seconds')`,
+        `INSERT INTO "session" (id, token, user_id, expires_at, updated_at)
+         VALUES ($1, $2, $3, clock_timestamp() + interval '2 seconds', now())`,
         [sessionId, "n16-short-lived-token", actorTrainer],
       );
       const sessions = new PostgresUlcTrainingSessionRepository(a(), () => randomUUID());
