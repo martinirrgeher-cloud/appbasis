@@ -1555,15 +1555,16 @@ async function kindertrainingCalendarResponse(
   }
   const [rule, exceptions] = await Promise.all([
     calendar.readRule(access.organizationId, groupId),
-    Promise.all(weekDates.map(date =>
-      calendar.readException(access.organizationId, groupId, date))),
+    // Always read the entire authorized week freshly, but in one SQL query.
+    // No cross-request cache: v17 rules and special days may change at any time.
+    calendar.readWeekExceptions(access.organizationId, groupId, weekStart),
   ]);
   const dates = selectAttendanceCalendarDates({
     weekStart,
     weekdays: rule?.schedule.weekdays ?? null,
     exceptions: weekDates.map((date, index) => ({
       date,
-      kind: exceptions[index]?.kind ?? null,
+      kind: exceptions.get(date)?.kind ?? null,
     })),
   });
   // Publish the authoritative schedule state to the Kids day navigator.
