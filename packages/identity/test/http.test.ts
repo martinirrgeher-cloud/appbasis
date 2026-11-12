@@ -18,6 +18,8 @@ const currentIdentity = {
     accountStatus: "active" as const,
   },
   sessionToken: "better-auth.session_token=session-value",
+  // This is a server-internal trusted row ID; it must never enter JSON.
+  sessionId: "canonical-session-row-id",
   access: "full" as const,
 };
 
@@ -81,6 +83,14 @@ describe("identity HTTP adapter", () => {
     expect(identity.getCurrentIdentity).toHaveBeenCalledWith(
       "other=value; better-auth.session_token=session-value",
     );
+    expect(current).not.toBeInstanceOf(Response);
+    if (!(current instanceof Response)) {
+      expect(current.sessionId).toBe("canonical-session-row-id");
+    }
+    const sessionResponse = await handlers.session(request);
+    const publicPayload = await sessionResponse.json();
+    expect(publicPayload).not.toHaveProperty("sessionId");
+    expect(JSON.stringify(publicPayload)).not.toContain("canonical-session-row-id");
   });
 
   it("keeps a missing session fail-closed", async () => {
