@@ -342,12 +342,15 @@ export class PostgresUlcTrainingSessionRepository {
    */
   async withAuthorizedRegistrationTransaction<T>(
     authorize: (transaction: UlcTrainingSessionSqlClient) => Promise<void>,
-    callback: (sessions: Pick<PostgresUlcTrainingSessionRepository,
-      "ensureScheduledSession" | "saveRegistration">) => Promise<T>,
+    callback: (
+      sessions: Pick<PostgresUlcTrainingSessionRepository,
+        "ensureScheduledSession" | "saveRegistration">,
+      transaction: UlcTrainingSessionSqlClient,
+    ) => Promise<T>,
   ): Promise<T> {
     return this.#withScopedRegistrationTransaction(async (transaction, scopedSessions) => {
       await authorize(transaction);
-      return callback(scopedSessions);
+      return callback(scopedSessions, transaction);
     });
   }
 
