@@ -456,7 +456,7 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
     const current = await runtime.service.getCurrentIdentity(signedIn.sessionToken);
     const sessionId = current?.sessionId;
     expect(typeof sessionId).toBe("string");
-    expect(sessionId).toBeTruthy();
+    if (!sessionId) throw new Error("Better Auth returned no canonical session row id.");
     const rows = await client.unsafe(
       'SELECT id, user_id, expires_at FROM "session" WHERE id = $1',
       [sessionId],
