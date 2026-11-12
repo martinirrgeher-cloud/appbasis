@@ -33,7 +33,11 @@ describe("N16 staff write activation gate – intentionally blocked", () => {
     const repository = source("training-session-postgres.ts");
     expect(repository).toContain("async withAuthorizedRegistrationTransaction<T>(");
     expect(repository).toContain("await authorize(transaction);");
-    expect(repository).toContain("return callback(scopedSessions);");
+    expect(repository).toContain("return callback(scopedSessions, transaction);");
+    const composite = source("staff-registration-transaction.ts");
+    expect(composite).toContain("assertActiveUlcStaffSession(");
+    expect(composite).toContain("assertUlcStaffRegistrationGuard(");
+    expect(composite).toContain("await assertUlcStaffSessionStillValid(");
     expect(repository).toContain("async withRegistrationTransaction<T>(");
     expect(repository).toContain("callback(sessions)");
   });
