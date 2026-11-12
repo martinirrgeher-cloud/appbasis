@@ -443,6 +443,86 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
     expect(personRows[0]?.count).toBe(1);
   });
 
+  it("N16 resolves the real Better Auth session row id and sign-out invalidates that row", async () => {
+    const identity = await runtime.service.createInitialUser({
+      username: "n16.session-read",
+      temporaryPassword,
+      displayName: "N16 Session Read",
+    });
+    const signedIn = await runtime.service.signInWithUsername({
+      username: "n16.session-read",
+      password: temporaryPassword,
+    });
+    const current = await runtime.service.getCurrentIdentity(signedIn.sessionToken);
+    const sessionId = current?.sessionId;
+    expect(typeof sessionId).toBe("string");
+    expect(sessionId).toBeTruthy();
+    const rows = await client.unsafe(
+      'SELECT id, user_id, expires_at FROM "session" WHERE id = $1',
+      [sessionId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(sessionId);
+    expect(rows[0]?.user_id).toBe(identity.identityId);
+    await runtime.service.endSession(signedIn.sessionToken);
+    expect(await client.unsafe(
+      'SELECT id FROM "session" WHERE id = $1', [sessionId],
+    )).toHaveLength(0);
+    await expect(runtime.service.getCurrentIdentity(signedIn.sessionToken))
+      .resolves.toBeNull();
+  }, 30_000);
+
+  it("N16 blocks REAL Better Auth logout while its canonical session row is locked", async () => {
+    const identity = await runtime.service.createInitialUser({
+      username: "n16.logout-race",
+      temporaryPassword,
+      displayName: "N16 Logout Race",
+    });
+    const signedIn = await runtime.service.signInWithUsername({
+      username: "n16.logout-race",
+      password: temporaryPassword,
+    });
+    const current = await runtime.service.getCurrentIdentity(signedIn.sessionToken);
+    const sessionId = current?.sessionId;
+    if (!sessionId) throw new Error("Better Auth returned no canonical session row id.");
+
+    let unlock!: () => void;
+    let announceLock!: () => void;
+    const release = new Promise<void>(resolve => { unlock = resolve; });
+    const locked = new Promise<void>(resolve => { announceLock = resolve; });
+    const rowLock = client.begin(async tx => {
+      const rows = await tx.unsafe(
+        'SELECT id FROM "session" WHERE id = $1 AND user_id = $2 FOR SHARE',
+        [sessionId, identity.identityId],
+      );
+      expect(rows).toHaveLength(1);
+      announceLock();
+      await release;
+    });
+
+    await locked;
+    let signOutCompleted = false;
+    const signOut = runtime.service.endSession(signedIn.sessionToken).then(() => {
+      signOutCompleted = true;
+    });
+    try {
+      // Better Auth's real DELETE must wait on the row held by the writer.
+      await new Promise(resolve => setTimeout(resolve, 200));
+      expect(signOutCompleted).toBe(false);
+      expect(await client.unsafe(
+        'SELECT id FROM "session" WHERE id = $1', [sessionId],
+      )).toHaveLength(1);
+    } finally {
+      unlock();
+    }
+    await rowLock;
+    await signOut;
+    expect(signOutCompleted).toBe(true);
+    expect(await client.unsafe(
+      'SELECT id FROM "session" WHERE id = $1', [sessionId],
+    )).toHaveLength(0);
+  }, 45_000);
+
   it("disables accounts through the production Better Auth backend and terminates existing and future sessions", async () => {
     const backend = new CountingBetterAuthIdentityBackend({
       auth,
