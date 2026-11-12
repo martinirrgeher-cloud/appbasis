@@ -361,7 +361,7 @@ export class IdentityService {
       return null;
     }
 
-    return this.resolveSession(sessionToken, session.identityId);
+    return this.resolveSession(sessionToken, session.identityId, session.sessionId);
   }
 
   async disableIdentity(identityId: string): Promise<IdentityState> {
@@ -389,6 +389,7 @@ export class IdentityService {
   private async resolveSession(
     sessionToken: string,
     identityId: string,
+    verifiedSessionId?: string,
   ): Promise<CurrentIdentity> {
     const identity = await this.stateStore.find(identityId);
 
@@ -409,6 +410,7 @@ export class IdentityService {
       identity: withAccountStatus(identity, accountStatus),
       sessionToken,
       access: identity.mustChangePassword ? "password-change-required" : "full",
+      ...(verifiedSessionId === undefined ? {} : { sessionId: verifiedSessionId }),
     };
   }
 }
