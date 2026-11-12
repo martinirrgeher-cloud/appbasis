@@ -170,7 +170,10 @@ describe("ULC mobile category management", () => {
     expect(ULC_YOUTH_CATEGORY_SCRIPT).toContain("expectedRevision: category.revision");
     expect(ULC_YOUTH_CATEGORY_SCRIPT).toContain('requestJson("/api/modules/youth-categories?area="');
     expect(ULC_U12_SCRIPT).toContain("updateU12CategoryCatalog(categories)");
-    expect(ULC_U12_SCRIPT).toContain("await refreshYouthCategoryCatalog();");
+    // N17 keeps the fresh category read on every attendance load, now in
+    // parallel with the authorized session request (not cached or skipped).
+    expect(ULC_U12_SCRIPT).toContain("const [, payload] = await Promise.all([");
+    expect(ULC_U12_SCRIPT).toContain("refreshYouthCategoryCatalog(),");
     expect(ULC_U12_SCRIPT).toContain("im Training gespeichert");
     expect(ULC_YOUTH_CATEGORY_SCRIPT).toContain("youthCategoryArea = area;");
     expect(ULC_YOUTH_CATEGORY_SCRIPT).toContain("area === \"u12\"");

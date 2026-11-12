@@ -140,6 +140,42 @@ export class PostgresUlcRegistrationCalendarRepository {
   }
 
   /**
+   * Read one authorized calendar week in a single scoped SQL query.
+   * The caller must still authorize the organization/group and re-read this
+   * on every navigation: never cache calendar exceptions across requests.
+   * A bounded query replaces seven separate readException round trips.
+   */
+  async readWeekExceptions(
+    organizationId: string,
+    groupId: string,
+    weekStart: string,
+  ): Promise<ReadonlyMap<string, UlcRegistrationExceptionRecord>> {
+    const first = date(weekStart);
+    const monday = new Date(first + "T12:00:00.000Z");
+    if (monday.getUTCDay() !== 1) throw new UlcRegistrationCalendarDataError();
+    monday.setUTCDate(monday.getUTCDate() + 6);
+    const last = monday.toISOString().slice(0, 10);
+    const rows = await this.sql.unsafe(
+      `SELECT session_date::text AS session_date, kind, revision
+         FROM ulc_linz_registration_calendar_exception
+        WHERE organization_id = $1 AND group_id = $2
+          AND session_date BETWEEN $3::date AND $4::date
+        ORDER BY session_date`,
+      [identifier(organizationId), identifier(groupId), first, last],
+    );
+    if (rows.length > 7) throw new UlcRegistrationCalendarDataError();
+    const exceptions = new Map<string, UlcRegistrationExceptionRecord>();
+    for (const row of rows) {
+      const sessionDate = date(row.session_date);
+      if (sessionDate < first || sessionDate > last || exceptions.has(sessionDate)) {
+        throw new UlcRegistrationCalendarDataError();
+      }
+      exceptions.set(sessionDate, decodeException(row));
+    }
+    return exceptions;
+  }
+
+  /**
    * Revision CAS. Only a trusted, already authorized server handler may call
    * this method. The SQL itself requires an active training group in
    * the same organization and locks it to serialize policy writers.
