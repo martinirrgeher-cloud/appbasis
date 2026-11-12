@@ -6,6 +6,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
 import { UlcLinzAuthorizationDeniedError } from "../worker/authorization";
 import { assertUlcStaffRegistrationGuard } from "../worker/staff-registration-guard";
+import {
+  assertActiveUlcStaffSession,
+  assertUlcStaffSessionStillValid,
+} from "../worker/staff-session-guard";
+import { withGuardedUlcStaffRegistration } from "../worker/staff-registration-transaction";
+import { PostgresUlcTrainingSessionRepository } from "../worker/training-session-postgres";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -389,5 +395,118 @@ if (!databaseUrl?.trim()) {
         await b().unsafe('UPDATE "user" SET banned=false WHERE id=$1', [actorTrainer]);
       }
     }, 25_000);
+
+    it("N16 denies absent, mismatched, expired and impersonated Better Auth sessions", async () => {
+      const sessionId = "n16-auth-session";
+      await a().unsafe(
+        `INSERT INTO "session" (id, token, user_id, expires_at)
+         VALUES ($1, $2, $3, now() + interval '1 hour')`,
+        [sessionId, "n16-auth-token", actorTrainer],
+      );
+      await a().begin(async (tx) => {
+        await assertActiveUlcStaffSession(tx, sessionId, actorTrainer);
+        await assertUlcStaffSessionStillValid(tx, sessionId, actorTrainer);
+        await expect(assertActiveUlcStaffSession(tx, "nonexistent", actorTrainer))
+          .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+        await expect(assertActiveUlcStaffSession(tx, sessionId, actorAdmin))
+          .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+        await expect(assertActiveUlcStaffSession(tx, " invalid ", actorTrainer))
+          .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      });
+      await a().unsafe(
+        `UPDATE "session" SET impersonated_by = 'another-actor' WHERE id = $1`,
+        [sessionId],
+      );
+      await expect(a().begin(tx =>
+        assertActiveUlcStaffSession(tx, sessionId, actorTrainer),
+      )).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await a().unsafe(
+        `UPDATE "session" SET impersonated_by = null, expires_at = now() - interval '1 second'
+          WHERE id = $1`,
+        [sessionId],
+      );
+      await expect(a().begin(tx =>
+        assertActiveUlcStaffSession(tx, sessionId, actorTrainer),
+      )).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+    }, 30_000);
+
+    it("N16 locks the exact Better Auth session row against concurrent logout/revoke DELETE", async () => {
+      const sessionId = "n16-revoke-locked-session";
+      await a().unsafe(
+        `INSERT INTO "session" (id, token, user_id, expires_at)
+         VALUES ($1, $2, $3, now() + interval '1 hour')`,
+        [sessionId, "n16-revoke-locked-token", actorTrainer],
+      );
+      let release!: () => void;
+      let ready!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      const locked = new Promise<void>(resolve => { ready = resolve; });
+      const active = a().begin(async tx => {
+        await assertActiveUlcStaffSession(tx, sessionId, actorTrainer);
+        ready();
+        await held;
+        await assertUlcStaffSessionStillValid(tx, sessionId, actorTrainer);
+      });
+      try {
+        await locked;
+        await expect(b().begin(async tx => {
+          await tx.unsafe("SET LOCAL lock_timeout = '750ms'");
+          await tx.unsafe("SET LOCAL statement_timeout = '5s'");
+          await tx.unsafe('DELETE FROM "session" WHERE id = $1', [sessionId]);
+        })).rejects.toMatchObject({ code: "55P03" });
+        const stillPresent = await b().unsafe(
+          'SELECT id FROM "session" WHERE id = $1', [sessionId],
+        );
+        expect(stillPresent).toHaveLength(1);
+      } finally {
+        release();
+      }
+      await active;
+      await b().unsafe('DELETE FROM "session" WHERE id = $1', [sessionId]);
+      await expect(a().begin(tx =>
+        assertActiveUlcStaffSession(tx, sessionId, actorTrainer),
+      )).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+    }, 30_000);
+
+    it("N16 never starts staff writes without an authorized concrete session", async () => {
+      const sessions = new PostgresUlcTrainingSessionRepository(a(), () => randomUUID());
+      let enteredWrite = false;
+      await expect(withGuardedUlcStaffRegistration(
+        sessions, { ...request(actorTrainer), trustedSessionId: "missing-session" },
+        async () => {
+          enteredWrite = true;
+        },
+      )).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      expect(enteredWrite).toBe(false);
+    }, 30_000);
+
+    it("N16 rolls back an already-created training session when the actor session expires during the write", async () => {
+      const sessionId = "n16-short-lived-session";
+      const sessionDate = "2026-11-25";
+      await a().unsafe(
+        `INSERT INTO "session" (id, token, user_id, expires_at)
+         VALUES ($1, $2, $3, clock_timestamp() + interval '850 milliseconds')`,
+        [sessionId, "n16-short-lived-token", actorTrainer],
+      );
+      const sessions = new PostgresUlcTrainingSessionRepository(a(), () => randomUUID());
+      let enteredWrite = false;
+      await expect(withGuardedUlcStaffRegistration(
+        sessions,
+        { ...request(actorTrainer, { sessionDate }), trustedSessionId: sessionId },
+        async (scoped, scope) => {
+          expect(scope.sourceRole).toBe("trainer");
+          enteredWrite = true;
+          await scoped.ensureScheduledSession(
+            organizationId, "kindertraining", groupId, sessionDate,
+          );
+          // PostgreSQL time, not a mocked clock: expiry happens inside the TX.
+          await a().unsafe("SELECT pg_sleep(1.0)");
+        },
+      )).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      expect(enteredWrite).toBe(true);
+      expect(await sessions.readSession(
+        organizationId, "kindertraining", groupId, sessionDate,
+      )).toBeNull();
+    }, 30_000);
   });
 }
