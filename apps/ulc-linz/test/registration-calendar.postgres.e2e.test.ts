@@ -69,6 +69,53 @@ if (!databaseUrl) {
       lateMode: "block",
     } as const;
 
+    it("N17 reads one week's exceptions without mixing groups or organizations", async () => {
+      const athletes = new PostgresAthleteMasterdataRepository(
+        connection().client, () => randomUUID(),
+      );
+      const group = await athletes.createTrainingGroup("verein-g04-batch", {
+        name: "N17 Wochenleser", attendanceMode: "trainer_roll_call",
+      });
+      const other = await athletes.createTrainingGroup("verein-g04-batch", {
+        name: "N17 Fremdgruppe", attendanceMode: "trainer_roll_call",
+      });
+      const calendar = new PostgresUlcRegistrationCalendarRepository(connection().client);
+      await calendar.writeException(
+        "verein-g04-batch", group.id, "2026-11-10", null, "extra",
+      );
+      await calendar.writeException(
+        "verein-g04-batch", group.id, "2026-11-12", null, "cancelled",
+      );
+      await calendar.writeException(
+        "verein-g04-batch", group.id, "2026-11-14", null, null,
+      );
+      await calendar.writeException(
+        "verein-g04-batch", group.id, "2026-11-17", null, "extra",
+      );
+      await calendar.writeException(
+        "verein-g04-batch", other.id, "2026-11-11", null, "cancelled",
+      );
+      const week = await calendar.readWeekExceptions(
+        "verein-g04-batch", group.id, "2026-11-09",
+      );
+      expect([...week.entries()]).toEqual([
+        ["2026-11-10", { kind: "extra", revision: 1 }],
+        ["2026-11-12", { kind: "cancelled", revision: 1 }],
+        ["2026-11-14", { kind: null, revision: 1 }],
+      ]);
+      expect(await calendar.readWeekExceptions(
+        "other-organization", group.id, "2026-11-09",
+      )).toEqual(new Map());
+      expect(await calendar.readWeekExceptions(
+        "verein-g04-batch", other.id, "2026-11-09",
+      )).toEqual(new Map([[
+        "2026-11-11", { kind: "cancelled", revision: 1 },
+      ]]));
+      expect([...await calendar.readWeekExceptions(
+        "verein-g04-batch", group.id, "2026-11-16",
+      )]).toEqual([["2026-11-17", { kind: "extra", revision: 1 }]]);
+    });
+
     it("stores group calendar rules in both modes, refuses cross-org edits and enforces CAS", async () => {
       const athletes = new PostgresAthleteMasterdataRepository(
         connection().client, () => randomUUID(),
