@@ -1562,7 +1562,7 @@ async function kindertrainingCalendarResponse(
   const dates = selectAttendanceCalendarDates({
     weekStart,
     weekdays: rule?.schedule.weekdays ?? null,
-    exceptions: weekDates.map((date, index) => ({
+    exceptions: weekDates.map((date) => ({
       date,
       kind: exceptions.get(date)?.kind ?? null,
     })),
