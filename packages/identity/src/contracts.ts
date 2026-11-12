@@ -20,6 +20,8 @@ export interface IdentityState extends IdentityPersistenceState {
 export interface AuthSession {
   identityId: string;
   sessionToken: string;
+  /** Server-validated Better Auth session row id; never a client-supplied value. */
+  sessionId?: string;
 }
 
 export type IdentityOperationKind =
@@ -88,4 +90,6 @@ export interface CurrentIdentity {
   identity: IdentityState;
   sessionToken: string;
   access: IdentityAccess;
+  /** Internal only; deliberately omitted from public auth HTTP payloads. */
+  sessionId?: string;
 }
