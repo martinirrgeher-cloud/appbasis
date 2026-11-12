@@ -1809,10 +1809,14 @@ async function loadU12Attendance({ calendarChoicesReady = false } = {}) {
   showMessage(u12Ui.success, "");
   renderU12Attendance();
   try {
-    await refreshYouthCategoryCatalog();
-    if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return;
-    const payload = await requestJson("/api/modules/u12/session?groupId=" +
-      encodeURIComponent(groupId) + "&sessionDate=" + encodeURIComponent(date));
+    // Both GETs are authenticated and independent. Fetch them together rather
+    // than serially adding the category API latency to every date switch.
+    // Keep their shared validation/error handling and fail closed if either fails.
+    const [, payload] = await Promise.all([
+      refreshYouthCategoryCatalog(),
+      requestJson("/api/modules/u12/session?groupId=" +
+        encodeURIComponent(groupId) + "&sessionDate=" + encodeURIComponent(date)),
+    ]);
     if (generation !== attendanceSessionGeneration || loadId !== u12LoadId) return;
     if (!u12ValidSnapshot(payload?.snapshot, date, groupId)) {
       throw new Error("U12_SESSION_INVALID");
