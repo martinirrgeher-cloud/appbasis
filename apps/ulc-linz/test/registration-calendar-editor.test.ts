@@ -52,6 +52,7 @@ describe("G-04.2b gated mobile group calendar editor", () => {
       let resetCount = 0;
       function showMessage(_element, message) { messages.push(message); }
       function resetGroupCalendar() { resetCount += 1; groupCalendarState = null; }
+      let masterdataGroupReturnFocus = null;
       let masterdataGroupOverlayMode = "calendar";
       let masterdataGroupOverlayId = "group-1";
       let masterdataEdit = { type: "group" };
