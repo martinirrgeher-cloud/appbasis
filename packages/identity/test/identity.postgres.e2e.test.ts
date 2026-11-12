@@ -445,12 +445,12 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
 
   it("N16 resolves the real Better Auth session row id and sign-out invalidates that row", async () => {
     const identity = await runtime.service.createInitialUser({
-      username: "n16.session-read",
+      username: "n16.session_read",
       temporaryPassword,
       displayName: "N16 Session Read",
     });
     const signedIn = await runtime.service.signInWithUsername({
-      username: "n16.session-read",
+      username: "n16.session_read",
       password: temporaryPassword,
     });
     const current = await runtime.service.getCurrentIdentity(signedIn.sessionToken);
@@ -474,12 +474,12 @@ describeWithPostgres("Identity with real PostgreSQL and Better Auth", () => {
 
   it("N16 blocks REAL Better Auth logout while its canonical session row is locked", async () => {
     const identity = await runtime.service.createInitialUser({
-      username: "n16.logout-race",
+      username: "n16.logout_race",
       temporaryPassword,
       displayName: "N16 Logout Race",
     });
     const signedIn = await runtime.service.signInWithUsername({
-      username: "n16.logout-race",
+      username: "n16.logout_race",
       password: temporaryPassword,
     });
     const current = await runtime.service.getCurrentIdentity(signedIn.sessionToken);
