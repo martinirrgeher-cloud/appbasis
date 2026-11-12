@@ -304,10 +304,23 @@ export class BetterAuthIdentityBackend {
       "GET",
     );
     if (!response.ok) return null;
-    const body = (await response.json()) as { user?: { id: string } } | null;
-    return body?.user === undefined
-      ? null
-      : { identityId: body.user.id, sessionToken };
+    const body = (await response.json()) as {
+      user?: { id?: unknown };
+      session?: { id?: unknown; userId?: unknown };
+    } | null;
+    const identityId = body?.user?.id;
+    if (typeof identityId !== "string" || identityId.length === 0) return null;
+    // Better Auth validates the cookie before returning a get-session payload.
+    // Refuse inconsistent identities; never infer a session ID from the cookie.
+    if (body?.session?.userId !== undefined &&
+        body.session.userId !== identityId) return null;
+    const id = body?.session?.id;
+    const sessionId = typeof id === "string" && id.length > 0 &&
+      id.length <= 200 && id.trim() === id ? id : null;
+    return {
+      identityId, sessionToken,
+      ...(sessionId === null ? {} : { sessionId }),
+    };
   }
 
   async changePassword(input: {
