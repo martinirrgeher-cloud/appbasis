@@ -485,7 +485,7 @@ if (!databaseUrl?.trim()) {
       const sessionDate = "2026-11-25";
       await a().unsafe(
         `INSERT INTO "session" (id, token, user_id, expires_at)
-         VALUES ($1, $2, $3, clock_timestamp() + interval '850 milliseconds')`,
+         VALUES ($1, $2, $3, clock_timestamp() + interval '2 seconds')`,
         [sessionId, "n16-short-lived-token", actorTrainer],
       );
       const sessions = new PostgresUlcTrainingSessionRepository(a(), () => randomUUID());
@@ -500,7 +500,7 @@ if (!databaseUrl?.trim()) {
             organizationId, "kindertraining", groupId, sessionDate,
           );
           // PostgreSQL time, not a mocked clock: expiry happens inside the TX.
-          await a().unsafe("SELECT pg_sleep(1.0)");
+          await a().unsafe("SELECT pg_sleep(2.4)");
         },
       )).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
       expect(enteredWrite).toBe(true);
