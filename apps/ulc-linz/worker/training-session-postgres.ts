@@ -331,6 +331,27 @@ export class PostgresUlcTrainingSessionRepository {
   }
 
   /**
+   * N01: transaction-bound authorization prerequisite for a future trainer/admin
+   * registration write. The caller must lock and validate every required
+   * actor/target row through this transaction connection. A rejection must
+   * throw: session creation and the registration write cannot start before
+   * authorization resolves successfully.
+   *
+   * This intentionally does NOT change the existing athlete registration path.
+   * No HTTP endpoint calls this method until the full actor guard is reviewed.
+   */
+  async withAuthorizedRegistrationTransaction<T>(
+    authorize: (transaction: UlcTrainingSessionSqlClient) => Promise<void>,
+    callback: (sessions: Pick<PostgresUlcTrainingSessionRepository,
+      "ensureScheduledSession" | "saveRegistration">) => Promise<T>,
+  ): Promise<T> {
+    return this.#withScopedRegistrationTransaction(async (transaction, scopedSessions) => {
+      await authorize(transaction);
+      return callback(scopedSessions);
+    });
+  }
+
+  /**
    * G-04: ensure a rejected registration never leaves behind an orphan session.
    * The candidate v17 trigger checks deadlines under the same transaction.
    * Fail closed if PostgreSQL transactions are unavailable.
@@ -338,6 +359,18 @@ export class PostgresUlcTrainingSessionRepository {
   async withRegistrationTransaction<T>(
     callback: (sessions: Pick<PostgresUlcTrainingSessionRepository,
       "ensureScheduledSession" | "saveRegistration">) => Promise<T>,
+  ): Promise<T> {
+    return this.#withScopedRegistrationTransaction((_transaction, sessions) =>
+      callback(sessions),
+    );
+  }
+
+  async #withScopedRegistrationTransaction<T>(
+    callback: (
+      transaction: UlcTrainingSessionSqlClient,
+      sessions: Pick<PostgresUlcTrainingSessionRepository,
+        "ensureScheduledSession" | "saveRegistration">,
+    ) => Promise<T>,
   ): Promise<T> {
     const transactionalSql = this.#sql as UlcTrainingSessionSqlClient & {
       begin?: <R>(
@@ -354,7 +387,7 @@ export class PostgresUlcTrainingSessionRepository {
         transaction,
         this.#createId,
       );
-      return callback(scopedSessions);
+      return callback(transaction, scopedSessions);
     });
   }
 
