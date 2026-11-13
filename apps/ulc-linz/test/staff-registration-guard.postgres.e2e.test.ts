@@ -24,6 +24,7 @@ import {
   assignUlcIrgModuleGroup,
   UlcIrgModuleAssignmentConflictError,
 } from "../worker/irg-module-administration";
+import { inspectUlcIrgAuditRetention } from "../worker/irg-audit-privacy-preflight";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -1220,7 +1221,71 @@ if (!databaseUrl?.trim()) {
          WHERE organization_id=$1`,[mappingOrg],
       );
       expect(count[0]?.total).toBe(1);
-    },30_000);
+
+      // The admin-only preflight returns tenant-scoped aggregates, NEVER the
+      // stored actor/reason. It must not leak records across organizations.
+      const report=await inspectUlcIrgAuditRetention(a(),{
+        actorIdentityId:mappingAdmin,trustedSessionId:sessionId,
+        organizationId:mappingOrg,
+      });
+      expect(report).toMatchObject({
+        organizationId:mappingOrg,personalAuditEvents:1,dueForRetentionReview:0,
+        export:"blocked-until-audited-export-gate",
+        purge:"blocked-until-authorized-retention-gate",
+      });
+      expect(report.oldestRetainedUntil).toEqual(expect.any(String));
+      expect(JSON.stringify(report)).not.toContain(mappingAdmin);
+      expect(JSON.stringify(report)).not.toContain(input.reason);
+      await expect(inspectUlcIrgAuditRetention(a(),{
+        actorIdentityId:actorTrainer,trustedSessionId:sessionId,
+        organizationId:mappingOrg,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(inspectUlcIrgAuditRetention(a(),{
+        actorIdentityId:mappingAdmin,trustedSessionId:sessionId,
+        organizationId:foreignOrganizationId,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+
+      // Synthetic expired event: retained_until must be EXACTLY created_at
+      // plus 12 calendar months. This insert exists only in throwaway PG.
+      await a().unsafe(
+        `WITH instant AS (SELECT now()-interval '13 months' AS created)
+         INSERT INTO ulc_linz_irg_module_assignment_audit
+           (organization_id,group_id,module_id,actor_identity_id,event_type,
+            reason,created_at,retained_until)
+         SELECT $1,$2,'performance_registration',$3,'assign',
+                'N16 isolated expired audit contract test',created,
+                created+interval '12 months'
+         FROM instant`,
+        [mappingOrg,otherUnmapped,mappingAdmin],
+      );
+      const expired=await inspectUlcIrgAuditRetention(a(),{
+        actorIdentityId:mappingAdmin,trustedSessionId:sessionId,
+        organizationId:mappingOrg,
+      });
+      expect(expired.personalAuditEvents).toBe(2);
+      expect(expired.dueForRetentionReview).toBe(1);
+
+      // Retention purge of the PERSONAL audit must not erase the nonpersonal
+      // once marker. Simulate audit/group removal ONLY inside disposable DB.
+      await a().unsafe(
+        `DELETE FROM ulc_linz_irg_module_assignment_audit
+         WHERE organization_id=$1 AND group_id=$2`,[mappingOrg,mappedGroup],
+      );
+      await a().unsafe(
+        `DELETE FROM ulc_linz_training_module_group
+         WHERE organization_id=$1 AND group_id=$2`,[mappingOrg,mappedGroup],
+      );
+      await expect(assignUlcIrgModuleGroup(a(),input))
+        .rejects.toBeInstanceOf(UlcIrgModuleAssignmentConflictError);
+      expect(await b().unsafe(
+        `SELECT group_id FROM ulc_linz_irg_module_assignment_once
+         WHERE organization_id=$1 AND group_id=$2`,[mappingOrg,mappedGroup],
+      )).toHaveLength(1);
+      expect(await b().unsafe(
+        `SELECT module_id FROM ulc_linz_training_module_group
+         WHERE organization_id=$1 AND group_id=$2`,[mappingOrg,mappedGroup],
+      )).toHaveLength(0);
+    },40_000);
 
     it("N16 keeps IRG assignment and audit locked until commit; revoked sessions cannot assign", async () => {
       const secondSession="n16-admin-module-race-session";

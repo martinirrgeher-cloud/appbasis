@@ -91,7 +91,7 @@ export async function assignUlcIrgModuleGroup(
           memberships[0]?.active !== true) deny();
       const principals = await tx.unsafe(
         `SELECT principal_id FROM appbasis_permission_principal
-         WHERE principal_id=$1 FOR SHARE`, [actor],
+         WHERE principal_id=$1 FOR UPDATE`, [actor],
       );
       if (principals.length !== 1) deny();
       const assignments = await tx.unsafe(
@@ -102,9 +102,23 @@ export async function assignUlcIrgModuleGroup(
           assignments[0]?.role_id !== "ulc-linz:admin") deny();
       const roles = await tx.unsafe(
         `SELECT role_id,state FROM appbasis_permission_role
-         WHERE role_id='ulc-linz:admin' FOR SHARE`,
+         WHERE role_id='ulc-linz:admin' FOR UPDATE`,
       );
       if (roles.length !== 1 || roles[0]?.state !== "active") deny();
+      // Take direct-grant/revoke and role-capability locks BEFORE the
+      // permission decision, consistent with the N16 IRG rights writer.
+      await tx.unsafe(
+        `SELECT capability_id FROM appbasis_permission_principal_grant
+         WHERE principal_id=$1 FOR SHARE`, [actor],
+      );
+      await tx.unsafe(
+        `SELECT capability_id FROM appbasis_permission_principal_revoke
+         WHERE principal_id=$1 FOR SHARE`, [actor],
+      );
+      await tx.unsafe(
+        `SELECT capability_id FROM appbasis_permission_role_capability
+         WHERE role_id='ulc-linz:admin' FOR SHARE`,
+      );
       // This is the existing organization-level admin capability, NOT a
       // performance_registration grant. Admins cannot add a grant here.
       const permitted = await new PostgresPermissionStore(tx).evaluatePermission({
