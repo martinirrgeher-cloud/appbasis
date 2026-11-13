@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "schemaCandidateVersion": 18,
+  "status": "review-only-not-deployed",
+  "personalAudit": {
+    "owner": "ulc-linz-lifecycle",
+    "table": "ulc_linz_irg_module_assignment_audit",
+    "classification": "security-administration-personal-audit",
+    "fields": [
+      "organization_id",
+      "group_id",
+      "module_id",
+      "actor_identity_id",
+      "event_type",
+      "reason",
+      "created_at",
+      "retained_until"
+    ],
+    "retention": {
+      "period": "P12M",
+      "clock": "database timestamp",
+      "basis": "operator-draft-approval-subject-to-legal-review",
+      "dueRule": "retained_until <= clock_timestamp()",
+      "automaticPurgeEnabled": false,
+      "accessAuditDueRule": "access.retained_until <= clock_timestamp()",
+      "dryRunOnly": true,
+      "purgeImplementationApproved": false,
+      "controllerDecisionLedger": "privacy/n16-irg-retention-controller-decision.json",
+      "legalHoldEnforcement": "not-verified-blocked",
+      "backupRestoreReconciliation": "not-verified-blocked",
+      "reviewOnlyService": "worker/irg-audit-retention-review.ts"
+    },
+    "export": {
+      "legacyM5EDataset": "excluded",
+      "dataRelease": "blocked",
+      "authorization": "same-organization-admin-only",
+      "auditOfAccessRequired": true,
+      "reviewOnlyService": "worker/irg-audit-export.ts",
+      "pageMaximum": 100,
+      "accessAuditTable": "ulc_linz_irg_audit_export_access",
+      "accessAuditFields": [
+        "organization_id",
+        "actor_identity_id",
+        "reason",
+        "operation",
+        "exported_count",
+        "created_at",
+        "retained_until"
+      ],
+      "accessAuditRetention": "P12M",
+      "atomicAccessAudit": true,
+      "runtimeExposed": false
+    }
+  },
+  "operationalOnceMarker": {
+    "table": "ulc_linz_irg_module_assignment_once_marker",
+    "personalActorOrReasonStored": false,
+    "purpose": "prevent re-assignment after personal audit retention purge",
+    "erasure": "organization-deletion-contract-requires-separate-approval"
+  },
+  "activation": {
+    "migrationManifestRegistration": false,
+    "providerWrites": false,
+    "staffRoute": false,
+    "exportRoute": false,
+    "purgeRoute": false,
+    "retentionReviewRoute": false
+  }
+}
