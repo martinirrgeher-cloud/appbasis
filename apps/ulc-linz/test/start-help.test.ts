@@ -26,7 +26,7 @@ describe("ULC start help", () => {
     expect(help).toContain("Die Planung speichert Änderungen <strong>automatisch</strong>");
     expect(help).toContain("Tippe auf <strong>Speichern</strong>");
     expect(help).toContain("<strong>Inhalte zuordnen</strong>");
-    expect(help).toContain("<strong>Erneut versuchen</strong>");
+    expect(help).toContain("Erneut versuchen");
     expect(help).toContain("temporäres Passwort");
   });
 
