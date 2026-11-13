@@ -47,6 +47,9 @@ describe("N16 unwired HTTP staff boundary", () => {
       { ...body, groupId: "" },
       { ...body, targetAthleteId: " athlete-1" },
       { ...body, sessionDate: "2026-02-30" },
+      { ...body, sessionDate: "2025-02-29" },
+      { ...body, sessionDate: "2026-13-01" },
+      { ...body, sessionDate: "2026-11-17 " },
       { ...body, sessionDate: "2026-11-17T00:00:00Z" },
       { ...body, intention: "unknown" },
       { ...body, expectedRevision: -1 },
@@ -63,6 +66,21 @@ describe("N16 unwired HTTP staff boundary", () => {
     }
   });
 
+  it("rejects non-plain JSON objects and inherited authority", () => {
+    const inherited = Object.create({ groupId: "group-1" }) as Record<string, unknown>;
+    Object.assign(inherited, body);
+    expect(() => parseUnwiredUlcStaffRegistrationRequest(current, inherited))
+      .toThrow(UlcLinzAuthorizationDeniedError);
+    expect(() => parseUnwiredUlcStaffRegistrationRequest(current, new Date()))
+      .toThrow(UlcLinzAuthorizationDeniedError);
+  });
+
+  it("accepts leap-day dates but never silently normalizes dates", () => {
+    expect(parseUnwiredUlcStaffRegistrationRequest(current, {
+      ...body, sessionDate: "2028-02-29", expectedRevision: 1,
+    }).sessionDate).toBe("2028-02-29");
+  });
+
   it("denies password-change-required identities before any staff request", () => {
     const restricted = { ...current, access: "password-change-required" } as UlcLinzCurrentIdentity;
     expect(() => parseUnwiredUlcStaffRegistrationRequest(restricted, body))
@@ -70,7 +88,7 @@ describe("N16 unwired HTTP staff boundary", () => {
   });
 
   it("denies absent or client-substituted server session", () => {
-    const noSession = { ...current, sessionId: undefined } as UlcLinzCurrentIdentity;
+    const noSession = { ...current, sessionId: undefined } as unknown as UlcLinzCurrentIdentity;
     expect(() => parseUnwiredUlcStaffRegistrationRequest(noSession, body))
       .toThrow(UlcLinzAuthorizationDeniedError);
     expect(() => parseUnwiredUlcStaffRegistrationRequest(noSession, {
