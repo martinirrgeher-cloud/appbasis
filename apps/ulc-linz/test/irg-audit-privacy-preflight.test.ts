@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { UlcLinzAuthorizationDeniedError } from "../worker/authorization";
 import { inspectUlcIrgAuditRetention } from "../worker/irg-audit-privacy-preflight";
+import { exportUlcIrgAssignmentAudit } from "../worker/irg-audit-export";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -29,6 +30,12 @@ describe("N16 unexposed IRG audit privacy/retention/export contract", () => {
       expect.objectContaining({ id: "irg-audit" }),
     ]));
     expect(router).not.toContain('from "./irg-audit-privacy-preflight"');
+    expect(router).not.toContain('from "./irg-audit-export"');
+    expect(sql).toContain("CREATE TABLE ulc_linz_irg_audit_export_access");
+    expect(sql).toContain("REVOKE ALL ON TABLE public.ulc_linz_irg_audit_export_access FROM PUBLIC");
+    expect(contract.personalAudit.export).toMatchObject({
+      dataRelease:"blocked",pageMaximum:100,atomicAccessAudit:true,runtimeExposed:false,
+    });
     expect(sql).toContain("CREATE TABLE ulc_linz_irg_module_assignment_once_marker");
     expect(sql).toContain("CONSTRAINT ulc_linz_irg_module_assignment_once");
     expect(sql).not.toContain("CREATE TABLE ulc_linz_irg_module_assignment_once (");
@@ -54,6 +61,34 @@ describe("N16 unexposed IRG audit privacy/retention/export contract", () => {
     await expect(inspectUlcIrgAuditRetention({ unsafe }, {
       ...input, organizationId: " org",
     })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+    await expect(exportUlcIrgAssignmentAudit({ unsafe }, {
+      ...input, reason: "Access legitimate IRG operator assignment audit",
+      afterEventId: null, limit: 10,
+    })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
     expect(unsafe).not.toHaveBeenCalled();
+  });
+  it("rejects malformed pagination or reason BEFORE starting a transaction", async () => {
+    const begin = vi.fn(async () => { throw new Error("must not begin"); });
+    const sql = {
+      async unsafe(_query: string, _params?: (string|number|boolean|null)[]) {
+        return [] as readonly Record<string, unknown>[];
+      }, begin,
+    };
+    const input = {
+      actorIdentityId:"admin",trustedSessionId:"verified-session",
+      organizationId:"club",reason:"Authorized audit review with purpose",
+      afterEventId:null,limit:100,
+    };
+    await expect(exportUlcIrgAssignmentAudit(sql,{...input,limit:101}))
+      .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+    await expect(exportUlcIrgAssignmentAudit(sql,{...input,limit:0}))
+      .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+    await expect(exportUlcIrgAssignmentAudit(sql,{...input,afterEventId:"-1"}))
+      .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+    await expect(exportUlcIrgAssignmentAudit(sql,{...input,afterEventId:"9223372036854775808"}))
+      .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+    await expect(exportUlcIrgAssignmentAudit(sql,{...input,reason:"short"}))
+      .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+    expect(begin).not.toHaveBeenCalled();
   });
 });

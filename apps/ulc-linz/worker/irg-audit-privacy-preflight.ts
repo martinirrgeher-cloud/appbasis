@@ -31,6 +31,8 @@ export interface UlcIrgAuditPreflightResult {
   readonly organizationId: string;
   readonly personalAuditEvents: number;
   readonly dueForRetentionReview: number;
+  readonly auditAccessEvents: number;
+  readonly auditAccessDueForRetentionReview: number;
   readonly oldestRetainedUntil: string | null;
   readonly export: "blocked-until-audited-export-gate";
   readonly purge: "blocked-until-authorized-retention-gate";
@@ -46,58 +48,7 @@ export async function inspectUlcIrgAuditRetention(
   if (typeof sql.begin !== "function") deny();
 
   return sql.begin(async tx => {
-    await assertActiveUlcStaffSession(tx, session, actor);
-    const users = await tx.unsafe(
-      'SELECT id,banned FROM "user" WHERE id=$1 FOR SHARE', [actor],
-    );
-    if (users.length !== 1 || users[0]?.banned === true) deny();
-    const security = await tx.unsafe(
-      `SELECT disabled_at,must_change_password
-       FROM appbasis_identity_security_state WHERE identity_id=$1 FOR SHARE`,
-      [actor],
-    );
-    if (security.length !== 1 || security[0]?.disabled_at != null ||
-        security[0]?.must_change_password !== false) deny();
-    const members = await tx.unsafe(
-      `SELECT organization_id,source_role,active
-       FROM ulc_linz_membership WHERE identity_id=$1 FOR SHARE`, [actor],
-    );
-    if (members.length !== 1 || members[0]?.organization_id !== organization ||
-        members[0]?.source_role !== "admin" || members[0]?.active !== true) deny();
-    // Match the existing N16 admin route's strict one-role principal contract.
-    const principals = await tx.unsafe(
-      `SELECT principal_id FROM appbasis_permission_principal
-       WHERE principal_id=$1 FOR UPDATE`, [actor],
-    );
-    if (principals.length !== 1) deny();
-    const roles = await tx.unsafe(
-      `SELECT role_id FROM appbasis_permission_principal_role
-       WHERE principal_id=$1 FOR SHARE`, [actor],
-    );
-    if (roles.length !== 1 || roles[0]?.role_id !== "ulc-linz:admin") deny();
-    const active = await tx.unsafe(
-      `SELECT role_id FROM appbasis_permission_role
-       WHERE role_id='ulc-linz:admin' AND state='active' FOR SHARE`,
-    );
-    if (active.length !== 1) deny();
-    // Pin direct and role-based capability rows before testing permissions.
-    await tx.unsafe(
-      `SELECT capability_id FROM appbasis_permission_principal_grant
-       WHERE principal_id=$1 FOR SHARE`, [actor],
-    );
-    await tx.unsafe(
-      `SELECT capability_id FROM appbasis_permission_principal_revoke
-       WHERE principal_id=$1 FOR SHARE`, [actor],
-    );
-    await tx.unsafe(
-      `SELECT capability_id FROM appbasis_permission_role_capability
-       WHERE role_id='ulc-linz:admin' FOR SHARE`,
-    );
-    const permitted = await new PostgresPermissionStore(tx).evaluatePermission({
-      principalId: principalId(actor),
-      capability: capabilityId("ulc-linz:module:athletes:edit"),
-    });
-    if (!permitted) deny();
+    await assertUlcIrgAuditAdministrator(tx, actor, session, organization);
 
     // Aggregate only. No PII appears in result or logs; tenant predicate
     // prevents cross-organization disclosure of another admin's events.
@@ -124,17 +75,96 @@ export async function inspectUlcIrgAuditRetention(
     const firstDue = firstDueEpoch === null
       ? null : new Date(firstDueEpoch * 1000);
     if (firstDue !== null && Number.isNaN(firstDue.getTime())) deny();
+    const accesses = await tx.unsafe(
+      `SELECT count(*)::int AS total,
+         count(*) FILTER (WHERE retained_until <= clock_timestamp())::int AS due
+       FROM ulc_linz_irg_audit_export_access
+       WHERE organization_id=$1`, [organization],
+    );
+    if (accesses.length !== 1) deny();
+    const accessTotal = validCount(accesses[0]?.total);
+    const accessDue = validCount(accesses[0]?.due);
+    if (accessDue > accessTotal) deny();
     await assertUlcStaffSessionStillValid(tx, session, actor);
     return Object.freeze({
       organizationId: organization,
       personalAuditEvents: total,
       dueForRetentionReview: due,
+      auditAccessEvents: accessTotal,
+      auditAccessDueForRetentionReview: accessDue,
       oldestRetainedUntil: firstDue === null ? null : firstDue.toISOString(),
       export: "blocked-until-audited-export-gate" as const,
       purge: "blocked-until-authorized-retention-gate" as const,
     });
   });
 }
+
+/** Shared transaction-scoped admin boundary for the aggregate preflight and
+ * any future audited export. Called on the SAME connection as the read/audit.
+ * NEVER accept actor or session ID from a browser-request body. */
+export async function assertUlcIrgAuditAdministrator(
+  tx: UlcTrainingSessionSqlClient,
+  actorIdentityId: string,
+  trustedSessionId: string,
+  organizationId: string,
+): Promise<void> {
+  const actor = id(actorIdentityId);
+  const session = id(trustedSessionId);
+  const organization = id(organizationId);
+  await assertActiveUlcStaffSession(tx, session, actor);
+  const users = await tx.unsafe(
+    'SELECT id,banned FROM "user" WHERE id=$1 FOR SHARE', [actor],
+  );
+  if (users.length !== 1 || users[0]?.banned === true) deny();
+  const security = await tx.unsafe(
+    `SELECT disabled_at,must_change_password
+     FROM appbasis_identity_security_state WHERE identity_id=$1 FOR SHARE`,
+    [actor],
+  );
+  if (security.length !== 1 || security[0]?.disabled_at != null ||
+      security[0]?.must_change_password !== false) deny();
+  const members = await tx.unsafe(
+    `SELECT organization_id,source_role,active
+     FROM ulc_linz_membership WHERE identity_id=$1 FOR SHARE`, [actor],
+  );
+  if (members.length !== 1 || members[0]?.organization_id !== organization ||
+      members[0]?.source_role !== "admin" || members[0]?.active !== true) deny();
+  // Match the existing N16 admin route's strict one-role principal contract.
+  const principals = await tx.unsafe(
+    `SELECT principal_id FROM appbasis_permission_principal
+     WHERE principal_id=$1 FOR UPDATE`, [actor],
+  );
+  if (principals.length !== 1) deny();
+  const roles = await tx.unsafe(
+    `SELECT role_id FROM appbasis_permission_principal_role
+     WHERE principal_id=$1 FOR SHARE`, [actor],
+  );
+  if (roles.length !== 1 || roles[0]?.role_id !== "ulc-linz:admin") deny();
+  const active = await tx.unsafe(
+    `SELECT role_id FROM appbasis_permission_role
+     WHERE role_id='ulc-linz:admin' AND state='active' FOR SHARE`,
+  );
+  if (active.length !== 1) deny();
+  // Pin direct and role-based capability rows before testing permissions.
+  await tx.unsafe(
+    `SELECT capability_id FROM appbasis_permission_principal_grant
+     WHERE principal_id=$1 FOR SHARE`, [actor],
+  );
+  await tx.unsafe(
+    `SELECT capability_id FROM appbasis_permission_principal_revoke
+     WHERE principal_id=$1 FOR SHARE`, [actor],
+  );
+  await tx.unsafe(
+    `SELECT capability_id FROM appbasis_permission_role_capability
+     WHERE role_id='ulc-linz:admin' FOR SHARE`,
+  );
+  const permitted = await new PostgresPermissionStore(tx).evaluatePermission({
+    principalId: principalId(actor),
+    capability: capabilityId("ulc-linz:module:athletes:edit"),
+  });
+  if (!permitted) deny();
+}
+
 function validCount(value: unknown): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) ||
       value < 0 || value > 2147483647) deny();

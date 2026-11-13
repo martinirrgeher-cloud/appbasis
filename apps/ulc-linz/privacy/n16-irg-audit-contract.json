@@ -22,13 +22,31 @@
       "clock": "database timestamp",
       "basis": "operator-draft-approval-subject-to-legal-review",
       "dueRule": "retained_until <= clock_timestamp()",
-      "automaticPurgeEnabled": false
+      "automaticPurgeEnabled": false,
+      "accessAuditDueRule": "access.retained_until <= clock_timestamp()",
+      "dryRunOnly": true,
+      "purgeImplementationApproved": false
     },
     "export": {
       "legacyM5EDataset": "excluded",
       "dataRelease": "blocked",
       "authorization": "same-organization-admin-only",
-      "auditOfAccessRequired": true
+      "auditOfAccessRequired": true,
+      "reviewOnlyService": "worker/irg-audit-export.ts",
+      "pageMaximum": 100,
+      "accessAuditTable": "ulc_linz_irg_audit_export_access",
+      "accessAuditFields": [
+        "organization_id",
+        "actor_identity_id",
+        "reason",
+        "operation",
+        "exported_count",
+        "created_at",
+        "retained_until"
+      ],
+      "accessAuditRetention": "P12M",
+      "atomicAccessAudit": true,
+      "runtimeExposed": false
     }
   },
   "operationalOnceMarker": {

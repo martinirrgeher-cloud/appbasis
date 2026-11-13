@@ -70,3 +70,37 @@ REVOKE ALL ON TABLE public.ulc_linz_irg_module_assignment_audit FROM PUBLIC;
 REVOKE ALL ON SEQUENCE public.ulc_linz_irg_module_assignment_audit_event_id_seq FROM PUBLIC;
 --> statement-breakpoint
 REVOKE ALL ON TABLE public.ulc_linz_irg_module_assignment_once_marker FROM PUBLIC;
+
+--> statement-breakpoint
+-- N16 review-only audit OF EVERY PERSONAL AUDIT EXPORT.
+-- Does not modify personal IRG assignment events. All release/retention
+-- operations remain DISABLED until separate operator and privacy approval.
+CREATE TABLE ulc_linz_irg_audit_export_access (
+  access_event_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  organization_id text NOT NULL CHECK (
+    char_length(organization_id) BETWEEN 1 AND 200
+    AND organization_id=btrim(organization_id)
+  ),
+  actor_identity_id text NOT NULL CHECK (
+    char_length(actor_identity_id) BETWEEN 1 AND 200
+    AND actor_identity_id=btrim(actor_identity_id)
+  ),
+  reason text NOT NULL CHECK (
+    char_length(reason) BETWEEN 12 AND 300
+    AND reason=btrim(reason)
+  ),
+  operation text NOT NULL DEFAULT 'export' CHECK (operation='export'),
+  exported_count smallint NOT NULL CHECK (exported_count BETWEEN 0 AND 100),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  retained_until timestamptz NOT NULL DEFAULT (now()+interval '12 months'),
+  CONSTRAINT ulc_linz_irg_audit_export_access_retention CHECK (
+    retained_until=created_at+interval '12 months'
+  )
+);
+--> statement-breakpoint
+CREATE INDEX ulc_linz_irg_audit_export_access_retention_idx
+  ON ulc_linz_irg_audit_export_access(organization_id,retained_until);
+--> statement-breakpoint
+REVOKE ALL ON TABLE public.ulc_linz_irg_audit_export_access FROM PUBLIC;
+--> statement-breakpoint
+REVOKE ALL ON SEQUENCE public.ulc_linz_irg_audit_export_access_access_event_id_seq FROM PUBLIC;

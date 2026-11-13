@@ -25,6 +25,7 @@ import {
   UlcIrgModuleAssignmentConflictError,
 } from "../worker/irg-module-administration";
 import { inspectUlcIrgAuditRetention } from "../worker/irg-audit-privacy-preflight";
+import { exportUlcIrgAssignmentAudit } from "../worker/irg-audit-export";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -1264,6 +1265,80 @@ if (!databaseUrl?.trim()) {
       });
       expect(expired.personalAuditEvents).toBe(2);
       expect(expired.dueForRetentionReview).toBe(1);
+      expect(expired.auditAccessEvents).toBe(0);
+      const exportInput={
+        actorIdentityId:mappingAdmin,trustedSessionId:sessionId,
+        organizationId:mappingOrg,reason:"Operator validated IRG security audit report export",
+        afterEventId:null as string | null,limit:1,
+      };
+      await expect(exportUlcIrgAssignmentAudit(a(),{
+        ...exportInput,organizationId:foreignOrganizationId,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(exportUlcIrgAssignmentAudit(a(),{
+        ...exportInput,actorIdentityId:actorTrainer,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      expect((await b().unsafe(
+        `SELECT count(*)::int AS count
+         FROM ulc_linz_irg_audit_export_access
+         WHERE organization_id=$1`,[mappingOrg],
+      ))[0]?.count).toBe(0);
+      const first=await exportUlcIrgAssignmentAudit(a(),exportInput);
+      expect(first.rows).toHaveLength(1);
+      expect(first.rows[0]).toMatchObject({
+        groupId:mappedGroup,actorIdentityId:mappingAdmin,
+        moduleId:"performance_registration",eventType:"assign",reason:input.reason,
+      });
+      expect(first.nextCursor).toBe(first.rows[0]?.eventId);
+      expect(first.accessAuditId).toEqual(expect.any(String));
+      const next=await exportUlcIrgAssignmentAudit(a(),{
+        ...exportInput,afterEventId:first.nextCursor,
+      });
+      expect(next.rows).toHaveLength(1);
+      expect(next.rows[0]?.groupId).toBe(otherUnmapped);
+      expect(BigInt(next.rows[0]!.eventId)).toBeGreaterThan(BigInt(first.nextCursor!));
+      // Querying after the last event still emits a tamper-evident access log.
+      const end=await exportUlcIrgAssignmentAudit(a(),{
+        ...exportInput,afterEventId:next.nextCursor,
+      });
+      expect(end.rows).toHaveLength(0);
+      expect(end.nextCursor).toBeNull();
+      const accessRows=await b().unsafe(
+        `SELECT actor_identity_id,reason,operation,exported_count
+         FROM ulc_linz_irg_audit_export_access
+         WHERE organization_id=$1 ORDER BY access_event_id`,[mappingOrg],
+      );
+      expect(accessRows).toHaveLength(3);
+      expect(accessRows.map(row=>row.exported_count)).toEqual([1,1,0]);
+      expect(accessRows.every(row=>row.actor_identity_id===mappingAdmin &&
+        row.reason===exportInput.reason && row.operation==="export")).toBe(true);
+      const afterExports=await inspectUlcIrgAuditRetention(a(),{
+        actorIdentityId:mappingAdmin,trustedSessionId:sessionId,
+        organizationId:mappingOrg,
+      });
+      expect(afterExports.auditAccessEvents).toBe(3);
+      expect(afterExports.auditAccessDueForRetentionReview).toBe(0);
+
+      // Audit INSERT failure must roll back the page; no partial PII release.
+      await expect(exportUlcIrgAssignmentAudit({
+        unsafe(query,params){return a().unsafe(query,params);},
+        async begin<T>(callback:(tx:UlcTrainingSessionSqlClient)=>Promise<T>):Promise<T>{
+          return a().begin(async tx=>{
+            const intercepted:UlcTrainingSessionSqlClient={
+              unsafe(query,params){
+                if(query.includes("INSERT INTO ulc_linz_irg_audit_export_access"))
+                  throw new Error("simulated export audit storage outage");
+                return tx.unsafe(query,params);
+              },
+            };
+            return callback(intercepted);
+          });
+        },
+      },exportInput)).rejects.toThrow("simulated export audit storage outage");
+      expect((await b().unsafe(
+        `SELECT count(*)::int AS count FROM ulc_linz_irg_audit_export_access
+         WHERE organization_id=$1`,[mappingOrg],
+      ))[0]?.count).toBe(3);
+
 
       // Retention purge of the PERSONAL audit must not erase the nonpersonal
       // once marker. Simulate audit/group removal ONLY inside disposable DB.
