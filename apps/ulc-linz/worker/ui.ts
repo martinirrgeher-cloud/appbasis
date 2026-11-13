@@ -157,16 +157,6 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             </section>
 
             <section class="dashboard-grid dashboard-grid--home" aria-label="Freigeschaltete ULC Linz Funktionen">
-              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="masterdata" hidden>
-                <div>
-                  <p class="eyebrow">Organisation</p>
-                  <h2>Stammdaten</h2>
-                  <p>Athleten, Trainer, Gruppen und Zuordnungen pflegen.</p>
-                </div>
-                <button class="button button--primary dashboard-action" id="masterdata-quick-action" type="button" data-open-view="masterdata" disabled>Stammdaten öffnen</button>
-                <small id="masterdata-access-label">Berechtigung wird geprüft …</small>
-              </article>
-
               <article class="card dashboard-card dashboard-card--primary" id="registration-dashboard" data-dashboard-view="registration" hidden>
                 <div>
                   <p class="eyebrow">Training</p>
@@ -175,15 +165,6 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary dashboard-action" id="registration-quick-action" type="button" data-open-view="registration" disabled>Anmeldung öffnen</button>
                 <small id="registration-access-label">Berechtigung wird geprüft …</small>
-              </article>
-
-              <article class="card dashboard-card dashboard-card--primary" id="user-admin-dashboard" hidden data-dashboard-view="users">
-                <div>
-                  <p class="eyebrow">Organisation</p>
-                  <h2>Benutzerverwaltung</h2>
-                  <p>Konten anlegen, Berechtigungen verwalten und Zugänge prüfen.</p>
-                </div>
-                <button class="button button--primary dashboard-action" type="button" data-open-view="users">Benutzer öffnen</button>
               </article>
 
               <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="attendance" hidden>
@@ -243,6 +224,25 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary dashboard-action" id="countdown-quick-action" type="button" data-open-view="countdown" disabled>Countdown öffnen</button>
                 <small id="countdown-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="masterdata" hidden>
+                <div>
+                  <p class="eyebrow">Organisation</p>
+                  <h2>Stammdaten</h2>
+                  <p>Athleten, Trainer, Gruppen und Zuordnungen pflegen.</p>
+                </div>
+                <button class="button button--primary dashboard-action" id="masterdata-quick-action" type="button" data-open-view="masterdata" disabled>Stammdaten öffnen</button>
+                <small id="masterdata-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card dashboard-card--primary" id="user-admin-dashboard" hidden data-dashboard-view="users">
+                <div>
+                  <p class="eyebrow">Organisation</p>
+                  <h2>Benutzerverwaltung</h2>
+                  <p>Konten anlegen, Berechtigungen verwalten und Zugänge prüfen.</p>
+                </div>
+                <button class="button button--primary dashboard-action" type="button" data-open-view="users">Benutzer öffnen</button>
               </article>
 
             </section>
@@ -1099,15 +1099,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .dashboard-grid--home .dashboard-card p:not(.eyebrow) { font-size: .77rem; line-height: 1.38; }
 .dashboard-grid--home .dashboard-action { min-width: 0; min-height: 42px; white-space: normal; overflow-wrap: anywhere; font-size: .79rem; line-height: 1.2; }
 .dashboard-grid--home .dashboard-card small { overflow-wrap: anywhere; }
-.dashboard-grid--home [data-dashboard-view="registration"] { order: 0; }
-.dashboard-grid--home [data-dashboard-view="attendance"] { order: 1; }
-.dashboard-grid--home [data-dashboard-view="training-plans"] { order: 2; }
-.dashboard-grid--home [data-dashboard-view="training-documentation"] { order: 3; }
-.dashboard-grid--home [data-dashboard-view="exercise-catalog"] { order: 4; }
-.dashboard-grid--home [data-dashboard-view="training-blocks"] { order: 5; }
-.dashboard-grid--home [data-dashboard-view="countdown"] { order: 6; }
-.dashboard-grid--home [data-dashboard-view="masterdata"] { order: 7; }
-.dashboard-grid--home [data-dashboard-view="users"] { order: 8; }
 @media (max-width: 360px) {
   .dashboard-grid--home { grid-template-columns: minmax(0, 1fr); }
   .dashboard-grid--home > .dashboard-card { padding: 11px; }
