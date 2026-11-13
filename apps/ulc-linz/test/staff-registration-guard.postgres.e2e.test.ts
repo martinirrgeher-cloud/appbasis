@@ -80,7 +80,7 @@ if (!databaseUrl?.trim()) {
         [identity, identity, identity + "@n01.test.invalid"],
       );
       await a().unsafe(
-        "INSERT INTO appbasis_identity_security_state (identity_id) VALUES ($1)",
+        "INSERT INTO appbasis_identity_security_state (identity_id, must_change_password) VALUES ($1, false)",
         [identity],
       );
       await a().unsafe(
@@ -693,5 +693,66 @@ if (!databaseUrl?.trim()) {
       );
       expect(unchangedAudit[0]?.total).toBe(2);
     }, 60_000);
+
+    it("denies password-change-required and serializes a concurrent identity policy change", async () => {
+      const authId = "n16-password-policy-session";
+      await a().unsafe(
+        `INSERT INTO "session" (id, token, user_id, expires_at, updated_at)
+         VALUES ($1, $2, $3, now() + interval '1 hour', now())`,
+        [authId, "n16-password-policy-token", actorTrainer],
+      );
+      const sessions = new PostgresUlcTrainingSessionRepository(a(), () => randomUUID());
+      try {
+        await b().unsafe(
+          `UPDATE appbasis_identity_security_state SET must_change_password=true
+           WHERE identity_id=$1`, [actorTrainer],
+        );
+        let enteredWrite = false;
+        await expect(withGuardedUlcStaffRegistration(
+          sessions, { ...request(actorTrainer), trustedSessionId: authId },
+          async () => { enteredWrite = true; },
+        )).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+        expect(enteredWrite).toBe(false);
+      } finally {
+        await b().unsafe(
+          `UPDATE appbasis_identity_security_state SET must_change_password=false
+           WHERE identity_id=$1`, [actorTrainer],
+        );
+      }
+
+      let release!: () => void;
+      let signal!: () => void;
+      const holding = new Promise<void>(resolve => { release = resolve; });
+      const ready = new Promise<void>(resolve => { signal = resolve; });
+      const active = a().begin(async tx => {
+        const scope = await assertUlcStaffRegistrationGuard(tx, request(actorTrainer));
+        signal();
+        await holding;
+        return scope;
+      });
+      try {
+        await ready;
+        await expect(b().begin(async tx => {
+          await tx.unsafe("SET LOCAL lock_timeout='750ms'");
+          await tx.unsafe(
+            `UPDATE appbasis_identity_security_state SET must_change_password=true
+             WHERE identity_id=$1`, [actorTrainer],
+          );
+        })).rejects.toMatchObject({ code: "55P03" });
+      } finally { release(); }
+      expect((await active).actorIdentityId).toBe(actorTrainer);
+      try {
+        await b().unsafe(
+          `UPDATE appbasis_identity_security_state SET must_change_password=true
+           WHERE identity_id=$1`, [actorTrainer],
+        );
+        await expect(guarded()).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      } finally {
+        await b().unsafe(
+          `UPDATE appbasis_identity_security_state SET must_change_password=false
+           WHERE identity_id=$1`, [actorTrainer],
+        );
+      }
+    }, 30_000);
   });
 }

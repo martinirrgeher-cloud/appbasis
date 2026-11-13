@@ -65,12 +65,13 @@ export async function assertUlcStaffRegistrationGuard(
   if (users.length !== 1 || users[0]?.banned === true) deny();
 
   const security = await transaction.unsafe(
-    `SELECT identity_id, disabled_at
+    `SELECT identity_id, disabled_at, must_change_password
      FROM appbasis_identity_security_state
      WHERE identity_id = $1 FOR SHARE`,
     [identityId],
   );
-  if (security.length !== 1 || security[0]?.disabled_at != null) deny();
+  if (security.length !== 1 || security[0]?.disabled_at != null ||
+      security[0]?.must_change_password !== false) deny();
 
   const memberships = await transaction.unsafe(
     `SELECT organization_id, subject_id, source_role, active
