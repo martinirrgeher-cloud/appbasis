@@ -1322,7 +1322,12 @@ if (!databaseUrl?.trim()) {
       await expect(exportUlcIrgAssignmentAudit({
         unsafe(query,params){return a().unsafe(query,params);},
         async begin<T>(callback:(tx:UlcTrainingSessionSqlClient)=>Promise<T>):Promise<T>{
-          return a().begin(async tx=>{
+          // postgres-js's begin() reports UnwrapPromiseArray<T>, whereas
+          // this test adapter intentionally forwards exactly one generic
+          // callback result. Returning void from the PG callback preserves
+          // the actual transaction and avoids an unsafe generic cast.
+          let result!:T;
+          await a().begin(async tx=>{
             const intercepted:UlcTrainingSessionSqlClient={
               unsafe(query,params){
                 if(query.includes("INSERT INTO ulc_linz_irg_audit_export_access"))
@@ -1330,8 +1335,9 @@ if (!databaseUrl?.trim()) {
                 return tx.unsafe(query,params);
               },
             };
-            return callback(intercepted);
+            result=await callback(intercepted);
           });
+          return result;
         },
       },exportInput)).rejects.toThrow("simulated export audit storage outage");
       expect((await b().unsafe(
