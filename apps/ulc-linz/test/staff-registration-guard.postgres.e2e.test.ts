@@ -1464,6 +1464,129 @@ if (!databaseUrl?.trim()) {
         ))[0]?.total).toBe(2);
       } finally {resume();}
       await locked;
+
+      // Core writes role and override audit rows before transaction commit.
+      // Pause immediately after BOTH uncommitted audit INSERTs: all source
+      // session, actor grant, target role/principal and group locks must
+      // still be held. A competing DB connection cannot revoke authority,
+      // and cannot observe a partial grant/audit update.
+      let resumeCore!: () => void;
+      let coreReady!: () => void;
+      const waitCore = new Promise<void>(resolve => { resumeCore = resolve; });
+      const afterAudits = new Promise<void>(resolve => { coreReady = resolve; });
+      let auditWrites = 0;
+      const inFlight = a().begin(async tx => {
+        const intercepted: UlcTrainingSessionSqlClient = {
+          async unsafe(query, params) {
+            const rows = await tx.unsafe(query, params);
+            if (query.includes("INSERT INTO appbasis_permission_administration_audit")) {
+              auditWrites++;
+              if (auditWrites === 2) {
+                coreReady();
+                await waitCore;
+              }
+            }
+            return rows;
+          },
+        };
+        return replaceUlcIrgTrainerPermissions({
+          unsafe(query, params) { return intercepted.unsafe(query, params); },
+          async begin<T>(callback: (inside: UlcTrainingSessionSqlClient) => Promise<T>) {
+            return callback(intercepted);
+          },
+        }, next);
+      });
+      try {
+        await afterAudits;
+        const beforeCommit = await b().unsafe(
+          `SELECT capability_id FROM appbasis_permission_principal_grant
+           WHERE principal_id=$1 ORDER BY capability_id`, [rightsTrainer],
+        );
+        expect(beforeCommit.map(row => row.capability_id)).toEqual(grants);
+        expect((await b().unsafe(
+          `SELECT count(*)::int AS count
+           FROM appbasis_permission_administration_audit WHERE target_id=$1`,
+          [rightsTrainer],
+        ))[0]?.count).toBe(2);
+        const attempts = [
+          `DELETE FROM "session" WHERE id=$1`,
+          `DELETE FROM appbasis_permission_principal_grant
+           WHERE principal_id=$1 AND capability_id=$2`,
+          `DELETE FROM appbasis_permission_principal_role
+           WHERE principal_id=$1 AND role_id=$2`,
+        ] as const;
+        const parameters = [
+          [rightsSession],
+          [rightsAdmin, adminCap],
+          [rightsTrainer, "ulc-linz:trainer"],
+        ];
+        for (let i = 0; i < attempts.length; i++) {
+          await expect(b().begin(async tx => {
+            await tx.unsafe("SET LOCAL lock_timeout='750ms'");
+            await tx.unsafe(attempts[i]!, parameters[i]);
+          })).rejects.toMatchObject({ code: "55P03" });
+        }
+      } finally { resumeCore(); }
+      const committed = await inFlight;
+      expect(committed.grants).toEqual([otherCap]);
+      expect((await b().unsafe(
+        `SELECT count(*)::int AS count
+         FROM appbasis_permission_administration_audit WHERE target_id=$1`,
+        [rightsTrainer],
+      ))[0]?.count).toBe(4);
+
+      // Simulate expiry AFTER both Core audits, on the SAME transaction and
+      // before the mandatory final Better Auth TTL recheck. If the Core
+      // writer leaked a nested commit, either grants or audits would remain.
+      // Updating the session inside the throwaway transaction is
+      // deterministic; the invalidation itself must also roll back.
+      let simulatedAuditWrites = 0;
+      const renewing = {
+        ...input,
+        expectedGrants: [otherCap],
+      };
+      await expect(a().begin(async tx => {
+        const intercepted: UlcTrainingSessionSqlClient = {
+          async unsafe(query, params) {
+            const rows = await tx.unsafe(query, params);
+            if (query.includes("INSERT INTO appbasis_permission_administration_audit")) {
+              simulatedAuditWrites++;
+              if (simulatedAuditWrites === 2) {
+                await tx.unsafe(
+                  `UPDATE "session"
+                   SET expires_at=clock_timestamp()-interval '1 second'
+                   WHERE id=$1`,
+                  [rightsSession],
+                );
+              }
+            }
+            return rows;
+          },
+        };
+        return replaceUlcIrgTrainerPermissions({
+          unsafe(query, params) { return intercepted.unsafe(query, params); },
+          async begin<T>(callback: (inside: UlcTrainingSessionSqlClient) => Promise<T>) {
+            return callback(intercepted);
+          },
+        }, renewing);
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      expect(simulatedAuditWrites).toBe(2);
+      expect((await b().unsafe(
+        `SELECT capability_id FROM appbasis_permission_principal_grant
+         WHERE principal_id=$1 ORDER BY capability_id`, [rightsTrainer],
+      )).map(row => row.capability_id)).toEqual([otherCap]);
+      expect((await b().unsafe(
+        `SELECT count(*)::int AS count
+         FROM appbasis_permission_administration_audit WHERE target_id=$1`,
+        [rightsTrainer],
+      ))[0]?.count).toBe(4);
+      const sessionAfterRollback = await b().unsafe(
+        `SELECT id FROM "session"
+         WHERE id=$1 AND expires_at>clock_timestamp()`,
+        [rightsSession],
+      );
+      expect(sessionAfterRollback).toHaveLength(1);
+
       // Revoking the real server session denies the following replacement.
       await a().unsafe('DELETE FROM "session" WHERE id=$1',[rightsSession]);
       await expect(replaceUlcIrgTrainerPermissions(a(),next))
@@ -1471,11 +1594,11 @@ if (!databaseUrl?.trim()) {
       expect((await b().unsafe(
         `SELECT capability_id FROM appbasis_permission_principal_grant
          WHERE principal_id=$1 ORDER BY capability_id`,[rightsTrainer],
-      )).map(x=>x.capability_id)).toEqual(grants);
+      )).map(x=>x.capability_id)).toEqual([otherCap]);
       expect((await b().unsafe(
         `SELECT count(*)::int AS total FROM appbasis_permission_administration_audit
          WHERE target_id=$1`,[rightsTrainer],
-      ))[0]?.total).toBe(2);
+      ))[0]?.total).toBe(4);
     },90_000);
 
     it("denies password-change-required and serializes a concurrent identity policy change", async () => {

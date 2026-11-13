@@ -80,11 +80,6 @@ export async function replaceUlcIrgTrainerPermissions(
       await activeMembership(tx, actor, organization, "admin");
       // FOR UPDATE serializes concurrent Core grant/revoke/role edits.
       await exactPrincipalRole(tx, actor, ADMIN_ROLE);
-      const permission = await new PostgresPermissionStore(tx).evaluatePermission({
-        principalId: principalId(actor),
-        capability: capabilityId(ADMIN_CAPABILITY),
-      });
-      if (!permission) deny();
       // Pin the effective administrator's direct grant/revoke rows and
       // active role capability rows through the Core write. An ordinary
       // Core administration path also locks this actor principal FOR UPDATE,
@@ -101,6 +96,15 @@ export async function replaceUlcIrgTrainerPermissions(
         `SELECT capability_id FROM appbasis_permission_role_capability
          WHERE role_id=$1 FOR SHARE`, [ADMIN_ROLE],
       );
+      // Evaluate only AFTER acquiring the direct-grant/revoke locks. A
+      // concurrent permission deletion committed before those locks must
+      // make the CURRENT authority check fail closed, not permit a stale
+      // authorization result captured before the DELETE.
+      const permission = await new PostgresPermissionStore(tx).evaluatePermission({
+        principalId: principalId(actor),
+        capability: capabilityId(ADMIN_CAPABILITY),
+      });
+      if (!permission) deny();
 
       await validAccount(tx, target);
       const trainerId = await activeMembership(tx, target, organization, "trainer");
