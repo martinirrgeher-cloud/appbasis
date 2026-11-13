@@ -47,7 +47,7 @@ export function parseUnwiredUlcStaffRegistrationRequest(
   const groupId = identifier(input.groupId);
   const targetAthleteId = identifier(input.targetAthleteId);
   const sessionDate = input.sessionDate;
-  if (typeof sessionDate !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(sessionDate)) deny();
+  if (typeof sessionDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) deny();
   const parsed = new Date(sessionDate + "T00:00:00.000Z");
   if (!Number.isFinite(parsed.getTime()) ||
       parsed.toISOString().slice(0, 10) !== sessionDate) deny();
