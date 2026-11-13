@@ -18,6 +18,9 @@ import {
 import { bindUlcStaffRegistrationWriter, withGuardedUlcStaffRegistration } from "../worker/staff-registration-transaction";
 import { PostgresUlcTrainingSessionRepository, UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
 import {
+  replaceUlcIrgTrainerPermissions, UlcIrgPermissionStaleError,
+} from "../worker/irg-permission-administration";
+import {
   assignUlcIrgModuleGroup,
   UlcIrgModuleAssignmentConflictError,
 } from "../worker/irg-module-administration";
@@ -1278,6 +1281,202 @@ if (!databaseUrl?.trim()) {
          WHERE organization_id=$1 AND group_id=$2`,[organizationId,group],
       ))).toHaveLength(0);
     },30_000);
+
+
+    it("N16 performs trusted IRG performance-only override CAS and Core audits in one PG transaction", async () => {
+      // Dedicated tenant avoids the earlier single-IRG-per-org fixture.
+      const rightsOrg="n16-irg-rights-org";
+      const rightsAdmin="n16-irg-rights-admin";
+      const rightsTrainer="n16-irg-rights-trainer";
+      const rightsSubject="n16-irg-rights-subject";
+      const rightsGroup="n16-irg-rights-group";
+      const rightsSession="n16-irg-rights-session";
+      const adminCap="ulc-linz:module:athletes:edit";
+      const viewCap="ulc-linz:module:performance_registration:view";
+      const editCap="ulc-linz:module:performance_registration:edit";
+      const otherCap="ulc-linz:module:countdown:view";
+      await a().unsafe(
+        `INSERT INTO "user"(id,name,email)
+         VALUES ($1,'N16 rights admin','n16-rights-admin@invalid.test'),
+                ($2,'N16 rights trainer','n16-rights-trainer@invalid.test')`,
+        [rightsAdmin,rightsTrainer],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_identity_security_state(identity_id,must_change_password)
+         VALUES ($1,false),($2,false)`,[rightsAdmin,rightsTrainer],
+      );
+      await a().unsafe(
+        `INSERT INTO ulc_linz_membership
+           (identity_id,organization_id,subject_id,source_role)
+         VALUES ($1,$3,'n16-rights-admin-subject','admin'),
+                ($2,$3,$4,'trainer')`,
+        [rightsAdmin,rightsTrainer,rightsOrg,rightsSubject],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_permission_principal(principal_id)
+         VALUES ($1),($2)`,[rightsAdmin,rightsTrainer],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_permission_principal_role(principal_id,role_id)
+         VALUES ($1,'ulc-linz:admin'),($2,'ulc-linz:trainer')`,
+        [rightsAdmin,rightsTrainer],
+      );
+      for (const cap of [adminCap,viewCap,editCap,otherCap]) {
+        await a().unsafe(
+          `INSERT INTO appbasis_permission_capability(capability_id)
+           VALUES ($1) ON CONFLICT DO NOTHING`,[cap],
+        );
+      }
+      await a().unsafe(
+        `INSERT INTO appbasis_permission_principal_grant
+           (principal_id,capability_id) VALUES ($1,$3),($2,$4)`,
+        [rightsAdmin,rightsTrainer,adminCap,otherCap],
+      );
+      await a().unsafe(
+        `INSERT INTO "session"(id,token,user_id,expires_at,updated_at)
+         VALUES ($1,'n16-irg-rights-session-token',$2,now()+interval '1 hour',now())`,
+        [rightsSession,rightsAdmin],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_training_group(id,organization_id,name,attendance_mode)
+         VALUES ($1,$2,'N16 rights IRG','self_registration')`,
+        [rightsGroup,rightsOrg],
+      );
+      await a().unsafe(
+        `INSERT INTO ulc_linz_training_module_group
+           (organization_id,module_id,group_id)
+         VALUES ($1,'performance_registration',$2)`,
+        [rightsOrg,rightsGroup],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_trainer(id,organization_id,first_name,last_name)
+         VALUES ($1,$2,'Rights','Trainer')`,
+        [rightsSubject,rightsOrg],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_trainer_group_membership
+           (organization_id,trainer_id,group_id) VALUES ($1,$2,$3)`,
+        [rightsOrg,rightsSubject,rightsGroup],
+      );
+      const input={
+        actorIdentityId:rightsAdmin,trustedSessionId:rightsSession,
+        organizationId:rightsOrg,groupId:rightsGroup,
+        targetIdentityId:rightsTrainer,choice:"edit" as const,
+        expectedRoleIds:["ulc-linz:trainer"],
+        expectedGrants:[otherCap],expectedRevokes:[],
+        reason:"Grant IRG coaching registration access after operator approval",
+      };
+      await expect(replaceUlcIrgTrainerPermissions(a(),{
+        ...input,actorIdentityId:actorTrainer,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(replaceUlcIrgTrainerPermissions(a(),{
+        ...input,organizationId:foreignOrganizationId,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(replaceUlcIrgTrainerPermissions(a(),{
+        ...input,targetIdentityId:rightsAdmin,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(replaceUlcIrgTrainerPermissions(a(),{
+        ...input,groupId:groupId,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(replaceUlcIrgTrainerPermissions(a(),{
+        ...input,expectedRoleIds:["ulc-linz:admin"],
+      })).rejects.toBeInstanceOf(UlcIrgPermissionStaleError);
+      await expect(replaceUlcIrgTrainerPermissions(a(),{
+        ...input,expectedGrants:[],
+      })).rejects.toBeInstanceOf(UlcIrgPermissionStaleError);
+      expect((await b().unsafe(
+        `SELECT event_type FROM appbasis_permission_administration_audit
+         WHERE target_id=$1`,[rightsTrainer],
+      ))).toHaveLength(0);
+      const saved=await replaceUlcIrgTrainerPermissions(a(),input);
+      const grants=[otherCap,viewCap,editCap].sort();
+      expect(saved).toMatchObject({
+        actorIdentityId:rightsAdmin,targetIdentityId:rightsTrainer,
+        organizationId:rightsOrg,groupId:rightsGroup,
+        roleIds:["ulc-linz:trainer"],grants,revokes:[],
+      });
+      const rights=await b().unsafe(
+        `SELECT capability_id FROM appbasis_permission_principal_grant
+         WHERE principal_id=$1 ORDER BY capability_id`,[rightsTrainer],
+      );
+      expect(rights.map(x=>x.capability_id)).toEqual(grants);
+      expect((await b().unsafe(
+        `SELECT role_id FROM appbasis_permission_principal_role
+         WHERE principal_id=$1`,[rightsTrainer],
+      )).map(x=>x.role_id)).toEqual(["ulc-linz:trainer"]);
+      const audit=await b().unsafe(
+        `SELECT event_type,actor_principal_id,target_id
+         FROM appbasis_permission_administration_audit
+         WHERE target_id=$1 ORDER BY event_id`,[rightsTrainer],
+      );
+      expect(audit.map(x=>x.event_type)).toEqual([
+        "principal.roles.replace","principal.permissions.replace",
+      ]);
+      expect(audit.every(x=>x.actor_principal_id===rightsAdmin &&
+        x.target_id===rightsTrainer)).toBe(true);
+      await expect(replaceUlcIrgTrainerPermissions(a(),input))
+        .rejects.toBeInstanceOf(UlcIrgPermissionStaleError);
+      expect((await b().unsafe(
+        `SELECT event_type FROM appbasis_permission_administration_audit
+         WHERE target_id=$1`,[rightsTrainer],
+      ))).toHaveLength(2);
+      // A trainer with a valid group assignment may never change their own
+      // principal's rights or circumvent the admin-only guard.
+      await expect(replaceUlcIrgTrainerPermissions(a(),{
+        ...input,actorIdentityId:rightsTrainer,trustedSessionId:rightsSession,
+        targetIdentityId:rightsTrainer,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+
+      const next={
+        ...input,choice:"none" as const,expectedGrants:grants,
+      };
+      // A second connection holds the canonical target principal row.
+      let resume!:()=>void;
+      let signal!:()=>void;
+      const holding=new Promise<void>(resolve=>{resume=resolve;});
+      const ready=new Promise<void>(resolve=>{signal=resolve;});
+      const locked=a().begin(async tx=>{
+        await tx.unsafe(
+          `SELECT principal_id FROM appbasis_permission_principal
+           WHERE principal_id=$1 FOR UPDATE`,[rightsTrainer],
+        );
+        signal();
+        await holding;
+      });
+      try {
+        await ready;
+        await expect(b().begin(async tx=>{
+          await tx.unsafe("SET LOCAL lock_timeout='750ms'");
+          const attached={
+            unsafe(query: string, params?: (string|number|boolean|null)[]){
+              return tx.unsafe(query,params);
+            },
+            async begin<T>(cb:(scoped: typeof tx)=>Promise<T>):Promise<T>{
+              return cb(tx);
+            },
+          };
+          return replaceUlcIrgTrainerPermissions(attached,next);
+        })).rejects.toMatchObject({code:"55P03"});
+        expect((await a().unsafe(
+          `SELECT count(*)::int AS total
+           FROM appbasis_permission_administration_audit WHERE target_id=$1`,
+          [rightsTrainer],
+        ))[0]?.total).toBe(2);
+      } finally {resume();}
+      await locked;
+      // Revoking the real server session denies the following replacement.
+      await a().unsafe('DELETE FROM "session" WHERE id=$1',[rightsSession]);
+      await expect(replaceUlcIrgTrainerPermissions(a(),next))
+        .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      expect((await b().unsafe(
+        `SELECT capability_id FROM appbasis_permission_principal_grant
+         WHERE principal_id=$1 ORDER BY capability_id`,[rightsTrainer],
+      )).map(x=>x.capability_id)).toEqual(grants);
+      expect((await b().unsafe(
+        `SELECT count(*)::int AS total FROM appbasis_permission_administration_audit
+         WHERE target_id=$1`,[rightsTrainer],
+      ))[0]?.total).toBe(2);
+    },90_000);
 
     it("denies password-change-required and serializes a concurrent identity policy change", async () => {
       const authId = "n16-password-policy-session";

@@ -18,6 +18,7 @@ describe("N16 staff write activation gate – intentionally blocked", () => {
     expect(router).not.toContain('from "./staff-registration-transaction"');
     expect(router).not.toContain('from "./irg-module-administration"');
     expect(router).not.toContain('from "./irg-permission-review"');
+    expect(router).not.toContain('from "./irg-permission-administration"');
     expect(router).not.toContain("assertUlcStaffRegistrationGuard(");
     expect(router).not.toContain("withAuthorizedRegistrationTransaction(");
     // Only the previously accepted athlete-based proxy is live.
@@ -28,6 +29,7 @@ describe("N16 staff write activation gate – intentionally blocked", () => {
     const active = source("self-registration-service.ts");
     expect(active).not.toContain("assertUlcStaffRegistrationGuard");
     expect(active).not.toContain("assertUlcStaffRegistrationModuleAuthority");
+    expect(active).not.toContain("replaceUlcIrgTrainerPermissions");
     expect(active).not.toContain("withGuardedUlcStaffRegistration");
     expect(active).not.toContain("withAuthorizedRegistrationTransaction");
     expect(active).toContain("withRegistrationTransaction");
