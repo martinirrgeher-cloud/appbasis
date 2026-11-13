@@ -50,3 +50,52 @@ export async function withGuardedUlcStaffRegistration<T>(
     },
   );
 }
+
+/**
+ * N16 inactive scope-bound adapter. The only permitted module is the
+ * already guarded kindertraining capability; this does NOT establish that a
+ * particular self-registration group belongs to that module. Callers must
+ * not expose this adapter over HTTP before a canonical group/module mapping
+ * and v17 deadline/audit E2E are accepted.
+ *
+ * Unlike the legacy internal callback, the consumer cannot choose tenant,
+ * target athlete, session group/date or audit actor. No proxy-athlete field
+ * is accepted (staff identity is the actor).
+ */
+export function bindUlcStaffRegistrationWriter(
+  sessions: Pick<PostgresUlcTrainingSessionRepository,
+    "ensureScheduledSession" | "saveRegistration">,
+  scope: UlcStaffRegistrationGuardScope,
+  sessionDate: string,
+): Readonly<{
+  save: (
+    intention: import("./training-session-domain").UlcTrainingRegistrationIntention,
+    expectedRevision: number | null,
+    note?: string | null,
+  ) => Promise<import("./training-session-domain").UlcTrainingRegistration>;
+}> {
+  const organizationId = scope.organizationId;
+  const groupId = scope.groupId;
+  const targetAthleteId = scope.targetAthleteId;
+  const actorIdentityId = scope.actorIdentityId;
+  return Object.freeze({
+    async save(intention, expectedRevision, note) {
+      const snapshot = await sessions.ensureScheduledSession(
+        organizationId, "kindertraining", groupId, sessionDate,
+      );
+      if (
+        snapshot.session.organizationId !== organizationId ||
+        snapshot.session.moduleId !== "kindertraining" ||
+        snapshot.session.groupId !== groupId ||
+        snapshot.session.sessionDate !== sessionDate ||
+        snapshot.session.state !== "scheduled"
+      ) {
+        throw new UlcLinzAuthorizationDeniedError();
+      }
+      return sessions.saveRegistration(
+        organizationId, snapshot.session.id, targetAthleteId,
+        intention, expectedRevision, actorIdentityId, undefined, note,
+      );
+    },
+  });
+}
