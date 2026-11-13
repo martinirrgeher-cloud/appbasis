@@ -116,6 +116,14 @@ if (!databaseUrl?.trim()) {
           if (statement.trim()) await a().unsafe(statement);
         }
       }
+      // Load the unpublished v17 candidate ONLY in the disposable test DB.
+      // It is deliberately absent from the runtime migration manifest.
+      const candidate = await readFile(new URL(
+        "../migrations/0016_ulc_linz_registration_calendar.sql", import.meta.url,
+      ), "utf8");
+      for (const statement of candidate.split("--> statement-breakpoint")) {
+        if (statement.trim()) await a().unsafe(statement);
+      }
 
       await a().unsafe(
         "INSERT INTO appbasis_permission_capability (capability_id) VALUES ($1)",
@@ -587,5 +595,103 @@ if (!databaseUrl?.trim()) {
         );
       }
     }, 30_000);
+
+    it("enforces v17 extra/cancel days, CAS, deadlines and trustworthy audit on real staff writes", async () => {
+      const authId = "n16-v17-guarded-session";
+      await a().unsafe(
+        `INSERT INTO "session" (id, token, user_id, expires_at, updated_at)
+         VALUES ($1, $2, $3, now() + interval '1 hour', now())`,
+        [authId, "n16-v17-guarded-token", actorTrainer],
+      );
+      const dates = await a().unsafe(
+        `SELECT (date_trunc('week', clock_timestamp() AT TIME ZONE 'Europe/Vienna')
+                 + interval '7 days')::date::text AS monday,
+                (date_trunc('week', clock_timestamp() AT TIME ZONE 'Europe/Vienna')
+                 + interval '8 days')::date::text AS tuesday`,
+      );
+      const monday = String(dates[0]?.monday);
+      const tuesday = String(dates[0]?.tuesday);
+      const sessions = new PostgresUlcTrainingSessionRepository(a(), () => randomUUID());
+      async function save(day: string, revision: number | null,
+                          intention: "attending" | "not_attending" = "attending") {
+        return withGuardedUlcStaffRegistration(
+          sessions, { ...request(actorTrainer, { sessionDate: day }), trustedSessionId: authId },
+          (scoped, scope) => bindUlcStaffRegistrationWriter(scoped, scope)
+            .save(intention, revision),
+        );
+      }
+
+      await a().unsafe(
+        `INSERT INTO ulc_linz_registration_calendar_rule
+           (organization_id, group_id, weekdays_mask, weeks_ahead, late_mode)
+         VALUES ($1, $2, 2, 26, 'block')`,
+        [organizationId, groupId],
+      );
+
+      // Monday is disallowed until an independently stored extra-day rule
+      // exists. Failed registration also rolls back session creation.
+      await expect(save(monday, null)).rejects.toMatchObject({ code: "UL024" });
+      expect(await sessions.readSession(
+        organizationId, "kindertraining", groupId, monday,
+      )).toBeNull();
+      await a().unsafe(
+        `INSERT INTO ulc_linz_registration_calendar_exception
+           (organization_id, group_id, session_date, kind)
+         VALUES ($1, $2, $3::date, 'extra')`,
+        [organizationId, groupId, monday],
+      );
+
+      const created = await save(monday, null);
+      expect(created.revision).toBe(1);
+      expect(created.updatedByIdentityId).toBe(actorTrainer);
+      const updated = await save(monday, 1, "not_attending");
+      expect(updated.revision).toBe(2);
+      await expect(save(monday, 1)).rejects.toBeInstanceOf(
+        UlcTrainingSessionConflictError,
+      );
+      const audit = await a().unsafe(
+        `SELECT revision, actor_identity_id, athlete_id
+         FROM ulc_linz_training_registration_change
+         WHERE organization_id = $1 AND session_id = $2 ORDER BY revision`,
+        [organizationId, created.sessionId],
+      );
+      expect(audit.map(row => [row.revision, row.actor_identity_id, row.athlete_id]))
+        .toEqual([[1, actorTrainer, athleteId], [2, actorTrainer, athleteId]]);
+
+      // Calendar cancellation overrides a regular Tuesday training day.
+      await a().unsafe(
+        `INSERT INTO ulc_linz_registration_calendar_exception
+           (organization_id, group_id, session_date, kind)
+         VALUES ($1, $2, $3::date, 'cancelled')`,
+        [organizationId, groupId, tuesday],
+      );
+      await expect(save(tuesday, null)).rejects.toMatchObject({ code: "UL024" });
+      expect(await sessions.readSession(
+        organizationId, "kindertraining", groupId, tuesday,
+      )).toBeNull();
+
+      // Next Monday is <=13 days ahead; 14 days prior is always expired.
+      await a().unsafe(
+        `UPDATE ulc_linz_registration_calendar_rule
+         SET deadline_days_before=14, deadline_local_time='00:00', late_mode='block'
+         WHERE organization_id=$1 AND group_id=$2`,
+        [organizationId, groupId],
+      );
+      await expect(save(monday, 2)).rejects.toMatchObject({ code: "UL024" });
+      const current = await a().unsafe(
+        `SELECT revision, updated_by_identity_id
+         FROM ulc_linz_training_registration
+         WHERE organization_id=$1 AND session_id=$2 AND athlete_id=$3`,
+        [organizationId, created.sessionId, athleteId],
+      );
+      expect(current[0]?.revision).toBe(2);
+      expect(current[0]?.updated_by_identity_id).toBe(actorTrainer);
+      const unchangedAudit = await a().unsafe(
+        `SELECT count(*)::int AS total FROM ulc_linz_training_registration_change
+         WHERE organization_id=$1 AND session_id=$2`,
+        [organizationId, created.sessionId],
+      );
+      expect(unchangedAudit[0]?.total).toBe(2);
+    }, 60_000);
   });
 }
