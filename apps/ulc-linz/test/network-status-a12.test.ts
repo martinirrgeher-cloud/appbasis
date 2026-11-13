@@ -98,8 +98,8 @@ describe("ULC A12 network connection guidance", () => {
     expect(state.detail.textContent).toContain("nicht automatisch wiederholt");
     await state.click();
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher.mock.calls[0][0]).toBe("/api/health/build");
-    expect(fetcher.mock.calls[0][1]).toMatchObject({
+    expect(fetcher.mock.calls.at(0)?.[0]).toBe("/api/health/build");
+    expect(fetcher.mock.calls.at(0)?.[1]).toMatchObject({
       method: "GET", cache: "no-store", credentials: "same-origin",
     });
     expect(state.banner.dataset.networkState).toBe("confirmed");
