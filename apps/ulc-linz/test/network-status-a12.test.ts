@@ -86,7 +86,7 @@ describe("ULC A12 network connection guidance", () => {
   });
 
   it("never resends a write after offline/online; verifies only by explicit GET", async () => {
-    const fetcher = vi.fn(ok);
+    const fetcher = vi.fn(async (_url: string, _options: Record<string, unknown>) => ok());
     const state = mount(false, fetcher);
     expect(state.banner.hidden).toBe(false);
     expect(state.banner.dataset.networkState).toBe("offline");
@@ -133,7 +133,7 @@ describe("ULC A12 network connection guidance", () => {
   });
 
   it("stays invisible on an initially healthy connection", () => {
-    const fetcher = vi.fn(ok);
+    const fetcher = vi.fn(async (_url: string, _options: Record<string, unknown>) => ok());
     const state = mount(true, fetcher);
     expect(state.banner.hidden).toBe(true);
     state.emit("online");
