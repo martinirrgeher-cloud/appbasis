@@ -63,7 +63,13 @@ describe("N16 unwired HTTP staff boundary", () => {
     }
   });
 
-  it("denies password-change-required identities before any staff request", () => {\n    const restricted = { ...current, access: "password-change-required" } as UlcLinzCurrentIdentity;\n    expect(() => parseUnwiredUlcStaffRegistrationRequest(restricted, body))\n      .toThrow(UlcLinzAuthorizationDeniedError);\n  });\n\n  it("denies absent or client-substituted server session", () => {
+  it("denies password-change-required identities before any staff request", () => {
+    const restricted = { ...current, access: "password-change-required" } as UlcLinzCurrentIdentity;
+    expect(() => parseUnwiredUlcStaffRegistrationRequest(restricted, body))
+      .toThrow(UlcLinzAuthorizationDeniedError);
+  });
+
+  it("denies absent or client-substituted server session", () => {
     const noSession = { ...current, sessionId: undefined } as UlcLinzCurrentIdentity;
     expect(() => parseUnwiredUlcStaffRegistrationRequest(noSession, body))
       .toThrow(UlcLinzAuthorizationDeniedError);
