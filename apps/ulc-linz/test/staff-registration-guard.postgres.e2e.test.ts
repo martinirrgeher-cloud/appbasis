@@ -10,8 +10,8 @@ import {
   assertActiveUlcStaffSession,
   assertUlcStaffSessionStillValid,
 } from "../worker/staff-session-guard";
-import { withGuardedUlcStaffRegistration } from "../worker/staff-registration-transaction";
-import { PostgresUlcTrainingSessionRepository } from "../worker/training-session-postgres";
+import { bindUlcStaffRegistrationWriter, withGuardedUlcStaffRegistration } from "../worker/staff-registration-transaction";
+import { PostgresUlcTrainingSessionRepository, UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -145,6 +145,11 @@ if (!databaseUrl?.trim()) {
         [groupId, organizationId, otherGroupId, foreignGroupId, foreignOrganizationId],
       );
       await a().unsafe(
+        `INSERT INTO ulc_linz_training_module_group
+           (organization_id, module_id, group_id) VALUES ($1, 'kindertraining', $2)`,
+        [organizationId, groupId],
+      );
+      await a().unsafe(
         `INSERT INTO appbasis_athlete
            (id, organization_id, first_name, last_name)
          VALUES ($1, $2, 'N01', 'Athlete')`,
@@ -192,11 +197,13 @@ if (!databaseUrl?.trim()) {
       expect(administrator).toEqual({
         sourceRole: "admin", actorIdentityId: actorAdmin,
         organizationId, groupId, targetAthleteId: athleteId,
+        moduleId: "kindertraining", sessionDate: when,
       });
       const trainer = await guarded();
       expect(trainer).toEqual({
         sourceRole: "trainer", actorIdentityId: actorTrainer,
         organizationId, groupId, targetAthleteId: athleteId, trainerId,
+        moduleId: "kindertraining", sessionDate: when,
       });
     });
 
@@ -507,6 +514,78 @@ if (!databaseUrl?.trim()) {
       expect(await sessions.readSession(
         organizationId, "kindertraining", groupId, sessionDate,
       )).toBeNull();
+    }, 30_000);
+
+    it("denies unmapped IRG and wrong youth module despite self-registration mode", async () => {
+      const irg = "n16-unmapped-irg";
+      await a().unsafe(
+        `INSERT INTO appbasis_training_group (id, organization_id, name, attendance_mode)
+         VALUES ($1,$2,'IRG unmapped','self_registration')`, [irg, organizationId],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_athlete_group_membership
+           (organization_id, athlete_id, group_id, started_on)
+         VALUES ($1,$2,$3,DATE '2026-11-01')`, [organizationId, athleteId, irg],
+      );
+      await expect(guarded(request(actorAdmin,{groupId:irg})))
+        .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      try {
+        await b().unsafe(
+          `UPDATE ulc_linz_training_module_group SET module_id='u12'
+           WHERE organization_id=$1 AND group_id=$2`, [organizationId,groupId],
+        );
+        await expect(guarded()).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+        await expect(guarded(request(actorAdmin)))
+          .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      } finally {
+        await b().unsafe(
+          `UPDATE ulc_linz_training_module_group SET module_id='kindertraining'
+           WHERE organization_id=$1 AND group_id=$2`, [organizationId,groupId],
+        );
+      }
+    }, 30_000);
+
+    it("holds the canonical group-module row lock until the guard transaction ends", async () => {
+      let release!: () => void;
+      let signal!: () => void;
+      const holding = new Promise<void>(resolve => { release = resolve; });
+      const locked = new Promise<void>(resolve => { signal = resolve; });
+      const active = a().begin(async tx => {
+        const scope = await assertUlcStaffRegistrationGuard(tx, request(actorTrainer));
+        signal();
+        await holding;
+        return scope;
+      });
+      try {
+        await locked;
+        await expect(b().begin(async tx => {
+          await tx.unsafe("SET LOCAL lock_timeout='750ms'");
+          await tx.unsafe(
+            `UPDATE ulc_linz_training_module_group SET module_id='u14'
+             WHERE organization_id=$1 AND group_id=$2`, [organizationId,groupId],
+          );
+        })).rejects.toMatchObject({ code: "55P03" });
+        await expect(b().begin(async tx => {
+          await tx.unsafe("SET LOCAL lock_timeout='750ms'");
+          await tx.unsafe(
+            `DELETE FROM ulc_linz_training_module_group
+             WHERE organization_id=$1 AND group_id=$2`, [organizationId,groupId],
+          );
+        })).rejects.toMatchObject({ code: "55P03" });
+      } finally { release(); }
+      expect((await active).moduleId).toBe("kindertraining");
+      try {
+        await b().unsafe(
+          `DELETE FROM ulc_linz_training_module_group
+           WHERE organization_id=$1 AND group_id=$2`, [organizationId,groupId],
+        );
+        await expect(guarded()).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      } finally {
+        await b().unsafe(
+          `INSERT INTO ulc_linz_training_module_group (organization_id,module_id,group_id)
+           VALUES ($1,'kindertraining',$2)`, [organizationId,groupId],
+        );
+      }
     }, 30_000);
   });
 }

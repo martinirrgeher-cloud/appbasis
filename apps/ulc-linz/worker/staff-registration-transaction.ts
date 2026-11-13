@@ -53,10 +53,9 @@ export async function withGuardedUlcStaffRegistration<T>(
 
 /**
  * N16 inactive scope-bound adapter. The only permitted module is the
- * already guarded kindertraining capability; this does NOT establish that a
- * particular self-registration group belongs to that module. Callers must
- * not expose this adapter over HTTP before a canonical group/module mapping
- * and v17 deadline/audit E2E are accepted.
+ * checked kindertraining capability and its locked canonical group mapping.
+ * IRG is not represented by the youth group/module table and remains denied.
+ * No HTTP activation before v17, password-change and audit E2E acceptance.
  *
  * Unlike the legacy internal callback, the consumer cannot choose tenant,
  * target athlete, session group/date or audit actor. No proxy-athlete field
@@ -66,7 +65,6 @@ export function bindUlcStaffRegistrationWriter(
   sessions: Pick<PostgresUlcTrainingSessionRepository,
     "ensureScheduledSession" | "saveRegistration">,
   scope: UlcStaffRegistrationGuardScope,
-  sessionDate: string,
 ): Readonly<{
   save: (
     intention: import("./training-session-domain").UlcTrainingRegistrationIntention,
@@ -78,14 +76,16 @@ export function bindUlcStaffRegistrationWriter(
   const groupId = scope.groupId;
   const targetAthleteId = scope.targetAthleteId;
   const actorIdentityId = scope.actorIdentityId;
+  const moduleId = scope.moduleId;
+  const sessionDate = scope.sessionDate;
   return Object.freeze({
     async save(intention, expectedRevision, note) {
       const snapshot = await sessions.ensureScheduledSession(
-        organizationId, "kindertraining", groupId, sessionDate,
+        organizationId, moduleId, groupId, sessionDate,
       );
       if (
         snapshot.session.organizationId !== organizationId ||
-        snapshot.session.moduleId !== "kindertraining" ||
+        snapshot.session.moduleId !== moduleId ||
         snapshot.session.groupId !== groupId ||
         snapshot.session.sessionDate !== sessionDate ||
         snapshot.session.state !== "scheduled"

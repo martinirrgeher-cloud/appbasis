@@ -31,6 +31,8 @@ export type UlcStaffRegistrationGuardScope =
       organizationId: string;
       groupId: string;
       targetAthleteId: string;
+      sessionDate: string;
+      moduleId: "kindertraining";
     }>
   | Readonly<{
       sourceRole: "trainer";
@@ -38,6 +40,8 @@ export type UlcStaffRegistrationGuardScope =
       organizationId: string;
       groupId: string;
       targetAthleteId: string;
+      sessionDate: string;
+      moduleId: "kindertraining";
       trainerId: string;
     }>;
 
@@ -114,12 +118,6 @@ export async function assertUlcStaffRegistrationGuard(
   );
   if (roles.length !== 1 || roles[0]?.state !== "active") deny();
 
-  const permission = await new PostgresPermissionStore(transaction).evaluatePermission({
-    principalId: principalId(identityId),
-    capability: capabilityId("ulc-linz:module:kindertraining:edit"),
-  });
-  if (!permission) deny();
-
   // The group row lock also pins attendance_mode until the staff write commits.
   // A trainer-roll-call group is never a self-registration target, even for admin.
   const groups = await transaction.unsafe(
@@ -132,6 +130,22 @@ export async function assertUlcStaffRegistrationGuard(
     [organizationId, groupId],
   );
   if (groups.length !== 1) deny();
+
+  // Canonical youth module mapping: the group row alone does not distinguish
+  // IRG from Kindertraining. Hold the mapping under FOR SHARE until commit.
+  // Unmapped IRG or differently mapped youth groups must fail closed.
+  const mappings = await transaction.unsafe(
+    `SELECT module_id FROM ulc_linz_training_module_group
+     WHERE organization_id = $1 AND group_id = $2 FOR SHARE`,
+    [organizationId, groupId],
+  );
+  if (mappings.length !== 1 || mappings[0]?.module_id !== "kindertraining") deny();
+  const moduleId = "kindertraining" as const;
+  const permission = await new PostgresPermissionStore(transaction).evaluatePermission({
+    principalId: principalId(identityId),
+    capability: capabilityId(`ulc-linz:module:${moduleId}:edit`),
+  });
+  if (!permission) deny();
 
   let trainerId: string | null = null;
   if (sourceRole === "trainer") {
@@ -177,13 +191,14 @@ export async function assertUlcStaffRegistrationGuard(
   if (sourceRole === "admin") {
     return Object.freeze({
       sourceRole, actorIdentityId: identityId, organizationId,
-      groupId, targetAthleteId,
+      groupId, targetAthleteId, moduleId, sessionDate,
     });
   }
 
   return Object.freeze({
     sourceRole, actorIdentityId: identityId, organizationId,
-    groupId, targetAthleteId, trainerId: requiredIdentifier(trainerId),
+    groupId, targetAthleteId, moduleId, sessionDate,
+    trainerId: requiredIdentifier(trainerId),
   });
 }
 

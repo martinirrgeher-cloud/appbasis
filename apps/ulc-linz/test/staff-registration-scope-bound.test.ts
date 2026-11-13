@@ -4,14 +4,16 @@ import { UlcLinzAuthorizationDeniedError } from "../worker/authorization";
 import type { PostgresUlcTrainingSessionRepository } from "../worker/training-session-postgres";
 import type { UlcTrainingSession } from "../worker/training-session-domain";
 
+const date = "2026-11-17";
 const scope = Object.freeze({
   sourceRole: "admin" as const,
   actorIdentityId: "trusted-actor",
   organizationId: "trusted-org",
   groupId: "trusted-group",
   targetAthleteId: "trusted-athlete",
+  sessionDate: date,
+  moduleId: "kindertraining" as const,
 });
-const date = "2026-11-17";
 
 function repository(overrides: Record<string, unknown> = {}) {
   const ensureScheduledSession = vi.fn(async () => ({
@@ -45,7 +47,7 @@ function repository(overrides: Record<string, unknown> = {}) {
 describe("N16 inactive staff scope-bound writer", () => {
   it("binds tenant, module, group, date, target and audit actor, including create CAS", async () => {
     const { sessions, ensureScheduledSession, saveRegistration } = repository();
-    const writer = bindUlcStaffRegistrationWriter(sessions, scope, date);
+    const writer = bindUlcStaffRegistrationWriter(sessions, scope);
     expect(Object.isFrozen(writer)).toBe(true);
     await writer.save("attending", null, "note");
     expect(ensureScheduledSession).toHaveBeenCalledWith(
@@ -59,7 +61,7 @@ describe("N16 inactive staff scope-bound writer", () => {
 
   it("preserves update CAS and never supplies a proxy-athlete actor", async () => {
     const { sessions, saveRegistration } = repository();
-    await bindUlcStaffRegistrationWriter(sessions, scope, date).save("not_attending", 3);
+    await bindUlcStaffRegistrationWriter(sessions, scope).save("not_attending", 3);
     expect(saveRegistration).toHaveBeenCalledWith(
       "trusted-org", "trusted-session", "trusted-athlete",
       "not_attending", 3, "trusted-actor", undefined, undefined,
@@ -87,7 +89,7 @@ describe("N16 inactive staff scope-bound writer", () => {
       revision: "1", attendance: [], registrations: [],
     }));
     const sessions = { ...base.sessions, ensureScheduledSession };
-    await expect(bindUlcStaffRegistrationWriter(sessions, scope, date).save(
+    await expect(bindUlcStaffRegistrationWriter(sessions, scope).save(
       "attending", null,
     )).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
     expect(base.saveRegistration).not.toHaveBeenCalled();
@@ -98,7 +100,7 @@ describe("N16 inactive staff scope-bound writer", () => {
     const failure = new Error("CAS conflict");
     const saveRegistration = vi.fn(async () => { throw failure; });
     const sessions = { ...base.sessions, saveRegistration };
-    await expect(bindUlcStaffRegistrationWriter(sessions, scope, date).save(
+    await expect(bindUlcStaffRegistrationWriter(sessions, scope).save(
       "attending", 2,
     )).rejects.toBe(failure);
     expect(saveRegistration).toHaveBeenCalledTimes(1);
