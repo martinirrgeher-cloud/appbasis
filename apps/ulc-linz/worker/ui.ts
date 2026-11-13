@@ -245,6 +245,28 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               </article>
 
             </section>
+
+            <section class="card" id="ulc-quick-help" aria-labelledby="ulc-quick-help-title">
+              <p class="eyebrow">Hilfe</p>
+              <h2 id="ulc-quick-help-title">Kurzanleitung</h2>
+              <p class="summary">Tippe auf einen Bereich, um die wichtigsten Schritte zu sehen. Welche Bereiche du öffnen kannst, hängt von deinen Berechtigungen ab.</p>
+              <details><summary>Anmeldung</summary>
+                <p>Öffne über „Mehr“ die Anmeldung, wähle deine Trainingsgruppe und den Trainingstag und gib an, ob du kommst. Beachte angezeigte Anmeldefristen und Rückmeldungen.</p>
+              </details>
+              <details><summary>Anwesenheit</summary>
+                <p>Wähle unten „Anwesenheit“ und anschließend die Gruppe. Erfasse die anwesenden Athletinnen und Athleten sowie – falls angeboten – Trainingsinhalte und Traineranwesenheit. Prüfe den Speicherstatus, bevor du den Tag wechselst.</p>
+              </details>
+              <details><summary>Planung</summary>
+                <p>Öffne die Planung über „Mehr“, wähle Gruppe und Termin und bearbeite den Trainingsplan. Prüfe Speicher- und Konflikthinweise; bei einem Konflikt keine fremden Änderungen überschreiben.</p>
+              </details>
+              <details><summary>Doku</summary>
+                <p>Öffne unten „Doku“, um die tatsächliche Durchführung eines Trainings festzuhalten. Kontrolliere Inhalte und Anwesenheit, bevor du eine Einheit abschließt.</p>
+              </details>
+              <details><summary>Benutzer und Stammdaten</summary>
+                <p>Die Verwaltung findest du unter „Mehr“, sofern du berechtigt bist. Athleten, Trainer und Gruppen werden in den Stammdaten gepflegt; Benutzer und Rechte in der Benutzerverwaltung.</p>
+              </details>
+              <p class="settings-note">Bei Verbindungsproblemen nicht mehrfach speichern. Zuerst die Fehlermeldung und den aktuellen Speicherstatus prüfen.</p>
+            </section>
           </section>
 
           <section class="app-section" data-app-section="masterdata" id="masterdata" hidden>
