@@ -13,7 +13,7 @@ describe("ULC A10 compact start dashboard", () => {
       "registration", "attendance", "training-plans", "training-documentation",
       "exercise-catalog", "training-blocks", "countdown", "masterdata", "users",
     ]);
-    expect(home).toContain('dashboard-grid dashboard-grid--home');
+    expect(home).toContain('class="dashboard-grid" aria-label="ULC Linz Funktionen"');
     expect(home).toContain('id="ulc-quick-help"');
   });
 
@@ -29,7 +29,7 @@ describe("ULC A10 compact start dashboard", () => {
   });
 
   it("uses the shared theme and compact mobile layout without duplicate developer badges", () => {
-    expect(ULC_LINZ_APP_CSS).toContain(".dashboard-grid--home");
+    expect(ULC_LINZ_APP_CSS).toContain("#start .dashboard-grid");
     expect(ULC_LINZ_APP_CSS).toContain("repeat(2, minmax(0, 1fr))");
     expect(ULC_LINZ_APP_CSS).toContain("@media (max-width: 360px)");
     expect(ULC_LINZ_APP_CSS).toContain("@media (min-width: 700px)");
