@@ -75,6 +75,26 @@ describe("N16 unwired HTTP staff boundary", () => {
       .toThrow(UlcLinzAuthorizationDeniedError);
   });
 
+  it("rejects accessor properties without evaluating caller-supplied getters", () => {
+    let reads = 0;
+    const withGetter = { ...body };
+    Object.defineProperty(withGetter, "groupId", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        reads += 1;
+        return "group-1";
+      },
+    });
+    expect(() => parseUnwiredUlcStaffRegistrationRequest(current, withGetter))
+      .toThrow(UlcLinzAuthorizationDeniedError);
+    expect(reads).toBe(0);
+
+    const withSymbol = { ...body, [Symbol("actorIdentityId")]: "forged" };
+    expect(() => parseUnwiredUlcStaffRegistrationRequest(current, withSymbol))
+      .toThrow(UlcLinzAuthorizationDeniedError);
+  });
+
   it("accepts leap-day dates but never silently normalizes dates", () => {
     expect(parseUnwiredUlcStaffRegistrationRequest(current, {
       ...body, sessionDate: "2028-02-29", expectedRevision: 1,
