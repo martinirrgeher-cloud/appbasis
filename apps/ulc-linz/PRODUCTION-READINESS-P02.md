@@ -42,6 +42,16 @@ Die bestehende `apps/ulc-linz/test/athlete-subject-deletion.postgres.e2e.test.ts
 
 **Grenzen:** Die Regression bestätigt ausdrücklich kein vollständiges historisches Eigentumsregister, keine Löschung unklarer Notizen und keinen nach Ablauf des Athleten-Tombstones sicheren Full-Owner-Replay. Es muss nach P01-Richtlinienentscheidung festgelegt werden, wie Legacy-Ereignisse mit personenbezogenem Inhalt legitim behandelt werden, ohne sie versehentlich anderen Athleten zuzuordnen. **Produktionsstatus bleibt `blocked`.**
 
+## P02-C: isolierte Restore-Grenzen, Cross-Org und Ablauf der Autorität
+
+Der zusätzliche echte Postgres-Test in `modules/training-blocks/test/postgres-repository.postgres.e2e.ts` prüft ein *Offline-Backup-Replay* mit derselben `subject_id` in zwei verschiedenen Organisationen. Er belegt, dass ein nach 35 Tagen abgelaufener, aber noch vorhandener **Subject-Usage-Löschmarker** nur das exakt passende `organization_id/subject_id` betrifft. Nutzungen einer zweiten Organisation mit derselben Subject-ID und einer zweiten Person derselben Organisation bleiben erhalten. Ein historischer, textlich plausibler, aber nicht verifizierbarer Legacy-Usage-Eintrag bleibt ebenfalls erhalten und darf **nicht** als anonym freigegeben gelten. Replay zweimal ist idempotent und ein erneuter verifizierter Writer für den gelöschten Subject wird blockiert.
+
+**Wichtig: Unterschiedliche Restore-Regeln:** `subject-usage-restore-reconciliation.ts` verarbeitet auch abgelaufene Löschmarker (nur als **OFFLINE**-Recovery; vollständige, neuere Quelle und Writer-Freeze sind extern nachzuweisen). `favorite-restore-reconciliation.ts` dagegen weist Löschmarker zurück, deren `purgeAfter` vor dem Prüfzeitpunkt liegt. Ein neuer fokussierter Unit-Test dokumentiert für persönliche Favoriten das **fail-closed** Verhalten ohne Target-Writes. Das verhindert unberechtigten Replay, ist aber **keine** Garantie, dass ältere Favoriten nach Ablauf der Marker durch einen Restore sicher gelöscht werden können.
+
+**Offenes P01-/P02-Gate:** Für Favoriten, abgelaufene Marker und historische personenbezogene Notizen fehlen eine vom Vereinsverantwortlichen festgelegte Retention-Policy, autoritative vollständige Markerquelle, auditierbare Replay-/Checkpoint-Grenze und ein Nachweis, dass ein altes Backup nach vollständigem Cross-Owner-Replay keine gelöschten personenbezogenen Daten wieder zugänglich macht. Eine stillschweigende Verlängerung von 35 Tagen wäre keine sichere Abkürzung. Dieser Test-Slice aktiviert weder neue Live-Löscher noch Production-Migrationen, verändert keine Policy und **hebt kein `blocked` auf**.
+
+Die fachlich zu beschließenden Fristen, Datenkategorien und vier zentralen Entscheidungen sind in [P01-Entscheidungsvorlage](./PRODUCTION-PRIVACY-DECISIONS-P01-DRAFT.md) als **nicht genehmigter Entwurf** vorbereitet.
+
 ## Release-Gates für P02-A/B
 
 1. `Quality gate` und `Identity PostgreSQL E2E` auf derselben exakten PR-HEAD-SHA grün (für diesen rein testenden Slice).
