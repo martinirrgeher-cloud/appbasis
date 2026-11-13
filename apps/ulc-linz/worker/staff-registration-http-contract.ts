@@ -15,7 +15,7 @@ export interface UnwiredUlcStaffRegistrationRequest {
   readonly targetAthleteId: string;
   readonly sessionDate: string;
   readonly intention: "attending" | "not_attending" | "maybe";
-  readonly expectedRevision: number;
+  readonly expectedRevision: number | null;
 }
 
 const BODY_KEYS = new Set([
@@ -64,8 +64,9 @@ export function parseUnwiredUlcStaffRegistrationRequest(
   if (intention !== "attending" && intention !== "not_attending" &&
       intention !== "maybe") deny();
   const expectedRevision = input.expectedRevision;
-  if (typeof expectedRevision !== "number" ||
-      !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) deny();
+  if (expectedRevision !== null &&
+      (typeof expectedRevision !== "number" ||
+       !Number.isSafeInteger(expectedRevision) || expectedRevision < 1)) deny();
 
   return Object.freeze({
     actorIdentityId: identityId,
