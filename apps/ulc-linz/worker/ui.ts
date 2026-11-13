@@ -156,12 +156,12 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <p class="summary">Dein Vereinsbereich für Training und Organisation.</p>
             </section>
 
-            <section class="dashboard-grid" aria-label="ULC Linz Funktionen">
+            <section class="dashboard-grid dashboard-grid--home" aria-label="Freigeschaltete ULC Linz Funktionen">
               <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="masterdata" hidden>
                 <div>
                   <p class="eyebrow">Organisation</p>
                   <h2>Stammdaten</h2>
-                  <p>Athleten, Trainer und Trainingsgruppen zentral verwalten.</p>
+                  <p>Athleten, Trainer, Gruppen und Zuordnungen pflegen.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="masterdata-quick-action" type="button" data-open-view="masterdata" disabled>Stammdaten öffnen</button>
                 <small id="masterdata-access-label">Berechtigung wird geprüft …</small>
@@ -181,7 +181,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Organisation</p>
                   <h2>Benutzerverwaltung</h2>
-                  <p>Testzugänge anlegen und bestehende Konten prüfen.</p>
+                  <p>Konten anlegen, Berechtigungen verwalten und Zugänge prüfen.</p>
                 </div>
                 <button class="button button--primary dashboard-action" type="button" data-open-view="users">Benutzer öffnen</button>
               </article>
@@ -199,7 +199,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsplanung</h2>
-                  <p>Trainingspläne für Gruppen und Athleten erstellen, gezielt speichern und beim Verlassen sichern.</p>
+                  <p>Gruppen- und Athletenpläne erstellen – Änderungen werden automatisch gespeichert.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="training-plan-quick-action" type="button" data-open-view="training-plans" disabled>Trainingsplanung öffnen</button>
                 <small id="training-plan-access-label">Berechtigung wird geprüft …</small>
@@ -209,7 +209,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsdokumentation</h2>
-                  <p>Geplante Einheiten übernehmen, tatsächliche Durchführung festhalten und abschließen.</p>
+                  <p>Training durchführen, speichern und abschließen.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="training-documentation-quick-action" type="button" data-open-view="training-documentation" disabled>Dokumentation öffnen</button>
                 <small id="training-documentation-access-label">Berechtigung wird geprüft …</small>
@@ -229,7 +229,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsblöcke</h2>
-                  <p>Trainingsvorlagen zusammenstellen, bewusst speichern und Versionen vergleichen.</p>
+                  <p>Vorlagen erstellen, bearbeiten und vergleichen.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="training-block-quick-action" type="button" data-open-view="training-blocks" disabled>Trainingsblöcke öffnen</button>
                 <small id="training-block-access-label">Berechtigung wird geprüft …</small>
@@ -1091,6 +1091,31 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   html { scroll-behavior: auto; }
 }
 .dashboard-grid { display: grid; gap: 8px; }
+/* A10: compact role-sensitive home – visibility remains entirely permission-derived. */
+.dashboard-grid--home { align-items: stretch; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.dashboard-grid--home > .dashboard-card { min-width: 0; min-height: 0; align-content: space-between; padding: 12px; gap: 9px; }
+.dashboard-grid--home > .dashboard-card h2 { font-size: .98rem; line-height: 1.24; overflow-wrap: anywhere; }
+.dashboard-grid--home .dashboard-card .eyebrow { margin-bottom: 4px; font-size: .67rem; }
+.dashboard-grid--home .dashboard-card p:not(.eyebrow) { font-size: .77rem; line-height: 1.38; }
+.dashboard-grid--home .dashboard-action { min-width: 0; min-height: 42px; white-space: normal; overflow-wrap: anywhere; font-size: .79rem; line-height: 1.2; }
+.dashboard-grid--home .dashboard-card small { overflow-wrap: anywhere; }
+.dashboard-grid--home [data-dashboard-view="registration"] { order: 0; }
+.dashboard-grid--home [data-dashboard-view="attendance"] { order: 1; }
+.dashboard-grid--home [data-dashboard-view="training-plans"] { order: 2; }
+.dashboard-grid--home [data-dashboard-view="training-documentation"] { order: 3; }
+.dashboard-grid--home [data-dashboard-view="exercise-catalog"] { order: 4; }
+.dashboard-grid--home [data-dashboard-view="training-blocks"] { order: 5; }
+.dashboard-grid--home [data-dashboard-view="countdown"] { order: 6; }
+.dashboard-grid--home [data-dashboard-view="masterdata"] { order: 7; }
+.dashboard-grid--home [data-dashboard-view="users"] { order: 8; }
+@media (max-width: 360px) {
+  .dashboard-grid--home { grid-template-columns: minmax(0, 1fr); }
+  .dashboard-grid--home > .dashboard-card { padding: 11px; }
+}
+@media (min-width: 700px) {
+  .dashboard-grid--home { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 .dashboard-card { display: grid; gap: 9px; padding: 13px; }
 .dashboard-card h2 { margin-bottom: 4px; }
 .dashboard-card p:not(.eyebrow) { margin-bottom: 0; color: var(--secondary); font-size: .86rem; line-height: 1.35; }
