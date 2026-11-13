@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "scope": "irg-assignment-and-access-audit-retention",
+  "status": "blocked-pending-controller-privacy-and-recovery-approval",
+  "decision": {
+    "controllerIdentity": null,
+    "approvedAt": null,
+    "evidenceUrl": null,
+    "legalBasis": null,
+    "twelveMonthPeriodJustification": null,
+    "subjectAccessAndErasureProcedure": null,
+    "legalHoldAssessment": null,
+    "backupReplicaAndSnapshotCoverage": null,
+    "restoreReconciliationProcedure": null,
+    "independentRestoreEvidenceUrl": null,
+    "onceMarkerOrganizationErasureProcedure": null,
+    "accessAuditAndPurgeActorRole": null
+  },
+  "execution": {
+    "enabled": false,
+    "purgeRoute": false,
+    "scheduler": false,
+    "remoteDatabaseAccess": false,
+    "providerWrites": false,
+    "eligibleForPreviewMigration": false
+  },
+  "requirements": [
+    "controller-must-approve-retention-period-and-legal-basis",
+    "independent-legal-hold-review-before-each-execution",
+    "backup-replica-snapshot-expiry-and-restore-reconciliation-reviewed",
+    "subject-access-and-erasure-process-approved",
+    "actor-role-and-separate-deletion-access-audit-approved",
+    "nonpersonal-once-marker-remains-after-personal-audit-purge",
+    "once-marker-erased-only-via-approved-organization-erasure",
+    "independent-preview-migration-and-deployment-approval-required"
+  ]
+}

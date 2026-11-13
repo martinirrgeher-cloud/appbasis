@@ -25,7 +25,11 @@
       "automaticPurgeEnabled": false,
       "accessAuditDueRule": "access.retained_until <= clock_timestamp()",
       "dryRunOnly": true,
-      "purgeImplementationApproved": false
+      "purgeImplementationApproved": false,
+      "controllerDecisionLedger": "privacy/n16-irg-retention-controller-decision.json",
+      "legalHoldEnforcement": "not-verified-blocked",
+      "backupRestoreReconciliation": "not-verified-blocked",
+      "reviewOnlyService": "worker/irg-audit-retention-review.ts"
     },
     "export": {
       "legacyM5EDataset": "excluded",
@@ -60,6 +64,7 @@
     "providerWrites": false,
     "staffRoute": false,
     "exportRoute": false,
-    "purgeRoute": false
+    "purgeRoute": false,
+    "retentionReviewRoute": false
   }
 }

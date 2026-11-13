@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { UlcLinzAuthorizationDeniedError } from "../worker/authorization";
 import { inspectUlcIrgAuditRetention } from "../worker/irg-audit-privacy-preflight";
 import { exportUlcIrgAssignmentAudit } from "../worker/irg-audit-export";
+import { reviewUlcIrgAuditRetentionWithoutDeleting } from "../worker/irg-audit-retention-review";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -31,6 +32,7 @@ describe("N16 unexposed IRG audit privacy/retention/export contract", () => {
     ]));
     expect(router).not.toContain('from "./irg-audit-privacy-preflight"');
     expect(router).not.toContain('from "./irg-audit-export"');
+    expect(router).not.toContain('from "./irg-audit-retention-review"');
     expect(sql).toContain("CREATE TABLE ulc_linz_irg_audit_export_access");
     expect(sql).toContain("REVOKE ALL ON TABLE public.ulc_linz_irg_audit_export_access FROM PUBLIC");
     expect(contract.personalAudit.export).toMatchObject({

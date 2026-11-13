@@ -26,6 +26,7 @@ import {
 } from "../worker/irg-module-administration";
 import { inspectUlcIrgAuditRetention } from "../worker/irg-audit-privacy-preflight";
 import { exportUlcIrgAssignmentAudit } from "../worker/irg-audit-export";
+import { reviewUlcIrgAuditRetentionWithoutDeleting } from "../worker/irg-audit-retention-review";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -1317,6 +1318,37 @@ if (!databaseUrl?.trim()) {
       });
       expect(afterExports.auditAccessEvents).toBe(3);
       expect(afterExports.auditAccessDueForRetentionReview).toBe(0);
+      const beforeReview=await b().unsafe(
+        `SELECT
+            (SELECT count(*)::int FROM ulc_linz_irg_module_assignment_audit
+             WHERE organization_id=$1) AS assignment_count,
+            (SELECT count(*)::int FROM ulc_linz_irg_audit_export_access
+             WHERE organization_id=$1) AS access_count`,[mappingOrg],
+      );
+      const dryRun=await reviewUlcIrgAuditRetentionWithoutDeleting(a(),{
+        actorIdentityId:mappingAdmin,trustedSessionId:sessionId,
+        organizationId:mappingOrg,
+      });
+      expect(dryRun).toMatchObject({
+        organizationId:mappingOrg,assignmentAuditCandidates:1,
+        accessAuditCandidates:0,totalCandidates:1,executePurge:false,
+        deletedRows:0,activeRoute:false,
+        candidateStatus:"review-only-not-deletable",
+        decisionStatus:"blocked-pending-controller-privacy-and-recovery-approval",
+      });
+      expect(dryRun.unverifiedBlockers).toContain("legal-holds-not-independently-cleared");
+      expect(dryRun.unverifiedBlockers).toContain("backup-restore-reconciliation-unverified");
+      expect((await b().unsafe(
+        `SELECT
+            (SELECT count(*)::int FROM ulc_linz_irg_module_assignment_audit
+             WHERE organization_id=$1) AS assignment_count,
+            (SELECT count(*)::int FROM ulc_linz_irg_audit_export_access
+             WHERE organization_id=$1) AS access_count`,[mappingOrg],
+      ))).toEqual(beforeReview);
+      await expect(reviewUlcIrgAuditRetentionWithoutDeleting(a(),{
+        actorIdentityId:mappingAdmin,trustedSessionId:sessionId,
+        organizationId:foreignOrganizationId,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
 
       // Audit INSERT failure must roll back the page; no partial PII release.
       await expect(exportUlcIrgAssignmentAudit({
