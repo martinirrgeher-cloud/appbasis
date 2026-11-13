@@ -13,6 +13,7 @@ describe("N16 staff write activation gate – intentionally blocked", () => {
   it("does not expose the new staff guard from the active HTTP router", () => {
     const router = source("index.ts");
     expect(router).not.toContain('from "./staff-registration-guard"');
+    expect(router).not.toContain('from "./staff-registration-module-authority"');
     expect(router).not.toContain('from "./staff-session-guard"');
     expect(router).not.toContain('from "./staff-registration-transaction"');
     expect(router).not.toContain("assertUlcStaffRegistrationGuard(");
@@ -24,6 +25,7 @@ describe("N16 staff write activation gate – intentionally blocked", () => {
   it("does not route the existing athlete registration service through an unreviewed staff writer", () => {
     const active = source("self-registration-service.ts");
     expect(active).not.toContain("assertUlcStaffRegistrationGuard");
+    expect(active).not.toContain("assertUlcStaffRegistrationModuleAuthority");
     expect(active).not.toContain("withGuardedUlcStaffRegistration");
     expect(active).not.toContain("withAuthorizedRegistrationTransaction");
     expect(active).toContain("withRegistrationTransaction");

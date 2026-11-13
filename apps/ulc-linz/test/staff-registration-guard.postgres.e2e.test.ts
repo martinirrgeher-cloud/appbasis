@@ -529,6 +529,82 @@ if (!databaseUrl?.trim()) {
       )).toBeNull();
     }, 30_000);
 
+
+    it("N16 keeps IRG deny-by-default even with performance grants, youth grants and spoofed group names", async () => {
+      // The real migration has no group->performance_registration authority.
+      // Permissions alone cannot classify a self-registration group as IRG.
+      const irgId = "n16-irg-capability-matrix";
+      const performanceCapability = "ulc-linz:module:performance_registration:edit";
+      await a().unsafe(
+        `INSERT INTO appbasis_training_group
+           (id, organization_id, name, attendance_mode)
+         VALUES ($1, $2, 'IRG', 'self_registration')`,
+        [irgId, organizationId],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_athlete_group_membership
+           (organization_id, athlete_id, group_id, started_on)
+         VALUES ($1, $2, $3, DATE '2026-11-01')`,
+        [organizationId, athleteId, irgId],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_trainer_group_membership
+           (organization_id, trainer_id, group_id)
+         VALUES ($1, $2, $3)`,
+        [organizationId, trainerId, irgId],
+      );
+      await a().unsafe(
+        "INSERT INTO appbasis_permission_capability (capability_id) VALUES ($1)",
+        [performanceCapability],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_permission_principal_grant
+           (principal_id, capability_id) VALUES ($1, $2), ($3, $2)`,
+        [actorTrainer, performanceCapability, actorAdmin],
+      );
+
+      // First prove a Leistungs-trainer-style identity with performance only
+      // does not acquire youth permissions. Restore the shared fixture before
+      // the remaining test cases.
+      await a().unsafe(
+        `DELETE FROM appbasis_permission_role_capability
+         WHERE role_id = $1 AND capability_id = $2`,
+        ["ulc-linz:trainer", capability],
+      );
+      try {
+        await expect(guarded()).rejects.toBeInstanceOf(
+          UlcLinzAuthorizationDeniedError,
+        );
+        await expect(guarded(request(actorTrainer, { groupId: irgId })))
+          .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      } finally {
+        await a().unsafe(
+          `INSERT INTO appbasis_permission_role_capability (role_id, capability_id)
+           VALUES ($1, $2)`,
+          ["ulc-linz:trainer", capability],
+        );
+      }
+
+      // Neither BOTH capabilities nor the admin role proves an IRG mapping.
+      await expect(guarded(request(actorTrainer, { groupId: irgId })))
+        .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(guarded(request(actorAdmin, { groupId: irgId })))
+        .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(guarded(request(actorFunctionary, { groupId: irgId })))
+        .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+
+      // A display-name change cannot mint authority. There is deliberately no
+      // inference from the string 'Kindertraining' or attendance mode.
+      await a().unsafe(
+        `UPDATE appbasis_training_group SET name = 'Kindertraining'
+         WHERE organization_id = $1 AND id = $2`,
+        [organizationId, irgId],
+      );
+      await expect(guarded(request(actorTrainer, { groupId: irgId })))
+        .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(guarded(request(actorAdmin, { groupId: irgId })))
+        .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+    }, 30_000);
     it("denies unmapped IRG and wrong youth module despite self-registration mode", async () => {
       const irg = "n16-unmapped-irg";
       await a().unsafe(
