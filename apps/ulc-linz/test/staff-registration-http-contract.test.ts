@@ -15,7 +15,7 @@ const body = {
   targetAthleteId: "athlete-1",
   sessionDate: "2026-11-17",
   intention: "attending",
-  expectedRevision: 0,
+  expectedRevision: null,
 };
 
 describe("N16 unwired HTTP staff boundary", () => {
@@ -23,7 +23,7 @@ describe("N16 unwired HTTP staff boundary", () => {
     const parsed = parseUnwiredUlcStaffRegistrationRequest(current, body);
     expect(parsed.actorIdentityId).toBe("trusted-actor");
     expect(parsed.trustedSessionId).toBe("trusted-session");
-    expect(parsed.expectedRevision).toBe(0);
+    expect(parsed.expectedRevision).toBeNull();
     expect(Object.isFrozen(parsed)).toBe(true);
   });
 
@@ -53,6 +53,8 @@ describe("N16 unwired HTTP staff boundary", () => {
       { ...body, sessionDate: "2026-11-17T00:00:00Z" },
       { ...body, intention: "unknown" },
       { ...body, expectedRevision: -1 },
+      { ...body, expectedRevision: 0 },
+      { ...body, expectedRevision: undefined },
       { ...body, expectedRevision: 0.5 },
       { ...body, expectedRevision: "0" },
       { ...body, expectedRevision: Number.MAX_SAFE_INTEGER + 1 },
@@ -93,6 +95,12 @@ describe("N16 unwired HTTP staff boundary", () => {
     const withSymbol = { ...body, [Symbol("actorIdentityId")]: "forged" };
     expect(() => parseUnwiredUlcStaffRegistrationRequest(current, withSymbol))
       .toThrow(UlcLinzAuthorizationDeniedError);
+  });
+
+  it("separates create-null from strictly positive update CAS revisions", () => {
+    expect(parseUnwiredUlcStaffRegistrationRequest(current, body).expectedRevision).toBeNull();
+    expect(parseUnwiredUlcStaffRegistrationRequest(current, { ...body, expectedRevision: 1 }).expectedRevision).toBe(1);
+    expect(parseUnwiredUlcStaffRegistrationRequest(current, { ...body, expectedRevision: Number.MAX_SAFE_INTEGER }).expectedRevision).toBe(Number.MAX_SAFE_INTEGER);
   });
 
   it("accepts leap-day dates but never silently normalizes dates", () => {
