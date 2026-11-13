@@ -623,8 +623,10 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
 
   it("P02 scopes favorite ownership by both organization and principal on the actual database", async () => {
     const connection = requiredIsolatedConnection();
+    const scopedConnection = createPostgresProvisioningDatabase(isolatedDatabaseUrl);
+    try {
     const service = new ExerciseCatalogService({
-      repository: new PostgresExerciseCatalogRepository(catalogClient(connection.client)),
+      repository: new PostgresExerciseCatalogRepository(catalogClient(scopedConnection.client)),
       definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
       createId: () => "p02-shared-exercise",
     });
@@ -655,12 +657,17 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
     expect(rows).toMatchObject([
       { organization_id: "p02-org-b", principal_id: "principal-a", exercise_id: inB.id },
     ]);
+    } finally {
+      await scopedConnection.client.end();
+    }
   });
 
   it("P02 keeps private-media deletion in a tenant-scoped request/confirmation sequence", async () => {
     const connection = requiredIsolatedConnection();
+    const scopedConnection = createPostgresProvisioningDatabase(isolatedDatabaseUrl);
+    try {
     const service = new ExerciseCatalogService({
-      repository: new PostgresExerciseCatalogRepository(catalogClient(connection.client)),
+      repository: new PostgresExerciseCatalogRepository(catalogClient(scopedConnection.client)),
       definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
       createId: () => "p02-media-exercise",
     });
@@ -703,12 +710,17 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
     expect(await service.completePrivateMediaDeletion("p02-media-org-a", inA.id, "p02-shared-media-id")).toBe(true);
     expect(await service.completePrivateMediaDeletion("p02-media-org-a", inA.id, "p02-shared-media-id")).toBe(false);
     expect(await service.listPrivateMedia("p02-media-org-b", inB.id)).toHaveLength(1);
+    } finally {
+      await scopedConnection.client.end();
+    }
   });
 
   it("P02 scopes usage notes and source references to organization even with matching exercise IDs", async () => {
     const connection = requiredIsolatedConnection();
+    const scopedConnection = createPostgresProvisioningDatabase(isolatedDatabaseUrl);
+    try {
     const service = new ExerciseCatalogService({
-      repository: new PostgresExerciseCatalogRepository(catalogClient(connection.client)),
+      repository: new PostgresExerciseCatalogRepository(catalogClient(scopedConnection.client)),
       definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
       createId: () => "p02-usage-shared",
     });
@@ -732,6 +744,9 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
     ]);
     expect(await service.listUsage("p02-usage-org-b", inB.id)).toEqual([]);
     expect(await service.listUsageSummaries("p02-usage-org-b")).toEqual([]);
+    } finally {
+      await scopedConnection.client.end();
+    }
   });
 
   it("denies an authenticated principal without module capabilities", async () => {
