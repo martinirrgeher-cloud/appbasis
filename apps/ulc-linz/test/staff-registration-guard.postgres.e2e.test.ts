@@ -678,12 +678,12 @@ if (!databaseUrl?.trim()) {
         [organizationId, trainerId, irgId],
       );
       await a().unsafe(
-        "INSERT INTO appbasis_permission_capability (capability_id) VALUES ($1)",
+        "INSERT INTO appbasis_permission_capability (capability_id) VALUES ($1) ON CONFLICT DO NOTHING",
         [performanceCapability],
       );
       await a().unsafe(
         `INSERT INTO appbasis_permission_principal_grant
-           (principal_id, capability_id) VALUES ($1, $2), ($3, $2)`,
+           (principal_id, capability_id) VALUES ($1, $2), ($3, $2) ON CONFLICT DO NOTHING`,
         [actorTrainer, performanceCapability, actorAdmin],
       );
 
