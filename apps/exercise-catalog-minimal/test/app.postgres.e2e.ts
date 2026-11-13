@@ -625,38 +625,38 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
     const connection = requiredIsolatedConnection();
     const scopedConnection = createPostgresProvisioningDatabase(isolatedDatabaseUrl);
     try {
-    const service = new ExerciseCatalogService({
-      repository: new PostgresExerciseCatalogRepository(catalogClient(scopedConnection.client)),
-      definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
-      createId: () => "p02-shared-exercise",
-    });
-    const inA = await service.create("p02-org-a", {
-      name: "P02 exercise for first tenant", categoryKey: "strength",
-    });
-    const inB = await service.create("p02-org-b", {
-      name: "P02 exercise for second tenant", categoryKey: "strength",
-    });
-    expect(inA.id).toBe(inB.id);
+      const service = new ExerciseCatalogService({
+        repository: new PostgresExerciseCatalogRepository(catalogClient(scopedConnection.client)),
+        definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
+        createId: () => "p02-shared-exercise",
+      });
+      const inA = await service.create("p02-org-a", {
+        name: "P02 exercise for first tenant", categoryKey: "strength",
+      });
+      const inB = await service.create("p02-org-b", {
+        name: "P02 exercise for second tenant", categoryKey: "strength",
+      });
+      expect(inA.id).toBe(inB.id);
 
-    expect(await service.setFavorite("p02-org-a", "principal-a", inA.id, true)).toBe(true);
-    expect((await service.list("p02-org-a", "principal-a"))[0]?.isFavorite).toBe(true);
-    expect((await service.list("p02-org-a", "principal-b"))[0]?.isFavorite).toBe(false);
-    expect((await service.list("p02-org-b", "principal-a"))[0]?.isFavorite).toBe(false);
+      expect(await service.setFavorite("p02-org-a", "principal-a", inA.id, true)).toBe(true);
+      expect((await service.list("p02-org-a", "principal-a"))[0]?.isFavorite).toBe(true);
+      expect((await service.list("p02-org-a", "principal-b"))[0]?.isFavorite).toBe(false);
+      expect((await service.list("p02-org-b", "principal-a"))[0]?.isFavorite).toBe(false);
 
-    expect(await service.setFavorite("p02-org-b", "principal-a", inB.id, true)).toBe(true);
-    expect(await service.setFavorite("p02-org-a", "principal-a", inA.id, false)).toBe(true);
-    expect((await service.list("p02-org-a", "principal-a"))[0]?.isFavorite).toBe(false);
-    expect((await service.list("p02-org-b", "principal-a"))[0]?.isFavorite).toBe(true);
+      expect(await service.setFavorite("p02-org-b", "principal-a", inB.id, true)).toBe(true);
+      expect(await service.setFavorite("p02-org-a", "principal-a", inA.id, false)).toBe(true);
+      expect((await service.list("p02-org-a", "principal-a"))[0]?.isFavorite).toBe(false);
+      expect((await service.list("p02-org-b", "principal-a"))[0]?.isFavorite).toBe(true);
 
-    const rows = await connection.client.unsafe(
-      `SELECT organization_id, principal_id, exercise_id
-       FROM appbasis_exercise_catalog_favorite
-       WHERE exercise_id = $1 ORDER BY organization_id`,
-      [inA.id],
-    );
-    expect(rows).toMatchObject([
-      { organization_id: "p02-org-b", principal_id: "principal-a", exercise_id: inB.id },
-    ]);
+      const rows = await connection.client.unsafe(
+        `SELECT organization_id, principal_id, exercise_id
+         FROM appbasis_exercise_catalog_favorite
+         WHERE exercise_id = $1 ORDER BY organization_id`,
+        [inA.id],
+      );
+      expect(rows).toMatchObject([
+        { organization_id: "p02-org-b", principal_id: "principal-a", exercise_id: inB.id },
+      ]);
     } finally {
       await scopedConnection.client.end();
     }
@@ -666,50 +666,50 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
     const connection = requiredIsolatedConnection();
     const scopedConnection = createPostgresProvisioningDatabase(isolatedDatabaseUrl);
     try {
-    const service = new ExerciseCatalogService({
-      repository: new PostgresExerciseCatalogRepository(catalogClient(scopedConnection.client)),
-      definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
-      createId: () => "p02-media-exercise",
-    });
-    const inA = await service.create("p02-media-org-a", {
-      name: "Private media first tenant", categoryKey: "strength",
-    });
-    const inB = await service.create("p02-media-org-b", {
-      name: "Private media second tenant", categoryKey: "strength",
-    });
-    for (const org of [inA.organizationId, inB.organizationId]) {
-      await expect(service.registerPrivateMedia(org, inA.id, {
-        id: "p02-shared-media-id",
-        fileName: "private-training.png",
-        storageKey: "private/p02-shared",
-        contentType: "image/png",
-        sizeBytes: 256,
-      })).resolves.toMatchObject({ organizationId: org, exerciseId: inA.id });
-    }
+      const service = new ExerciseCatalogService({
+        repository: new PostgresExerciseCatalogRepository(catalogClient(scopedConnection.client)),
+        definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
+        createId: () => "p02-media-exercise",
+      });
+      const inA = await service.create("p02-media-org-a", {
+        name: "Private media first tenant", categoryKey: "strength",
+      });
+      const inB = await service.create("p02-media-org-b", {
+        name: "Private media second tenant", categoryKey: "strength",
+      });
+      for (const org of [inA.organizationId, inB.organizationId]) {
+        await expect(service.registerPrivateMedia(org, inA.id, {
+          id: "p02-shared-media-id",
+          fileName: "private-training.png",
+          storageKey: "private/p02-shared",
+          contentType: "image/png",
+          sizeBytes: 256,
+        })).resolves.toMatchObject({ organizationId: org, exerciseId: inA.id });
+      }
 
-    expect(await service.completePrivateMediaDeletion("p02-media-org-a", inA.id, "p02-shared-media-id")).toBe(false);
-    expect(await service.requestPrivateMediaDeletion("p02-media-org-a", "wrong-exercise", "p02-shared-media-id")).toBeUndefined();
-    expect(await service.requestPrivateMediaDeletion("p02-media-org-a", inA.id, "p02-shared-media-id")).toMatchObject({
-      organizationId: "p02-media-org-a", id: "p02-shared-media-id",
-    });
-    expect(await service.listPrivateMedia("p02-media-org-a", inA.id)).toEqual([]);
-    expect(await service.listPrivateMedia("p02-media-org-b", inB.id)).toHaveLength(1);
+      expect(await service.completePrivateMediaDeletion("p02-media-org-a", inA.id, "p02-shared-media-id")).toBe(false);
+      expect(await service.requestPrivateMediaDeletion("p02-media-org-a", "wrong-exercise", "p02-shared-media-id")).toBeUndefined();
+      expect(await service.requestPrivateMediaDeletion("p02-media-org-a", inA.id, "p02-shared-media-id")).toMatchObject({
+        organizationId: "p02-media-org-a", id: "p02-shared-media-id",
+      });
+      expect(await service.listPrivateMedia("p02-media-org-a", inA.id)).toEqual([]);
+      expect(await service.listPrivateMedia("p02-media-org-b", inB.id)).toHaveLength(1);
 
-    const requested = await connection.client.unsafe(
-      `SELECT organization_id, storage_key, deletion_requested_at
-       FROM appbasis_exercise_catalog_private_media
-       WHERE organization_id = $1 AND id = $2`,
-      ["p02-media-org-a", "p02-shared-media-id"],
-    );
-    expect(requested).toHaveLength(1);
-    expect(requested[0]?.deletion_requested_at).not.toBeNull();
-    // This metadata-only operation does NOT prove object-storage deletion.
-    expect(requested[0]?.storage_key).toBe("private/p02-shared");
+      const requested = await connection.client.unsafe(
+        `SELECT organization_id, storage_key, deletion_requested_at
+         FROM appbasis_exercise_catalog_private_media
+         WHERE organization_id = $1 AND id = $2`,
+        ["p02-media-org-a", "p02-shared-media-id"],
+      );
+      expect(requested).toHaveLength(1);
+      expect(requested[0]?.deletion_requested_at).not.toBeNull();
+      // This metadata-only operation does NOT prove object-storage deletion.
+      expect(requested[0]?.storage_key).toBe("private/p02-shared");
 
-    expect(await service.completePrivateMediaDeletion("p02-media-org-a", "wrong-exercise", "p02-shared-media-id")).toBe(false);
-    expect(await service.completePrivateMediaDeletion("p02-media-org-a", inA.id, "p02-shared-media-id")).toBe(true);
-    expect(await service.completePrivateMediaDeletion("p02-media-org-a", inA.id, "p02-shared-media-id")).toBe(false);
-    expect(await service.listPrivateMedia("p02-media-org-b", inB.id)).toHaveLength(1);
+      expect(await service.completePrivateMediaDeletion("p02-media-org-a", "wrong-exercise", "p02-shared-media-id")).toBe(false);
+      expect(await service.completePrivateMediaDeletion("p02-media-org-a", inA.id, "p02-shared-media-id")).toBe(true);
+      expect(await service.completePrivateMediaDeletion("p02-media-org-a", inA.id, "p02-shared-media-id")).toBe(false);
+      expect(await service.listPrivateMedia("p02-media-org-b", inB.id)).toHaveLength(1);
     } finally {
       await scopedConnection.client.end();
     }
@@ -719,31 +719,31 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
     const connection = requiredIsolatedConnection();
     const scopedConnection = createPostgresProvisioningDatabase(isolatedDatabaseUrl);
     try {
-    const service = new ExerciseCatalogService({
-      repository: new PostgresExerciseCatalogRepository(catalogClient(scopedConnection.client)),
-      definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
-      createId: () => "p02-usage-shared",
-    });
-    const inA = await service.create("p02-usage-org-a", {
-      name: "Usage for first tenant", categoryKey: "strength",
-    });
-    // A same-named item in another tenant must not expose the first tenant's notes.
-    const inB = await service.create("p02-usage-org-b", {
-      name: "Usage for second tenant", categoryKey: "strength",
-    });
-    expect(inA.id).toBe(inB.id);
-    const stored = await service.recordUsage("p02-usage-org-a", inA.id, {
-      occurredAt: "2026-11-13T12:00:00.000Z",
-      sourceKind: "manual",
-      sourceRef: "private-athlete-ref",
-      note: "private training detail",
-    });
-    expect(stored).toMatchObject({ organizationId: "p02-usage-org-a", exerciseId: inA.id });
-    expect(await service.listUsage("p02-usage-org-a", inA.id)).toMatchObject([
-      { sourceRef: "private-athlete-ref", note: "private training detail" },
-    ]);
-    expect(await service.listUsage("p02-usage-org-b", inB.id)).toEqual([]);
-    expect(await service.listUsageSummaries("p02-usage-org-b")).toEqual([]);
+      const service = new ExerciseCatalogService({
+        repository: new PostgresExerciseCatalogRepository(catalogClient(scopedConnection.client)),
+        definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
+        createId: () => "p02-usage-shared",
+      });
+      const inA = await service.create("p02-usage-org-a", {
+        name: "Usage for first tenant", categoryKey: "strength",
+      });
+      // A same-named item in another tenant must not expose the first tenant's notes.
+      const inB = await service.create("p02-usage-org-b", {
+        name: "Usage for second tenant", categoryKey: "strength",
+      });
+      expect(inA.id).toBe(inB.id);
+      const stored = await service.recordUsage("p02-usage-org-a", inA.id, {
+        occurredAt: "2026-11-13T12:00:00.000Z",
+        sourceKind: "manual",
+        sourceRef: "private-athlete-ref",
+        note: "private training detail",
+      });
+      expect(stored).toMatchObject({ organizationId: "p02-usage-org-a", exerciseId: inA.id });
+      expect(await service.listUsage("p02-usage-org-a", inA.id)).toMatchObject([
+        { sourceRef: "private-athlete-ref", note: "private training detail" },
+      ]);
+      expect(await service.listUsage("p02-usage-org-b", inB.id)).toEqual([]);
+      expect(await service.listUsageSummaries("p02-usage-org-b")).toEqual([]);
     } finally {
       await scopedConnection.client.end();
     }
