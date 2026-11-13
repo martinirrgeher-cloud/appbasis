@@ -4,6 +4,11 @@ import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPostgresDatabase } from "../../../packages/database/src/client.ts";
+import { createBetterAuthRuntime } from "../../../packages/identity/src/better-auth.ts";
+import {
+  BetterAuthIdentityBackend,
+  createIdentityRuntime,
+} from "../../../packages/identity/src/server.ts";
 import { UlcLinzAuthorizationDeniedError } from "../worker/authorization";
 import { assertUlcStaffRegistrationGuard } from "../worker/staff-registration-guard";
 import {
@@ -595,6 +600,170 @@ if (!databaseUrl?.trim()) {
         );
       }
     }, 30_000);
+
+
+    it("N16 serializes a REAL Better Auth password change and multi-session revoke with a guarded registration write", async () => {
+      // This is the genuine Better Auth implementation, not a mock DELETE.
+      // Only the isolated PostgreSQL database is touched; no external provider.
+      if (!bClient) throw new Error("N16 isolated Better Auth connection missing.");
+      const baseURL = "http://localhost:3000";
+      const auth = createBetterAuthRuntime({
+        database: bClient.database,
+        baseURL,
+        secret: "n16-postgres-real-password-race-local-test-secret",
+      });
+      const identity = createIdentityRuntime({
+        auth,
+        sql: b(),
+        baseURL,
+        trustedProvisioning: true,
+      }).service;
+      const username = "n16.real_password_race";
+      const temporaryPassword = "N16-Temporary-Password-42";
+      const workingPassword = "N16-Working-Password-84";
+      const nextPassword = "N16-Replaced-Password-126";
+      const staff = await identity.createInitialUser({
+        username, temporaryPassword, displayName: "N16 Real Password Race",
+      });
+      // Complete the mandatory initial password change before granting Staff.
+      const initial = await identity.signInWithUsername({
+        username, password: temporaryPassword,
+      });
+      const activated = await identity.changeRequiredPassword({
+        sessionToken: initial.sessionToken,
+        currentPassword: temporaryPassword,
+        newPassword: workingPassword,
+        idempotencyKey: randomUUID(),
+      });
+      expect(activated.access).toBe("full");
+      const staffSession = await identity.signInWithUsername({
+        username, password: workingPassword,
+      });
+      const changeSession = await identity.signInWithUsername({
+        username, password: workingPassword,
+      });
+      const current = await identity.getCurrentIdentity(staffSession.sessionToken);
+      const changing = await identity.getCurrentIdentity(changeSession.sessionToken);
+      const staffSessionId = current?.sessionId;
+      if (!staffSessionId || !changing?.sessionId) {
+        throw new Error("Canonical Better Auth session IDs are required.");
+      }
+      expect(current?.access).toBe("full");
+      expect(current?.identity.identityId).toBe(staff.identityId);
+
+      // Use existing trainer, role, permissions, group and athlete fixtures.
+      await a().unsafe(
+        `INSERT INTO ulc_linz_membership
+           (identity_id, organization_id, subject_id, source_role)
+         VALUES ($1,$2,$3,'trainer')`,
+        [staff.identityId, organizationId, trainerId],
+      );
+      await a().unsafe(
+        "INSERT INTO appbasis_permission_principal (principal_id) VALUES ($1)",
+        [staff.identityId],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_permission_principal_role (principal_id,role_id)
+         VALUES ($1,'ulc-linz:trainer')`,
+        [staff.identityId],
+      );
+
+      const sessions = new PostgresUlcTrainingSessionRepository(a(), () => randomUUID());
+      const date = "2026-12-01";
+      const before = await b().unsafe(
+        `SELECT count(*)::int AS total FROM ulc_linz_training_registration_change
+         WHERE organization_id=$1 AND actor_identity_id=$2`,
+        [organizationId, staff.identityId],
+      );
+      let release!: () => void;
+      let signal!: () => void;
+      const hold = new Promise<void>(resolve => { release = resolve; });
+      const written = new Promise<void>(resolve => { signal = resolve; });
+      const guardedWrite = withGuardedUlcStaffRegistration(
+        sessions,
+        { ...request(staff.identityId, { sessionDate: date }),
+          trustedSessionId: staffSessionId },
+        async (scoped, scope) => {
+          const saved = await bindUlcStaffRegistrationWriter(scoped, scope)
+            .save("attending", null);
+          signal();
+          await hold;
+          return saved;
+        },
+      );
+      let changingPassword: Promise<unknown> | null = null;
+      let completedPasswordChange = false;
+      try {
+        // The staff write is already performed inside the TX; all its
+        // authorization/session row locks remain held until transaction end.
+        await written;
+        const backend = new BetterAuthIdentityBackend({
+          auth, sql: b(), baseURL,
+        });
+        changingPassword = backend.changePassword({
+          operationId: randomUUID(),
+          sessionToken: changeSession.sessionToken,
+          currentPassword: workingPassword,
+          newPassword: nextPassword,
+          revokeOtherSessions: true,
+        }).then(result => {
+          completedPasswordChange = true;
+          return result;
+        });
+        // Real Better Auth must wait before it can revoke the session row.
+        await new Promise(resolve => setTimeout(resolve, 200));
+        expect(completedPasswordChange).toBe(false);
+        expect(await b().unsafe(
+          'SELECT id FROM "session" WHERE id=$1 AND user_id=$2',
+          [staffSessionId, staff.identityId],
+        )).toHaveLength(1);
+        // The uncommitted registration/audit is still invisible to B.
+        expect(await b().unsafe(
+          `SELECT id FROM ulc_linz_training_registration_change
+           WHERE organization_id=$1 AND actor_identity_id=$2`,
+          [organizationId, staff.identityId],
+        )).toHaveLength(0);
+      } finally {
+        release();
+      }
+      const saved = await guardedWrite;
+      if (!changingPassword) throw new Error("Real password change was never invoked.");
+      await changingPassword;
+      expect(completedPasswordChange).toBe(true);
+      expect(saved.updatedByIdentityId).toBe(staff.identityId);
+      expect(await b().unsafe(
+        'SELECT id FROM "session" WHERE id=$1', [staffSessionId],
+      )).toHaveLength(0);
+      const audit = await b().unsafe(
+        `SELECT actor_identity_id, athlete_id, revision
+         FROM ulc_linz_training_registration_change
+         WHERE organization_id=$1 AND actor_identity_id=$2`,
+        [organizationId, staff.identityId],
+      );
+      expect(audit).toHaveLength(Number(before[0]?.total ?? 0) + 1);
+      expect(audit.at(-1)).toMatchObject({
+        actor_identity_id: staff.identityId,
+        athlete_id: athleteId,
+        revision: 1,
+      });
+      await expect(identity.getCurrentIdentity(staffSession.sessionToken))
+        .resolves.toBeNull();
+      await expect(identity.getCurrentIdentity(changeSession.sessionToken))
+        .resolves.toBeNull();
+
+      // Never accept a stale, previously validated actor/session after revoke.
+      let subsequentWriteCalled = false;
+      await expect(withGuardedUlcStaffRegistration(
+        sessions,
+        { ...request(staff.identityId, { sessionDate: "2026-12-02" }),
+          trustedSessionId: staffSessionId },
+        async () => { subsequentWriteCalled = true; },
+      )).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      expect(subsequentWriteCalled).toBe(false);
+      expect(await sessions.readSession(
+        organizationId, "kindertraining", groupId, "2026-12-02",
+      )).toBeNull();
+    }, 90_000);
 
     it("enforces v17 extra/cancel days, CAS, deadlines and trustworthy audit on real staff writes", async () => {
       const authId = "n16-v17-guarded-session";
