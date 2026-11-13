@@ -1,6 +1,15 @@
 # AppBasis – Current Gate
 
-Stand: 2026-11-04
+Stand: 2026-11-13 (Prioritätsentscheidung; historische nachfolgende ULC-Funktionspläne sind archivierter Kontext)
+
+## Operative ULC-Linz-Priorität ab 13.11.2026
+
+**Aktiver Auftrag:** [ULC Produktiv-Sprint P00–P05, Issue #607](https://github.com/martinirrgeher-cloud/appbasis/issues/607). Der Betreiber hat entschieden, **alle bereits vorhandenen ULC-Linz-Module** in einen zunächst privat zugänglichen Echtbetrieb überzuführen. **Neue Funktionen, allgemeine UI-Optimierungen und unabhängige alte N-/A-/M-Sprints sind bis zu einer späteren neuen Entscheidung ausgesetzt.**
+
+Der aktuelle Einstieg ist **P00 read-only Produktionsaudit** mit [nachweisbezogener Blocker-Matrix](apps/ulc-linz/PRODUCTION-READINESS-P00.md), danach größere isolierte Sicherheits-/Lifecycle-/Privacy-Drafts P01–P03, Integrations-/Betriebsnachweise P04 und gesonderter Go-live P05. Maßgebliche Produktionsblocker stehen in [Issue #483](https://github.com/martinirrgeher-cloud/appbasis/issues/483). Änderungen an Autorisierung, Retention, Identitätsrollen, Datenbanken, Produktion, Ingress, Restore-Promotion und dem tatsächlichen `blocked`-Produktionsvertrag bleiben **separat freigabepflichtig**; N16 #602 sowie gestapelte Security-Drafts bleiben gesperrt. Autonome Entwicklung ist nur innerhalb der zuvor freigegebenen, nicht sicherheitskritischen Grenzen erlaubt.
+
+**Kollisionsregel:** Der nachfolgende Gate-Text dokumentiert frühere Arbeit. Soweit er A10/A11/UI-Arbeit als nächsten Schritt empfiehlt, widerspricht er der neuesten Betreiberentscheidung und wird **nicht** erneut zur aktiven Aufgabenquelle. Vor jedem technischen Schritt den Live-Stand in GitHub, das Issue #607, #483, #530 und die tatsächlichen CI-/PR-/Deployment-SHAs erneut prüfen. Unveränderte frühere Handy-PASS nicht neu testen.
+
 
 Diese Datei ist die operative, chatübergreifende Steuerung für den **aktuell zu
 liefernden Gate-Scope**. Sie ersetzt keine Roadmap, ADR oder Security-Grenze.
