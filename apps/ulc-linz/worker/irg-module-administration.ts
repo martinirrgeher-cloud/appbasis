@@ -154,7 +154,7 @@ export async function assignUlcIrgModuleGroup(
       );
       if (mapped.length !== 1 || mapped[0]?.group_id !== group) deny();
       const once = await tx.unsafe(
-        `INSERT INTO ulc_linz_irg_module_assignment_once
+        `INSERT INTO ulc_linz_irg_module_assignment_once_marker
            (organization_id,group_id) VALUES ($1,$2)
          RETURNING group_id`, [organization,group],
       );

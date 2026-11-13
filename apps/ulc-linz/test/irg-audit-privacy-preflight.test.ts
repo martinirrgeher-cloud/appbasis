@@ -29,9 +29,11 @@ describe("N16 unexposed IRG audit privacy/retention/export contract", () => {
       expect.objectContaining({ id: "irg-audit" }),
     ]));
     expect(router).not.toContain('from "./irg-audit-privacy-preflight"');
-    expect(sql).toContain("CREATE TABLE ulc_linz_irg_module_assignment_once");
+    expect(sql).toContain("CREATE TABLE ulc_linz_irg_module_assignment_once_marker");
+    expect(sql).toContain("CONSTRAINT ulc_linz_irg_module_assignment_once");
+    expect(sql).not.toContain("CREATE TABLE ulc_linz_irg_module_assignment_once (");
     expect(sql).toContain("REVOKE ALL ON TABLE public.ulc_linz_irg_module_assignment_audit FROM PUBLIC");
-    expect(admin).toContain("INSERT INTO ulc_linz_irg_module_assignment_once");
+    expect(admin).toContain("INSERT INTO ulc_linz_irg_module_assignment_once_marker");
   });
 
   it("denies raw/nontransactional requests before issuing a SQL query", async () => {

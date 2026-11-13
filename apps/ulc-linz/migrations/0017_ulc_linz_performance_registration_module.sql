@@ -49,7 +49,7 @@ CREATE INDEX ulc_linz_irg_module_assignment_audit_retention_idx
 -- otherwise deleting an old audit could allow reassignment of a deleted IRG
 -- group through the initial-assignment API. Group deletion does not cascade.
 -- Its eventual organization-erasure procedure is a separate data-lifecycle gate.
-CREATE TABLE ulc_linz_irg_module_assignment_once (
+CREATE TABLE ulc_linz_irg_module_assignment_once_marker (
   organization_id text NOT NULL CHECK (
     char_length(organization_id) BETWEEN 1 AND 200
     AND organization_id = btrim(organization_id)
@@ -69,4 +69,4 @@ REVOKE ALL ON TABLE public.ulc_linz_irg_module_assignment_audit FROM PUBLIC;
 --> statement-breakpoint
 REVOKE ALL ON SEQUENCE public.ulc_linz_irg_module_assignment_audit_event_id_seq FROM PUBLIC;
 --> statement-breakpoint
-REVOKE ALL ON TABLE public.ulc_linz_irg_module_assignment_once FROM PUBLIC;
+REVOKE ALL ON TABLE public.ulc_linz_irg_module_assignment_once_marker FROM PUBLIC;

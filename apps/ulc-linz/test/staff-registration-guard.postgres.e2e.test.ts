@@ -1278,7 +1278,7 @@ if (!databaseUrl?.trim()) {
       await expect(assignUlcIrgModuleGroup(a(),input))
         .rejects.toBeInstanceOf(UlcIrgModuleAssignmentConflictError);
       expect(await b().unsafe(
-        `SELECT group_id FROM ulc_linz_irg_module_assignment_once
+        `SELECT group_id FROM ulc_linz_irg_module_assignment_once_marker
          WHERE organization_id=$1 AND group_id=$2`,[mappingOrg,mappedGroup],
       )).toHaveLength(1);
       expect(await b().unsafe(

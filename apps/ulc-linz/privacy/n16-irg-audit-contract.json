@@ -32,7 +32,7 @@
     }
   },
   "operationalOnceMarker": {
-    "table": "ulc_linz_irg_module_assignment_once",
+    "table": "ulc_linz_irg_module_assignment_once_marker",
     "personalActorOrReasonStored": false,
     "purpose": "prevent re-assignment after personal audit retention purge",
     "erasure": "organization-deletion-contract-requires-separate-approval"
