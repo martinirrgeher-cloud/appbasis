@@ -24,6 +24,7 @@ import {
   type UlcLinzAthleteSubjectDeletionDependencies,
 } from "../worker/lifecycle-service";
 import { trainingPlanUsageEventId } from "../worker/training-plans-service";
+import { verifyUlcTrainingBlockUsageOwner } from "../worker/training-block-usage-ownership";
 
 const databaseUrl = process.env.DATABASE_URL;
 const ORG = "org-athlete-follow-up";
@@ -229,6 +230,40 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         sourceKind: "manual",
         note: "Legacy sensitive note – not attributable",
       });
+      // A legacy event can carry the EXACT real training-plan reference without
+      // verified ownership. It must never inherit an athlete from its text alone.
+      await blocks.recordUsageOnce(ORG, block.id, "legacy-forged-reference", {
+        occurredAt: "2026-10-12T12:00:00.000Z",
+        sourceKind: "training_plan",
+        sourceRef: targetPlan.id + ":" + targetItem.itemId,
+        note: "Legacy sensitive detail with forged plan reference",
+      });
+
+      const originalUsage = await blockRepository.listUsageEvents(ORG, block.id);
+      const manual = originalUsage.find((entry) => entry.id === "legacy-unattributed");
+      const forged = originalUsage.find((entry) => entry.id === "legacy-forged-reference");
+      if (!manual || !forged) throw new Error("Legacy evidence fixture was not persisted.");
+      await expect(verifyUlcTrainingBlockUsageOwner(
+        ORG, usageTarget.event, plansRepository,
+      )).resolves.toEqual({
+        status: "verified", organizationId: ORG,
+        subjectId: SUBJECT, proof: "current-training-plan",
+      });
+      await expect(verifyUlcTrainingBlockUsageOwner(
+        ORG, usageNeighbor.event, plansRepository,
+      )).resolves.toEqual({
+        status: "verified", organizationId: ORG,
+        subjectId: OTHER_SUBJECT, proof: "current-training-plan",
+      });
+      await expect(verifyUlcTrainingBlockUsageOwner(
+        ORG, manual, plansRepository,
+      )).resolves.toEqual({ status: "unresolved", reason: "unsupported-source" });
+      await expect(verifyUlcTrainingBlockUsageOwner(
+        ORG, forged, plansRepository,
+      )).resolves.toEqual({ status: "unresolved", reason: "invalid-event-identity" });
+      await expect(verifyUlcTrainingBlockUsageOwner(
+        OTHER_ORG, usageTarget.event, plansRepository,
+      )).resolves.toEqual({ status: "unresolved", reason: "organization-mismatch" });
 
       const calls: string[] = [];
       let failUsageOnce = true;
@@ -308,7 +343,7 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
       expect(calls).toEqual(["plans", "usage"]);
       expect(await plansRepository.findCurrent(ORG, targetPlan.id)).toBeUndefined();
       expect(await plansRepository.findCurrent(ORG, keepPlan.id)).toBeDefined();
-      expect(await blockRepository.listUsageEvents(ORG, block.id)).toHaveLength(3);
+      expect(await blockRepository.listUsageEvents(ORG, block.id)).toHaveLength(4);
       await expect(preflight()).resolves.toMatchObject({
         status: "follow-up-pending",
         planMarkerPresent: true, usageMarkerPresent: false,
@@ -338,7 +373,22 @@ if (databaseUrl === undefined || databaseUrl.trim().length === 0) {
         });
       const remaining = await blockRepository.listUsageEvents(ORG, block.id);
       expect(remaining.map((row) => row.id).sort())
-        .toEqual(["legacy-unattributed", usageNeighbor.event.id].sort());
+        .toEqual(["legacy-unattributed", "legacy-forged-reference", usageNeighbor.event.id].sort());
+      expect(remaining.find((row) => row.id === "legacy-forged-reference")?.note)
+        .toBe("Legacy sensitive detail with forged plan reference");
+      // After deleting the plan, the real owner can no longer be inferred
+      // merely from a stale event ref. The other athlete stays verifiable.
+      await expect(verifyUlcTrainingBlockUsageOwner(
+        ORG, usageTarget.event, plansRepository,
+      )).resolves.toEqual({ status: "unresolved", reason: "plan-not-found" });
+      await expect(verifyUlcTrainingBlockUsageOwner(
+        ORG, usageNeighbor.event, plansRepository,
+      )).resolves.toMatchObject({
+        status: "verified", subjectId: OTHER_SUBJECT,
+      });
+      await expect(verifyUlcTrainingBlockUsageOwner(
+        ORG, forged, plansRepository,
+      )).resolves.toEqual({ status: "unresolved", reason: "invalid-event-identity" });
       await expect(blockRepository.recordVerifiedSubjectUsageOnce(usageTarget))
         .rejects.toThrow(/deletion marker/);
       const planMarkers = await required().client.unsafe(
