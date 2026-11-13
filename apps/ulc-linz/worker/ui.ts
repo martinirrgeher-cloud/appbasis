@@ -157,16 +157,6 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             </section>
 
             <section class="dashboard-grid" aria-label="ULC Linz Funktionen">
-              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="masterdata" hidden>
-                <div>
-                  <p class="eyebrow">Organisation</p>
-                  <h2>Stammdaten</h2>
-                  <p>Athleten, Trainer und Trainingsgruppen zentral verwalten.</p>
-                </div>
-                <button class="button button--primary dashboard-action" id="masterdata-quick-action" type="button" data-open-view="masterdata" disabled>Stammdaten öffnen</button>
-                <small id="masterdata-access-label">Berechtigung wird geprüft …</small>
-              </article>
-
               <article class="card dashboard-card dashboard-card--primary" id="registration-dashboard" data-dashboard-view="registration" hidden>
                 <div>
                   <p class="eyebrow">Training</p>
@@ -175,15 +165,6 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary dashboard-action" id="registration-quick-action" type="button" data-open-view="registration" disabled>Anmeldung öffnen</button>
                 <small id="registration-access-label">Berechtigung wird geprüft …</small>
-              </article>
-
-              <article class="card dashboard-card dashboard-card--primary" id="user-admin-dashboard" hidden data-dashboard-view="users">
-                <div>
-                  <p class="eyebrow">Organisation</p>
-                  <h2>Benutzerverwaltung</h2>
-                  <p>Testzugänge anlegen und bestehende Konten prüfen.</p>
-                </div>
-                <button class="button button--primary dashboard-action" type="button" data-open-view="users">Benutzer öffnen</button>
               </article>
 
               <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="attendance" hidden>
@@ -199,7 +180,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsplanung</h2>
-                  <p>Trainingspläne für Gruppen und Athleten erstellen, gezielt speichern und beim Verlassen sichern.</p>
+                  <p>Gruppen- und Athletenpläne erstellen – Änderungen werden automatisch gespeichert.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="training-plan-quick-action" type="button" data-open-view="training-plans" disabled>Trainingsplanung öffnen</button>
                 <small id="training-plan-access-label">Berechtigung wird geprüft …</small>
@@ -209,7 +190,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsdokumentation</h2>
-                  <p>Geplante Einheiten übernehmen, tatsächliche Durchführung festhalten und abschließen.</p>
+                  <p>Training durchführen, speichern und abschließen.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="training-documentation-quick-action" type="button" data-open-view="training-documentation" disabled>Dokumentation öffnen</button>
                 <small id="training-documentation-access-label">Berechtigung wird geprüft …</small>
@@ -229,7 +210,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 <div>
                   <p class="eyebrow">Training</p>
                   <h2>Trainingsblöcke</h2>
-                  <p>Trainingsvorlagen zusammenstellen, bewusst speichern und Versionen vergleichen.</p>
+                  <p>Vorlagen erstellen, bearbeiten und vergleichen.</p>
                 </div>
                 <button class="button button--primary dashboard-action" id="training-block-quick-action" type="button" data-open-view="training-blocks" disabled>Trainingsblöcke öffnen</button>
                 <small id="training-block-access-label">Berechtigung wird geprüft …</small>
@@ -243,6 +224,25 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
                 </div>
                 <button class="button button--primary dashboard-action" id="countdown-quick-action" type="button" data-open-view="countdown" disabled>Countdown öffnen</button>
                 <small id="countdown-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card dashboard-card--primary" data-dashboard-view="masterdata" hidden>
+                <div>
+                  <p class="eyebrow">Organisation</p>
+                  <h2>Stammdaten</h2>
+                  <p>Athleten, Trainer, Gruppen und Zuordnungen pflegen.</p>
+                </div>
+                <button class="button button--primary dashboard-action" id="masterdata-quick-action" type="button" data-open-view="masterdata" disabled>Stammdaten öffnen</button>
+                <small id="masterdata-access-label">Berechtigung wird geprüft …</small>
+              </article>
+
+              <article class="card dashboard-card dashboard-card--primary" id="user-admin-dashboard" hidden data-dashboard-view="users">
+                <div>
+                  <p class="eyebrow">Organisation</p>
+                  <h2>Benutzerverwaltung</h2>
+                  <p>Konten anlegen, Berechtigungen verwalten und Zugänge prüfen.</p>
+                </div>
+                <button class="button button--primary dashboard-action" type="button" data-open-view="users">Benutzer öffnen</button>
               </article>
 
             </section>
@@ -1091,6 +1091,22 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   html { scroll-behavior: auto; }
 }
 .dashboard-grid { display: grid; gap: 8px; }
+/* A10: compact role-sensitive home – visibility remains entirely permission-derived. */
+#start .dashboard-grid { align-items: stretch; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+#start .dashboard-grid > .dashboard-card { min-width: 0; min-height: 0; align-content: space-between; padding: 12px; gap: 9px; }
+#start .dashboard-grid > .dashboard-card h2 { font-size: .98rem; line-height: 1.24; overflow-wrap: anywhere; }
+#start .dashboard-grid .dashboard-card .eyebrow { margin-bottom: 4px; font-size: .67rem; }
+#start .dashboard-grid .dashboard-card p:not(.eyebrow) { font-size: .77rem; line-height: 1.38; }
+#start .dashboard-grid .dashboard-action { min-width: 0; min-height: 42px; white-space: normal; overflow-wrap: anywhere; font-size: .79rem; line-height: 1.2; }
+#start .dashboard-grid .dashboard-card small { overflow-wrap: anywhere; }
+@media (max-width: 360px) {
+  #start .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+  #start .dashboard-grid > .dashboard-card { padding: 11px; }
+}
+@media (min-width: 700px) {
+  #start .dashboard-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 .dashboard-card { display: grid; gap: 9px; padding: 13px; }
 .dashboard-card h2 { margin-bottom: 4px; }
 .dashboard-card p:not(.eyebrow) { margin-bottom: 0; color: var(--secondary); font-size: .86rem; line-height: 1.35; }
