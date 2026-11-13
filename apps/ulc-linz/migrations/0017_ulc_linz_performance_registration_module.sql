@@ -42,3 +42,31 @@ CREATE TABLE ulc_linz_irg_module_assignment_audit (
 --> statement-breakpoint
 CREATE INDEX ulc_linz_irg_module_assignment_audit_retention_idx
   ON ulc_linz_irg_module_assignment_audit(retained_until);
+
+--> statement-breakpoint
+-- Operational once-only marker with NO actor/reason/person fields. Unlike the
+-- personal audit, this key intentionally survives the audit's 12-month purge:
+-- otherwise deleting an old audit could allow reassignment of a deleted IRG
+-- group through the initial-assignment API. Group deletion does not cascade.
+-- Its eventual organization-erasure procedure is a separate data-lifecycle gate.
+CREATE TABLE ulc_linz_irg_module_assignment_once (
+  organization_id text NOT NULL CHECK (
+    char_length(organization_id) BETWEEN 1 AND 200
+    AND organization_id = btrim(organization_id)
+  ),
+  group_id text NOT NULL CHECK (
+    char_length(group_id) BETWEEN 1 AND 200
+    AND group_id = btrim(group_id)
+  ),
+  recorded_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (organization_id, group_id)
+);
+--> statement-breakpoint
+-- Explicitly deny any default/public access to personal admin audit and its
+-- identity sequence. An eventual approved audit export must use an audited,
+-- authorized app service; this draft exposes NO API, data-export or purge route.
+REVOKE ALL ON TABLE public.ulc_linz_irg_module_assignment_audit FROM PUBLIC;
+--> statement-breakpoint
+REVOKE ALL ON SEQUENCE public.ulc_linz_irg_module_assignment_audit_event_id_seq FROM PUBLIC;
+--> statement-breakpoint
+REVOKE ALL ON TABLE public.ulc_linz_irg_module_assignment_once FROM PUBLIC;

@@ -129,9 +129,9 @@ export async function assignUlcIrgModuleGroup(
       );
       if (prior.length !== 0) throw new UlcIrgModuleAssignmentConflictError();
 
-      // The existing (organization,module) and (organization,group) unique
-      // keys reject competing assignments; the audit unique key prevents
-      // silent reuse after a separate DELETE.
+      // Existing mapping constraints prevent concurrent classifications.
+      // The separate NON-PERSONAL once marker survives audit retention purge,
+      // preventing an old removed mapping from being silently reassigned.
       const mapped = await tx.unsafe(
         `INSERT INTO ulc_linz_training_module_group
            (organization_id,module_id,group_id)
@@ -139,6 +139,12 @@ export async function assignUlcIrgModuleGroup(
          RETURNING group_id`, [organization, group],
       );
       if (mapped.length !== 1 || mapped[0]?.group_id !== group) deny();
+      const once = await tx.unsafe(
+        `INSERT INTO ulc_linz_irg_module_assignment_once
+           (organization_id,group_id) VALUES ($1,$2)
+         RETURNING group_id`, [organization,group],
+      );
+      if (once.length !== 1 || once[0]?.group_id !== group) deny();
       const audited = await tx.unsafe(
         `INSERT INTO ulc_linz_irg_module_assignment_audit
            (organization_id,group_id,module_id,actor_identity_id,event_type,reason)
