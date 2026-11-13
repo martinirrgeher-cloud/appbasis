@@ -85,6 +85,22 @@ export async function replaceUlcIrgTrainerPermissions(
         capability: capabilityId(ADMIN_CAPABILITY),
       });
       if (!permission) deny();
+      // Pin the effective administrator's direct grant/revoke rows and
+      // active role capability rows through the Core write. An ordinary
+      // Core administration path also locks this actor principal FOR UPDATE,
+      // preventing interleaved role/revoke changes from passing the check.
+      await tx.unsafe(
+        `SELECT capability_id FROM appbasis_permission_principal_grant
+         WHERE principal_id=$1 FOR SHARE`, [actor],
+      );
+      await tx.unsafe(
+        `SELECT capability_id FROM appbasis_permission_principal_revoke
+         WHERE principal_id=$1 FOR SHARE`, [actor],
+      );
+      await tx.unsafe(
+        `SELECT capability_id FROM appbasis_permission_role_capability
+         WHERE role_id=$1 FOR SHARE`, [ADMIN_ROLE],
+      );
 
       await validAccount(tx, target);
       const trainerId = await activeMembership(tx, target, organization, "trainer");

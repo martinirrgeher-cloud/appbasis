@@ -16,7 +16,7 @@ import {
   assertUlcStaffSessionStillValid,
 } from "../worker/staff-session-guard";
 import { bindUlcStaffRegistrationWriter, withGuardedUlcStaffRegistration } from "../worker/staff-registration-transaction";
-import { PostgresUlcTrainingSessionRepository, UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
+import { PostgresUlcTrainingSessionRepository, UlcTrainingSessionConflictError, type UlcTrainingSessionSqlClient } from "../worker/training-session-postgres";
 import {
   replaceUlcIrgTrainerPermissions, UlcIrgPermissionStaleError,
 } from "../worker/irg-permission-administration";
@@ -1451,7 +1451,7 @@ if (!databaseUrl?.trim()) {
             unsafe(query: string, params?: (string|number|boolean|null)[]){
               return tx.unsafe(query,params);
             },
-            async begin<T>(cb:(scoped: typeof tx)=>Promise<T>):Promise<T>{
+            async begin<T>(cb:(scoped: UlcTrainingSessionSqlClient)=>Promise<T>):Promise<T>{
               return cb(tx);
             },
           };
