@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { bindUlcStaffRegistrationWriter } from "../worker/staff-registration-transaction";
 import { UlcLinzAuthorizationDeniedError } from "../worker/authorization";
 import type { PostgresUlcTrainingSessionRepository } from "../worker/training-session-postgres";
+import type { UlcTrainingSession } from "../worker/training-session-domain";
 
 const scope = Object.freeze({
   sourceRole: "admin" as const,
@@ -65,13 +66,16 @@ describe("N16 inactive staff scope-bound writer", () => {
     );
   });
 
-  it.each([
+  const invalidSnapshots: readonly Partial<UlcTrainingSession>[] = [
     { organizationId: "other-org" },
     { groupId: "other-group" },
     { moduleId: "u12" },
+    { moduleId: "u14" },
     { sessionDate: "2026-11-18" },
     { state: "cancelled" },
-  ])("fails closed on mismatched or cancelled session %j", async (difference) => {
+  ];
+
+  it.each(invalidSnapshots)("fails closed on mismatched or cancelled session %j", async (difference) => {
     const base = repository();
     const ensureScheduledSession = vi.fn(async () => ({
       session: {
