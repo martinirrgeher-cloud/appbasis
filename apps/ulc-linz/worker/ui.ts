@@ -38,6 +38,7 @@ import {
   ULC_KIDS_HTML, ULC_KIDS_CSS, ULC_KIDS_SCRIPT,
 } from "./youth-attendance-ui";
 import { ULC_START_HELP_CSS, ULC_START_HELP_HTML } from "./start-help-ui";
+import { ULC_NETWORK_STATUS_HTML, ULC_NETWORK_STATUS_CSS, ULC_NETWORK_STATUS_SCRIPT } from "./network-status-ui";
 import { generatedPwaResponse } from "./pwa";
 import { ULC_DESIGN_SYSTEM_CSS, ULC_TRAINING_PAGE_HEADER_CSS } from "./design-system";
 import { ULC_REGISTRATION_CALENDAR_CSS, ULC_REGISTRATION_CALENDAR_SCRIPT } from "./registration-calendar-ui";
@@ -148,6 +149,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
           </div>
         </nav>
 
+${ULC_NETWORK_STATUS_HTML}
         <main class="content">
           <section class="app-section" data-app-section="home" id="start">
             <section class="hero">
@@ -1879,6 +1881,7 @@ ${ULC_TRAINING_BLOCKS_CSS}
 ${ULC_TRAINING_PLANS_CSS}
 ${ULC_TRAINING_DOCUMENTATION_CSS}
 ${ULC_TRAINING_PAGE_HEADER_CSS}
+${ULC_NETWORK_STATUS_CSS}
 ${ULC_START_HELP_CSS}
 
 .kindertraining-week-toolbar {
@@ -3021,6 +3024,7 @@ ${ULC_YOUTH_CATEGORY_SCRIPT}
 ${ULC_U12_SCRIPT}
 ${ULC_U14_SCRIPT}
 ${ULC_KIDS_SCRIPT}
+${ULC_NETWORK_STATUS_SCRIPT}
 
 void restoreSession();
 
