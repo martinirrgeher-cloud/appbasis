@@ -58,6 +58,28 @@ describe("training-block favorite offline restore boundary", () => {
     expect(targetWrites).toBe(0);
   });
 
+  it("P02-C denies favorite restoration from expired authority without mutating target", async () => {
+    // Subject-usage recovery has a separate expired-marker contract. Favoriten
+    // intentionally cannot inherit that rule without a reviewed P01 decision.
+    const afterExpiry = new Date("2027-01-10T12:00:00.000Z");
+    let calls = 0;
+    const source = {
+      async listCurrentDeletionMarkers() {
+        return [marker];
+      },
+    };
+    const target = {
+      async reconcileDeletionMarker() {
+        calls++;
+        return { markerInserted: true, deletedFavorites: 1 };
+      },
+    };
+    await expect(reconcileTrainingBlockFavoritesRestoredDatabase(
+      source, target, afterExpiry,
+    )).rejects.toThrow(/retention/);
+    expect(calls).toBe(0);
+  });
+
   it("blocks on a failed target replay and never reports partial success", async () => {
     const another: TrainingBlockFavoriteDeletionMarker = {
       ...marker, principalId: "principal-b",
