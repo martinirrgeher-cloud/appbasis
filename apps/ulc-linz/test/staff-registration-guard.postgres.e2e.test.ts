@@ -651,12 +651,27 @@ if (!databaseUrl?.trim()) {
       expect(current?.access).toBe("full");
       expect(current?.identity.identityId).toBe(staff.identityId);
 
-      // Use existing trainer, role, permissions, group and athlete fixtures.
+      // Every identity/subject pair has a unique owner in the canonical
+      // ULC membership table. Use a dedicated trainer subject instead of
+      // attaching a second identity to the earlier fixture's trainer.
+      const realTrainerId = "n16-real-password-race-trainer";
+      await a().unsafe(
+        `INSERT INTO appbasis_trainer
+           (id, organization_id, first_name, last_name)
+         VALUES ($1,$2,'Real','Password Race')`,
+        [realTrainerId, organizationId],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_trainer_group_membership
+           (organization_id, trainer_id, group_id)
+         VALUES ($1,$2,$3)`,
+        [organizationId, realTrainerId, groupId],
+      );
       await a().unsafe(
         `INSERT INTO ulc_linz_membership
            (identity_id, organization_id, subject_id, source_role)
          VALUES ($1,$2,$3,'trainer')`,
-        [staff.identityId, organizationId, trainerId],
+        [staff.identityId, organizationId, realTrainerId],
       );
       await a().unsafe(
         "INSERT INTO appbasis_permission_principal (principal_id) VALUES ($1)",
@@ -693,10 +708,17 @@ if (!databaseUrl?.trim()) {
       );
       let changingPassword: Promise<unknown> | null = null;
       let completedPasswordChange = false;
+      let passwordChangeError: unknown = null;
       try {
         // The staff write is already performed inside the TX; all its
         // authorization/session row locks remain held until transaction end.
-        await written;
+        await Promise.race([
+          written,
+          guardedWrite.then(
+            () => { throw new Error("Staff write committed before the lock check."); },
+            error => { throw error; },
+          ),
+        ]);
         const backend = new BetterAuthIdentityBackend({
           auth, sql: b(), baseURL,
         });
@@ -706,10 +728,18 @@ if (!databaseUrl?.trim()) {
           currentPassword: workingPassword,
           newPassword: nextPassword,
           revokeOtherSessions: true,
-        }).then(result => {
-          completedPasswordChange = true;
-          return result;
-        });
+        }).then(
+          result => {
+            completedPasswordChange = true;
+            return result;
+          },
+          error => {
+            // Preserve failures until after we release the held transaction,
+            // so test errors cannot leave unhandled provider rejections.
+            passwordChangeError = error;
+            return null;
+          },
+        );
         // Real Better Auth must wait before it can revoke the session row.
         await new Promise(resolve => setTimeout(resolve, 200));
         expect(completedPasswordChange).toBe(false);
@@ -729,6 +759,7 @@ if (!databaseUrl?.trim()) {
       const saved = await guardedWrite;
       if (!changingPassword) throw new Error("Real password change was never invoked.");
       await changingPassword;
+      if (passwordChangeError !== null) throw passwordChangeError;
       expect(completedPasswordChange).toBe(true);
       expect(saved.updatedByIdentityId).toBe(staff.identityId);
       expect(await b().unsafe(
