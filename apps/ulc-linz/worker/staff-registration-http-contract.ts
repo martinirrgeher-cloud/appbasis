@@ -43,6 +43,14 @@ export function parseUnwiredUlcStaffRegistrationRequest(
   if (Object.keys(input).length !== BODY_KEYS.size ||
       Object.keys(input).some((key) => !BODY_KEYS.has(key)) ||
       [...BODY_KEYS].some((key) => !Object.hasOwn(input, key))) deny();
+  // Only JSON data properties are accepted. An object supplied by an internal
+  // caller must not execute getters while authorization inputs are read.
+  // Reject symbols as well: JSON request bodies cannot contain symbol keys.
+  if (Object.getOwnPropertySymbols(input).length !== 0 ||
+      [...BODY_KEYS].some((key) => {
+        const descriptor = Object.getOwnPropertyDescriptor(input, key);
+        return !descriptor || !Object.hasOwn(descriptor, "value");
+      })) deny();
 
   const groupId = identifier(input.groupId);
   const targetAthleteId = identifier(input.targetAthleteId);
