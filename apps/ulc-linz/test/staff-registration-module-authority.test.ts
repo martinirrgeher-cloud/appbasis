@@ -11,6 +11,7 @@ describe("N16 inactive canonical staff module authority", () => {
     );
     expect(authority).toEqual({
       moduleId: "kindertraining",
+      authorizationModuleId: "kindertraining",
       capability: "ulc-linz:module:kindertraining:edit",
     });
     expect(Object.isFrozen(authority)).toBe(true);
@@ -20,6 +21,22 @@ describe("N16 inactive canonical staff module authority", () => {
     expect(unsafe.mock.calls).toHaveLength(1);
   });
 
+  it("uses a separate IRG permission while preserving the existing storage module", async () => {
+    const unsafe = vi.fn(async () => [{ module_id: "performance_registration" }]);
+    const authority = await assertUlcStaffRegistrationModuleAuthority(
+      { unsafe }, "org", "explicit-irg",
+    );
+    expect(authority).toEqual({
+      moduleId: "kindertraining",
+      authorizationModuleId: "performance_registration",
+      capability: "ulc-linz:module:performance_registration:edit",
+    });
+    expect(Object.isFrozen(authority)).toBe(true);
+    expect(unsafe).toHaveBeenCalledWith(
+      expect.stringContaining("FOR SHARE"), ["org","explicit-irg"],
+    );
+  });
+
   const invalidCases: readonly {
     readonly name: string;
     readonly rows: readonly Record<string, unknown>[];
@@ -27,7 +44,6 @@ describe("N16 inactive canonical staff module authority", () => {
     { name: "absent", rows: [] },
     { name: "U12", rows: [{ module_id: "u12" }] },
     { name: "U14", rows: [{ module_id: "u14" }] },
-    { name: "IRG without canonical mapping", rows: [{ module_id: "performance_registration" }] },
     { name: "null", rows: [{ module_id: null }] },
     { name: "duplicated", rows: [{ module_id: "kindertraining" }, { module_id: "kindertraining" }] },
   ];

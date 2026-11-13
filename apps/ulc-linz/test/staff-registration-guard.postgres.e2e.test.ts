@@ -129,6 +129,14 @@ if (!databaseUrl?.trim()) {
       for (const statement of candidate.split("--> statement-breakpoint")) {
         if (statement.trim()) await a().unsafe(statement);
       }
+      // v18 review-only candidate is applied to the disposable CI DB only.
+      const irgCandidate = await readFile(new URL(
+        "../migrations/0017_ulc_linz_performance_registration_module.sql",
+        import.meta.url,
+      ), "utf8");
+      for (const statement of irgCandidate.split("--> statement-breakpoint")) {
+        if (statement.trim()) await a().unsafe(statement);
+      }
 
       await a().unsafe(
         "INSERT INTO appbasis_permission_capability (capability_id) VALUES ($1)",
@@ -210,13 +218,13 @@ if (!databaseUrl?.trim()) {
       expect(administrator).toEqual({
         sourceRole: "admin", actorIdentityId: actorAdmin,
         organizationId, groupId, targetAthleteId: athleteId,
-        moduleId: "kindertraining", sessionDate: when,
+        moduleId: "kindertraining", authorizationModuleId: "kindertraining", sessionDate: when,
       });
       const trainer = await guarded();
       expect(trainer).toEqual({
         sourceRole: "trainer", actorIdentityId: actorTrainer,
         organizationId, groupId, targetAthleteId: athleteId, trainerId,
-        moduleId: "kindertraining", sessionDate: when,
+        moduleId: "kindertraining", authorizationModuleId: "kindertraining", sessionDate: when,
       });
     });
 
@@ -529,6 +537,122 @@ if (!databaseUrl?.trim()) {
       )).toBeNull();
     }, 30_000);
 
+
+
+    it("N16 explicitly mapped IRG uses performance grants, legacy storage and serializable authority", async () => {
+      const irgId = "n16-authorized-irg";
+      const cap = "ulc-linz:module:performance_registration:edit";
+      await a().unsafe(
+        `INSERT INTO appbasis_training_group (id,organization_id,name,attendance_mode)
+         VALUES ($1,$2,'N16 mapped IRG','self_registration')`,
+        [irgId,organizationId],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_athlete_group_membership
+           (organization_id,athlete_id,group_id,started_on)
+         VALUES ($1,$2,$3,DATE '2026-11-01')`,
+        [organizationId,athleteId,irgId],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_trainer_group_membership
+           (organization_id,trainer_id,group_id) VALUES ($1,$2,$3)`,
+        [organizationId,trainerId,irgId],
+      );
+      await a().unsafe(
+        "INSERT INTO appbasis_permission_capability (capability_id) VALUES ($1) ON CONFLICT DO NOTHING",
+        [cap],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_permission_principal_grant
+           (principal_id,capability_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [actorTrainer,cap],
+      );
+      await expect(guarded(request(actorTrainer,{groupId:irgId})))
+        .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await a().unsafe(
+        `INSERT INTO ulc_linz_training_module_group
+           (organization_id,module_id,group_id)
+         VALUES ($1,'performance_registration',$2)`,
+        [organizationId,irgId],
+      );
+      const scope=await guarded(request(actorTrainer,{groupId:irgId}));
+      expect(scope).toMatchObject({
+        actorIdentityId:actorTrainer,groupId:irgId,organizationId,
+        targetAthleteId:athleteId,moduleId:"kindertraining",
+        authorizationModuleId:"performance_registration",
+      });
+      // A performance-only trainer cannot silently acquire youth writes.
+      await a().unsafe(
+        `DELETE FROM appbasis_permission_role_capability
+         WHERE role_id='ulc-linz:trainer' AND capability_id=$1`,[capability],
+      );
+      try {
+        await expect(guarded()).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+        expect((await guarded(request(actorTrainer,{groupId:irgId}))).authorizationModuleId)
+          .toBe("performance_registration");
+      } finally {
+        await a().unsafe(
+          `INSERT INTO appbasis_permission_role_capability (role_id,capability_id)
+           VALUES ('ulc-linz:trainer',$1)`,[capability],
+        );
+      }
+      const tokenId="n16-explicit-irg-session";
+      await a().unsafe(
+        `INSERT INTO "session" (id,token,user_id,expires_at,updated_at)
+         VALUES ($1,'n16-explicit-irg-token',$2,now()+interval '1 hour',now())`,
+        [tokenId,actorTrainer],
+      );
+      const sessions=new PostgresUlcTrainingSessionRepository(a(),()=>randomUUID());
+      const saved=await withGuardedUlcStaffRegistration(
+        sessions,{...request(actorTrainer,{groupId:irgId}),trustedSessionId:tokenId},
+        (scoped,scope)=>bindUlcStaffRegistrationWriter(scoped,scope).save("attending",null),
+      );
+      expect(saved).toMatchObject({
+        athleteId,intention:"attending",updatedByIdentityId:actorTrainer,revision:1,
+      });
+      const snapshot=await sessions.readSession(organizationId,"kindertraining",irgId,when);
+      expect(snapshot?.registrations).toHaveLength(1);
+      const audit=await b().unsafe(
+        `SELECT actor_identity_id,athlete_id,revision
+         FROM ulc_linz_training_registration_change
+         WHERE organization_id=$1 AND session_id=$2`,
+        [organizationId,snapshot?.session.id??""],
+      );
+      expect(audit).toHaveLength(1);
+      expect(audit[0]).toMatchObject({
+        actor_identity_id:actorTrainer,athlete_id:athleteId,revision:1,
+      });
+      await expect(withGuardedUlcStaffRegistration(
+        sessions,{...request(actorTrainer,{groupId:irgId}),trustedSessionId:tokenId},
+        (scoped,scope)=>bindUlcStaffRegistrationWriter(scoped,scope).save("not_attending",null),
+      )).rejects.toBeInstanceOf(UlcTrainingSessionConflictError);
+      let release!:()=>void;let signal!:()=>void;
+      const holding=new Promise<void>(r=>{release=r;});
+      const ready=new Promise<void>(r=>{signal=r;});
+      const active=a().begin(async tx=>{
+        const current=await assertUlcStaffRegistrationGuard(
+          tx,request(actorTrainer,{groupId:irgId}),
+        );signal();await holding;return current;
+      });
+      try {
+        await ready;
+        await expect(b().begin(async tx=>{
+          await tx.unsafe("SET LOCAL lock_timeout='750ms'");
+          await tx.unsafe(
+            `UPDATE ulc_linz_training_module_group SET module_id='u12'
+             WHERE organization_id=$1 AND group_id=$2`,[organizationId,irgId],
+          );
+        })).rejects.toMatchObject({code:"55P03"});
+        await expect(b().begin(async tx=>{
+          await tx.unsafe("SET LOCAL lock_timeout='750ms'");
+          await tx.unsafe(
+            `DELETE FROM ulc_linz_training_module_group
+             WHERE organization_id=$1 AND group_id=$2`,[organizationId,irgId],
+          );
+        })).rejects.toMatchObject({code:"55P03"});
+      } finally {release();}
+      expect((await active).authorizationModuleId).toBe("performance_registration");
+    },90_000);
 
     it("N16 keeps IRG deny-by-default even with performance grants, youth grants and spoofed group names", async () => {
       // The real migration has no group->performance_registration authority.

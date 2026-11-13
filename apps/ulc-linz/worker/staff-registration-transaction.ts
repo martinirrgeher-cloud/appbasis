@@ -53,9 +53,10 @@ export async function withGuardedUlcStaffRegistration<T>(
 
 /**
  * N16 inactive scope-bound adapter. The only permitted module is the
- * checked kindertraining capability and its locked canonical group mapping.
- * IRG is not represented by the youth group/module table and remains denied.
- * No HTTP activation before v17, password-change and audit E2E acceptance.
+ * checked permission capability and locked canonical group mapping.
+ * Explicit IRG mapping requires performance_registration:edit; the session
+ * storage module remains kindertraining for pre-existing IRG registrations.
+ * No HTTP activation or provider migration without separate approval.
  *
  * Unlike the legacy internal callback, the consumer cannot choose tenant,
  * target athlete, session group/date or audit actor. No proxy-athlete field

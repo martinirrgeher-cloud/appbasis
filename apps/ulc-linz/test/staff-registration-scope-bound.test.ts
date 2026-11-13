@@ -13,6 +13,7 @@ const scope = Object.freeze({
   targetAthleteId: "trusted-athlete",
   sessionDate: date,
   moduleId: "kindertraining" as const,
+  authorizationModuleId: "kindertraining" as const,
 });
 
 function repository(overrides: Record<string, unknown> = {}) {

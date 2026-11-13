@@ -6,7 +6,10 @@ import {
 
 import { UlcLinzAuthorizationDeniedError } from "./authorization";
 import roleDataScope from "./role-data-scope.json";
-import { assertUlcStaffRegistrationModuleAuthority } from "./staff-registration-module-authority";
+import {
+  assertUlcStaffRegistrationModuleAuthority,
+  type UlcStaffRegistrationPermissionModule,
+} from "./staff-registration-module-authority";
 import type { UlcTrainingSessionSqlClient } from "./training-session-postgres";
 
 /**
@@ -34,6 +37,7 @@ export type UlcStaffRegistrationGuardScope =
       targetAthleteId: string;
       sessionDate: string;
       moduleId: "kindertraining";
+      authorizationModuleId: UlcStaffRegistrationPermissionModule;
     }>
   | Readonly<{
       sourceRole: "trainer";
@@ -43,6 +47,7 @@ export type UlcStaffRegistrationGuardScope =
       targetAthleteId: string;
       sessionDate: string;
       moduleId: "kindertraining";
+      authorizationModuleId: UlcStaffRegistrationPermissionModule;
       trainerId: string;
     }>;
 
@@ -139,6 +144,7 @@ export async function assertUlcStaffRegistrationGuard(
     transaction, organizationId, groupId,
   );
   const moduleId = authority.moduleId;
+  const authorizationModuleId = authority.authorizationModuleId;
   const permission = await new PostgresPermissionStore(transaction).evaluatePermission({
     principalId: principalId(identityId),
     capability: capabilityId(authority.capability),
@@ -189,13 +195,13 @@ export async function assertUlcStaffRegistrationGuard(
   if (sourceRole === "admin") {
     return Object.freeze({
       sourceRole, actorIdentityId: identityId, organizationId,
-      groupId, targetAthleteId, moduleId, sessionDate,
+      groupId, targetAthleteId, moduleId, authorizationModuleId, sessionDate,
     });
   }
 
   return Object.freeze({
     sourceRole, actorIdentityId: identityId, organizationId,
-    groupId, targetAthleteId, moduleId, sessionDate,
+    groupId, targetAthleteId, moduleId, authorizationModuleId, sessionDate,
     trainerId: requiredIdentifier(trainerId),
   });
 }
