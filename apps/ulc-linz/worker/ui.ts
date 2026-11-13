@@ -156,7 +156,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
               <p class="summary">Dein Vereinsbereich für Training und Organisation.</p>
             </section>
 
-            <section class="dashboard-grid dashboard-grid--home" aria-label="Freigeschaltete ULC Linz Funktionen">
+            <section class="dashboard-grid" aria-label="ULC Linz Funktionen">
               <article class="card dashboard-card dashboard-card--primary" id="registration-dashboard" data-dashboard-view="registration" hidden>
                 <div>
                   <p class="eyebrow">Training</p>
@@ -1092,19 +1092,19 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 }
 .dashboard-grid { display: grid; gap: 8px; }
 /* A10: compact role-sensitive home – visibility remains entirely permission-derived. */
-.dashboard-grid--home { align-items: stretch; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
-.dashboard-grid--home > .dashboard-card { min-width: 0; min-height: 0; align-content: space-between; padding: 12px; gap: 9px; }
-.dashboard-grid--home > .dashboard-card h2 { font-size: .98rem; line-height: 1.24; overflow-wrap: anywhere; }
-.dashboard-grid--home .dashboard-card .eyebrow { margin-bottom: 4px; font-size: .67rem; }
-.dashboard-grid--home .dashboard-card p:not(.eyebrow) { font-size: .77rem; line-height: 1.38; }
-.dashboard-grid--home .dashboard-action { min-width: 0; min-height: 42px; white-space: normal; overflow-wrap: anywhere; font-size: .79rem; line-height: 1.2; }
-.dashboard-grid--home .dashboard-card small { overflow-wrap: anywhere; }
+#start .dashboard-grid { align-items: stretch; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+#start .dashboard-grid > .dashboard-card { min-width: 0; min-height: 0; align-content: space-between; padding: 12px; gap: 9px; }
+#start .dashboard-grid > .dashboard-card h2 { font-size: .98rem; line-height: 1.24; overflow-wrap: anywhere; }
+#start .dashboard-grid .dashboard-card .eyebrow { margin-bottom: 4px; font-size: .67rem; }
+#start .dashboard-grid .dashboard-card p:not(.eyebrow) { font-size: .77rem; line-height: 1.38; }
+#start .dashboard-grid .dashboard-action { min-width: 0; min-height: 42px; white-space: normal; overflow-wrap: anywhere; font-size: .79rem; line-height: 1.2; }
+#start .dashboard-grid .dashboard-card small { overflow-wrap: anywhere; }
 @media (max-width: 360px) {
-  .dashboard-grid--home { grid-template-columns: minmax(0, 1fr); }
-  .dashboard-grid--home > .dashboard-card { padding: 11px; }
+  #start .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+  #start .dashboard-grid > .dashboard-card { padding: 11px; }
 }
 @media (min-width: 700px) {
-  .dashboard-grid--home { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #start .dashboard-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 .dashboard-card { display: grid; gap: 9px; padding: 13px; }
