@@ -104,7 +104,7 @@ export async function inspectUlcIrgAuditRetention(
     const records = await tx.unsafe(
       `SELECT count(*)::int AS total,
          count(*) FILTER (WHERE retained_until <= clock_timestamp())::int AS due,
-         min(retained_until) AS first_due
+         extract(epoch FROM min(retained_until))::double precision AS first_due_epoch
        FROM ulc_linz_irg_module_assignment_audit
        WHERE organization_id=$1`, [organization],
     );
@@ -113,9 +113,17 @@ export async function inspectUlcIrgAuditRetention(
     const total = validCount(row?.total);
     const due = validCount(row?.due);
     if (due > total) deny();
-    const firstDue = row?.first_due;
-    if (firstDue !== null &&
-        (!(firstDue instanceof Date) || Number.isNaN(firstDue.getTime()))) deny();
+    // Using an explicit SQL float8 epoch prevents postgres-js and custom
+    // SQL clients from disagreeing on whether timestamptz is Date or string.
+    // Never coerce arbitrary user-provided text into a Date.
+    const firstDueEpoch = row?.first_due_epoch;
+    if (firstDueEpoch !== null &&
+        (typeof firstDueEpoch !== "number" ||
+         !Number.isFinite(firstDueEpoch) || firstDueEpoch < 0 ||
+         firstDueEpoch > 8640000000000)) deny();
+    const firstDue = firstDueEpoch === null
+      ? null : new Date(firstDueEpoch * 1000);
+    if (firstDue !== null && Number.isNaN(firstDue.getTime())) deny();
     await assertUlcStaffSessionStillValid(tx, session, actor);
     return Object.freeze({
       organizationId: organization,

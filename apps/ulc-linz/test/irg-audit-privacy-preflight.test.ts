@@ -34,6 +34,12 @@ describe("N16 unexposed IRG audit privacy/retention/export contract", () => {
     expect(sql).not.toContain("CREATE TABLE ulc_linz_irg_module_assignment_once (");
     expect(sql).toContain("REVOKE ALL ON TABLE public.ulc_linz_irg_module_assignment_audit FROM PUBLIC");
     expect(admin).toContain("INSERT INTO ulc_linz_irg_module_assignment_once_marker");
+    // Keep the aggregate timestamp's transport type stable across drivers.
+    const preflight = read("../worker/irg-audit-privacy-preflight.ts");
+    expect(preflight).toContain(
+      "extract(epoch FROM min(retained_until))::double precision AS first_due_epoch",
+    );
+    expect(preflight).not.toContain("firstDue instanceof Date");
   });
 
   it("denies raw/nontransactional requests before issuing a SQL query", async () => {
