@@ -31,6 +31,17 @@
 
 **Nicht doppelt bauen.** Vor echter Produktivfreigabe fehlen insbesondere die App-Owner-Verknüpfung zu Trainingsplan-/Athletenlöschung, eine belastbare Strategie für **nicht eindeutig einer Person zuordenbare Legacy-Usage**, exakte Retention-, Backup-/Restore- und Crash-/Replay-Grenzen sowie ein dokumentierter Umgang mit dauerhaft erhaltenen nichtpersonenbezogenen Revisionen.
 
+## P02-B Zusatzbeleg: echte Plan-Autorität gegenüber alten Nutzungsereignissen
+
+Die bestehende `apps/ulc-linz/test/athlete-subject-deletion.postgres.e2e.test.ts` vereint bereits echte Postgres-Owner **Athleten, Trainingsplanung und Trainingsblöcke** und simuliert sowohl einen temporären Ausfall beim zweiten Owner als auch einen idempotenten Wiederanlauf. Der zusätzliche P02-B-Regressionsteil nutzt diesen integrierten, isolierten Testaufbau; er erzeugt **keine** neue Tabelle und verdrahtet **keinen** privilegierten Löscher.
+
+- `verifyUlcTrainingBlockUsageOwner` liest den **tatsächlichen gespeicherten Trainingsplan** aus `PostgresTrainingPlanRepository` und prüft die kanonische Event-ID einschließlich der Block-Item-Referenz. Vor dem Löschvorgang werden der Zielathlet und ein anderer Athlet unabhängig korrekt erkannt.
+- Ein altes manuelles Usage-Event ohne Eigentumsbeweis bleibt `unresolved/unsupported-source`; ein technisch plausibles altes Event mit **exakter, kopierter Plan-/Item-Textreferenz** bleibt `unresolved/invalid-event-identity`, weil seine Event-ID nicht kanonisch ist. Ein fremder Organisationseintrag bleibt `unresolved/organization-mismatch`.
+- Der Cross-Owner-Nachlauf löscht nur die **beweisbar zugeordneten** Nutzungsereignisse. Alte unbeweisbare Events (auch mit möglicherweise personenbezogenem Freitext) bleiben unverändert erhalten; dies ist ein **offenes Datenschutzproblem**, kein positiver Löschbeweis. Der andere Athlet bleibt erhalten.
+- Sobald der ursprüngliche Trainingsplan gelöscht ist, muss eine erneute Zuordnungsprüfung `unresolved/plan-not-found` liefern. Die eigene planlose Textreferenz reicht **niemals** als Grundlage für rückwirkende personenbezogene Lösch- oder Aufbewahrungsentscheidungen.
+
+**Grenzen:** Die Regression bestätigt ausdrücklich kein vollständiges historisches Eigentumsregister, keine Löschung unklarer Notizen und keinen nach Ablauf des Athleten-Tombstones sicheren Full-Owner-Replay. Es muss nach P01-Richtlinienentscheidung festgelegt werden, wie Legacy-Ereignisse mit personenbezogenem Inhalt legitim behandelt werden, ohne sie versehentlich anderen Athleten zuzuordnen. **Produktionsstatus bleibt `blocked`.**
+
 ## Release-Gates für P02-A/B
 
 1. `Quality gate` und `Identity PostgreSQL E2E` auf derselben exakten PR-HEAD-SHA grün (für diesen rein testenden Slice).
