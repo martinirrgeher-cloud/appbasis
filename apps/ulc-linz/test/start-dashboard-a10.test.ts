@@ -22,7 +22,7 @@ describe("ULC A10 compact start dashboard", () => {
       "registration", "attendance", "training-plans", "training-documentation",
       "exercise-catalog", "training-blocks", "countdown", "masterdata", "users",
     ]) {
-      expect(home).toContain('data-dashboard-view="' + view + '" hidden');
+      expect(home).toMatch(new RegExp('<article[^>]*(?:data-dashboard-view="' + view + '"[^>]*hidden|hidden[^>]*data-dashboard-view="' + view + '")'));
     }
     expect(ULC_LINZ_APP_SCRIPT).toContain('card.hidden = !isAppNavigationAvailable(card.dataset.dashboardView || "")');
     expect(home).not.toMatch(/data-role=|data-new-permission=|data-dashboard-role=/);
