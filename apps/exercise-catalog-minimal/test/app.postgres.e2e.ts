@@ -705,13 +705,12 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
     expect(await service.listPrivateMedia("p02-media-org-b", inB.id)).toHaveLength(1);
   });
 
-  it("P02 scopes usage notes and source references to the actual organization, not only the shared item ID", async () => {
+  it("P02 scopes usage notes and source references to organization even with matching exercise IDs", async () => {
     const connection = requiredIsolatedConnection();
-    let nextId = 0;
     const service = new ExerciseCatalogService({
       repository: new PostgresExerciseCatalogRepository(catalogClient(connection.client)),
       definition: EXERCISE_CATALOG_MINIMAL_DEFINITION,
-      createId: () => "p02-usage-" + String(++nextId),
+      createId: () => "p02-usage-shared",
     });
     const inA = await service.create("p02-usage-org-a", {
       name: "Usage for first tenant", categoryKey: "strength",
@@ -720,6 +719,7 @@ describe("exercise-catalog isolated PostgreSQL consumer", () => {
     const inB = await service.create("p02-usage-org-b", {
       name: "Usage for second tenant", categoryKey: "strength",
     });
+    expect(inA.id).toBe(inB.id);
     const stored = await service.recordUsage("p02-usage-org-a", inA.id, {
       occurredAt: "2026-11-13T12:00:00.000Z",
       sourceKind: "manual",
