@@ -20,15 +20,20 @@ describe("N16 inactive canonical staff module authority", () => {
     expect(unsafe.mock.calls).toHaveLength(1);
   });
 
-  it.each([
-    [],
-    [{ module_id: "u12" }],
-    [{ module_id: "u14" }],
-    [{ module_id: "performance_registration" }],
-    [{ module_id: null }],
-    [{ module_id: "kindertraining" }, { module_id: "kindertraining" }],
-  ])("denies any missing, ambiguous or non-Kindertraining mapping: %j", async rows => {
-    const unsafe = vi.fn(async () => rows);
+  const invalidCases: readonly {
+    readonly name: string;
+    readonly rows: readonly Record<string, unknown>[];
+  }[] = [
+    { name: "absent", rows: [] },
+    { name: "U12", rows: [{ module_id: "u12" }] },
+    { name: "U14", rows: [{ module_id: "u14" }] },
+    { name: "IRG without canonical mapping", rows: [{ module_id: "performance_registration" }] },
+    { name: "null", rows: [{ module_id: null }] },
+    { name: "duplicated", rows: [{ module_id: "kindertraining" }, { module_id: "kindertraining" }] },
+  ];
+
+  it.each(invalidCases)("denies missing, ambiguous or non-Kindertraining mapping: $name", async ({ rows }) => {
+    const unsafe = vi.fn(async (_query: string, _params?: (string | number | boolean | null)[]) => rows);
     await expect(assertUlcStaffRegistrationModuleAuthority(
       { unsafe }, "org-1", "group-1",
     )).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
