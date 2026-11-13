@@ -17,6 +17,10 @@ import {
 } from "../worker/staff-session-guard";
 import { bindUlcStaffRegistrationWriter, withGuardedUlcStaffRegistration } from "../worker/staff-registration-transaction";
 import { PostgresUlcTrainingSessionRepository, UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
+import {
+  assignUlcIrgModuleGroup,
+  UlcIrgModuleAssignmentConflictError,
+} from "../worker/irg-module-administration";
 
 const databaseUrl = process.env.DATABASE_URL;
 
@@ -1093,6 +1097,150 @@ if (!databaseUrl?.trim()) {
       );
       expect(unchangedAudit[0]?.total).toBe(2);
     }, 60_000);
+
+
+    it("N16 denies unauthorized IRG mapping administration and audits the first assignment atomically", async () => {
+      const capabilityAdmin="ulc-linz:module:athletes:edit";
+      const sessionId="n16-admin-module-assign-session";
+      const mappedGroup="n16-audited-irg-group";
+      const otherUnmapped="n16-audited-irg-other";
+      await a().unsafe(
+        "INSERT INTO appbasis_permission_capability (capability_id) VALUES ($1) ON CONFLICT DO NOTHING",
+        [capabilityAdmin],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_permission_principal_grant
+           (principal_id,capability_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [actorAdmin,capabilityAdmin],
+      );
+      await a().unsafe(
+        `INSERT INTO "session" (id,token,user_id,expires_at,updated_at)
+         VALUES ($1,'n16-admin-module-assign-token',$2,now()+interval '1 hour',now())`,
+        [sessionId,actorAdmin],
+      );
+      await a().unsafe(
+        `INSERT INTO appbasis_training_group(id,organization_id,name,attendance_mode)
+         VALUES ($1,$3,'N16 Audited IRG','self_registration'),
+                ($2,$3,'N16 Other IRG','self_registration')`,
+        [mappedGroup,otherUnmapped,organizationId],
+      );
+      const input={
+        actorIdentityId:actorAdmin,trustedSessionId:sessionId,
+        organizationId,groupId:mappedGroup,expectedRevision:null as null,
+        reason:"Explicit IRG training group assignment after operator review",
+      };
+      await expect(assignUlcIrgModuleGroup(a(),{
+        ...input,actorIdentityId:actorTrainer,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(assignUlcIrgModuleGroup(a(),{
+        ...input,actorIdentityId:actorFunctionary,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(assignUlcIrgModuleGroup(a(),{
+        ...input,groupId:groupId,
+      })).rejects.toBeInstanceOf(UlcIrgModuleAssignmentConflictError);
+      await expect(assignUlcIrgModuleGroup(a(),{
+        ...input,organizationId:foreignOrganizationId,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(assignUlcIrgModuleGroup(a(),{
+        ...input,groupId:otherGroupId,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(assignUlcIrgModuleGroup(a(),{
+        ...input,expectedRevision:1 as never,
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      await expect(assignUlcIrgModuleGroup(a(),{
+        ...input,reason:"bad",
+      })).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      expect((await b().unsafe(
+        `SELECT group_id FROM ulc_linz_training_module_group
+         WHERE organization_id=$1 AND group_id=$2`,[organizationId,mappedGroup],
+      ))).toHaveLength(0);
+      const result=await assignUlcIrgModuleGroup(a(),input);
+      expect(result).toEqual({
+        actorIdentityId:actorAdmin,organizationId,groupId:mappedGroup,
+        moduleId:"performance_registration",
+      });
+      const records=await b().unsafe(
+        `SELECT group_id,actor_identity_id,event_type,reason
+         FROM ulc_linz_irg_module_assignment_audit
+         WHERE organization_id=$1 AND group_id=$2`,[organizationId,mappedGroup],
+      );
+      expect(records).toHaveLength(1);
+      expect(records[0]).toMatchObject({
+        group_id:mappedGroup,actor_identity_id:actorAdmin,event_type:"assign",
+        reason:input.reason,
+      });
+      await expect(assignUlcIrgModuleGroup(a(),input))
+        .rejects.toBeInstanceOf(UlcIrgModuleAssignmentConflictError);
+      await expect(assignUlcIrgModuleGroup(a(),{
+        ...input,groupId:otherUnmapped,
+      })).rejects.toBeInstanceOf(UlcIrgModuleAssignmentConflictError);
+      const count=await b().unsafe(
+        `SELECT count(*)::int AS total FROM ulc_linz_irg_module_assignment_audit
+         WHERE organization_id=$1`,[organizationId],
+      );
+      expect(count[0]?.total).toBe(1);
+    },30_000);
+
+    it("N16 keeps IRG assignment and audit locked until commit; revoked sessions cannot assign", async () => {
+      const adminCap="ulc-linz:module:athletes:edit";
+      const secondSession="n16-admin-module-race-session";
+      const group="n16-module-race-group";
+      await a().unsafe(
+        `INSERT INTO appbasis_training_group (id,organization_id,name,attendance_mode)
+         VALUES ($1,$2,'IRG N16 module race','self_registration')`,
+        [group,organizationId],
+      );
+      await a().unsafe(
+        `INSERT INTO "session" (id,token,user_id,expires_at,updated_at)
+         VALUES ($1,'n16-admin-module-race-token',$2,now()+interval '1 hour',now())`,
+        [secondSession,actorAdmin],
+      );
+      const args={
+        actorIdentityId:actorAdmin,trustedSessionId:secondSession,
+        organizationId,groupId:group,expectedRevision:null as null,
+        reason:"Authoritative trainer group mapping for security race",
+      };
+      const db=a();
+      const before=await db.unsafe(
+        `SELECT id FROM appbasis_training_group WHERE id=$1`,[group],
+      );
+      expect(before).toHaveLength(1);
+      // A concurrent transaction pins the physical group row before mapping.
+      let resume!:()=>void;
+      let started!:()=>void;
+      const held=new Promise<void>(resolve=>{resume=resolve;});
+      const ready=new Promise<void>(resolve=>{started=resolve;});
+      const locking=a().begin(async tx=>{
+        await tx.unsafe(
+          `SELECT id FROM appbasis_training_group WHERE id=$1 FOR UPDATE`,[group],
+        );
+        started();
+        await held;
+      });
+      try {
+        await ready;
+        await expect(b().begin(async tx=>{
+          await tx.unsafe("SET LOCAL lock_timeout='750ms'");
+          await tx.unsafe(
+            `SELECT id FROM appbasis_training_group WHERE id=$1 FOR UPDATE`,[group],
+          );
+        })).rejects.toMatchObject({code:"55P03"});
+        expect((await b().unsafe(
+          `SELECT group_id FROM ulc_linz_irg_module_assignment_audit
+           WHERE organization_id=$1 AND group_id=$2`,[organizationId,group],
+        ))).toHaveLength(0);
+      } finally {resume();}
+      await locking;
+      await a().unsafe(
+        `DELETE FROM "session" WHERE id=$1`,[secondSession],
+      );
+      await expect(assignUlcIrgModuleGroup(a(),args))
+        .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+      expect((await b().unsafe(
+        `SELECT group_id FROM ulc_linz_training_module_group
+         WHERE organization_id=$1 AND group_id=$2`,[organizationId,group],
+      ))).toHaveLength(0);
+    },30_000);
 
     it("denies password-change-required and serializes a concurrent identity policy change", async () => {
       const authId = "n16-password-policy-session";

@@ -16,6 +16,8 @@ describe("N16 staff write activation gate – intentionally blocked", () => {
     expect(router).not.toContain('from "./staff-registration-module-authority"');
     expect(router).not.toContain('from "./staff-session-guard"');
     expect(router).not.toContain('from "./staff-registration-transaction"');
+    expect(router).not.toContain('from "./irg-module-administration"');
+    expect(router).not.toContain('from "./irg-permission-review"');
     expect(router).not.toContain("assertUlcStaffRegistrationGuard(");
     expect(router).not.toContain("withAuthorizedRegistrationTransaction(");
     // Only the previously accepted athlete-based proxy is live.
