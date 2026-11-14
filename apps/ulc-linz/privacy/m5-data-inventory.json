@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "application": "ulc-linz",
-  "scope": "current-materialized-v0.5",
+  "scope": "repository-declared-schema-v16-review-not-runtime-evidence",
   "basis": {
     "databaseManifest": "apps/ulc-linz/appbasis.database.json",
     "appManifest": "apps/ulc-linz/appbasis.app.json",
@@ -133,7 +133,7 @@
     },
     {
       "id": "ulc-linz-lifecycle",
-      "schemaVersion": 9,
+      "schemaVersion": 16,
       "migrations": [
         "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
         "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -143,7 +143,14 @@
         "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql",
         "apps/ulc-linz/migrations/0006_ulc_linz_training_module_groups.sql",
         "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
-        "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql"
+        "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql",
+        "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
+        "apps/ulc-linz/migrations/0010_ulc_linz_registration_notes.sql",
+        "apps/ulc-linz/migrations/0011_ulc_linz_youth_training_content.sql",
+        "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql",
+        "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
+        "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
+        "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql"
       ],
       "lifecycleStatus": "training-and-catalog-data-lifecycle-pending",
       "notes": [
@@ -161,11 +168,16 @@
         "restore-reconciliation-requires-authoritative-newer-database-or-recovery-point-before-promotion",
         "app-owned-training-session-and-attendance-lifecycle-pending",
         "app-owned-training-registration-and-change-history-lifecycle-pending",
-        "future-schema-v11-registration-note-free-text-needs-data-protection-review-before-preview-deployment",
+        "registration-note-free-text-in-current-manifest-needs-data-protection-review-before-production-activation",
         "trainer-identity-link-audit-is-append-only-and-atomically-written-with-membership-subject-changes",
         "trainer-identity-audit-12-month-purge-activation-pending-schema-deploy",
         "app-owned-exercise-catalog-configuration-not-personal",
-        "exercise-favorite-lifecycle-pending"
+        "exercise-favorite-lifecycle-pending",
+        "repository-manifest-v16-inventory-reviewed-no-runtime-deployment-attestation",
+        "training-registration-current-and-change-history-optional-note-fields-require-explicit-retention-and-erasure",
+        "session-content-array-and-json-metadata-can-include-personal-free-text",
+        "historical-trainer-attendance-reference-requires-separate-trainer-subject-lifecycle",
+        "functionary-role-added-to-existing-membership-and-deletion-marker-constraints"
       ]
     }
   ],
@@ -718,5 +730,107 @@
     "unknownRuntimeModule": "fail-closed",
     "unknownBackingStore": "fail-closed",
     "futureObjectStorage": "fail-closed"
+  },
+  "repositorySchemaReview": {
+    "reviewedAt": "2026-11-14",
+    "reviewKind": "repository-schema-inventory-no-runtime-migration-or-deployment-attestation",
+    "sourceManifest": "apps/ulc-linz/appbasis.database.json",
+    "sourceManifestBlobSha": "74f956c48a98b834f2ef581b9ffc8e7fa126ac87",
+    "declaredMigrationCount": 41,
+    "declaredTableCount": 64,
+    "persistentTableInventoryCount": 64,
+    "expectedLifecycleSchemaVersion": 16,
+    "previousInventoryScope": "current-materialized-v0.5",
+    "previousRecordedMigrations": 34,
+    "newlyRecordedMigrations": [
+      "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
+      "apps/ulc-linz/migrations/0010_ulc_linz_registration_notes.sql",
+      "apps/ulc-linz/migrations/0011_ulc_linz_youth_training_content.sql",
+      "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql",
+      "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
+      "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
+      "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql"
+    ],
+    "migrationChanges": [
+      {
+        "migration": "0009_ulc_linz_functionary_role.sql",
+        "tables": [
+          "ulc_linz_membership",
+          "ulc_linz_lifecycle_deletion"
+        ],
+        "columns": [
+          "source_role"
+        ],
+        "dataRisk": "functionary-user-role-and-deletion-scope"
+      },
+      {
+        "migration": "0010_ulc_linz_registration_notes.sql",
+        "tables": [
+          "ulc_linz_training_registration",
+          "ulc_linz_training_registration_change"
+        ],
+        "columns": [
+          "note"
+        ],
+        "dataRisk": "personally-identifying-registration-free-text-and-immutable-history"
+      },
+      {
+        "migration": "0011_ulc_linz_youth_training_content.sql",
+        "tables": [
+          "ulc_linz_training_session",
+          "ulc_linz_training_attendance"
+        ],
+        "columns": [
+          "training_content_titles",
+          "training_content_slots"
+        ],
+        "dataRisk": "youth-training-free-text-and-per-athlete-assignment"
+      },
+      {
+        "migration": "0012_ulc_linz_youth_training_catalog.sql",
+        "tables": [
+          "ulc_linz_training_session"
+        ],
+        "columns": [
+          "training_content_items"
+        ],
+        "dataRisk": "jsonb-free-text-and-category-references"
+      },
+      {
+        "migration": "0013_ulc_linz_youth_categories.sql",
+        "tables": [
+          "ulc_linz_youth_content_category"
+        ],
+        "columns": [
+          "code",
+          "label"
+        ],
+        "dataRisk": "configurable-labels-should-not-contain-personal-data"
+      },
+      {
+        "migration": "0014_ulc_linz_youth_group_categories.sql",
+        "tables": [
+          "ulc_linz_youth_group_category"
+        ],
+        "columns": [
+          "training_area",
+          "code",
+          "label"
+        ],
+        "dataRisk": "configurable-labels-should-not-contain-personal-data"
+      },
+      {
+        "migration": "0015_ulc_linz_training_trainer_attendance.sql",
+        "tables": [
+          "ulc_linz_training_trainer_attendance"
+        ],
+        "columns": [
+          "trainer_id"
+        ],
+        "dataRisk": "historical-trainer-identity-link-survives-group-exit"
+      }
+    ],
+    "stillOpen": "privacy-and-retention-approval-cross-owner-lifecycle-freetext-revisions-live-no-resurrection-backup-restore",
+    "readiness": "blocked-do-not-interpret-as-operator-approval"
   }
 }
