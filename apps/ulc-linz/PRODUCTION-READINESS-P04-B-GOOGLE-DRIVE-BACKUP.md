@@ -4,6 +4,8 @@
 
 **Betreiberinformation:** Am 14.11.2026 wurde für ULC Linz erklärt: **„Es sollen zukünftig welche in google drive abgelegt werden“** (zusätzliche Datenbanksicherungen). Auf die Frage nach Vereins-Workspace oder regulärem Konto antwortete der Betreiber ausdrücklich: **„In mein google drive“**. Damit ist **sein eigenes „Meine Ablage“/My Drive als gewünschter Zielort** gewählt – **kein Vereins-Shared-Drive**. Ob das Konto technisch ein privates Google-Konto oder ein Workspace-Benutzerkonto ist, wurde nicht überprüft. Die Zielwahl bedeutet **keinen** Uploadauftrag, keinen bereits bestätigten Account/Folderscope, keine freigegebene Frist und keinen erteilten Google-Zugriff.
 
+**Einrichtungsschritt 14.11.2026:** Im verbundenen persönlichen Google Drive wurde der Ordner **[ULC Linz – verschlüsselte Datenbank-Backups](https://drive.google.com/drive/folders/1GpEzbPYeg-3KYHJUses7va8llYWpbl85)** in „Meine Ablage“ **angelegt und per Metadaten erneut geprüft** (ID `1GpEzbPYeg-3KYHJUses7va8llYWpbl85`, Google-Typ `application/vnd.google-apps.folder`, `shared=false`). **Nur der leere Ordner**, keine Backups, Testdaten, Verschlüsselungsschlüssel oder Zugangsdaten wurden übertragen. Die ChatGPT-Drive-Verbindung ist **nicht** als unbeaufsichtigter OAuth-Zugang für GitHub/Cloudflare verwendbar; ein Backupjob ist weiterhin nicht verbunden/aktiviert.
+
 **P04-B-Systemvertrag:** [privacy/p04-google-drive-offsite-backup-candidate.json](./privacy/p04-google-drive-offsite-backup-candidate.json), abgesichert durch [test/p04-google-drive-backup-approval-gates.test.ts](./test/p04-google-drive-backup-approval-gates.test.ts). Beides **nicht** an produktive Worker, Workflow oder Secrets angebunden. Aktiv bleiben nur die bisherigen Provider-Evidence-Sperren Cloudflare und Neon. Google wird **erst bei echtem Inbetriebnahmebeschluss** als neuer Datenverarbeiter/Backup-Ziel in die freigegebene Datenflussinventur aufgenommen; bis dahin bleibt `unknownProvider=fail-closed`.
 
 ## 1. Sichere technische Zielfunktion (mobile Bedienung, keine lokale PC-Pflicht)
@@ -32,7 +34,7 @@ Bisher gilt die **35-Tage-Originalquelle für Athleten-Löschentscheidungen**, d
 
 | Gate | Konkreter Nachweis | Stand |
 | --- | --- | --- |
-| **Drive-Eigentümer** | **Eigene „Meine Ablage“ des Betreibers gewählt**; tatsächlicher Google-Kontotyp, eigener ULC-Backup-Ordner samt Folder-ID, MFA, Rechte und vereinsseitiger Recovery-/Nachfolgezugriff nachzuweisen | **ZIEL BESTÄTIGT, TECHNIK OFFEN** |
+| **Drive-Eigentümer** | Eigene „Meine Ablage“ des Betreibers gewählt; **ULC-Backup-Ordner angelegt und Metadaten geprüft**, nicht geteilt. Tatsächlicher Kontotyp, dauerhaftes Eigentum, MFA, OAuth für automatischen Job und vereinsseitige Recovery-/Nachfolge noch nachzuweisen | **ORDNER PASS; JOB/BETRIEB OFFEN** |
 | **Google-Rechtsgrundlage** | Auftragsverarbeitungsvertrag/AVV, Datenübermittlung und Unterauftragsverarbeiter, geeigneter Backup-/Kinder-Datenschutz | **OFFEN** |
 | **Verschlüsselung** | Beleg `encrypt-before-upload`, Schlüssel getrennt, verschlüsselter Archivtest, unabhängiger Recovery-Custodian | **OFFEN** |
 | **Datenquelle** | Verifizierter Cloudflare-Worker↔Neon-Produktionsbezug, dedizierte abgesicherte Dump-Berechtigung, vollständige Owner- und Schema-Version | **OFFEN** |
@@ -62,9 +64,9 @@ Die Vorbereitung enthält jetzt einen **echten kryptografischen Testlauf ausschl
 
 ## 5. Was heute ausdrücklich NICHT geschieht
 
-- **Kein** Google-Drive-Ordner wird angelegt, keine Google-OAuth-Verbindung eingerichtet, keine Datei übertragen, keine Passwörter/Schlüssel erzeugt.
+- **Nur ein leerer Google-Drive-Ordner wurde über die bereits verbundene interaktive Drive-App angelegt und geprüft.** Kein Upload, kein Download von Vereinsdaten, keine produktive OAuth-Verbindung für einen autonomen Backupjob, keine Passwörter/Schlüssel erzeugt.
 - **Keine** produktive PostgreSQL-Abfrage, kein `pg_dump`, kein GitHub-Scheduled-Workflow aktiviert, keine Retention-/Provider-Policy oder Release-Contract-Freischaltung.
 - **Keine** Behauptung, dass eine Google-Drive-Sicherung existiert, die 14 Tage wirksame Frist beträgt oder Drive durch bestimmte Google-Kontofunktionen bereits DSGVO-abgenommen ist.
 - `privacy=blocked`, `applicationLifecycle=blocked`, `postExpiryRetry=deny`, die 35-Tage-Quelle und die acht M6-Betreiberfreigaben bleiben unverändert.
 
-**Zielentscheidung ist erfolgt:** persönliche „Meine Ablage“ des Betreibers. **Nächste technische Voraussetzungen** sind ein sicherer und explizit autorisierter Google-OAuth-Zugriff auf einen dedizierten ULC-Backup-Ordner, die Prüfung des tatsächlichen Konto- und Eigentümertyps, ein vom Google-Login unabhängiger Entschlüsselungs-/Recovery-Schlüssel sowie ein für den Verein dokumentierter Nachfolgezugang. Diese Schritte dürfen erst nach gesonderter Berechtigungs-, Datenschutz-/Backup- und Echtdatenfreigabe aktiviert werden. **Bis dahin bleibt der Backup-Weg ein Designentwurf.**
+**Zielentscheidung ist erfolgt:** persönliche „Meine Ablage“ des Betreibers. **Nächste technische Voraussetzungen** sind ein sicherer und explizit autorisierter Google-OAuth-Zugriff des **unbeaufsichtigten Jobs auf den jetzt existierenden ULC-Backup-Ordner**, die Prüfung des tatsächlichen Konto- und Eigentümertyps, ein vom Google-Login unabhängiger Entschlüsselungs-/Recovery-Schlüssel sowie ein für den Verein dokumentierter Nachfolgezugang. Diese Schritte dürfen erst nach gesonderter Berechtigungs-, Datenschutz-/Backup- und Echtdatenfreigabe aktiviert werden. **Bis dahin bleibt der Backup-Weg ein Designentwurf.**
