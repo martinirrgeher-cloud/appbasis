@@ -30,6 +30,7 @@ jobs:
       BUCKET: ${{ vars.APPBASIS_ULC_R2_BUCKET }}
       APPBASIS_ULC_R2_BUCKET: ${{ vars.APPBASIS_ULC_R2_BUCKET }}
       APPBASIS_ULC_R2_JURISDICTION: ${{ vars.APPBASIS_ULC_R2_JURISDICTION }}
+      APPBASIS_ULC_EXPECTED_DATABASE_NAME: ${{ vars.APPBASIS_ULC_EXPECTED_DATABASE_NAME }}
 
     steps:
       - name: Fail closed unless separately activated
