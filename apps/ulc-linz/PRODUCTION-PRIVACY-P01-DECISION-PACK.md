@@ -28,6 +28,18 @@ Quelle: [P01-Bestand](./PRODUCTION-PRIVACY-DECISIONS-P01-DRAFT.md), [P00](./PROD
 
 **Inventar-Lücke:** Das vorhandene `m5-data-inventory.json` bezeichnet sich selbst als `current-materialized-v0.5`, zählt **64 Tabellen** und enthält **26 Zeilen** mit mindestens einem `pending`/`not-activated`/`not-implemented`-Nachweis (7 ULC-App-Owner, 3 Katalog, 9 Blöcke, 3 Dokumentation, 4 Planung). Das ist **kein aktuelles v17-Vollständigkeitszertifikat**. Vor P01-/P04-Freigabe sind alle tatsächlich in aktuellen Manifestmigrationen vorhandenen Tabellen und Freitext-/Historienfelder gegen diese Entscheidungsmatrix abzugleichen; alte Inventarstände dürfen nicht still als abschließend behandelt werden.
 
+### Abgleich mit dem aktuellen Datenbankschema (Read-only, 14.11.2026)
+
+Die aktuelle `appbasis.database.json` führt **41 Migrationen**, das ältere M5-Datenschutzinventar nur **34**. Alle sieben fehlenden Migrationen gehören dem ULC-eigenen Datenowner (0009–0015); die sechs Standardmodul-Owner und Identity/Permissions bleiben migrationsseitig ident. Diese Differenz ist **noch kein vollständiger Tabellen-/Spaltenbeleg**, sie ist aber eine konkrete zu schließende Inventarlücke:
+
+- **0009:** Vereinsfunktionär als zusätzliche `membership.source_role` und Lösch-Quellrolle; Rollen-/Audit-Auswertung muss diese Identität berücksichtigen.
+- **0010:** je 160 Zeichen optionale **persönliche Anmeldenotiz** sowohl in der aktuellen `training_registration` als auch in der dauerhaften `registration_change`-Historie. Das bloße Leeren der aktuellen Notiz lässt historische Kopien unberührt.
+- **0011–0012:** bis fünf Trainingsinhaltstitel/JSON-Metadaten in `training_session` und personenbezogene Inhaltszuordnungen `training_attendance.training_content_slots`. Titel/JSON können trotz fachlichem Zweck Freitext enthalten; sie sind beim Erasure-/Export-Audit gesondert zu prüfen.
+- **0013–0014:** zwei zusätzliche Tabellen `ulc_linz_youth_content_category` und `ulc_linz_youth_group_category`. Kataloglabels sind **nicht automatisch** personenbezogen, solange Freitextnamen nicht ausgeschlossen sind.
+- **0015:** `ulc_linz_training_trainer_attendance` enthält historische `trainer_id`-Verknüpfungen, die laut Migration auch nach Gruppenwechsel erhalten bleiben. Löschung und Audit-/Retention-Frist müssen gesondert für Traineridentitäten greifen.
+
+**P01-Gate:** Das Tabellen-/Spalteninventar ist vor einem Beschluss auf **alle 41 aktuellen Manifestmigrationen** zu aktualisieren; allein die alte 64-Tabellen-Liste mit 26 offenen Einträgen ist keine sichere Grundlage für eine Erasure-Vollständigkeitsbehauptung.
+
 ## Produktive Providerbelege: noch offen
 
 Das aktuelle `privacy/m5-provider-compliance-inventory.json` führt **Cloudflare** (Worker/Hyperdrive) und **Neon PostgreSQL** (Zielregion EU/Frankfurt) auf, jeweils mit offenen App-Produktionsbelegen. **Eine angegebene Zielregion ist keine bestätigte tatsächliche Produktionsregion.** Erforderlich: Vertrags-/AVV-/Unterauftragsverarbeiter-Nachweis, Region, Verschlüsselung, genaue Snapshot-/Backup-Aufbewahrung, Restore-Fähigkeit, Zuständigkeit und geprüfte Gültigkeit.
