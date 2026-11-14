@@ -63,6 +63,26 @@ export function assertUlcNeonDatabaseUrl(value) {
   return true;
 }
 
+/**
+ * Pin the intended logical DB as well as the Neon endpoint. The default
+ * Neon `neondb` may be empty even when the ULC app DB is correctly installed
+ * next to it (as currently seen in the Preview project).
+ */
+export function assertUlcBackupSourceDatabase(value, expectedDatabaseName) {
+  assertUlcNeonDatabaseUrl(value);
+  if (
+    typeof expectedDatabaseName !== "string" ||
+    !/^[a-z][a-z0-9_]{2,62}$/.test(expectedDatabaseName)
+  ) {
+    throw new Error("ULC expected source database name is missing or invalid.");
+  }
+  const databaseName = decodeURIComponent(new URL(value).pathname.slice(1));
+  if (databaseName !== expectedDatabaseName) {
+    throw new Error("ULC source database does not match the operator-approved app DB.");
+  }
+  return true;
+}
+
 export function assertIsolatedUlcRestoreTarget(source, restore) {
   assertUlcNeonDatabaseUrl(source);
   assertUlcNeonDatabaseUrl(restore);
@@ -125,11 +145,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     } else if (command === "schema-sql") {
       process.stdout.write(ulcRequiredOwnerSchemaSql() + "\n");
     } else if (command === "source") {
-      assertUlcNeonDatabaseUrl(process.env.APPBASIS_ULC_SOURCE_DATABASE_URL);
+      assertUlcBackupSourceDatabase(
+        process.env.APPBASIS_ULC_SOURCE_DATABASE_URL,
+        process.env.APPBASIS_ULC_EXPECTED_DATABASE_NAME,
+      );
       process.stdout.write("ok\n");
     } else if (command === "key") {
       process.stdout.write(assertUlcBackupKey(process.argv[3]) + "\n");
     } else if (command === "targets") {
+      assertUlcBackupSourceDatabase(
+        process.env.APPBASIS_ULC_SOURCE_DATABASE_URL,
+        process.env.APPBASIS_ULC_EXPECTED_DATABASE_NAME,
+      );
       assertIsolatedUlcRestoreTarget(
         process.env.APPBASIS_ULC_SOURCE_DATABASE_URL,
         process.env.APPBASIS_ULC_RESTORE_DATABASE_URL,
