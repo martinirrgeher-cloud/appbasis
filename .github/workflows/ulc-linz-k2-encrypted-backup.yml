@@ -118,13 +118,15 @@ jobs:
           WORK: ${{ steps.setup.outputs.workspace }}
         run: |
           set -euo pipefail
+          ULC_REQUIRED_SCHEMA_SQL="$(node ./tooling/ulc-linz-k2-backup-plan.mjs schema-sql)"
           docker run --rm --user "$(id -u):$(id -g)" \
             --env APPBASIS_ULC_SOURCE_DATABASE_URL \
+            --env ULC_REQUIRED_SCHEMA_SQL \
             --volume "$WORK:/backup" \
             postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
             sh -ceu '
               umask 077
-              source_ok="$(psql --no-psqlrc --tuples-only --no-align --dbname="$APPBASIS_ULC_SOURCE_DATABASE_URL" --command="SELECT to_regclass('\''ulc_linz_membership'\'') IS NOT NULL AND to_regclass('\''appbasis_athlete'\'') IS NOT NULL")"
+              source_ok="$(psql --no-psqlrc --tuples-only --no-align --dbname="$APPBASIS_ULC_SOURCE_DATABASE_URL" --command="$ULC_REQUIRED_SCHEMA_SQL")"
               test "$source_ok" = "t" || { echo "ULC K2 backup target is not the installed ULC app database." >&2; exit 1; }
               pg_dump --dbname="$APPBASIS_ULC_SOURCE_DATABASE_URL" --format=custom --no-owner --no-acl --file=/backup/database.pgdump
             '
