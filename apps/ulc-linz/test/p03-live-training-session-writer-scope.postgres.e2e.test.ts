@@ -56,7 +56,7 @@ if (!DATABASE_URL) {
          VALUES ($1, $2, 'Training Group', $3)`,
         [group, org, selfRegistration ? "self_registration" : "trainer_roll_call"],
       );
-      for (const [id, firstName] of [[target, "Target"], [proxy, "Proxy"]]) {
+      for (const [id, firstName] of [[target, "Target"], [proxy, "Proxy"]] as const) {
         await db().client.unsafe(
           `INSERT INTO appbasis_athlete(id, organization_id, first_name, last_name)
            VALUES ($1, $2, $3, 'Test')`,
