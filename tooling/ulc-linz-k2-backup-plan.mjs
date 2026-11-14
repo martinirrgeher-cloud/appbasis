@@ -4,6 +4,27 @@ import { pathToFileURL } from "node:url";
 export const ULC_BACKUP_PREFIX = "appbasis/ulc-linz/pilot/db/daily/";
 export const ULC_BACKUP_APP_ID = "ulc-linz";
 
+export const ULC_REQUIRED_OWNER_TABLES = Object.freeze([
+  "user",                           // Identity
+  "appbasis_permission_principal",  // Permissions
+  "appbasis_athlete",               // Athletes
+  "appbasis_exercise_catalog_item", // Exercise catalog
+  "appbasis_training_block",        // Training blocks
+  "appbasis_training_documentation",// Training documentation
+  "appbasis_training_plan",         // Training plans
+  "ulc_linz_membership",            // ULC-owned attendance and lifecycle
+]);
+
+/**
+ * Lightweight minimum installed-schema gate for all eight declared owners.
+ * This is deliberately NOT a complete migration or restore fingerprint proof.
+ */
+export function ulcRequiredOwnerSchemaSql() {
+  return "SELECT " + ULC_REQUIRED_OWNER_TABLES.map((table) =>
+    "to_regclass('public." + table + "') IS NOT NULL"
+  ).join(" AND ");
+}
+
 export function ulcBackupPlan(now = new Date()) {
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
     throw new Error("Backup timestamp is invalid.");
@@ -101,6 +122,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       ) + "\n");
     } else if (command === "bucket") {
       process.stdout.write(assertUlcBackupBucket(process.env.APPBASIS_ULC_R2_BUCKET) + "\n");
+    } else if (command === "schema-sql") {
+      process.stdout.write(ulcRequiredOwnerSchemaSql() + "\n");
     } else if (command === "source") {
       assertUlcNeonDatabaseUrl(process.env.APPBASIS_ULC_SOURCE_DATABASE_URL);
       process.stdout.write("ok\n");
@@ -113,7 +136,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       );
       process.stdout.write("ok\n");
     } else {
-      throw new Error("Expected plan, endpoint, bucket, source, targets or key.");
+      throw new Error("Expected plan, endpoint, bucket, schema-sql, source, targets or key.");
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : "ULC backup input error.");
