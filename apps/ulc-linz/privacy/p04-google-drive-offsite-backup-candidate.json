@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "application": "ulc-linz",
   "documentType": "future-offsite-backup-candidate-not-deployment-config",
-  "intentSource": "Operator requests future database backups in 'mein google drive'; selects user-owned My Drive, not a club Shared Drive. Actual account type (consumer/Workspace) unverified.",
+  "intentSource": "Operator requests future database backups in 'mein google drive'; selects user-owned My Drive, not a club Shared Drive. Actual account type (consumer/Workspace) unverified. Dedicated private Google Drive folder was created and metadata read back on 2026-11-14; no backup files uploaded.",
   "provider": "google-drive",
   "status": "planned-not-configured",
   "approvals": {
@@ -19,10 +19,16 @@
     "productionDatabase": "unverified",
     "googleAccountType": "user-owned-my-drive-consumer-or-workspace-not-verified",
     "driveId": null,
-    "folderId": null,
+    "folderId": "1GpEzbPYeg-3KYHJUses7va8llYWpbl85",
     "credentialsConfigured": false,
     "jobConfigured": false,
-    "uploadEnabled": false
+    "uploadEnabled": false,
+    "folderSetupStatus": "empty-folder-created-and-readback-verified-via-interactive-connector",
+    "folderCreatedIn": "connected-users-my-drive-root",
+    "folderShared": false,
+    "folderVerifiedOn": "2026-11-14",
+    "interactiveConnectorAccess": true,
+    "scheduledJobOAuthAvailable": false
   },
   "provisionalSchedule": {
     "frequency": "daily",
@@ -58,7 +64,8 @@
     "accountLossAndSuccessionPlanApproved": false,
     "appFolderOnlyOAuthIntended": true,
     "privateKeyAccessibleToClubWithoutUserAccount": false,
-    "personalDriveRisk": "Recovery continuity, private account loss, sharing and data-controller access must be proven before storing club/member/minor data"
+    "personalDriveRisk": "Recovery continuity, private account loss, sharing and data-controller access must be proven before storing club/member/minor data",
+    "backupFolderCreatedAndReadbackVerified": true
   },
   "lifecycle": {
     "currentAthleteDeletionMarkerDays": 35,
@@ -93,8 +100,8 @@
     "freeze-backups-on-missing-provider-retention-or-legal-evidence"
   ],
   "blockers": [
-    "user-owned-my-drive-chosen-but-google-account-and-dedicated-folder-not-verified",
-    "no-google-oauth-or-service-account-connectivity-authorized",
+    "folder-created-on-operators-my-drive-but-account-type-and-ownership-succession-unverified",
+    "interactive-drive-connector-available-but-no-unattended-backup-job-oauth-credentials-authorized",
     "drive-retention-versions-trash-recovery-and-other-copy-horizon-not-proven",
     "no-dpa-subprocessors-cross-border-review",
     "no-restore-after-source-deletion-proof-over-eight-owners",
