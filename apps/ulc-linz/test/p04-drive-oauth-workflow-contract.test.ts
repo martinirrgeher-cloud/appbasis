@@ -27,6 +27,7 @@ describe("P04-D manual Google OAuth workflow security contract", () => {
   it("has read-only GitHub permissions and never runs a backup writer", async () => {
     const text = await workflow();
     expect(text).toContain("contents: read");
+    expect(text).toContain("name: ulc-drive-oauth-probe");
     expect(text).toContain("persist-credentials: false");
     expect(text).toContain("ULC_BACKUP_OAUTH_READONLY_APPROVED: '1'");
     expect(text).toContain("node ./apps/ulc-linz/tooling/google-drive-oauth-probe.mjs");
