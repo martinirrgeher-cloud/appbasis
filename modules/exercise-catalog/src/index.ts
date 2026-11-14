@@ -21,6 +21,7 @@ export {
 } from "./in-memory-repository";
 export {
   PostgresExerciseCatalogRepository,
+  ExerciseCatalogFavoriteDeletedError,
 } from "./postgres-repository";
 export { ExerciseCatalogService } from "./service";
 export {
@@ -47,6 +48,8 @@ export type {
   RegisterExerciseCatalogPrivateMediaInput,
 } from "./domain/catalog";
 export type {
+  ExerciseCatalogFavoriteDeletionResult,
+  ExerciseCatalogFavoriteFenceMode,
   ExerciseCatalogPostgresClient,
   ExerciseCatalogPostgresQueryClient,
   ExerciseCatalogSqlParameter,
