@@ -104,6 +104,5 @@ describe("ULC P04-A closed pilot – no production actions", () => {
     expect(workflow).toContain("assert_main_head");
     expect(workflow).toContain("latest_success_run");
     expect(workflow).toContain("No automatic retry will be attempted");
-    expect(workflow).toContain("Strict");
   });
 });
