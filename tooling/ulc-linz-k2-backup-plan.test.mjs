@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ulcBackupPlan,
+  ULC_REQUIRED_OWNER_TABLES,
+  ulcRequiredOwnerSchemaSql,
   ulcR2Endpoint,
   assertUlcBackupBucket,
   assertUlcNeonDatabaseUrl,
@@ -50,4 +52,16 @@ test("rejects noncanonical object names and other app scopes", () => {
     "appbasis/ulc-linz/pilot/db/weekly/2026-11-14.tar.aesgcm",
     "appbasis/ulc-linz/pilot/db/daily/2026-11-14.sql",
   ]) assert.throws(() => assertUlcBackupKey(name));
+});
+
+test("ULC backup and restore require all eight installed data owners", () => {
+  assert.equal(ULC_REQUIRED_OWNER_TABLES.length, 8);
+  assert.equal(new Set(ULC_REQUIRED_OWNER_TABLES).size, 8);
+  const sql = ulcRequiredOwnerSchemaSql();
+  assert.ok(sql.startsWith("SELECT "));
+  for (const table of ULC_REQUIRED_OWNER_TABLES) {
+    assert.ok(sql.includes('to_regclass(\'public."' + table + '"\') IS NOT NULL'));
+  }
+  assert.equal((sql.match(/to_regclass/g) || []).length, 8);
+  assert.ok(sql.includes('public."user"'), "reserved identity table must be quoted");
 });
