@@ -41,6 +41,31 @@ export interface ExerciseCatalogFavoriteDeletionResult {
   readonly deletedFavorites: number;
 }
 
+/** Explicit context, not verified by this module. A trusted caller must
+ * verify identity/authorization at the true source of subject ownership. */
+export interface ExerciseCatalogUsageSubjectContext {
+  readonly organizationId: string;
+  readonly principalId: string;
+  readonly usageId: string;
+  readonly verifiedBy: "identity" | "athletes";
+}
+
+export type ExerciseCatalogUsageWriteMode =
+  | "legacy-unprotected"
+  | "require-explicit-subject";
+
+export interface ExerciseCatalogPersonalDeletionResult
+  extends ExerciseCatalogFavoriteDeletionResult {
+  readonly deletedUsageEvents: number;
+}
+
+export class ExerciseCatalogUsageSubjectRequiredError extends Error {
+  constructor() {
+    super("Exercise catalog usage requires a verified subject and active deletion fence.");
+    this.name = "ExerciseCatalogUsageSubjectRequiredError";
+  }
+}
+
 export class ExerciseCatalogFavoriteDeletedError extends Error {
   constructor() {
     super("Exercise catalog favorite is blocked by a deletion marker.");
@@ -53,11 +78,13 @@ export class PostgresExerciseCatalogRepository
 {
   readonly #client: ExerciseCatalogPostgresClient;
   readonly #favoriteFenceMode: ExerciseCatalogFavoriteFenceMode;
+  readonly #usageWriteMode: ExerciseCatalogUsageWriteMode;
 
   constructor(
     client: ExerciseCatalogPostgresClient,
     options: Readonly<{
       favoriteFenceMode?: ExerciseCatalogFavoriteFenceMode;
+      usageWriteMode?: ExerciseCatalogUsageWriteMode;
     }> = {},
   ) {
     this.#client = client;
@@ -68,7 +95,23 @@ export class PostgresExerciseCatalogRepository
     ) {
       throw new Error("Exercise catalog favorite fence mode is invalid.");
     }
+    const usageMode = options.usageWriteMode ?? "legacy-unprotected";
+    if (
+      usageMode !== "legacy-unprotected" &&
+      usageMode !== "require-explicit-subject"
+    ) {
+      throw new Error("Exercise catalog usage write mode is invalid.");
+    }
+    if (
+      usageMode === "require-explicit-subject" &&
+      mode !== "require-catalog-erasure-marker"
+    ) {
+      throw new Error(
+        "Exercise catalog usage subject protection requires the favorite erasure marker fence.",
+      );
+    }
     this.#favoriteFenceMode = mode;
+    this.#usageWriteMode = usageMode;
   }
 
   async listItems(
@@ -222,6 +265,12 @@ export class PostgresExerciseCatalogRepository
     principalId: string,
     completedAt: Date,
   ): Promise<ExerciseCatalogFavoriteDeletionResult> {
+    if (this.#usageWriteMode === "require-explicit-subject") {
+      // Prevent partial erasure in an owner that also stores personal usage.
+      throw new Error(
+        "Exercise catalog protected usage requires full personal-data deletion.",
+      );
+    }
     if (this.#favoriteFenceMode !== "require-catalog-erasure-marker") {
       throw new Error("Exercise catalog deletion requires approved fenced mode.");
     }
@@ -305,31 +354,136 @@ export class PostgresExerciseCatalogRepository
   }
 
   async recordUsage(event: ExerciseCatalogUsageEvent): Promise<void> {
-    const rows = await this.#client.unsafe(
-      `INSERT INTO appbasis_exercise_catalog_usage (
-         organization_id, id, exercise_id, occurred_at, source_kind, source_ref, note
-       )
-       SELECT $1, $2, $3, $4::timestamptz, $5, $6, $7
-       WHERE EXISTS (
-         SELECT 1
-         FROM appbasis_exercise_catalog_item
-         WHERE organization_id = $1
-           AND id = $3
-       )
-       RETURNING id`,
-      [
-        event.organizationId,
-        event.id,
-        event.exerciseId,
-        event.occurredAt,
-        event.sourceKind,
-        event.sourceRef,
-        event.note,
-      ],
-    );
-    if (rows.length !== 1) {
-      throw new Error("Exercise catalog usage references an unknown item.");
+    if (this.#usageWriteMode === "require-explicit-subject") {
+      // A sourceRef is opaque and can refer to a plan/session, not a person.
+      // A caller MUST NOT bypass explicit ownership by using this legacy API.
+      throw new ExerciseCatalogUsageSubjectRequiredError();
     }
+    await insertCatalogUsage(this.#client, event);
+  }
+
+  /**
+   * Candidate guarded writer: callers MUST verify the supplied subject at
+   * the canonical owner. The catalog DOES NOT authorize a claimed identity
+   * on its own. This records explicit ownership for NEW usage only; it does
+   * not infer subject identity from sourceRef, note or legacy data.
+   */
+  async recordUsageForVerifiedSubject(
+    event: ExerciseCatalogUsageEvent,
+    subject: ExerciseCatalogUsageSubjectContext,
+  ): Promise<void> {
+    if (this.#usageWriteMode !== "require-explicit-subject") {
+      throw new ExerciseCatalogUsageSubjectRequiredError();
+    }
+    if (
+      !event ||
+      typeof event !== "object" ||
+      !subject ||
+      typeof subject !== "object" ||
+      subject.organizationId !== event.organizationId ||
+      subject.usageId !== event.id ||
+      !isValidFavoriteIdentity(subject.organizationId) ||
+      !isValidFavoriteIdentity(subject.principalId) ||
+      (subject.verifiedBy !== "identity" && subject.verifiedBy !== "athletes")
+    ) {
+      throw new ExerciseCatalogUsageSubjectRequiredError();
+    }
+    await this.#client.begin(async (tx) => {
+      // Same transaction lock as favorite erasure, before marker read/write.
+      await lockFavoritePrincipal(tx, subject.organizationId, subject.principalId);
+      const marker = await tx.unsafe(
+        `SELECT 1 AS present
+         FROM appbasis_exercise_catalog_favorite_deletion
+         WHERE organization_id = $1 AND principal_id = $2`,
+        [subject.organizationId, subject.principalId],
+      );
+      if (marker.length !== 0) {
+        throw new ExerciseCatalogFavoriteDeletedError();
+      }
+      await insertCatalogUsage(tx, event);
+      const linked = await tx.unsafe(
+        `INSERT INTO appbasis_exercise_catalog_usage_subject (
+           organization_id, usage_id, principal_id, verified_by
+         ) VALUES ($1, $2, $3, $4)
+         RETURNING usage_id`,
+        [
+          subject.organizationId,
+          subject.usageId,
+          subject.principalId,
+          subject.verifiedBy,
+        ],
+      );
+      if (
+        linked.length !== 1 ||
+        linked[0]?.usage_id !== subject.usageId
+      ) {
+        throw new Error("Exercise catalog usage subject link is invalid.");
+      }
+    });
+  }
+
+  /**
+   * Candidate full catalog-owner erasure. Not a cross-owner authorization:
+   * the caller must hold the independent, current, lawful deletion decision.
+   * Atomic marker+favorites+new verified usage deletion, no heuristics for
+   * ambiguous historical sourceRef or note text.
+   */
+  async markPrincipalDeletedAndDeletePersonalCatalogData(
+    organizationId: string,
+    principalId: string,
+    completedAt: Date,
+  ): Promise<ExerciseCatalogPersonalDeletionResult> {
+    if (
+      this.#favoriteFenceMode !== "require-catalog-erasure-marker" ||
+      this.#usageWriteMode !== "require-explicit-subject"
+    ) {
+      throw new Error(
+        "Exercise catalog personal erasure requires both protected modes.",
+      );
+    }
+    if (
+      !isValidFavoriteIdentity(organizationId) ||
+      !isValidFavoriteIdentity(principalId) ||
+      !(completedAt instanceof Date) ||
+      !Number.isFinite(completedAt.getTime())
+    ) {
+      throw new Error("Exercise catalog personal erasure inputs are invalid.");
+    }
+    return this.#client.begin(async (tx) => {
+      await lockFavoritePrincipal(tx, organizationId, principalId);
+      const marker = await tx.unsafe(
+        `INSERT INTO appbasis_exercise_catalog_favorite_deletion
+           (organization_id, principal_id, completed_at, purge_after)
+         VALUES ($1, $2, $3::timestamptz, $3::timestamptz + interval '840 hours')
+         ON CONFLICT (organization_id, principal_id) DO NOTHING
+         RETURNING principal_id`,
+        [organizationId, principalId, completedAt.toISOString()],
+      );
+      if (marker.length > 1) {
+        throw new Error("Exercise catalog personal erasure marker is invalid.");
+      }
+      const favorites = await tx.unsafe(
+        `DELETE FROM appbasis_exercise_catalog_favorite
+         WHERE organization_id = $1 AND principal_id = $2
+         RETURNING exercise_id`,
+        [organizationId, principalId],
+      );
+      const usage = await tx.unsafe(
+        `DELETE FROM appbasis_exercise_catalog_usage AS u
+         USING appbasis_exercise_catalog_usage_subject AS s
+         WHERE u.organization_id = s.organization_id
+           AND u.id = s.usage_id
+           AND s.organization_id = $1 AND s.principal_id = $2
+         RETURNING u.id`,
+        [organizationId, principalId],
+      );
+      // ON DELETE CASCADE removes the verified subject link with the usage.
+      return Object.freeze({
+        markerInserted: marker.length === 1,
+        deletedFavorites: favorites.length,
+        deletedUsageEvents: usage.length,
+      });
+    });
   }
 
   async listPrivateMedia(
@@ -423,6 +577,35 @@ export class PostgresExerciseCatalogRepository
       throw new Error("Exercise catalog private media delete completion returned multiple rows.");
     }
     return rows.length === 1;
+  }
+}
+
+async function insertCatalogUsage(
+  client: ExerciseCatalogPostgresQueryClient,
+  event: ExerciseCatalogUsageEvent,
+): Promise<void> {
+  const rows = await client.unsafe(
+    `INSERT INTO appbasis_exercise_catalog_usage (
+       organization_id, id, exercise_id, occurred_at, source_kind, source_ref, note
+     )
+     SELECT $1, $2, $3, $4::timestamptz, $5, $6, $7
+     WHERE EXISTS (
+       SELECT 1 FROM appbasis_exercise_catalog_item
+       WHERE organization_id = $1 AND id = $3
+     )
+     RETURNING id`,
+    [
+      event.organizationId,
+      event.id,
+      event.exerciseId,
+      event.occurredAt,
+      event.sourceKind,
+      event.sourceRef,
+      event.note,
+    ],
+  );
+  if (rows.length !== 1) {
+    throw new Error("Exercise catalog usage references an unknown item.");
   }
 }
 
