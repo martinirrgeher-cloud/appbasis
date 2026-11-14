@@ -168,11 +168,12 @@ jobs:
           APPBASIS_ULC_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_RESTORE_DATABASE_URL }}
         run: |
           set -euo pipefail
+          ULC_REQUIRED_SCHEMA_SQL="$(node ./tooling/ulc-linz-k2-backup-plan.mjs schema-sql)"
           STATUS="$(docker run --rm --env APPBASIS_ULC_RESTORE_DATABASE_URL \
-            --env "ULC_RESTORE_SQL=SELECT (to_regclass('ulc_linz_membership') IS NOT NULL AND to_regclass('appbasis_athlete') IS NOT NULL)" \
+            --env ULC_REQUIRED_SCHEMA_SQL \
             postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
-            sh -ceu 'psql --no-psqlrc --tuples-only --no-align --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" --command="$ULC_RESTORE_SQL"')"
-          test "$STATUS" = "t" || { echo "ULC K2 restore did not recreate canonical app tables." >&2; exit 1; }
+            sh -ceu 'psql --no-psqlrc --tuples-only --no-align --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" --command="$ULC_REQUIRED_SCHEMA_SQL"')"
+          test "$STATUS" = "t" || { echo "ULC K2 restore is missing one or more of the eight canonical app owners." >&2; exit 1; }
           echo "ULC K2 encrypted backup restored into separate quarantine; no promotion or user access was enabled." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Delete confidential restore working files
