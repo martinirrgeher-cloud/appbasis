@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   ulcBackupPlan,
@@ -76,4 +77,20 @@ test("source database must match the exact approved logical ULC database", () =>
   assert.throws(() => assertUlcBackupSourceDatabase(SOURCE, "appbasis_ulc_linz_preview"), /does not match/);
   assert.throws(() => assertUlcBackupSourceDatabase(preview, ""), /missing or invalid/);
   assert.throws(() => assertUlcBackupSourceDatabase(preview, "../ulc"), /missing or invalid/);
+});
+
+test("K2 manual preflight cannot enable scheduled backups or write an R2 object", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/ulc-linz-k2-encrypted-backup.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(workflow, /if \[\[ "\$GITHUB_EVENT_NAME" == "schedule" \]\]/);
+  assert.match(workflow, /if \[\[ "\$ENABLED" != "1" \]\]/);
+  assert.match(workflow, /elif \[\[ "\$GITHUB_EVENT_NAME" == "workflow_dispatch" \]\]/);
+  assert.match(workflow, /if \[\[ "\$MANUAL_APPLY" == "true" \]\]/);
+  assert.match(workflow, /echo "run=preflight" >> "\$GITHUB_OUTPUT"/);
+  assert.match(workflow, /if: steps\.gate\.outputs\.run == 'preflight'/);
+  assert.match(workflow, /name: Store immutable ciphertext and verify provider metadata\n\s+if: steps\.gate\.outputs\.run == 'upload'/);
+  assert.match(workflow, /if: always\(\) && steps\.setup\.outputs\.workspace != ''/);
+  assert.doesNotMatch(workflow, /if: steps\.gate\.outputs\.run == '1'/);
 });
