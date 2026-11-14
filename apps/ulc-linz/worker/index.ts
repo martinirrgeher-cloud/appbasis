@@ -60,6 +60,7 @@ import {
   resolveUlcExerciseCatalogObjectStore,
   ULC_EXERCISE_CATALOG_PRIVATE_VIDEO_MAX_BYTES,
 } from "./exercise-catalog-private-media";
+import { deleteUlcPrivateExerciseMediaWithConfirmation } from "./exercise-catalog-media-delete-confirmed";
 import {
   UlcExerciseCatalogConflictError,
   UlcExerciseCatalogNotFoundError,
@@ -4132,24 +4133,39 @@ async function deleteExerciseCatalogPrivateMedia(
   const store = runtime.exerciseCatalogMediaStore;
   if (store === null) return exerciseCatalogPrivateMediaUnavailable();
 
-  const media = await runtime.exerciseCatalog.requestPrivateMediaDeletion(
+  const result = await deleteUlcPrivateExerciseMediaWithConfirmation({
     organizationId,
     exerciseId,
     mediaId,
-  );
-  if (media === undefined) return exerciseCatalogNotFound();
+    catalog: runtime.exerciseCatalog,
+    store,
+  });
+  if (result.status === "not-found") return exerciseCatalogNotFound();
 
-  // The database request hides the media before any object-store mutation.
-  // R2 delete is idempotent, so a failed final DB delete can be retried safely:
-  // the next DELETE request receives the same pending metadata and deletes the
-  // same storage key again before attempting completion.
-  await store.delete(media.storageKey);
-  await runtime.exerciseCatalog.completePrivateMediaDeletion(
-    organizationId,
-    exerciseId,
-    mediaId,
+  if (result.status !== "deleted") {
+    // The media stays marked pending in SQL and hidden from normal reads;
+    // the same DELETE can safely retry after independent provider proof.
+    // Do not return HTTP 200 until provider absence and SQL finalize agree.
+    return Response.json(
+      {
+        error: {
+          code: "EXERCISE_CATALOG_MEDIA_DELETE_UNCONFIRMED",
+          message: "Die vollständige Medienlöschung konnte noch nicht bestätigt werden.",
+        },
+      },
+      {
+        status: 503,
+        headers: {
+          "cache-control": "private, no-store",
+          "retry-after": "60",
+        },
+      },
+    );
+  }
+  return Response.json(
+    { deleted: true },
+    { headers: { "cache-control": "private, no-store" } },
   );
-  return Response.json({ deleted: true });
 }
 
 class PrivateExerciseVideoRequestError extends Error {
