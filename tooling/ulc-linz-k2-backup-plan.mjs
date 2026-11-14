@@ -21,7 +21,7 @@ export const ULC_REQUIRED_OWNER_TABLES = Object.freeze([
  */
 export function ulcRequiredOwnerSchemaSql() {
   return "SELECT " + ULC_REQUIRED_OWNER_TABLES.map((table) =>
-    "to_regclass('public." + table + "') IS NOT NULL"
+    "to_regclass('public.\"" + table + "\"') IS NOT NULL"
   ).join(" AND ");
 }
 
