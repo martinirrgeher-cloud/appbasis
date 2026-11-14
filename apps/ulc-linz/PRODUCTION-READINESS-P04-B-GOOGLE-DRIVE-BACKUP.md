@@ -68,6 +68,12 @@ Die Vorbereitung enthält jetzt einen **echten kryptografischen Testlauf ausschl
 - Das Rehearsal akzeptiert **keine** Eingabedaten/Produktionsdatenbank/Dateipfade/Google-Zugangsdaten. Der Adapter muss explizit `synthetic-local-memory-only` sein. Es ist **nicht** an produktive Worker oder Datenbankexports angebunden. Erst die späteren Integrations- und Betriebsnachweise dürfen reale Verschlüsselung, Drive-API, Restore und Retention belegen.
 - `backup/restore-admission.ts` und `test/p04-drive-restore-admission.test.ts` ergänzen einen **fail-closed** Entwurf für die spätere Restore-Prüfung: nur streng validierte Zeitstempel, die bisherige 35-Tage-Quellgrenze, verifizierte Entschlüsselung und tatsächliche Quarantäne, unabhängige neuere Löschentscheidungen sowie **alle acht** eindeutig identifizierten und geprüften Datenowner. **Auch der vollständigste Testbeleg ergibt nur `quarantine-manual-review-only`, niemals `productionReleaseAllowed=true`.** Ein beliebiger JSON-Bericht ersetzt keine signierte, tatsächlich verifizierte Löschautorität und keine getrennte Betreiberentscheidung.
 
+## P04-D – eigenständiger OAuth-Zugang nur zur Lesebestätigung vorbereitet
+
+Die separate [P04-D-Einrichtungsanleitung](./PRODUCTION-READINESS-P04-D-GOOGLE-OAUTH-SETUP.md) enthält jetzt einen konkreten **Google-Cloud-OAuth-Setup-Ablauf** mit `drive.file`, einer nur manuell auslösbaren GitHub-Actions-Prüfung, drei ausschließlich als Actions Secrets einzutragenden Zugangsdaten und festen Schutzbedingungen. `backup/google-drive-oauth-readonly.ts` testet den Zugriff der **separaten OAuth-Anwendung** auf exakt den bereits angelegten, nicht geteilten ULC-Ordner. **Weder** der ChatGPT-Connector **noch** die neue Probe erhalten daraus automatisch einen dauerhaften Job-Zugang. Beim Fehlbefund `drive-folder-inaccessible-to-this-app` ist eine gezielte Picker-Freigabe unter dem neuen OAuth-Client oder ein durch ihn neu angelegter Ordner nötig – nicht ein Full-Drive-Scope.
+
+**Die Implementierung ist ein Draft, es existieren weder Google-Cloud-Client noch Github Actions Secrets.** Der Workflow wurde nicht ausgeführt; weiterhin keine Datei-Uploads/Backups/DB-Exporte.
+
 ## 5. Was heute ausdrücklich NICHT geschieht
 
 - **Nur ein leerer Google-Drive-Ordner wurde über die bereits verbundene interaktive Drive-App angelegt und geprüft.** Kein Upload, kein Download von Vereinsdaten, keine produktive OAuth-Verbindung für einen autonomen Backupjob, keine Passwörter/Schlüssel erzeugt.
