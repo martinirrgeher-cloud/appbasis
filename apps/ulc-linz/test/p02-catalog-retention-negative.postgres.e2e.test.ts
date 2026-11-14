@@ -270,7 +270,7 @@ if (!DATABASE_URL) {
         `SELECT id FROM appbasis_exercise_catalog_private_media
          WHERE organization_id = $1 AND id = 'p02-provider-check'`,
         [ORG],
-      )).toEqual([]);
+      )).toHaveLength(0);
       expect(objects.size).toBe(0);
       await expect(call()).resolves.toMatchObject({
         status: "metadata-not-found",
