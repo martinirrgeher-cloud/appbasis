@@ -1,0 +1,196 @@
+name: ULC Linz K2 – verschlüsseltes Datenbankbackup (Entwurf)
+
+on:
+  schedule:
+    - cron: "19 3 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Explizit verschlüsseltes ULC-Backup in dediziertes EU-R2 schreiben"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ulc-linz-k2-pilot-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: ULC-Datenbank separat und verschlüsselt sichern
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: ulc-linz-k2-backup
+    env:
+      ENABLED: ${{ vars.APPBASIS_ULC_K2_BACKUP_ENABLED }}
+      BUCKET: ${{ vars.APPBASIS_ULC_R2_BUCKET }}
+      APPBASIS_ULC_R2_BUCKET: ${{ vars.APPBASIS_ULC_R2_BUCKET }}
+      APPBASIS_ULC_R2_JURISDICTION: ${{ vars.APPBASIS_ULC_R2_JURISDICTION }}
+
+    steps:
+      - name: Fail closed unless separately activated
+        id: gate
+        shell: bash
+        env:
+          MANUAL_APPLY: ${{ inputs.apply && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" && "$ENABLED" != "1" ]]; then
+            echo "ULC K2 backup has not been approved or activated; NO backup created." >> "$GITHUB_STEP_SUMMARY"
+            echo "run=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$ENABLED" != "1" || ( "$GITHUB_EVENT_NAME" != "schedule" && "$MANUAL_APPLY" != "true" ) ]]; then
+            echo "ULC K2 backup write requires explicit operator activation and manual apply=true." >&2
+            exit 1
+          fi
+          echo "run=1" >> "$GITHUB_OUTPUT"
+
+      - name: Check out reviewed code
+        if: steps.gate.outputs.run == '1'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        if: steps.gate.outputs.run == '1'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+
+      - name: Check app-scoped backup policy
+        if: steps.gate.outputs.run == '1'
+        run: |
+          set -euo pipefail
+          node --test ./tooling/ulc-linz-k2-backup-plan.test.mjs
+          command -v docker
+          command -v aws
+          command -v jq
+          command -v sha256sum
+
+      - name: Validate ULC source and EU object-store destination
+        if: steps.gate.outputs.run == '1'
+        id: settings
+        shell: bash
+        env:
+          APPBASIS_ULC_SOURCE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_SOURCE_DATABASE_URL }}
+          APPBASIS_ULC_BACKUP_ENCRYPTION_KEY: ${{ secrets.APPBASIS_ULC_BACKUP_ENCRYPTION_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_ULC_R2_BACKUP_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_ULC_R2_BACKUP_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+        run: |
+          set -euo pipefail
+          for name in APPBASIS_ULC_SOURCE_DATABASE_URL APPBASIS_ULC_BACKUP_ENCRYPTION_KEY CLOUDFLARE_ACCOUNT_ID AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            test -n "${!name:-}" || { echo "ULC K2 protected configuration missing: $name" >&2; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+          node ./tooling/ulc-linz-k2-backup-plan.mjs source >/dev/null
+          node ./tooling/ulc-linz-k2-backup-plan.mjs bucket >/dev/null
+          ENDPOINT="$(node ./tooling/ulc-linz-k2-backup-plan.mjs endpoint)"
+          node --input-type=module -e 'import {parseM4BackupEncryptionKey} from "./tooling/m4-backup-crypto.mjs";parseM4BackupEncryptionKey(process.env.APPBASIS_ULC_BACKUP_ENCRYPTION_KEY)'
+          aws s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" >/dev/null
+          echo "endpoint=$ENDPOINT" >> "$GITHUB_OUTPUT"
+
+      - name: Create secure temporary workspace and fixed daily object key
+        if: steps.gate.outputs.run == '1'
+        id: setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          WORK="$RUNNER_TEMP/ulc-k2-backup-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -m 700 "$WORK"
+          PLAN="$(node ./tooling/ulc-linz-k2-backup-plan.mjs plan)"
+          echo "workspace=$WORK" >> "$GITHUB_OUTPUT"
+          echo "key=$(jq -r .key <<<"$PLAN")" >> "$GITHUB_OUTPUT"
+          echo "created_at=$(jq -r .createdAt <<<"$PLAN")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify target is ULC and capture consistent PostgreSQL custom dump
+        if: steps.gate.outputs.run == '1'
+        shell: bash
+        env:
+          APPBASIS_ULC_SOURCE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_SOURCE_DATABASE_URL }}
+          WORK: ${{ steps.setup.outputs.workspace }}
+        run: |
+          set -euo pipefail
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --env APPBASIS_ULC_SOURCE_DATABASE_URL \
+            --volume "$WORK:/backup" \
+            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
+            sh -ceu '
+              umask 077
+              source_ok="$(psql --no-psqlrc --tuples-only --no-align --dbname="$APPBASIS_ULC_SOURCE_DATABASE_URL" --command="SELECT to_regclass('\''ulc_linz_membership'\'') IS NOT NULL AND to_regclass('\''appbasis_athlete'\'') IS NOT NULL")"
+              test "$source_ok" = "t" || { echo "ULC K2 backup target is not the installed ULC app database." >&2; exit 1; }
+              pg_dump --dbname="$APPBASIS_ULC_SOURCE_DATABASE_URL" --format=custom --no-owner --no-acl --file=/backup/database.pgdump
+            '
+          test -s "$WORK/database.pgdump"
+
+      - name: Create bounded manifest, encrypt archive, remove plaintext
+        if: steps.gate.outputs.run == '1'
+        shell: bash
+        env:
+          WORK: ${{ steps.setup.outputs.workspace }}
+          CREATED_AT: ${{ steps.setup.outputs.created_at }}
+          BACKUP_KEY: ${{ steps.setup.outputs.key }}
+          APPBASIS_ULC_BACKUP_ENCRYPTION_KEY: ${{ secrets.APPBASIS_ULC_BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          jq -n --arg sha "$GITHUB_SHA" --arg date "$CREATED_AT" --arg key "$BACKUP_KEY" \
+            '{schemaVersion:1,appId:"ulc-linz",backupKind:"daily",createdAt:$date,sourceGitSha:$sha,objectKey:$key,dumpFile:"database.pgdump"}' > "$WORK/manifest.json"
+          tar -C "$WORK" -cf "$WORK/backup.tar" database.pgdump manifest.json
+          node --input-type=module <<'NODE'
+          import { join } from "node:path";
+          import { encryptM4BackupFile } from "./tooling/m4-backup-crypto.mjs";
+          await encryptM4BackupFile({
+            inputPath: join(process.env.WORK, "backup.tar"),
+            outputPath: join(process.env.WORK, "backup.tar.aesgcm"),
+            keyHex: process.env.APPBASIS_ULC_BACKUP_ENCRYPTION_KEY,
+          });
+          NODE
+          rm -f -- "$WORK/database.pgdump" "$WORK/manifest.json" "$WORK/backup.tar"
+          test -s "$WORK/backup.tar.aesgcm"
+
+      - name: Store immutable ciphertext and verify provider metadata
+        if: steps.gate.outputs.run == '1'
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_ULC_R2_BACKUP_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_ULC_R2_BACKUP_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          ENDPOINT: ${{ steps.settings.outputs.endpoint }}
+          WORK: ${{ steps.setup.outputs.workspace }}
+          KEY: ${{ steps.setup.outputs.key }}
+        run: |
+          set -euo pipefail
+          test -s "$WORK/backup.tar.aesgcm"
+          HASH="$(sha256sum "$WORK/backup.tar.aesgcm" | awk '{print $1}')"
+          SIZE="$(stat -c %s "$WORK/backup.tar.aesgcm")"
+          # Never overwrite or reconcile an existing older backup with new bytes.
+          aws s3api put-object --bucket "$BUCKET" --key "$KEY" \
+            --body "$WORK/backup.tar.aesgcm" \
+            --content-type application/octet-stream \
+            --metadata "appbasisapp=ulc-linz,sha256=$HASH,sourcecommit=$GITHUB_SHA" \
+            --if-none-match '*' --endpoint-url "$ENDPOINT" >/dev/null
+          aws s3api head-object --bucket "$BUCKET" --key "$KEY" \
+            --endpoint-url "$ENDPOINT" --output json > "$WORK/head.json"
+          jq -e --arg sha "$HASH" --arg size "$SIZE" --arg commit "$GITHUB_SHA" \
+            '(.ContentLength|tostring)==$size and .Metadata.sha256==$sha and .Metadata.appbasisapp=="ulc-linz" and .Metadata.sourcecommit==$commit' \
+            "$WORK/head.json" >/dev/null
+          echo "ULC K2 encrypted database backup uploaded to isolated EU-R2 and metadata confirmed. Restore rehearsal and retention still required before real-data pilot." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary backup material
+        if: always() && steps.setup.outputs.workspace != ''
+        shell: bash
+        env:
+          WORK: ${{ steps.setup.outputs.workspace }}
+        run: |
+          set -euo pipefail
+          if [[ "$WORK" == "$RUNNER_TEMP"/ulc-k2-backup-* ]]; then
+            rm -rf -- "$WORK"
+          fi
