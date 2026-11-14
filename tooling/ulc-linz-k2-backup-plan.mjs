@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const ULC_BACKUP_PREFIX = "appbasis/ulc-linz/pilot/db/daily/";
+export const ULC_BACKUP_PREFIX = "appbasis/ulc-linz/pilot/db/";
 export const ULC_BACKUP_APP_ID = "ulc-linz";
 
 export const ULC_REQUIRED_OWNER_TABLES = Object.freeze([
@@ -25,10 +25,11 @@ export function ulcRequiredOwnerSchemaSql() {
   ).join(" AND ");
 }
 
-export function ulcBackupPlan(now = new Date()) {
+export function ulcBackupPlan(now = new Date(), databaseName) {
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
     throw new Error("Backup timestamp is invalid.");
   }
+  const sourceDatabase = assertUlcDatabaseName(databaseName);
   const createdAt = now.toISOString();
   const date = createdAt.slice(0, 10);
   return Object.freeze({
@@ -37,7 +38,8 @@ export function ulcBackupPlan(now = new Date()) {
     kind: "daily",
     createdAt,
     date,
-    key: ULC_BACKUP_PREFIX + date + ".tar.aesgcm",
+    databaseName: sourceDatabase,
+    key: ULC_BACKUP_PREFIX + sourceDatabase + "/daily/" + date + ".tar.aesgcm",
   });
 }
 
@@ -68,14 +70,16 @@ export function assertUlcNeonDatabaseUrl(value) {
  * Neon `neondb` may be empty even when the ULC app DB is correctly installed
  * next to it (as currently seen in the Preview project).
  */
-export function assertUlcBackupSourceDatabase(value, expectedDatabaseName) {
-  assertUlcNeonDatabaseUrl(value);
-  if (
-    typeof expectedDatabaseName !== "string" ||
-    !/^[a-z][a-z0-9_]{2,62}$/.test(expectedDatabaseName)
-  ) {
+export function assertUlcDatabaseName(value) {
+  if (typeof value !== "string" || !/^[a-z][a-z0-9_]{2,62}$/.test(value)) {
     throw new Error("ULC expected source database name is missing or invalid.");
   }
+  return value;
+}
+
+export function assertUlcBackupSourceDatabase(value, expectedDatabaseName) {
+  assertUlcNeonDatabaseUrl(value);
+  assertUlcDatabaseName(expectedDatabaseName);
   const databaseName = decodeURIComponent(new URL(value).pathname.slice(1));
   if (databaseName !== expectedDatabaseName) {
     throw new Error("ULC source database does not match the operator-approved app DB.");
@@ -118,12 +122,14 @@ export function assertUlcBackupBucket(value) {
   return value;
 }
 
-export function assertUlcBackupKey(value) {
-  if (typeof value !== "string" ||
-      !/^appbasis\/ulc-linz\/pilot\/db\/daily\/\d{4}-\d{2}-\d{2}\.tar\.aesgcm$/.test(value)) {
-    throw new Error("ULC backup object key is not in the isolated app prefix.");
+export function assertUlcBackupKey(value, expectedDatabaseName) {
+  const databaseName = assertUlcDatabaseName(expectedDatabaseName);
+  const prefix = ULC_BACKUP_PREFIX + databaseName + "/daily/";
+  if (typeof value !== "string" || !value.startsWith(prefix) ||
+      !/^\d{4}-\d{2}-\d{2}\.tar\.aesgcm$/.test(value.slice(prefix.length))) {
+    throw new Error("ULC backup object key is not in the approved database scope.");
   }
-  const day = value.slice(ULC_BACKUP_PREFIX.length, ULC_BACKUP_PREFIX.length + 10);
+  const day = value.slice(prefix.length, prefix.length + 10);
   if (new Date(day + "T00:00:00.000Z").toISOString().slice(0, 10) !== day) {
     throw new Error("ULC backup object day is invalid.");
   }
@@ -134,7 +140,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   try {
     const command = process.argv[2];
     if (command === "plan") {
-      process.stdout.write(JSON.stringify(ulcBackupPlan()) + "\n");
+      process.stdout.write(JSON.stringify(ulcBackupPlan(new Date(), process.env.APPBASIS_ULC_EXPECTED_DATABASE_NAME)) + "\n");
     } else if (command === "endpoint") {
       process.stdout.write(ulcR2Endpoint(
         process.env.CLOUDFLARE_ACCOUNT_ID,
@@ -151,7 +157,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       );
       process.stdout.write("ok\n");
     } else if (command === "key") {
-      process.stdout.write(assertUlcBackupKey(process.argv[3]) + "\n");
+      process.stdout.write(assertUlcBackupKey(process.argv[3], process.env.APPBASIS_ULC_EXPECTED_DATABASE_NAME) + "\n");
     } else if (command === "targets") {
       assertUlcBackupSourceDatabase(
         process.env.APPBASIS_ULC_SOURCE_DATABASE_URL,
