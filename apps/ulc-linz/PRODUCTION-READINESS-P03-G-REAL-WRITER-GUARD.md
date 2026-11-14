@@ -31,7 +31,9 @@ Die echten Repository-Tests prüfen:
 7. Fehlende DB-Transaction-API: fail-closed, kein Teilwrite.
 8. 2 echte Connections: kanonischer Athleten-`FOR UPDATE`-Delete gewinnt → nachfolgender Guarded Writer blockiert.
 9. 2 echte Connections: Guarded Writer hält `FOR SHARE` zuerst, der Delete wartet; Test-only Koordinator löscht anschließend die Attendance und verhindert Wiederanlage.
-10. Gesonderter Nachweis: ganze SQL-/Unit-/Modul-CI (Quality und PostgreSQL-E2E) ohne Regression.
+10. Kanonische Löschmarker-Tabelle im isolierten PostgreSQL vorübergehend entfernt: der echte Writer bricht ohne Session-, Attendance- oder Registrierungsteilwrite ab.
+
+Zusätzlich muss die gesamte SQL-/Unit-/Modul-CI (Quality Gate und PostgreSQL-E2E) ohne Regression bestehen.
 
 ## Kritische Grenzen und **BLOCKED** für Produktivstart
 
