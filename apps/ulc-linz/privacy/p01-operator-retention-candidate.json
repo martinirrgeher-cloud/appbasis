@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "application": "ulc-linz",
-  "documentType": "operator-decision-candidate-not-policy",
-  "status": "NOT_APPROVED",
+  "documentType": "operator-confirmed-target-guideline-not-runtime-policy",
+  "status": "FACHLICHE_ZIELVORGABE_BESTAETIGT",
   "runtimeActive": false,
   "legalApproval": false,
   "baseline": {
@@ -249,7 +249,7 @@
     }
   ],
   "additionalEvidenceRequired": [
-    "Named ULC Linz legal entity and function signing decision (do not infer from chat identity)",
+    "Document the signing ULC Linz legal entity/function and retain the original authorization record (current chat confirms only self-declared authority)",
     "Per-purpose lawful basis and age-specific information for minors, parents, trainers, and club functionaries",
     "Need and proportionality for two-year training-specific personal history; separate grants/payroll/bookkeeping retention, if applicable",
     "Actual Cloudflare worker-to-Neon production binding, DPA/AVV, sub-processors, encryption and access",
@@ -258,7 +258,28 @@
     "Private pilot population, access rights, documented security response/rollback and operators",
     "Independent provider/legal check where appropriate"
   ],
-  "approval": null,
+  "approval": {
+    "category": "purpose-and-retention-target-guideline-only",
+    "decidedOn": "2026-11-14",
+    "source": "explicit-chat-confirmation-to-listed-purpose-dependent-retention-rules",
+    "authorization": "user-self-declared-entitled-to-approve-for-ULC-Linz",
+    "exactScope": [
+      "conditional-12-months-after-exit-for-people-and-roles",
+      "up-to-24-months-from-training-for-personal-attendance-registration-and-trainer-history",
+      "90-day-review-delete-personal-notes-unless-further-justified",
+      "up-to-12-months-personal-usage-if-statistics-purpose-justified",
+      "keep-existing-35-days-source-deletion-markers-and-deny-after-expiry",
+      "block-new-person-identifiable-private-media-of-minors-pending-provider-and-lawful-basis-proof",
+      "D1-D4-principles-no-unverified-restore-or-new-durable-deletion-authority"
+    ],
+    "excludes": [
+      "no-independent-legal-basis-audit-or-DPA-verification",
+      "no-approval-of-specific-longer-post-expiry-ledger-or-provider-backup-duration",
+      "no-approval-of-production-retention-enforcement-deployment-database-migrations-or-erasure",
+      "no-GitHub-PR-merge-authorization-implied-by-data-policy-approval",
+      "no-confirmation-of-approver-full-name-office-or-signed-record"
+    ]
+  },
   "reviewedAt": "2026-11-14",
   "sources": [
     "apps/ulc-linz/privacy/m5-data-inventory.json",
