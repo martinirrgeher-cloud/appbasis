@@ -109,7 +109,9 @@ if (!DATABASE_URL) {
         const sql = await readFile(
           new URL("../../../" + migration, import.meta.url), "utf8",
         );
-        await db().client.unsafe(sql);
+        for (const statement of sql.split("--> statement-breakpoint")) {
+          if (statement.trim() !== "") await db().client.unsafe(statement);
+        }
       }
     });
 
