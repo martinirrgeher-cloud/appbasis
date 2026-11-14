@@ -12,7 +12,12 @@ import {
 } from "../worker/exercise-catalog-exchange";
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
-import { UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
+import {
+  UlcTrainingSessionConflictError,
+  UlcTrainingSubjectWriteBlockedError,
+} from "../worker/training-session-postgres";
+import { UlcTrainingActorWriteBlockedError } from "../worker/training-session-write-actor";
+import { UlcTrainingScopeWriteBlockedError } from "../worker/training-session-write-scope";
 import { TrainingBlockConflictError } from "@appbasis/training-blocks";
 import { TrainingPlanConflictError } from "@appbasis/training-plans";
 import {
@@ -6913,4 +6918,53 @@ describe("U14 and Kindertraining detailed attendance API scopes", () => {
       module: { moduleId: "kindertraining" },
     });
   });
+});
+
+describe("pilot attendance save: guarded HTTP responses", () => {
+  const cases = [
+    { name: "U12 denied actor", route: "u12", status: 403,
+      error: new UlcTrainingActorWriteBlockedError(), code: "TRAINING_WRITE_ACCESS_CHANGED" },
+    { name: "Kindertraining changed group", route: "kindertraining", status: 409,
+      error: new UlcTrainingScopeWriteBlockedError(), code: "TRAINING_WRITE_SCOPE_CHANGED" },
+    { name: "U12 deleted athlete", route: "u12", status: 409,
+      error: new UlcTrainingSubjectWriteBlockedError(), code: "TRAINING_WRITE_SCOPE_CHANGED" },
+  ] as const;
+
+  for (const testCase of cases) {
+    it(testCase.name + " is an actionable non-500 and never leaks DB details", async () => {
+      const worker = createGeneratedWorker(() => {
+        const base = runtime();
+        return {
+          ...base,
+          u12: { ...base.u12, async saveSession() { throw testCase.error; } },
+          kindertraining: {
+            ...base.kindertraining,
+            async saveSession() { throw testCase.error; },
+          },
+        };
+      });
+      const response = await worker.fetch(
+        new Request("https://ulc.example.test/api/modules/" + testCase.route + "/session", {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            groupId: "group-1",
+            sessionDate: "2026-09-27",
+            expectedRevision: null,
+            attendance: [],
+          }),
+        }),
+        validEnv,
+      );
+      expect(response.status).toBe(testCase.status);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      const body = await response.json();
+      expect(body).toMatchObject({ error: { code: testCase.code } });
+      expect(JSON.stringify(body)).not.toContain("appbasis_");
+      expect(JSON.stringify(body)).not.toContain("identity-worker");
+    });
+  }
 });
