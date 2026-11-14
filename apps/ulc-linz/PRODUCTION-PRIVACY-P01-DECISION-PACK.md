@@ -57,6 +57,12 @@ Direkte Abfrage der verbundenen Neon-Projektverwaltung (ohne Datenbankabfrage od
 **Folgerung für D2:** Aus dem 6-Stunden-PITR-Metadatenwert **darf nicht** geschlossen werden, dass die vorhandene 35-Tage-Quellautorität für sämtliche Backup-/Restore-Situationen genügt. Das D2-A/B-Gate bleibt offen.
 
 
+## Aktualisierte Schema-Inventur und technische Prioritäten
+
+Die **41** derzeit deklarierten Migrationen erzeugen statisch **64** Tabellen; **alle 64** waren bereits in der früheren Tabellenliste enthalten. Korrigiert wurden die fehlenden sieben ULC-Migrationszuordnungen (v9 → v16) und die daraus resultierenden personenbezogenen Feldrisiken. Ein neuer automatischer Drift-Test prüft Manifest, Inventar und `privacy=blocked`. Konkrete Restarbeitspakete, Prüfkriterien und Freigabegrenzen: [P01-Schema- und Produktionsgatematrix](./PRODUCTION-READINESS-P01-SCHEMA-COVERAGE.md).
+
+Dies ist **keine Aussage über das tatsächlich ausgerollte Datenbankschema**. Das aktualisierte Inventar verwendet deshalb ausdrücklich `repository-declared-schema-v16-review-not-runtime-evidence`. Die fachlichen D1–D4-Entscheidungen bleiben offen.
+
 ## Betreiberfreigabe – alle Felder noch offen
 
 - [ ] Verantwortliche Vereinsfunktion, Datum und Datenschutzprüfung
