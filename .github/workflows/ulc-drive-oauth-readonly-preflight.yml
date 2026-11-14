@@ -1,0 +1,47 @@
+name: ULC Drive OAuth Read-Only Preflight
+
+# P04-D operator-only diagnostic: refresh and GET a single chosen folder.
+# No schedule, provider file writes, DB access, pg_dump, secrets output or upload.
+on:
+  workflow_dispatch:
+    inputs:
+      approve_readonly:
+        description: 'Allow this run to refresh Google OAuth and READ ONLY the exact ULC folder?'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ulc-drive-oauth-readonly-preflight
+  cancel-in-progress: false
+
+jobs:
+  verify-oauth:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.run_attempt == 1 && inputs.approve_readonly == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Check out exact authorized source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js without dependency install
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+
+      - name: Require fresh consent and verify exact Google Drive folder read-only
+        env:
+          ULC_BACKUP_OAUTH_READONLY_APPROVED: '1'
+          ULC_BACKUP_OAUTH_TARGET: ulc-linz-my-drive-p04d-readonly
+          ULC_BACKUP_GOOGLE_CLIENT_ID: ${{ secrets.ULC_BACKUP_GOOGLE_CLIENT_ID }}
+          ULC_BACKUP_GOOGLE_CLIENT_SECRET: ${{ secrets.ULC_BACKUP_GOOGLE_CLIENT_SECRET }}
+          ULC_BACKUP_GOOGLE_REFRESH_TOKEN: ${{ secrets.ULC_BACKUP_GOOGLE_REFRESH_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node ./apps/ulc-linz/tooling/google-drive-oauth-probe.mjs
