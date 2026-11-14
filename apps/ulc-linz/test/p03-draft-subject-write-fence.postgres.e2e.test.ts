@@ -333,5 +333,170 @@ if (!DATABASE_URL) {
         attendance: 1, registration: 1, history: 1,
       });
     });
+
+    it("S3: proxy write re-checks revoked target group enrollment and actor identity before SQL commit", async () => {
+      const org = "p03e-proxy";
+      const group = "p03e-proxy-group";
+      const actorAthlete = "p03e-actor-athlete";
+      const actorIdentity = "p03e-actor-identity";
+      await db().client.unsafe(
+        `INSERT INTO appbasis_training_group
+          (id, organization_id, name, attendance_mode)
+         VALUES ($1, $2, 'P03E Proxy Group', 'self_registration')`,
+        [group, org],
+      );
+      for (const [id, first] of [
+        [actorAthlete, "Proxy"],
+        [TARGET, "Target"],
+      ]) {
+        await db().client.unsafe(
+          `INSERT INTO appbasis_athlete
+             (id, organization_id, first_name, last_name)
+           VALUES ($1, $2, $3, 'Example')`,
+          [id, org, first],
+        );
+        await db().client.unsafe(
+          `INSERT INTO appbasis_athlete_group_membership
+             (organization_id, athlete_id, group_id, started_on)
+           VALUES ($1, $2, $3, '2026-01-01'::date)`,
+          [org, id, group],
+        );
+      }
+      await db().client.unsafe(
+        `INSERT INTO ulc_linz_membership
+           (identity_id, organization_id, subject_id, source_role)
+         VALUES ($1, $2, $3, 'athlete')`,
+        [actorIdentity, org, actorAthlete],
+      );
+      const session = await sessions().ensureScheduledSession(
+        org, "kindertraining", group, "2026-11-13",
+      );
+
+      const saved = await sessions().saveRegistration(
+        org, session.session.id, TARGET, "attending", null,
+        actorIdentity, actorAthlete,
+      );
+      expect(saved.revision).toBe(1);
+      await db().client.unsafe(
+        `UPDATE appbasis_athlete_group_membership
+         SET ended_on = '2026-11-12'::date
+         WHERE organization_id = $1 AND group_id = $2 AND athlete_id = $3`,
+        [org, group, TARGET],
+      );
+      await expect(sessions().saveRegistration(
+        org, session.session.id, TARGET, "maybe", 1,
+        actorIdentity, actorAthlete,
+      )).rejects.toThrow();
+      await db().client.unsafe(
+        `UPDATE appbasis_athlete_group_membership
+         SET ended_on = NULL
+         WHERE organization_id = $1 AND group_id = $2 AND athlete_id = $3`,
+        [org, group, TARGET],
+      );
+      await db().client.unsafe(
+        `UPDATE ulc_linz_membership
+         SET active = false, ended_at = now()
+         WHERE identity_id = $1`,
+        [actorIdentity],
+      );
+      await expect(sessions().saveRegistration(
+        org, session.session.id, TARGET, "maybe", 1,
+        actorIdentity, actorAthlete,
+      )).rejects.toThrow();
+      const rows = await db().client.unsafe(
+        `SELECT revision, intention FROM ulc_linz_training_registration
+         WHERE session_id = $1 AND athlete_id = $2`,
+        [session.session.id, TARGET],
+      );
+      expect(rows[0]).toMatchObject({ revision: 1, intention: "attending" });
+      const history = await db().client.unsafe(
+        `SELECT count(*)::int AS total
+         FROM ulc_linz_training_registration_change
+         WHERE session_id = $1 AND athlete_id = $2`,
+        [session.session.id, TARGET],
+      );
+      expect(history[0]?.total).toBe(1);
+    });
+
+    it("S4 gap: database repository still accepts trainer write after role revocation (not an HTTP proof)", async () => {
+      const org = "p03e-revoked-trainer";
+      const { input, session } = await fixture(org);
+      const identity = "p03e-revoked-trainer-identity";
+      await db().client.unsafe(
+        `INSERT INTO ulc_linz_membership
+          (identity_id, organization_id, subject_id, source_role)
+         VALUES ($1, $2, $3, 'trainer')`,
+        [identity, org, "p03e-trainer-subject"],
+      );
+      await db().client.unsafe(
+        `UPDATE ulc_linz_membership
+         SET active = false, ended_at = now()
+         WHERE identity_id = $1`,
+        [identity],
+      );
+      // No actor/principal parameter exists on saveSession. An authorized
+      // HTTP handler MAY still refuse the request; this is strictly the
+      // DB-repository authorization boundary under direct reuse.
+      const replay = await sessions().saveSession(
+        org, { ...input, note: "Repository accepted revoked trainer" },
+        [{ athleteId: NEIGHBOR, status: "present" }],
+        session.revision,
+      );
+      expect(replay.session.note).toBe("Repository accepted revoked trainer");
+      expect(await counters(org, NEIGHBOR)).toMatchObject({
+        attendance: 1, registration: 1, history: 1,
+      });
+    });
+
+    it("S8 gap: shared session free text, other athlete history actor and trainer identity survive subject erasure", async () => {
+      const org = "p03e-freetext";
+      const { session } = await fixture(org);
+      const deletedPersonName = "P03E Target Person";
+      const deletedActorIdentity = "p03e-erased-person-identity";
+      const historicalTrainerId = "p03e-departed-trainer";
+      await db().client.unsafe(
+        `UPDATE ulc_linz_training_session SET note = $1
+         WHERE id = $2`,
+        ["Trainer mentioned " + deletedPersonName, session.session.id],
+      );
+      await sessions().saveRegistration(
+        org, session.session.id, NEIGHBOR, "maybe", 1,
+        deletedActorIdentity, undefined, "Met " + deletedPersonName,
+      );
+      await db().client.unsafe(
+        `INSERT INTO ulc_linz_training_trainer_attendance
+          (organization_id, session_id, trainer_id)
+         VALUES ($1, $2, $3)`,
+        [org, session.session.id, historicalTrainerId],
+      );
+      await fenceSubject(org, TARGET);
+      expect(await counters(org, TARGET)).toEqual({
+        attendance: 0, registration: 0, history: 0,
+      });
+
+      const sharedNote = await db().client.unsafe(
+        "SELECT note FROM ulc_linz_training_session WHERE id = $1",
+        [session.session.id],
+      );
+      expect(String(sharedNote[0]?.note)).toContain(deletedPersonName);
+      const related = await db().client.unsafe(
+        `SELECT note, actor_identity_id
+         FROM ulc_linz_training_registration_change
+         WHERE organization_id = $1 AND session_id = $2
+           AND athlete_id = $3 AND revision = 2`,
+        [org, session.session.id, NEIGHBOR],
+      );
+      expect(related[0]?.note).toBe("Met " + deletedPersonName);
+      expect(related[0]?.actor_identity_id).toBe(deletedActorIdentity);
+      const trainer = await db().client.unsafe(
+        `SELECT trainer_id FROM ulc_linz_training_trainer_attendance
+         WHERE organization_id = $1 AND session_id = $2`,
+        [org, session.session.id],
+      );
+      expect(trainer.map((row) => row.trainer_id)).toContain(historicalTrainerId);
+      // Existing subject-count preflight is structurally correct, but it
+      // cannot certify unrelated shared free text or trainer identity.
+    });
+
   });
 }
