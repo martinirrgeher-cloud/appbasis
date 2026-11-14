@@ -1,6 +1,8 @@
 # P01 – Konkreter Entscheidungsvorschlag für die Vereinsfreigabe
 
-**Datum:** 14.11.2026 · **Status: VORSCHLAG / NICHT GENEHMIGT / KEINE RUNTIME-WIRKUNG**
+**Datum:** 14.11.2026 · **Status: FACHLICHE ZIELVORGABE BESTÄTIGT / RECHTLICHE NACHWEISE & RUNTIME GESPERRT.**
+
+**Vereinsentscheidung:** Der in der Unterhaltung als zuständig bestätigte Betreiber hat auf die ausdrückliche Frage, ob er die aufgelisteten Regeln als **fachliche Zielvorgabe des Vereins** freigibt, mit **„Ja“** geantwortet. Die vorher einzeln dargestellten Vorschläge (12 Monate bedarfsabhängig nach Austritt, 24 Monate Trainingshistorie, 90-Tage-Freitext-Review, bis 12 Monate personenbezogene Usage, bestehender 35-Tage-/deny-Marker, Sperre neuer erkennbarer Minderjährigenmedien und D1–D4-Sicherheitsgrundsätze) gelten damit als **fachlicher Umsetzungsscope**. Das ersetzt **nicht** die nachfolgenden Zweck-/Rechtsgrundlagenprüfungen, Betreiber-/Providerbelege und produktiven Freigabeschritte. Voller Name/Funktion wurden nicht überprüft.
 
 Zweck: Ein einziges, vollständig prüfbares Entscheidungsgespräch mit dem zuständigen Vereinsverantwortlichen, bevor produktive Aufbewahrungs-, Lösch-, Rollen- oder Wiederherstellungsfunktionen aktiviert werden.
 
@@ -34,11 +36,12 @@ Rechts-/Praxisquellen: [Österreichische Datenschutzbehörde – DSGVO-Leitfaden
 
 ## 3. Ein einziger fachlicher Entscheid – aber keine fingierten Belege
 
-**Verantwortung:** Der Nutzer hat am 14.11.2026 erklärt, er könne den Vereinsbeschluss selbst freigeben. **Dies ist ausdrücklich nur eine Zuständigkeitserklärung; keine Genehmigung dieser noch nicht konkret vorgelegten P01-Optionen.** Kein Name, Datum einer Unterschrift oder Vereinsfunktion wird ohne separate Angabe als bestätigt eingetragen.
+**Bestätigte Verantwortung und Umfang:** Der Betreiber hat am 14.11.2026 erklärt, er könne den Vereinsbeschluss selbst freigeben, und hat danach die konkret vorgelegte Fristenzusammenfassung als **fachliche Zielvorgabe** ausdrücklich bejaht. Das gilt für den Zweck-/Fristenentwurf und die genannten D1–D4-Sicherheitsgrundsätze, **nicht** als Nachweis einer DSGVO-Rechtsgrundlagenprüfung, unterschriebenen Funktionärserklärung, AVV, vollständigen Backuphorizonts oder Freigabe einer neuen personenbezogenen Post-Expiry-Autorität. Eine Unterschrift, Name oder Funktion wird nicht erfunden.
 
 Die nachfolgenden Daten bleiben bis zur tatsächlich dokumentierten Prüfung **offen**:
 
-- [ ] Verein/zeichnungsberechtigte Funktion und **ausdrückliche** Entscheidung zu Tabelle 1/D1–D4, gegebenenfalls abweichende Fristen;
+- [x] **Fachliche Zielregeln** aus Tabelle 1 und D1–D4 wie zusammengefasst am 14.11.2026 im Chat bestätigt; D2 **keine** Variante-B-Retention oder Backuphorizont-Frist genehmigt.
+- [ ] Konkrete Vereinsfunktion/zeichnungsberechtigte Person und separat dokumentierter vollständiger Beschluss;
 - [ ] konkrete rechtliche Grundlagen/Zwecke je Datenart (Mitgliedschaft, Nichtmitglieder/Eltern, Kinder, Trainer, Statistik, Audit, Fotos), Betroffeneninformation, Auskunfts-/Löschkontakt;
 - [ ] wirtschaftlicher/organisatorischer Bedarf für zwei personenbezogene Trainingsjahre und getrennte rechtlich nötige Förder-/Buchhaltungsbelege;
 - [ ] tatsächlich identifizierter Cloudflare-Worker↔Neon-Zugang sowie Cloudflare-/Neon-AVV, Speicherregion, verschlüsselte Backups, Subprozessoren, Zugriffsrechte;
@@ -48,4 +51,4 @@ Die nachfolgenden Daten bleiben bis zur tatsächlich dokumentierten Prüfung **o
 
 **Zulässiges nächstes Technikpaket ohne diese Inputs:** Aus dieser Matrix einen isolierten, testgetriebenen *Security-Implementierungs-Draft* entwickeln und die Vollständigkeit der Owner-/Freitext-/Restore-Prüfung weiter beweisen; **nicht** auf Live-Worker oder produktive DB/Policies übertragen.
 
-**Status:** `NOT_APPROVED`, `privacy=blocked`, `applicationLifecycle=blocked`. Keine Datenbearbeitung, kein Merge dieses Dokuments automatisch gleichbedeutend mit Vereinsfreigabe.
+**Status:** `FACHLICHE_ZIELVORGABE_BESTAETIGT`, `legalApproval=false`, `runtimeActive=false`, `privacy=blocked`, `applicationLifecycle=blocked`. Keine Datenbearbeitung, kein produktiver Fristen-Timer, keine Sicherheits- oder Go-live-Freigabe. Ein Merge des Dokuments bewirkt keinerlei zusätzliche Autorisierung.
