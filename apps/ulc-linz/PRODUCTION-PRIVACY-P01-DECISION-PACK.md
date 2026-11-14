@@ -25,6 +25,9 @@ Quelle: [P01-Bestand](./PRODUCTION-PRIVACY-DECISIONS-P01-DRAFT.md), [P00](./PROD
 
 **Rechtsrahmen:** DSGVO Art. 5 (Zweckbindung, Minimierung, Speicherbegrenzung) und Art. 17 (Löschung und Ausnahmen); keine allgemeine gesetzliche 12-Monats-Frist für Trainingsteilnahmen. Quelle: https://eur-lex.europa.eu/eli/reg/2016/679/oj
 
+
+**Inventar-Lücke:** Das vorhandene `m5-data-inventory.json` bezeichnet sich selbst als `current-materialized-v0.5`, zählt **64 Tabellen** und enthält **26 Zeilen** mit mindestens einem `pending`/`not-activated`/`not-implemented`-Nachweis (7 ULC-App-Owner, 3 Katalog, 9 Blöcke, 3 Dokumentation, 4 Planung). Das ist **kein aktuelles v17-Vollständigkeitszertifikat**. Vor P01-/P04-Freigabe sind alle tatsächlich in aktuellen Manifestmigrationen vorhandenen Tabellen und Freitext-/Historienfelder gegen diese Entscheidungsmatrix abzugleichen; alte Inventarstände dürfen nicht still als abschließend behandelt werden.
+
 ## Produktive Providerbelege: noch offen
 
 Das aktuelle `privacy/m5-provider-compliance-inventory.json` führt **Cloudflare** (Worker/Hyperdrive) und **Neon PostgreSQL** (Zielregion EU/Frankfurt) auf, jeweils mit offenen App-Produktionsbelegen. **Eine angegebene Zielregion ist keine bestätigte tatsächliche Produktionsregion.** Erforderlich: Vertrags-/AVV-/Unterauftragsverarbeiter-Nachweis, Region, Verschlüsselung, genaue Snapshot-/Backup-Aufbewahrung, Restore-Fähigkeit, Zuständigkeit und geprüfte Gültigkeit.
