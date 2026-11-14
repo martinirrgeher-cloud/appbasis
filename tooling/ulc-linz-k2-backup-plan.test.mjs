@@ -16,18 +16,21 @@ const SOURCE = "postgresql://readonly:secret@ep-ulcprod.aws-eu-central-1.neon.te
 const RESTORE = "postgresql://restore:secret@ep-ulcrestore.aws-eu-central-1.neon.tech/neondb?sslmode=require";
 
 test("ULC backup keys are daily, app-isolated, date-bound and immutable by convention", () => {
-  const plan = ulcBackupPlan(new Date("2026-11-14T17:05:00.000Z"));
+  const plan = ulcBackupPlan(new Date("2026-11-14T17:05:00.000Z"), "appbasis_ulc_linz_preview");
   assert.deepEqual(plan, {
     schemaVersion: 1,
     appId: "ulc-linz",
     kind: "daily",
     createdAt: "2026-11-14T17:05:00.000Z",
     date: "2026-11-14",
-    key: "appbasis/ulc-linz/pilot/db/daily/2026-11-14.tar.aesgcm",
+    databaseName: "appbasis_ulc_linz_preview",
+    key: "appbasis/ulc-linz/pilot/db/appbasis_ulc_linz_preview/daily/2026-11-14.tar.aesgcm",
   });
-  assert.equal(assertUlcBackupKey(plan.key), plan.key);
-  assert.throws(() => ulcBackupPlan(new Date("bad")), /timestamp/);
-  assert.throws(() => assertUlcBackupKey("appbasis/m3-preview/m4/daily/2026-11-14.tar.aesgcm"), /isolated/);
+  assert.equal(assertUlcBackupKey(plan.key, "appbasis_ulc_linz_preview"), plan.key);
+  assert.throws(() => assertUlcBackupKey(plan.key, "appbasis_ulc_linz_production"), /approved database scope/);
+  assert.throws(() => ulcBackupPlan(new Date(), ""), /missing or invalid/);
+  assert.throws(() => ulcBackupPlan(new Date("bad"), "appbasis_ulc_linz_preview"), /timestamp/);
+  assert.throws(() => assertUlcBackupKey("appbasis/m3-preview/m4/daily/2026-11-14.tar.aesgcm", "appbasis_ulc_linz_preview"), /approved database scope/);
 });
 
 test("ULC exports require an explicit Neon TLS source and a distinct branch endpoint", () => {
@@ -48,11 +51,11 @@ test("ULC backups require a dedicated EU-bound R2 endpoint", () => {
 
 test("rejects noncanonical object names and other app scopes", () => {
   for (const name of [
-    "../appbasis/ulc-linz/pilot/db/daily/2026-11-14.tar.aesgcm",
-    "appbasis/ulc-linz/pilot/db/daily/2026-02-30.tar.aesgcm",
-    "appbasis/ulc-linz/pilot/db/weekly/2026-11-14.tar.aesgcm",
-    "appbasis/ulc-linz/pilot/db/daily/2026-11-14.sql",
-  ]) assert.throws(() => assertUlcBackupKey(name));
+    "../appbasis/ulc-linz/pilot/db/appbasis_ulc_linz_preview/daily/2026-11-14.tar.aesgcm",
+    "appbasis/ulc-linz/pilot/db/appbasis_ulc_linz_preview/daily/2026-02-30.tar.aesgcm",
+    "appbasis/ulc-linz/pilot/db/appbasis_ulc_linz_preview/weekly/2026-11-14.tar.aesgcm",
+    "appbasis/ulc-linz/pilot/db/appbasis_ulc_linz_preview/daily/2026-11-14.sql",
+  ]) assert.throws(() => assertUlcBackupKey(name, "appbasis_ulc_linz_preview"));
 });
 
 test("ULC backup and restore require all eight installed data owners", () => {
