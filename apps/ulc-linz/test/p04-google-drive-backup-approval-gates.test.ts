@@ -51,6 +51,23 @@ interface BackupCandidate {
     readonly thirdPartyAppAndGoogleDpaReviewed: boolean;
     readonly transferRiskReviewed: boolean;
   };
+  readonly oauthReadOnlyPreflight: {
+    readonly status: string;
+    readonly workflow: string;
+    readonly enabledOnMain: boolean;
+    readonly manualApprovalRequired: boolean;
+    readonly readOnly: boolean;
+    readonly requiredScope: string;
+    readonly requiredSecretNames: readonly string[];
+    readonly connectedClientVerified: boolean;
+    readonly googleOauthClientCreated: boolean;
+    readonly refreshTokenProvisioned: boolean;
+    readonly appOwnedFolderOrPickerAuthorized: boolean;
+    readonly actionsSecretsConfigured: boolean;
+    readonly noAutomaticSchedule: boolean;
+    readonly backupUploadEnabled: boolean;
+    readonly existingConnectorTokenReusable: boolean;
+  };
   readonly lifecycle: {
     readonly currentAthleteDeletionMarkerDays: number;
     readonly postExpiryRetry: string;
@@ -104,6 +121,39 @@ describe("ULC P04-B future Google Drive backup – offline requirements only", (
       folderSetupStatus: "empty-folder-created-and-readback-verified-via-interactive-connector",
       folderShared: false,
       interactiveConnectorAccess: true,
+      scheduledJobOAuthAvailable: false,
+      credentialsConfigured: false,
+      jobConfigured: false,
+      uploadEnabled: false,
+    });
+  });
+
+  it("P04-D OAuth remains manual, read-only and unconnected until operator provisioning", async () => {
+    const plan = await readJson<BackupCandidate>(
+      "../privacy/p04-google-drive-offsite-backup-candidate.json",
+    );
+    expect(plan.oauthReadOnlyPreflight).toMatchObject({
+      status: "prepared-in-draft-not-run-no-client-secrets",
+      workflow: ".github/workflows/ulc-drive-oauth-readonly-preflight.yml",
+      enabledOnMain: false,
+      manualApprovalRequired: true,
+      readOnly: true,
+      requiredScope: "https://www.googleapis.com/auth/drive.file",
+      connectedClientVerified: false,
+      googleOauthClientCreated: false,
+      refreshTokenProvisioned: false,
+      appOwnedFolderOrPickerAuthorized: false,
+      actionsSecretsConfigured: false,
+      noAutomaticSchedule: true,
+      backupUploadEnabled: false,
+      existingConnectorTokenReusable: false,
+    });
+    expect(plan.oauthReadOnlyPreflight.requiredSecretNames).toEqual([
+      "ULC_BACKUP_GOOGLE_CLIENT_ID",
+      "ULC_BACKUP_GOOGLE_CLIENT_SECRET",
+      "ULC_BACKUP_GOOGLE_REFRESH_TOKEN",
+    ]);
+    expect(plan.applicationBindings).toMatchObject({
       scheduledJobOAuthAvailable: false,
       credentialsConfigured: false,
       jobConfigured: false,
