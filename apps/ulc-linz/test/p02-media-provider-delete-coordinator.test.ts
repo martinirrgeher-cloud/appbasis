@@ -37,6 +37,7 @@ function setup(options: {
   let completionOverride: boolean | null = null;
   let deletionOutcome: "delete-accepted" | "already-absent" = "delete-accepted";
   let responseKeyOverride: string | null = null;
+  let verifyKeyOverride: string | null = null;
   let observedAbsence: "absent" | "present" | "indeterminate" | null = null;
   let throwsOnDelete = false;
   let throwsOnCheck = false;
@@ -87,7 +88,7 @@ function setup(options: {
       if (throwsOnCheck) throw new Error("provider-head-failed");
       return {
         status: observedAbsence ?? state,
-        storageKey: responseKeyOverride ?? scope.storageKey,
+        storageKey: verifyKeyOverride ?? scope.storageKey,
       };
     },
   };
@@ -112,6 +113,7 @@ function setup(options: {
     },
     setDeleteOutcome(value: typeof deletionOutcome) { deletionOutcome = value; },
     setResponseKey(value: string) { responseKeyOverride = value; },
+    setVerifyKey(value: string) { verifyKeyOverride = value; },
     setObservedAbsence(value: typeof observedAbsence) { observedAbsence = value; },
     throwOnDelete() { throwsOnDelete = true; },
     throwOnCheck() { throwsOnCheck = true; },
@@ -181,6 +183,19 @@ describe("ULC P02-E media provider-proof coordinator (opt-in, no runtime wiring)
       status: "provider-object-not-confirmed",
     });
     expect(f.counters().providerChecks).toBe(0);
+    expect(f.counters().finalizes).toBe(0);
+  });
+
+  it("rejects an absence response for another storage key before SQL finalization", async () => {
+    const f = setup();
+    f.setVerifyKey("tenant-b/unrelated-file.mp4");
+    await expect(f.call()).resolves.toEqual({
+      status: "provider-object-not-confirmed",
+      metadataDeleted: false,
+      providerDeletionConfirmed: false,
+    });
+    expect(f.counters().providerDeletes).toBe(1);
+    expect(f.counters().providerChecks).toBe(1);
     expect(f.counters().finalizes).toBe(0);
   });
 
