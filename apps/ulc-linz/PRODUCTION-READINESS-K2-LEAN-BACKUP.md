@@ -14,18 +14,18 @@ Keine produktive Freigabe und kein Rechts-/Löschbeleg durch diese Workflows.
 ## Konfiguration durch Betreiber vor Aktivierung
 
 GitHub Environment `ulc-linz-k2-backup`:
-- **Vars**: `APPBASIS_ULC_K2_BACKUP_ENABLED` (erst nach gesonderter Freigabe auf `1`), `APPBASIS_ULC_R2_BUCKET` (eigener Bucket), `APPBASIS_ULC_R2_JURISDICTION=eu`.
+- **Vars**: `APPBASIS_ULC_K2_BACKUP_ENABLED` (erst nach gesonderter Freigabe auf `1`), `APPBASIS_ULC_R2_BUCKET` (eigener Bucket), `APPBASIS_ULC_R2_JURISDICTION=eu`, `APPBASIS_ULC_EXPECTED_DATABASE_NAME` (genau die später angebundene ULC-Datenbank; im aktuell geprüften isolierten Preview-Projekt: `appbasis_ulc_linz_preview`, **nicht** die leere Standard-DB `neondb`).
 - **Secrets**: `APPBASIS_ULC_SOURCE_DATABASE_URL` (read-only Rolle, bestehende echte ULC-Produktionsdatenbank, TLS), `APPBASIS_ULC_BACKUP_ENCRYPTION_KEY` (neuer **eigener** 32-Byte-Schlüssel in 64 kleinen Hexziffern), `CLOUDFLARE_ACCOUNT_ID`, `APPBASIS_ULC_R2_BACKUP_ACCESS_KEY_ID`, `APPBASIS_ULC_R2_BACKUP_SECRET_ACCESS_KEY` (auf dedizierten Bucket beschränkt, keine globalen Adminrechte).
 - **Spezielle EU-R2-Bucket-Jurisdiction verbindlich**, keine automatische Anlage/Änderung des Cloudflare-Buckets. Kein App- oder Auth-Secret als Backup-Schlüssel wiederverwenden.
 
 GitHub Environment `ulc-linz-k2-restore`:
-- Dieselben R2-Bucket-/EU-Variablen, der gleiche verschlüsselte Backup-Schlüssel und `CLOUDFLARE_ACCOUNT_ID`; **read-only** `APPBASIS_ULC_R2_RESTORE_ACCESS_KEY_ID`/`APPBASIS_ULC_R2_RESTORE_SECRET_ACCESS_KEY`.
+- Dieselben R2-Bucket-/EU-Variablen **und `APPBASIS_ULC_EXPECTED_DATABASE_NAME`**, der gleiche verschlüsselte Backup-Schlüssel und `CLOUDFLARE_ACCOUNT_ID`; **read-only** `APPBASIS_ULC_R2_RESTORE_ACCESS_KEY_ID`/`APPBASIS_ULC_R2_RESTORE_SECRET_ACCESS_KEY`.
 - `APPBASIS_ULC_SOURCE_DATABASE_URL` nur für die sichere **Abgrenzung des Quellendpunkts**, `APPBASIS_ULC_RESTORE_DATABASE_URL` mit separat angelegtem, leerem, isoliertem Neon-Branch-Endpunkt und beschränkter Restore-Rolle.
 - **Besonders prüfen:** Quarantäne-Branch darf nicht als Worker-Hyperdrive oder R2-Synchronisation eingebunden sein. Getesteten Restore nicht automatisch zu Produktionsdaten machen.
 
 ## Einmaliger operativer Nachweis vor einem Echtdaten-Pilot
 
-1. Betreiber prüft Anbieterregion, R2-Ziel, bestehende DB-Schema-Version und dedizierte Rechte; entscheidet Backup-Aufbewahrung und richtet eine **nachprüfbare Löschfrist z. B. 21 Tage** für den exklusiven R2-Backup-Prefix ein. Nicht nur „alte Dateien nie löschen“.
+1. Betreiber prüft Anbieterregion, R2-Ziel, **logischen Datenbanknamen** (in der Neon-Vorschau liegt ULC in `appbasis_ulc_linz_preview`, während `neondb` leer ist), alle **acht Owner-Schemata** und dedizierte Rechte; entscheidet Backup-Aufbewahrung und richtet eine **nachprüfbare Löschfrist z. B. 21 Tage** für den exklusiven R2-Backup-Prefix ein. Nicht nur „alte Dateien nie löschen“.
 2. Nach separater Aktivierungsfreigabe ein manuelles ULC-Backup `apply=true` auf main ausführen; zugehörige GitHub-Run-ID, exakte Commit-SHA, R2-Objektgröße und Hash ohne Schlüssel dokumentieren.
 3. Einen **eigenen leeren Restore-Endpunkt** vorbereiten; Restore-Workflow zunächst `apply=false` ausführen, nach separater Freigabe auf **den verifizierten Quarantäne-Endpunkt** `apply=true` ausführen. Fehlgeschlagene/teilweise Wiederherstellungen auf neuem leeren Ziel wiederholen, niemals auf Hauptbranch.
 4. **App-E2E nach Restore:** Identity, Permissions, Athleten, Trainingsplanung, -blöcke, -doku, Anwesenheit/Registrierung, Katalog, Audits und zentrale Stichproben/Fingerprints. Der Workflow bestätigt momentan **nur** die kryptografische Backup-Integrität, PostgreSQL-Restore und Grundtabellen; **nicht** Vollständigkeit über acht Owner.
@@ -46,3 +46,7 @@ GitHub Environment `ulc-linz-k2-restore`:
 | Freigabe für Echtgeld-/Echtdatenbetrieb | **Nein** |
 
 **Warum bewusst nur dieser Umfang:** Für ca. 30 Vereinsnutzer ist ein tägliches verschlüsseltes DB-Backup plus erprobter Restore sinnvoll. Eine neue Backup-Plattform, weitere Mikro-PRs oder zusätzliche Komfortfunktionen sind derzeit nicht erforderlich. Vor produktiver Aktivierung auch die Abrechnung der GitHub Actions und R2 prüfen; kostenlose Kontingente hängen vom tatsächlichen Verbrauch ab.
+
+### Read-only-Befund zur Source-Validierung
+
+In der ULC-Neon-Preview (`cool-unit-46141580`) hat `neondb` nach aktueller API-Inventur **keine** Anwendungstabellen. Die separate Datenbank `appbasis_ulc_linz_preview` enthält hingegen die erforderlichen acht Owner-Tabellen. Der neue Workflow verweigert einen Backupstart, wenn entweder der explizit konfigurierte Datenbankname nicht zur URL passt oder eine dieser acht Tabellen fehlt. Dies ist eine **Mindestprüfung**, kein vollständiger Konsistenz-/Datenschutzbeleg. Der spätere echte Produktionsdatenbankname wurde noch nicht bestimmt, der Produktions-Neon-Branch ist derzeit archiviert; **niemals** einen Preview-Namen blind für produktive Echtdaten übernehmen.
