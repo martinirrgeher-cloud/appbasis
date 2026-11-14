@@ -280,6 +280,33 @@ if (!DATABASE_URL) {
       )).resolves.toMatchObject({ attendance: [{ athleteId: ids.other }] });
     });
 
+    it("fails closed if the canonical athlete deletion-marker source is missing", async () => {
+      const org = "p03g-missing-source";
+      const ids = await seed(org);
+      // Disrupt ONLY the disposable PostgreSQL test database.
+      await db().client.unsafe(
+        "ALTER TABLE appbasis_athletes_deletion RENAME TO p03g_temporarily_missing_source",
+      );
+      try {
+        await expect(repo().saveSession(
+          org, { moduleId: "u12", groupId: ids.group, sessionDate: DATE },
+          [{ athleteId: ids.target, status: "present" }], null,
+        )).rejects.toThrow();
+      } finally {
+        await db().client.unsafe(
+          "ALTER TABLE p03g_temporarily_missing_source RENAME TO appbasis_athletes_deletion",
+        );
+      }
+      const roots = await db().client.unsafe(
+        "SELECT id FROM ulc_linz_training_session WHERE organization_id = $1",
+        [org],
+      );
+      expect(roots).toHaveLength(0);
+      expect(await counts(org, ids.target)).toEqual({
+        attendance: 0, registration: 0, changes: 0,
+      });
+    });
+
     it("fails closed if PostgreSQL BEGIN is unavailable; no session or registration SQL is issued", async () => {
       let executed = 0;
       const sql: UlcTrainingSessionSqlClient = {
