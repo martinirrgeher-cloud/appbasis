@@ -3,9 +3,9 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 /**
- * P01: operator-decision candidate only.
+ * P01: operator-confirmed target rules only; no legal or runtime approval.
  * Test purpose: catch missing data categories and silent security-policy activation.
- * The candidate is NOT a runtime policy, legal consent, or production gate.
+ * The target guideline is NOT a runtime policy, legal opinion, or production gate.
  */
 type Group = {
   readonly id: string;
@@ -20,7 +20,14 @@ type Candidate = {
   readonly status: string;
   readonly runtimeActive: boolean;
   readonly legalApproval: boolean;
-  readonly approval: unknown;
+  readonly approval: {
+    readonly category: string;
+    readonly decidedOn: string;
+    readonly source: string;
+    readonly authorization: string;
+    readonly exactScope: readonly string[];
+    readonly excludes: readonly string[];
+  };
   readonly baseline: {
     readonly manifestMigrationCount: number;
     readonly tableCount: number;
@@ -51,7 +58,7 @@ async function data<T>(path: string): Promise<T> {
   ) as T;
 }
 
-describe("ULC P01 candidate – no legal or runtime approval", () => {
+describe("ULC P01 confirmed target guidance – no legal or runtime approval", () => {
   it("covers each one of the 64 declared inventory tables exactly once", async () => {
     const candidate = await data<Candidate>(
       "../privacy/p01-operator-retention-candidate.json",
@@ -71,7 +78,7 @@ describe("ULC P01 candidate – no legal or runtime approval", () => {
     expect(candidate.baseline.tableCount).toBe(64);
   });
 
-  it("keeps the candidate, real provider/retention policy and production gate unapproved", async () => {
+  it("records scoped operator target confirmation while keeping legal/provider/production gates unapproved", async () => {
     const candidate = await data<Candidate>(
       "../privacy/p01-operator-retention-candidate.json",
     );
@@ -91,11 +98,22 @@ describe("ULC P01 candidate – no legal or runtime approval", () => {
       crossCutting: { privacy: string; applicationLifecycle: string };
     }>("../appbasis.production.json");
 
-    expect(candidate.documentType).toBe("operator-decision-candidate-not-policy");
-    expect(candidate.status).toBe("NOT_APPROVED");
+    expect(candidate.documentType).toBe("operator-confirmed-target-guideline-not-runtime-policy");
+    expect(candidate.status).toBe("FACHLICHE_ZIELVORGABE_BESTAETIGT");
     expect(candidate.runtimeActive).toBe(false);
     expect(candidate.legalApproval).toBe(false);
-    expect(candidate.approval).toBeNull();
+    expect(candidate.approval).toMatchObject({
+      category: "purpose-and-retention-target-guideline-only",
+      decidedOn: "2026-11-14",
+      source: "explicit-chat-confirmation-to-listed-purpose-dependent-retention-rules",
+      authorization: "user-self-declared-entitled-to-approve-for-ULC-Linz",
+    });
+    expect(candidate.approval.exactScope).toHaveLength(7);
+    expect(candidate.approval.excludes).toEqual(expect.arrayContaining([
+      "no-approval-of-specific-longer-post-expiry-ledger-or-provider-backup-duration",
+      "no-approval-of-production-retention-enforcement-deployment-database-migrations-or-erasure",
+      "no-GitHub-PR-merge-authorization-implied-by-data-policy-approval",
+    ]));
     expect(candidate.baseline).toMatchObject({
       originalSourceMarkerRetentionDays: 35,
       postExpiryRetry: "deny",
