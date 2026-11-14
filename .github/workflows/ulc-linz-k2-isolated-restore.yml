@@ -1,0 +1,189 @@
+name: ULC Linz K2 – isolierter Backup-Restore-Test (Entwurf)
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_key:
+        description: "Exakter verschlüsselter ULC-Tagesbackup-Key (nur ULC-Prefix)"
+        type: string
+        required: true
+      apply:
+        description: "In leere, isolierte Neon-Restore-Datenbank wiederherstellen"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ulc-linz-k2-isolated-restore
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    name: ULC-Backup nur in leere Quarantäne-Datenbank prüfen
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: ulc-linz-k2-restore
+    env:
+      BUCKET: ${{ vars.APPBASIS_ULC_R2_BUCKET }}
+      APPBASIS_ULC_R2_BUCKET: ${{ vars.APPBASIS_ULC_R2_BUCKET }}
+      APPBASIS_ULC_R2_JURISDICTION: ${{ vars.APPBASIS_ULC_R2_JURISDICTION }}
+      APPBASIS_ULC_EXPECTED_DATABASE_NAME: ${{ vars.APPBASIS_ULC_EXPECTED_DATABASE_NAME }}
+      KEY: ${{ inputs.backup_key }}
+    steps:
+      - name: Check out reviewed code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+
+      - name: Check app-specific restore rules and tools
+        run: |
+          set -euo pipefail
+          node --test ./tooling/ulc-linz-k2-backup-plan.test.mjs
+          node ./tooling/ulc-linz-k2-backup-plan.mjs key "$KEY" >/dev/null
+          command -v docker
+          command -v aws
+          command -v jq
+          command -v tar
+          command -v sha256sum
+
+      - name: Validate source, empty restore destination and EU-only storage access
+        id: settings
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APPBASIS_ULC_SOURCE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_SOURCE_DATABASE_URL }}
+          APPBASIS_ULC_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_RESTORE_DATABASE_URL }}
+          APPBASIS_ULC_BACKUP_ENCRYPTION_KEY: ${{ secrets.APPBASIS_ULC_BACKUP_ENCRYPTION_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_ULC_R2_RESTORE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_ULC_R2_RESTORE_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_ACCOUNT_ID APPBASIS_ULC_SOURCE_DATABASE_URL APPBASIS_ULC_RESTORE_DATABASE_URL APPBASIS_ULC_BACKUP_ENCRYPTION_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            test -n "${!name:-}" || { echo "ULC K2 restore configuration is incomplete: $name" >&2; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+          node ./tooling/ulc-linz-k2-backup-plan.mjs targets >/dev/null
+          node ./tooling/ulc-linz-k2-backup-plan.mjs bucket >/dev/null
+          node --input-type=module -e 'import {parseM4BackupEncryptionKey} from "./tooling/m4-backup-crypto.mjs";parseM4BackupEncryptionKey(process.env.APPBASIS_ULC_BACKUP_ENCRYPTION_KEY)'
+          ENDPOINT="$(node ./tooling/ulc-linz-k2-backup-plan.mjs endpoint)"
+          aws s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" >/dev/null
+          echo "endpoint=$ENDPOINT" >> "$GITHUB_OUTPUT"
+
+          # A restore must never share a live Neon endpoint and must be empty.
+          EMPTY="$(docker run --rm \
+            --env APPBASIS_ULC_RESTORE_DATABASE_URL \
+            --env "ULC_RESTORE_SQL=SELECT count(*) FROM pg_class AS c JOIN pg_namespace AS n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%'" \
+            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
+            sh -ceu 'psql --no-psqlrc --tuples-only --no-align --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" --command="$ULC_RESTORE_SQL"')"
+          test "$EMPTY" = "0" || { echo "ULC K2 quarantine target already has tables; stop without changes." >&2; exit 1; }
+
+      - name: Create private workspace and download ciphertext with digest proof
+        id: download
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_ULC_R2_RESTORE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_ULC_R2_RESTORE_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          ENDPOINT: ${{ steps.settings.outputs.endpoint }}
+        run: |
+          set -euo pipefail
+          umask 077
+          WORK="$RUNNER_TEMP/ulc-k2-restore-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -m 700 "$WORK"
+          echo "workspace=$WORK" >> "$GITHUB_OUTPUT"
+          aws s3api head-object --bucket "$BUCKET" --key "$KEY" --endpoint-url "$ENDPOINT" --output json > "$WORK/object.json"
+          jq -e '.Metadata.appbasisapp=="ulc-linz" and (.Metadata.sha256 | test("^[0-9a-f]{64}$")) and (.ContentLength>0)' "$WORK/object.json" >/dev/null
+          aws s3api get-object --bucket "$BUCKET" --key "$KEY" --endpoint-url "$ENDPOINT" "$WORK/backup.tar.aesgcm" >/dev/null
+          SIZE="$(stat -c %s "$WORK/backup.tar.aesgcm")"
+          HASH="$(sha256sum "$WORK/backup.tar.aesgcm" | awk '{print $1}')"
+          jq -e --arg sha "$HASH" --arg size "$SIZE" \
+            '.Metadata.sha256==$sha and (.ContentLength|tostring)==$size' "$WORK/object.json" >/dev/null
+
+      - name: Authenticate archive and validate isolated manifest
+        shell: bash
+        env:
+          WORK: ${{ steps.download.outputs.workspace }}
+          APPBASIS_ULC_BACKUP_ENCRYPTION_KEY: ${{ secrets.APPBASIS_ULC_BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          node --input-type=module <<'NODE'
+          import {join} from "node:path";
+          import {decryptM4BackupFile} from "./tooling/m4-backup-crypto.mjs";
+          await decryptM4BackupFile({
+            inputPath: join(process.env.WORK, "backup.tar.aesgcm"),
+            outputPath: join(process.env.WORK, "backup.tar"),
+            keyHex: process.env.APPBASIS_ULC_BACKUP_ENCRYPTION_KEY,
+          });
+          NODE
+          rm -f -- "$WORK/backup.tar.aesgcm"
+          printf 'database.pgdump\nmanifest.json\n' > "$WORK/expected-entries.txt"
+          tar --list --file "$WORK/backup.tar" > "$WORK/actual-entries.txt"
+          cmp -s "$WORK/expected-entries.txt" "$WORK/actual-entries.txt" || { echo "Unexpected restore archive paths." >&2; exit 1; }
+          tar -C "$WORK" --extract --file "$WORK/backup.tar" --no-same-owner --no-same-permissions
+          rm -f -- "$WORK/backup.tar"
+          jq -e --arg key "$KEY" \
+            '.schemaVersion==1 and .appId=="ulc-linz" and .backupKind=="daily" and .objectKey==$key and .dumpFile=="database.pgdump" and (.sourceGitSha|test("^[0-9a-f]{40}$"))' \
+            "$WORK/manifest.json" >/dev/null
+          test -s "$WORK/database.pgdump"
+
+      - name: Verify dump is readable by PostgreSQL 18
+        shell: bash
+        env:
+          WORK: ${{ steps.download.outputs.workspace }}
+        run: |
+          set -euo pipefail
+          docker run --rm --user "$(id -u):$(id -g)" --volume "$WORK:/backup:ro" \
+            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
+            pg_restore --list /backup/database.pgdump >/dev/null
+          echo "Encrypted ULC restore preflight PASS; no data has been restored unless apply=true." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Restore only into the verified empty quarantine database
+        if: inputs.apply == true
+        shell: bash
+        env:
+          WORK: ${{ steps.download.outputs.workspace }}
+          APPBASIS_ULC_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_RESTORE_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --env APPBASIS_ULC_RESTORE_DATABASE_URL \
+            --volume "$WORK:/backup:ro" \
+            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
+            sh -ceu 'pg_restore --single-transaction --no-owner --no-acl --exit-on-error --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" /backup/database.pgdump'
+
+      - name: Check restored ULC application tables
+        if: inputs.apply == true
+        shell: bash
+        env:
+          APPBASIS_ULC_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_RESTORE_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          ULC_REQUIRED_SCHEMA_SQL="$(node ./tooling/ulc-linz-k2-backup-plan.mjs schema-sql)"
+          STATUS="$(docker run --rm --env APPBASIS_ULC_RESTORE_DATABASE_URL \
+            --env ULC_REQUIRED_SCHEMA_SQL \
+            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
+            sh -ceu 'psql --no-psqlrc --tuples-only --no-align --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" --command="$ULC_REQUIRED_SCHEMA_SQL"')"
+          test "$STATUS" = "t" || { echo "ULC K2 restore is missing one or more of the eight canonical app owners." >&2; exit 1; }
+          echo "ULC K2 encrypted backup restored into separate quarantine; no promotion or user access was enabled." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Delete confidential restore working files
+        if: always() && steps.download.outputs.workspace != ''
+        shell: bash
+        env:
+          WORK: ${{ steps.download.outputs.workspace }}
+        run: |
+          set -euo pipefail
+          if [[ "$WORK" == "$RUNNER_TEMP"/ulc-k2-restore-* ]]; then
+            rm -rf -- "$WORK"
+          fi
