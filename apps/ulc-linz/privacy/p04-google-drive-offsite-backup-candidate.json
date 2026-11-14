@@ -65,7 +65,10 @@
     "appFolderOnlyOAuthIntended": true,
     "privateKeyAccessibleToClubWithoutUserAccount": false,
     "personalDriveRisk": "Recovery continuity, private account loss, sharing and data-controller access must be proven before storing club/member/minor data",
-    "backupFolderCreatedAndReadbackVerified": true
+    "backupFolderCreatedAndReadbackVerified": true,
+    "existingFolderAvailableToSeparateOauthClient": false,
+    "googlePickerSelectionOrAppOwnedFolderRequired": true,
+    "oauthTestingRefreshTokenSevenDayRiskReviewed": false
   },
   "lifecycle": {
     "currentAthleteDeletionMarkerDays": 35,
@@ -109,6 +112,8 @@
     "no-authorized-backup-schedule-or-retention",
     "no-active-backup-workflow",
     "personal-my-drive-ownership-and-club-access-after-account-loss-not-approved",
-    "user-specific-oauth-consent-and-scope-not-granted"
+    "user-specific-oauth-consent-and-scope-not-granted",
+    "drive-file-oauth-scope-does-not-grant-auto-access-to-folder-created-by-another-app-picker-or-app-owned-folder-required",
+    "oauth-external-testing-mode-refresh-tokens-may-expire-after-seven-days"
   ]
 }
