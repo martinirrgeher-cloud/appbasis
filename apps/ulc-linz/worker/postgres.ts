@@ -210,7 +210,8 @@ export interface GeneratedPostgresApplicationRuntimeOptions {
    * isolated integration preview with canonical athlete-owner row locking. */
   trainingSessionWriteGuardMode?:
     | "require-live-athlete-transaction"
-    | "require-live-athlete-group-transaction";
+    | "require-live-athlete-group-transaction"
+    | "require-live-training-actor-transaction";
   baseURL: string;
   secret: string;
   exerciseCatalogRuntimeMode?: UlcExerciseCatalogRuntimeMode;
