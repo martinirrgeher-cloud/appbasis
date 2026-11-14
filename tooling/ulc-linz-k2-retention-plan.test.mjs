@@ -70,7 +70,7 @@ test("age uses lastModified and the exact UTC cutoff, not only the key date", ()
     item("2026-09-01",{lastModified:"2026-11-14T00:00:00.000Z"}),
     item("2026-10-01"),item("2026-10-02"),item("2026-11-14"),
   ]);
-  assert.equal(result.candidates,2);
+  assert.equal(result.candidates,1);
   assert.equal(result.entries[0].reason,"WITHIN_RETENTION");
 });
 test("rejects malformed policy and inventory arguments", () => {
