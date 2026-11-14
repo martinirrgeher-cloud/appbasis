@@ -134,8 +134,14 @@ export async function deleteExerciseCatalogPrivateMediaWithProviderProof(
 
   // Fail closed if provider is unreachable or delete throws. The metadata
   // remains (requested/deferred), so a later verified retry is possible.
-  const deleteEvidence = await input.provider.deleteExactObject(scope);
+  let deleteEvidence;
+  try {
+    deleteEvidence = await input.provider.deleteExactObject(scope);
+  } catch {
+    throw new Error("Private media provider deletion failed; SQL metadata stays pending.");
+  }
   if (
+    !deleteEvidence ||
     (deleteEvidence.outcome !== "delete-accepted" &&
       deleteEvidence.outcome !== "already-absent") ||
     deleteEvidence.storageKey !== key
@@ -146,8 +152,14 @@ export async function deleteExerciseCatalogPrivateMediaWithProviderProof(
       providerDeletionConfirmed: false,
     });
   }
-  const absenceEvidence = await input.provider.verifyExactObjectAbsence(scope);
+  let absenceEvidence;
+  try {
+    absenceEvidence = await input.provider.verifyExactObjectAbsence(scope);
+  } catch {
+    throw new Error("Private media provider verification failed; SQL metadata stays pending.");
+  }
   if (
+    !absenceEvidence ||
     absenceEvidence.status !== "absent" ||
     absenceEvidence.storageKey !== key
   ) {
