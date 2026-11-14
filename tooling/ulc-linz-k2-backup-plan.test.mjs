@@ -94,3 +94,30 @@ test("K2 manual preflight cannot enable scheduled backups or write an R2 object"
   assert.match(workflow, /if: always\(\) && steps\.setup\.outputs\.workspace != ''/);
   assert.doesNotMatch(workflow, /if: steps\.gate\.outputs\.run == '1'/);
 });
+
+test("K2 owner-schema SQL is exported into both PostgreSQL Docker containers", () => {
+  for (const workflowName of [
+    "ulc-linz-k2-encrypted-backup.yml",
+    "ulc-linz-k2-isolated-restore.yml",
+  ]) {
+    const workflow = readFileSync(
+      new URL("../.github/workflows/" + workflowName, import.meta.url),
+      "utf8",
+    );
+    assert.match(
+      workflow,
+      /export ULC_REQUIRED_SCHEMA_SQL="\$\(node \.\/tooling\/ulc-linz-k2-backup-plan\.mjs schema-sql\)"/,
+      workflowName + " must export the schema query",
+    );
+    assert.match(
+      workflow,
+      /--env ULC_REQUIRED_SCHEMA_SQL \\/,
+      workflowName + " must forward the exported schema query to Docker",
+    );
+    assert.doesNotMatch(
+      workflow,
+      /(?<!export )ULC_REQUIRED_SCHEMA_SQL="\$\(node \.\/tooling\/ulc-linz-k2-backup-plan\.mjs schema-sql\)"/,
+      workflowName + " must not create a shell-only variable",
+    );
+  }
+});
