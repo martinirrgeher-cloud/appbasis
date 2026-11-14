@@ -208,7 +208,9 @@ export interface GeneratedPostgresApplicationRuntimeOptions {
   registrationCalendarActivation?: "isolated-preview-v17";
   /** Experimental P03-G protection. OFF unless explicitly requested in an
    * isolated integration preview with canonical athlete-owner row locking. */
-  trainingSessionWriteGuardMode?: "require-live-athlete-transaction";
+  trainingSessionWriteGuardMode?:
+    | "require-live-athlete-transaction"
+    | "require-live-athlete-group-transaction";
   baseURL: string;
   secret: string;
   exerciseCatalogRuntimeMode?: UlcExerciseCatalogRuntimeMode;
