@@ -4,6 +4,14 @@ import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning";
 import {
+  privateExerciseVideoStorageKey,
+  type UlcExerciseCatalogObjectStore,
+} from "../worker/exercise-catalog-private-media";
+import {
+  deleteUlcPrivateExerciseMediaWithConfirmation,
+} from "../worker/exercise-catalog-media-delete-confirmed";
+
+import {
   PostgresExerciseCatalogRepository,
   deleteExerciseCatalogPrivateMediaWithProviderProof,
   type ExerciseCatalogMediaDeletionProvider,
@@ -348,6 +356,121 @@ if (!DATABASE_URL) {
       })).resolves.toMatchObject({ status: "completed" });
       expect(deletedKeys).toEqual([ORG + "/file.mp4"]);
       expect(await repo.listPrivateMedia(OTHER_ORG, EXERCISE)).toHaveLength(1);
+    });
+
+    it("P02-I integrated worker coordinator: real SQL finalizes only after provider absence", async () => {
+      const repo = catalog();
+      const mediaId = "p02-i-real-sql";
+      const storageKey = privateExerciseVideoStorageKey(ORG, EXERCISE, mediaId);
+      const objects = new Set([storageKey]);
+      await repo.registerPrivateMedia({
+        id: mediaId,
+        organizationId: ORG,
+        exerciseId: EXERCISE,
+        fileName: "training.mp4",
+        storageKey,
+        contentType: "video/mp4",
+        sizeBytes: 100,
+        createdAt: "2026-11-13T09:00:00.000Z",
+      });
+      const evidence: string[] = [];
+      const store: UlcExerciseCatalogObjectStore = {
+        async put() { throw new Error("Must not upload during delete"); },
+        async delete(key) {
+          evidence.push("delete");
+          expect(key).toBe(storageKey);
+          objects.delete(key);
+        },
+        async get(key, options) {
+          evidence.push("get");
+          expect(options?.range?.get("range")).toBe("bytes=0-0");
+          return objects.has(key) ? { body: Uint8Array.of(1) } : null;
+        },
+      };
+      await expect(deleteUlcPrivateExerciseMediaWithConfirmation({
+        organizationId: ORG,
+        exerciseId: EXERCISE,
+        mediaId,
+        catalog: repo,
+        store,
+      })).resolves.toEqual({ status: "deleted" });
+      expect(evidence).toEqual(["delete", "get"]);
+      expect(await db().client.unsafe(
+        `SELECT id FROM appbasis_exercise_catalog_private_media
+         WHERE organization_id = $1 AND id = $2`,
+        [ORG, mediaId],
+      )).toHaveLength(0);
+      await expect(deleteUlcPrivateExerciseMediaWithConfirmation({
+        organizationId: ORG,
+        exerciseId: EXERCISE,
+        mediaId,
+        catalog: repo,
+        store,
+      })).resolves.toEqual({ status: "not-found" });
+      expect(evidence).toHaveLength(2);
+    });
+
+    it("P02-I real SQL: provider still present retains pending metadata, retry completes, neighbor untouched", async () => {
+      const repo = catalog();
+      const mediaId = "p02-i-shared-id";
+      const keys = new Map([
+        [ORG, privateExerciseVideoStorageKey(ORG, EXERCISE, mediaId)],
+        [OTHER_ORG, privateExerciseVideoStorageKey(OTHER_ORG, EXERCISE, mediaId)],
+      ]);
+      const objects = new Set(keys.values());
+      for (const [org, storageKey] of keys) {
+        await repo.registerPrivateMedia({
+          id: mediaId,
+          organizationId: org,
+          exerciseId: EXERCISE,
+          fileName: "training.mp4",
+          storageKey,
+          contentType: "video/mp4",
+          sizeBytes: 100,
+          createdAt: "2026-11-13T09:00:00.000Z",
+        });
+      }
+      let providerActuallyDeletes = false;
+      const touched: string[] = [];
+      const store: UlcExerciseCatalogObjectStore = {
+        async put() { throw new Error("Must never upload"); },
+        async delete(key) {
+          touched.push("delete:" + key);
+          if (providerActuallyDeletes) objects.delete(key);
+        },
+        async get(key) {
+          touched.push("get:" + key);
+          return objects.has(key) ? { body: Uint8Array.of(1) } : null;
+        },
+      };
+      const request = () => deleteUlcPrivateExerciseMediaWithConfirmation({
+        organizationId: ORG,
+        exerciseId: EXERCISE,
+        mediaId,
+        catalog: repo,
+        store,
+      });
+      await expect(request()).resolves.toEqual({ status: "unconfirmed" });
+      const pending = await db().client.unsafe(
+        `SELECT deletion_requested_at IS NOT NULL AS pending
+         FROM appbasis_exercise_catalog_private_media
+         WHERE organization_id = $1 AND id = $2`,
+        [ORG, mediaId],
+      );
+      expect(pending).toMatchObject([{ pending: true }]);
+      expect(await repo.listPrivateMedia(ORG, EXERCISE)).toHaveLength(0);
+      expect(await repo.listPrivateMedia(OTHER_ORG, EXERCISE)).toHaveLength(1);
+      providerActuallyDeletes = true;
+      await expect(request()).resolves.toEqual({ status: "deleted" });
+      expect(objects).toEqual(new Set([keys.get(OTHER_ORG)]));
+      expect(touched).toEqual([
+        "delete:" + keys.get(ORG), "get:" + keys.get(ORG),
+        "delete:" + keys.get(ORG), "get:" + keys.get(ORG),
+      ]);
+      expect(await db().client.unsafe(
+        `SELECT organization_id FROM appbasis_exercise_catalog_private_media
+         WHERE id = $1`, [mediaId],
+      )).toMatchObject([{ organization_id: OTHER_ORG }]);
     });
 
   });
