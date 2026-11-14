@@ -27,13 +27,48 @@ export interface ExerciseCatalogPostgresClient
   ): Promise<T>;
 }
 
+/**
+ * Optional P02-G safety path. Do not enable in a live app until catalog
+ * migration 0004 and the cross-owner erasure authority are both approved.
+ * No implicit fallback when the marker schema is absent.
+ */
+export type ExerciseCatalogFavoriteFenceMode =
+  | "legacy-unprotected"
+  | "require-catalog-erasure-marker";
+
+export interface ExerciseCatalogFavoriteDeletionResult {
+  readonly markerInserted: boolean;
+  readonly deletedFavorites: number;
+}
+
+export class ExerciseCatalogFavoriteDeletedError extends Error {
+  constructor() {
+    super("Exercise catalog favorite is blocked by a deletion marker.");
+    this.name = "ExerciseCatalogFavoriteDeletedError";
+  }
+}
+
 export class PostgresExerciseCatalogRepository
   implements ExerciseCatalogRepository
 {
   readonly #client: ExerciseCatalogPostgresClient;
+  readonly #favoriteFenceMode: ExerciseCatalogFavoriteFenceMode;
 
-  constructor(client: ExerciseCatalogPostgresClient) {
+  constructor(
+    client: ExerciseCatalogPostgresClient,
+    options: Readonly<{
+      favoriteFenceMode?: ExerciseCatalogFavoriteFenceMode;
+    }> = {},
+  ) {
     this.#client = client;
+    const mode = options.favoriteFenceMode ?? "legacy-unprotected";
+    if (
+      mode !== "legacy-unprotected" &&
+      mode !== "require-catalog-erasure-marker"
+    ) {
+      throw new Error("Exercise catalog favorite fence mode is invalid.");
+    }
+    this.#favoriteFenceMode = mode;
   }
 
   async listItems(
@@ -141,31 +176,87 @@ export class PostgresExerciseCatalogRepository
     exerciseId: string,
     favorite: boolean,
   ): Promise<void> {
-    if (favorite) {
-      await this.#client.unsafe(
-        `INSERT INTO appbasis_exercise_catalog_favorite (
-           organization_id, principal_id, exercise_id
-         )
-         SELECT $1, $2, $3
-         WHERE EXISTS (
-           SELECT 1
-           FROM appbasis_exercise_catalog_item
-           WHERE organization_id = $1
-             AND id = $3
-         )
-         ON CONFLICT (organization_id, principal_id, exercise_id)
-         DO NOTHING`,
-        [organizationId, principalId, exerciseId],
-      );
+    if (this.#favoriteFenceMode === "require-catalog-erasure-marker") {
+      await this.#client.begin(async (transaction) => {
+        await lockFavoritePrincipal(transaction, organizationId, principalId);
+        if (favorite) {
+          // Hard failure when migration 0004 does not exist; never fall back.
+          const deleted = await transaction.unsafe(
+            `SELECT 1 AS present
+             FROM appbasis_exercise_catalog_favorite_deletion
+             WHERE organization_id = $1 AND principal_id = $2`,
+            [organizationId, principalId],
+          );
+          if (deleted.length > 1) {
+            throw new Error("Exercise catalog favorite deletion marker is ambiguous.");
+          }
+          if (deleted.length !== 0) {
+            throw new ExerciseCatalogFavoriteDeletedError();
+          }
+        }
+        await writeFavorite(transaction, organizationId, principalId, exerciseId, favorite);
+      });
       return;
     }
-    await this.#client.unsafe(
-      `DELETE FROM appbasis_exercise_catalog_favorite
-       WHERE organization_id = $1
-         AND principal_id = $2
-         AND exercise_id = $3`,
-      [organizationId, principalId, exerciseId],
+    // Explicit legacy path, retained for existing install compatibility.
+    // Must not be used for a production-erasure guarantee.
+    await writeFavorite(
+      this.#client,
+      organizationId,
+      principalId,
+      exerciseId,
+      favorite,
     );
+  }
+
+  /**
+   * Opt-in candidate: only an approved identity/privacy owner may invoke
+   * this on the TRUE deletion decision. This repository does NOT infer the
+   * right to delete a principal from its ID.
+   *
+   * Mark + purge is atomic with opt-in favorites, using the same lock.
+   * It intentionally does not purge expired markers or reactivate users.
+   */
+  async markPrincipalDeletedAndDeleteFavorites(
+    organizationId: string,
+    principalId: string,
+    completedAt: Date,
+  ): Promise<ExerciseCatalogFavoriteDeletionResult> {
+    if (this.#favoriteFenceMode !== "require-catalog-erasure-marker") {
+      throw new Error("Exercise catalog deletion requires approved fenced mode.");
+    }
+    if (
+      !isValidFavoriteIdentity(organizationId) ||
+      !isValidFavoriteIdentity(principalId) ||
+      !(completedAt instanceof Date) ||
+      !Number.isFinite(completedAt.getTime())
+    ) {
+      throw new Error("Exercise catalog principal deletion inputs are invalid.");
+    }
+    return this.#client.begin(async (transaction) => {
+      await lockFavoritePrincipal(transaction, organizationId, principalId);
+      const marker = await transaction.unsafe(
+        `INSERT INTO appbasis_exercise_catalog_favorite_deletion
+           (organization_id, principal_id, completed_at, purge_after)
+         VALUES ($1, $2, $3::timestamptz, $3::timestamptz + interval '840 hours')
+         ON CONFLICT (organization_id, principal_id) DO NOTHING
+         RETURNING principal_id`,
+        [organizationId, principalId, completedAt.toISOString()],
+      );
+      if (marker.length > 1) {
+        throw new Error("Exercise catalog favorite deletion marker is invalid.");
+      }
+      const removed = await transaction.unsafe(
+        `DELETE FROM appbasis_exercise_catalog_favorite
+         WHERE organization_id = $1 AND principal_id = $2
+         RETURNING exercise_id`,
+        [organizationId, principalId],
+      );
+      return Object.freeze({
+        markerInserted: marker.length === 1,
+        deletedFavorites: removed.length,
+      });
+    });
   }
 
   async listUsageSummaries(
@@ -333,6 +424,67 @@ export class PostgresExerciseCatalogRepository
     }
     return rows.length === 1;
   }
+}
+
+async function lockFavoritePrincipal(
+  transaction: ExerciseCatalogPostgresQueryClient,
+  organizationId: string,
+  principalId: string,
+): Promise<void> {
+  if (
+    !isValidFavoriteIdentity(organizationId) ||
+    !isValidFavoriteIdentity(principalId)
+  ) {
+    throw new Error("Exercise catalog favorite identity is invalid.");
+  }
+  // Same scoped transaction lock as the already-tested training-block owner.
+  await transaction.unsafe(
+    `SELECT pg_advisory_xact_lock(
+       hashtextextended(jsonb_build_array($1::text, $2::text)::text, 0)
+     )`,
+    [organizationId, principalId],
+  );
+}
+
+function isValidFavoriteIdentity(value: string): boolean {
+  return (
+    typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= 200 &&
+    value.trim() === value
+  );
+}
+
+async function writeFavorite(
+  client: ExerciseCatalogPostgresQueryClient,
+  organizationId: string,
+  principalId: string,
+  exerciseId: string,
+  favorite: boolean,
+): Promise<void> {
+  if (favorite) {
+    await client.unsafe(
+      `INSERT INTO appbasis_exercise_catalog_favorite (
+         organization_id, principal_id, exercise_id
+       )
+       SELECT $1, $2, $3
+       WHERE EXISTS (
+         SELECT 1 FROM appbasis_exercise_catalog_item
+         WHERE organization_id = $1 AND id = $3
+       )
+       ON CONFLICT (organization_id, principal_id, exercise_id)
+       DO NOTHING`,
+      [organizationId, principalId, exerciseId],
+    );
+    return;
+  }
+  await client.unsafe(
+    `DELETE FROM appbasis_exercise_catalog_favorite
+     WHERE organization_id = $1
+       AND principal_id = $2
+       AND exercise_id = $3`,
+    [organizationId, principalId, exerciseId],
+  );
 }
 
 async function readFavoriteExerciseIds(
