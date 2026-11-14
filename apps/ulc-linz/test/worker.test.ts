@@ -2005,7 +2005,11 @@ describe("generated identity+permissions Worker entrypoint", () => {
         ...base,
         exerciseCatalog: {
           ...base.exerciseCatalog,
-          async requestPrivateMediaDeletion(organizationId, exerciseId, mediaId) {
+          async requestPrivateMediaDeletion(
+            organizationId: string,
+            exerciseId: string,
+            mediaId: string,
+          ) {
             requested++;
             if (!pending) return undefined;
             return {
@@ -2027,11 +2031,11 @@ describe("generated identity+permissions Worker entrypoint", () => {
         },
         exerciseCatalogMediaStore: {
           async put() {},
-          async delete(key) {
+          async delete(key: string) {
             deleted++;
             expect(key).toBe("exercise-catalog/verein-1/exercise-1/media-1");
           },
-          async get(key, options) {
+          async get(key: string, options?: { readonly range?: Headers }) {
             verified++;
             expect(key).toBe("exercise-catalog/verein-1/exercise-1/media-1");
             expect(options?.range?.get("range")).toBe("bytes=0-0");
