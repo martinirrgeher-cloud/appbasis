@@ -348,7 +348,7 @@ if (!DATABASE_URL) {
       for (const [id, first] of [
         [actorAthlete, "Proxy"],
         [TARGET, "Target"],
-      ]) {
+      ] as const) {
         await db().client.unsafe(
           `INSERT INTO appbasis_athlete
              (id, organization_id, first_name, last_name)
