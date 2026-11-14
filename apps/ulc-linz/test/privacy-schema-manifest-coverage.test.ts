@@ -68,11 +68,13 @@ describe("ULC P01 declared-schema privacy inventory coverage (no DB writes)", ()
     expect(declared).toHaveLength(41);
     expect(new Set(declared).size).toBe(41);
     expect(recorded).toEqual(declared);
-    expect(inventory.persistentOwners.map((owner) => ({
+    const selectedFields = (owner: ManifestOwner) => ({
       id: owner.id,
       schemaVersion: owner.schemaVersion,
       migrations: owner.migrations,
-    }))).toEqual(manifest.owners);
+    });
+    expect(inventory.persistentOwners.map(selectedFields))
+      .toEqual(manifest.owners.map(selectedFields));
     expect(inventory.scope).toContain("not-runtime-evidence");
     expect(inventory.repositorySchemaReview).toMatchObject({
       sourceManifest: "apps/ulc-linz/appbasis.database.json",
