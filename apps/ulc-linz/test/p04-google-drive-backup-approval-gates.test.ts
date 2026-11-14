@@ -81,7 +81,8 @@ describe("ULC P04-B future Google Drive backup – offline requirements only", (
     expect(plan.documentType).toBe(
       "future-offsite-backup-candidate-not-deployment-config",
     );
-    expect(plan.intentSource).toContain("future Google Drive backups");
+    expect(plan.intentSource).toContain("future database backups");
+    expect(plan.intentSource).toContain("mein google drive");
     expect(plan.status).toBe("planned-not-configured");
     expect(Object.keys(plan.approvals).length).toBeGreaterThan(5);
     expect(plan.approvals.backupTargetSelection).toBe(true);
