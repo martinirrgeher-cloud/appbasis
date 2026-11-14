@@ -50,7 +50,16 @@ Bisher gilt die **35-Tage-Originalquelle für Athleten-Löschentscheidungen**, d
 - [Google – Dateien im Papierkorb bis 30 Tage](https://support.google.com/drive/answer/2375102)
 - [Österreichische Datenschutzbehörde – Auftragsverarbeiter](https://dsb.gv.at/rechte-pflichten/ihre-pflichten-als-auftragsverarbeiterin)
 
-## 4. Was heute ausdrücklich NICHT geschieht
+## 4. P04-C – ausführbarer Offline-Rehearsal ohne Google-Konto und ohne Echtdaten
+
+Die Vorbereitung enthält jetzt einen **echten kryptografischen Testlauf ausschließlich mit fest einprogrammierten synthetischen JSON-Testwerten**:
+
+- `backup/drive-synthetic-rehearsal.ts` verschlüsselt die eigene feste Demo-Datei mit frischem **AES-256-GCM**-Schlüssel/Nonce (nur im Arbeitsspeicher), sendet nur das Ciphertext an einen **synthetischen, lokalen In-Memory-Adapter**, lädt es zur SHA-256-Kontrolle zurück, authentifiziert/entschlüsselt den Testinhalt und lässt ihn erst danach permanent entfernen. Anschließend kontrolliert es das Nichtmehrvorhandensein. Schlüssel werden bestmöglich aus dem Speicher genullt.
+- `test/p04-drive-synthetic-rehearsal.test.ts` prüft acht Fälle: komplette Roundtrip-/Löschkette, zufällige Nonces, Verweigerung echter Provideradapter, ungültige Datei-ID, manipuliertes Ciphertext, fehlenden Download, erfolglose Löschung und redigierte Providerfehler.
+- **Wichtig:** AES-GCM ist **nur das eigenständige synthetische Rehearsal-Format**. Die produktive Backupverschlüsselung ist weiterhin **nicht implementiert**; dafür bleibt das separat geprüfte `age/X25519`-Format mit extern sicher verwahrtem Entschlüsselungsschlüssel der Vorschlag. Dieser Test beweist **weder** eine Google-Drive-OAuth-Verbindung **noch** einen echten pg_dump, Wiederherstellung aus PostgreSQL oder beweiskräftige Provider-Löschung.
+- Das Rehearsal akzeptiert **keine** Eingabedaten/Produktionsdatenbank/Dateipfade/Google-Zugangsdaten. Der Adapter muss explizit `synthetic-local-memory-only` sein. Es ist **nicht** an produktive Worker oder Datenbankexports angebunden. Erst die späteren Integrations- und Betriebsnachweise dürfen reale Verschlüsselung, Drive-API, Restore und Retention belegen.
+
+## 5. Was heute ausdrücklich NICHT geschieht
 
 - **Kein** Google-Drive-Ordner wird angelegt, keine Google-OAuth-Verbindung eingerichtet, keine Datei übertragen, keine Passwörter/Schlüssel erzeugt.
 - **Keine** produktive PostgreSQL-Abfrage, kein `pg_dump`, kein GitHub-Scheduled-Workflow aktiviert, keine Retention-/Provider-Policy oder Release-Contract-Freischaltung.
