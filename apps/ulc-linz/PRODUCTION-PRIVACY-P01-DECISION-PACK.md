@@ -1,6 +1,6 @@
 # P01 – Vereinsentscheidung zum geschützten ULC-Echtbetrieb
 
-**Stand:** 14.11.2026 · **Status: ENTWURF – NICHT GENEHMIGT.**
+**Stand:** 14.11.2026 · **Status: FACHLICHE ZIELREGELN BESTÄTIGT; RECHTS-/PROVIDER-/TECHNIK-FREIGABEN OFFEN.**
 Quelle: [P01-Bestand](./PRODUCTION-PRIVACY-DECISIONS-P01-DRAFT.md), [P00](./PRODUCTION-READINESS-P00.md), [P02](./PRODUCTION-READINESS-P02.md), [P03](./PRODUCTION-READINESS-P03.md), [P03-B](./PRODUCTION-READINESS-P03-B-WRITER-AUDIT.md). Dieser Text ist keine neue Retention-Policy und keine Produktionsfreigabe.
 
 ## Vier Entscheidungen in einem Beschluss
@@ -61,21 +61,27 @@ Direkte Abfrage der verbundenen Neon-Projektverwaltung (ohne Datenbankabfrage od
 
 Die **41** derzeit deklarierten Migrationen erzeugen statisch **64** Tabellen; **alle 64** waren bereits in der früheren Tabellenliste enthalten. Korrigiert wurden die fehlenden sieben ULC-Migrationszuordnungen (v9 → v16) und die daraus resultierenden personenbezogenen Feldrisiken. Ein neuer automatischer Drift-Test prüft Manifest, Inventar und `privacy=blocked`. Konkrete Restarbeitspakete, Prüfkriterien und Freigabegrenzen: [P01-Schema- und Produktionsgatematrix](./PRODUCTION-READINESS-P01-SCHEMA-COVERAGE.md).
 
-Dies ist **keine Aussage über das tatsächlich ausgerollte Datenbankschema**. Das aktualisierte Inventar verwendet deshalb ausdrücklich `repository-declared-schema-v16-review-not-runtime-evidence`. Die fachlichen D1–D4-Entscheidungen bleiben offen.
+Dies ist **keine Aussage über das tatsächlich ausgerollte Datenbankschema**. Das aktualisierte Inventar verwendet deshalb ausdrücklich `repository-declared-schema-v16-review-not-runtime-evidence`. Die D1–D4-Sicherheitsgrundsätze sind als fachliche Zielvorgabe bestätigt. Ihre technische Wirksamkeit, rechtliche Belege und insbesondere die D2-Variante A/B samt Backup-Horizont sind weiterhin offen.
 
 ## Konkretisierte fachliche Fristenvorschläge – noch nicht genehmigt
 
-Eine vollständige, testbare Klassifikation aller 64 Tabellen in 13 Entscheidungskategorien sowie der gesonderten Freitext-/Historienfelder wurde als [P01-Betreiber-Entscheidungsvorschlag](./PRODUCTION-PRIVACY-P01-OPERATOR-APPROVAL-PROPOSAL.md) und `privacy/p01-operator-retention-candidate.json` vorbereitet. **Vorschläge sind keine gesetzliche Pflicht und keine Betriebsfreigabe.** Die tatsächlich freigegebene Frist kann je Zweck abweichen; die aktuelle 35-Tage-Löschquelle ist unverändert und nach Ablauf nicht verlängerbar.
+Eine vollständige, testbare Klassifikation aller 64 Tabellen in 13 Entscheidungskategorien sowie der gesonderten Freitext-/Historienfelder wurde als **fachlich bestätigte, noch nicht aktivierte Zielvorgabe** im [P01-Betreiber-Entscheidungsvorschlag](./PRODUCTION-PRIVACY-P01-OPERATOR-APPROVAL-PROPOSAL.md) und `privacy/p01-operator-retention-candidate.json` vorbereitet. **Vorschläge sind keine gesetzliche Pflicht und keine Betriebsfreigabe.** Die tatsächlich freigegebene Frist kann je Zweck abweichen; die aktuelle 35-Tage-Löschquelle ist unverändert und nach Ablauf nicht verlängerbar.
 
-## Betreiberfreigabe – alle Felder noch offen
+## Betreiberfreigabe – fachliche Zielregeln bestätigt, Nachweise weiter offen
 
-- [ ] Verantwortliche Vereinsfunktion, Datum und Datenschutzprüfung
+- [x] Fachliche Zielregeln und D1–D4-Grundsätze am 14.11.2026 in der Unterhaltung ausdrücklich bejaht (kein unterschriebener Nachweis, keine D2-B-Retention-Freigabe)
+- [ ] Konkrete Vereinsfunktion, vollständiger schriftlicher Beschluss und Datenschutzprüfung
 - [ ] Zwecke, Betroffeneninformation, Rechtsgrundlage und Rollen für Minderjährige/Eltern/Trainer sowie Auskunft/Berichtigung/Löschung
-- [ ] Frist und Fristbeginn **pro Datenkategorie** bestätigt, gesonderte berechtigte Ausnahmen dokumentiert
-- [ ] D1: historische persönliche Usage und Freitext, zuständige Prüfung und Löschweg beschlossen
-- [ ] D2: Variante A/B, reale Backup-Grenze, minimaler Löschbeleg und Löschbeleg-Retention beschlossen
-- [ ] D3: tatsächlicher Provider/Medienarten, physischer Löschbeweis, AVV/Region bestätigt
-- [ ] D4: isolierter Restore, Vollständigkeit neuer Autorität und Freigabeverantwortlicher bestätigt
+- [x] Fachliche Fristenvorschläge (12/24 Monate, 90-Tage-Prüfung, 35-Tage-Marker) als bedingte Zielvorgabe bestätigt
+- [ ] Rechtliche Erforderlichkeit, Fristbeginn und Ausnahmen **pro Datenkategorie** dokumentiert
+- [x] D1-Grundsatz: historische persönliche Usage und Freitext eingeschränkt behandeln, keine geratenen Zuordnungen
+- [ ] D1 operative Zuständigkeiten und konkrete Lösch-/Prüfwege nachgewiesen
+- [x] D2-Grundsatz: bestehende 35 Tage/deny bis zur gesonderten fundierten A/B-Entscheidung beibehalten
+- [ ] D2 Variante A/B, reale Backup-Grenze, minimaler Löschbeleg und Löschbeleg-Retention separat beschlossen
+- [x] D3-Grundsatz: keine neuen identifizierbaren Minderjährigenmedien ohne Provider-/Rechts-/Löschbeleg
+- [ ] D3 tatsächlicher Provider/Medienarten, physischer Löschbeweis, AVV/Region bestätigt
+- [x] D4-Grundsatz: Restore nur quarantänisiert, mit neuerer Löschquelle und allen Ownern
+- [ ] D4 vollständige Wiederherstellungskette und Freigabeverantwortlicher nachgewiesen
 - [ ] Cloudflare-/Neon-Produktionsbelege tatsächlich eingeholt und geprüft
 
-**Weiterarbeit bis zum Beschluss:** Read-only Audit, isolierte Negativtests und Draft-Design zulässig. **Keine** Änderung produktiver Fristen, Berechtigungen, SQL-Migrationen, Löschrouten, Backup-Promotion, Freigabeverträge oder Deployments. Alle sechs Bestandsmodule samt ULC-Anmeldung/Anwesenheit bleiben Ziel des Pilotstarts. P03-D #615 ist ein Test-Prototyp, kein aktiver Guard.
+**Weiterarbeit bis zur Sicherheits-/Provider- und Produktivfreigabe:** Isolierte Negativtests und Draft-Design zulässig. **Keine** Änderung produktiver Fristen, Berechtigungen, SQL-Migrationen, Löschrouten, Backup-Promotion, Freigabeverträge oder Deployments. Alle sechs Bestandsmodule samt ULC-Anmeldung/Anwesenheit bleiben Ziel des Pilotstarts. P03-D #615 ist ein Test-Prototyp, kein aktiver Guard.
