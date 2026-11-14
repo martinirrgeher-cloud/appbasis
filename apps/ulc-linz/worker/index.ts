@@ -93,6 +93,7 @@ import {
   safeYouthTrainingArea,
 } from "./youth-category-postgres";
 import { UlcTrainingSessionConflictError } from "./training-session-postgres";
+import { trainingWriteGuardHttpResponse } from "./training-write-http-error";
 import { validateU12StatisticsDateRange } from "./u12-statistics-postgres";
 import {
   UlcLinzTrainerIdentityConflictError,
@@ -1672,6 +1673,8 @@ async function kindertrainingSessionResponse(
     );
     return Response.json({ snapshot });
   } catch (error) {
+    const blocked = trainingWriteGuardHttpResponse(error);
+    if (blocked) return blocked;
     if (error instanceof UlcTrainingSessionConflictError) {
       return kindertrainingSessionConflict();
     }
@@ -2124,6 +2127,8 @@ async function detailedYouthAreaResponse(
     );
     return Response.json({ report }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
+    const blocked = trainingWriteGuardHttpResponse(error);
+    if (blocked) return blocked;
     if (error instanceof UlcTrainingSessionConflictError) return u12SessionConflict();
     if (error instanceof UlcU12NotFoundError) {
       return Response.json({ error: { code: "YOUTH_GROUP_NOT_FOUND" } }, { status: 404 });
@@ -2236,6 +2241,8 @@ async function u12SessionResponse(
     );
     return Response.json({ snapshot });
   } catch (error) {
+    const blocked = trainingWriteGuardHttpResponse(error);
+    if (blocked) return blocked;
     if (error instanceof UlcTrainingSessionConflictError) {
       return u12SessionConflict();
     }
