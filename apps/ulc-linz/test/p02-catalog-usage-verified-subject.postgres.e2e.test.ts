@@ -423,6 +423,25 @@ if (!DATABASE_URL) {
       expect(await counts()).toEqual({ usage: 1, linked: 0, favorites: 0 });
     });
 
+    it("protected usage write rolls back when the exact subject-link table is unavailable", async () => {
+      await db().client.unsafe(
+        "ALTER TABLE appbasis_exercise_catalog_usage_subject RENAME TO p02_h_temporarily_missing_link",
+      );
+      const event = usage("h-no-link-table");
+      try {
+        await expect(repository(db()).recordUsageForVerifiedSubject(
+          event, subject(event),
+        )).rejects.toThrow();
+      } finally {
+        await db().client.unsafe(
+          "ALTER TABLE p02_h_temporarily_missing_link RENAME TO appbasis_exercise_catalog_usage_subject",
+        );
+      }
+      expect(await counts()).toEqual({
+        usage: 0, linked: 0, favorites: 0,
+      });
+    });
+
     it("protected write refuses an absent marker schema rather than falling back", async () => {
       await db().client.unsafe(
         "ALTER TABLE appbasis_exercise_catalog_favorite_deletion RENAME TO p02_h_temporarily_missing_marker",
