@@ -257,6 +257,41 @@ if (!DATABASE_URL) {
       )).rejects.toBeInstanceOf(UlcTrainingScopeWriteBlockedError);
     });
 
+    it("denies a different identity even when the target athlete and group are active", async () => {
+      const s = await seed("p03h-wrong-identity", true);
+      const other = await seed("p03h-other-identity", true);
+      const session = await repo().ensureScheduledSession(
+        s.org, "kindertraining", s.group, DATE,
+      );
+      await expect(repo().saveRegistration(
+        s.org, session.session.id, s.proxy, "attending", null,
+        other.identity, undefined, "Must not persist",
+      )).rejects.toBeInstanceOf(UlcTrainingScopeWriteBlockedError);
+    });
+
+    it("revoked actor rolls back the newly created scheduled session as well as history", async () => {
+      const s = await seed("p03h-revoked-no-orphan", true);
+      await db().client.unsafe(
+        `UPDATE ulc_linz_membership
+         SET active = false, ended_at = now()
+         WHERE identity_id = $1`, [s.identity],
+      );
+      await expect(repo().withRegistrationTransaction(async scoped => {
+        const scheduled = await scoped.ensureScheduledSession(
+          s.org, "kindertraining", s.group, DATE,
+        );
+        return scoped.saveRegistration(
+          s.org, scheduled.session.id, s.proxy, "attending",
+          null, s.identity,
+        );
+      })).rejects.toBeInstanceOf(UlcTrainingScopeWriteBlockedError);
+      const rows = await db().client.unsafe(
+        "SELECT id FROM ulc_linz_training_session WHERE organization_id = $1",
+        [s.org],
+      );
+      expect(rows).toHaveLength(0);
+    });
+
     it("two-connection race: writer locks member first; revoke waits, next write is denied", async () => {
       const s = await seed("p03h-write-first");
       const left = createPostgresDatabase(uri.toString());
