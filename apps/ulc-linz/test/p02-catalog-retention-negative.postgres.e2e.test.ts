@@ -5,6 +5,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning";
 import {
   PostgresExerciseCatalogRepository,
+  deleteExerciseCatalogPrivateMediaWithProviderProof,
+  type ExerciseCatalogMediaDeletionProvider,
   type ExerciseCatalogPostgresClient,
 } from "@appbasis/exercise-catalog";
 
@@ -208,5 +210,145 @@ if (!DATABASE_URL) {
       expect(await repo.listPrivateMedia(ORG, EXERCISE)).toEqual([]);
       expect(await repo.listPrivateMedia(OTHER_ORG, EXERCISE)).toHaveLength(1);
     });
+    it("P02-E draft: SQL metadata stays until fake provider returns exact deletion AND independent absence", async () => {
+      const repo = catalog();
+      const objects = new Set(["p02-private/child-video.mp4"]);
+      await repo.registerPrivateMedia({
+        id: "p02-provider-check",
+        organizationId: ORG,
+        exerciseId: EXERCISE,
+        fileName: "training.mp4",
+        storageKey: "p02-private/child-video.mp4",
+        contentType: "video/mp4",
+        sizeBytes: 100,
+        createdAt: "2026-11-13T09:00:00.000Z",
+      });
+      let confirmAbsent = false;
+      let deletionCount = 0;
+      const provider: ExerciseCatalogMediaDeletionProvider = {
+        async deleteExactObject(input) {
+          deletionCount += 1;
+          expect(input).toMatchObject({
+            organizationId: ORG, exerciseId: EXERCISE,
+            mediaId: "p02-provider-check",
+            storageKey: "p02-private/child-video.mp4",
+          });
+          objects.delete(input.storageKey);
+          return { outcome: "delete-accepted", storageKey: input.storageKey };
+        },
+        async verifyExactObjectAbsence(input) {
+          return {
+            status: confirmAbsent && !objects.has(input.storageKey)
+              ? "absent" : "indeterminate",
+            storageKey: input.storageKey,
+          };
+        },
+      };
+      const call = () => deleteExerciseCatalogPrivateMediaWithProviderProof({
+        organizationId: ORG,
+        exerciseId: EXERCISE,
+        mediaId: "p02-provider-check",
+        repository: repo,
+        provider,
+      });
+      await expect(call()).resolves.toMatchObject({
+        status: "provider-object-not-confirmed",
+        metadataDeleted: false,
+      });
+      expect(await db().client.unsafe(
+        `SELECT deletion_requested_at IS NOT NULL AS requested
+         FROM appbasis_exercise_catalog_private_media
+         WHERE organization_id = $1 AND id = 'p02-provider-check'`,
+        [ORG],
+      )).toMatchObject([{ requested: true }]);
+      expect(deletionCount).toBe(1);
+      confirmAbsent = true;
+      await expect(call()).resolves.toMatchObject({
+        status: "completed", metadataDeleted: true, providerDeletionConfirmed: true,
+      });
+      expect(await db().client.unsafe(
+        `SELECT id FROM appbasis_exercise_catalog_private_media
+         WHERE organization_id = $1 AND id = 'p02-provider-check'`,
+        [ORG],
+      )).toEqual([]);
+      expect(objects.size).toBe(0);
+      await expect(call()).resolves.toMatchObject({
+        status: "metadata-not-found",
+      });
+      // This uses a synthetic provider; no claim of actual vendor-side delete.
+    });
+
+    it("P02-E draft: provider outages leave SQL metadata for retry in the isolated DB", async () => {
+      const repo = catalog();
+      await repo.registerPrivateMedia({
+        id: "p02-retry",
+        organizationId: ORG,
+        exerciseId: EXERCISE,
+        fileName: "training.mp4",
+        storageKey: "p02-private/retry.mp4",
+        contentType: "video/mp4",
+        sizeBytes: 100,
+        createdAt: "2026-11-13T09:00:00.000Z",
+      });
+      const provider: ExerciseCatalogMediaDeletionProvider = {
+        async deleteExactObject() {
+          throw new Error("fake provider temporarily down");
+        },
+        async verifyExactObjectAbsence() {
+          throw new Error("should never be called");
+        },
+      };
+      await expect(deleteExerciseCatalogPrivateMediaWithProviderProof({
+        organizationId: ORG,
+        exerciseId: EXERCISE,
+        mediaId: "p02-retry",
+        repository: repo,
+        provider,
+      })).rejects.toThrow(/provider temporarily down/);
+      const found = await db().client.unsafe(
+        `SELECT id, deletion_requested_at IS NOT NULL AS requested
+         FROM appbasis_exercise_catalog_private_media
+         WHERE organization_id = $1 AND id = 'p02-retry'`,
+        [ORG],
+      );
+      expect(found).toMatchObject([{ id: "p02-retry", requested: true }]);
+      expect(await repo.listPrivateMedia(ORG, EXERCISE)).toEqual([]);
+    });
+
+    it("P02-E draft: same media ID in another organization is not finalized", async () => {
+      const repo = catalog();
+      for (const org of [ORG, OTHER_ORG]) {
+        await repo.registerPrivateMedia({
+          id: "p02-shared-deletion",
+          organizationId: org,
+          exerciseId: EXERCISE,
+          fileName: "training.mp4",
+          storageKey: org + "/file.mp4",
+          contentType: "video/mp4",
+          sizeBytes: 100,
+          createdAt: "2026-11-13T09:00:00.000Z",
+        });
+      }
+      const deletedKeys: string[] = [];
+      const provider: ExerciseCatalogMediaDeletionProvider = {
+        async deleteExactObject(input) {
+          deletedKeys.push(input.storageKey);
+          return { outcome: "delete-accepted", storageKey: input.storageKey };
+        },
+        async verifyExactObjectAbsence(input) {
+          return { status: "absent", storageKey: input.storageKey };
+        },
+      };
+      await expect(deleteExerciseCatalogPrivateMediaWithProviderProof({
+        organizationId: ORG,
+        exerciseId: EXERCISE,
+        mediaId: "p02-shared-deletion",
+        repository: repo,
+        provider,
+      })).resolves.toMatchObject({ status: "completed" });
+      expect(deletedKeys).toEqual([ORG + "/file.mp4"]);
+      expect(await repo.listPrivateMedia(OTHER_ORG, EXERCISE)).toHaveLength(1);
+    });
+
   });
 }
