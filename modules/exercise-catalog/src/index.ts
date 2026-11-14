@@ -23,6 +23,13 @@ export {
   PostgresExerciseCatalogRepository,
 } from "./postgres-repository";
 export { ExerciseCatalogService } from "./service";
+export {
+  deleteExerciseCatalogPrivateMediaWithProviderProof,
+} from "./private-media-deletion-coordinator";
+export type {
+  ExerciseCatalogMediaDeletionProvider,
+  ExerciseCatalogPrivateMediaDeleteOutcome,
+} from "./private-media-deletion-coordinator";
 export type {
   CreateExerciseCatalogItemInput,
   ExerciseCatalogCategory,
