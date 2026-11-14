@@ -220,13 +220,17 @@ if (!DATABASE_URL) {
       await expect(save(s)).rejects.toBeInstanceOf(UlcTrainingActorWriteBlockedError);
     });
 
-    it("denies inactive membership of the otherwise authorized admin", async () => {
+    it("denies a removed admin membership; never fabricates a forbidden inactive-admin row", async () => {
       const s = await seed("p03i-admin-revoked", "admin");
+      // The canonical lifecycle check explicitly prohibits inactive admins.
+      // Simulate a removed membership in the disposable fixture, not an invalid
+      // admin inactive/ended state.
       await db().client.unsafe(
-        `UPDATE ulc_linz_membership SET active = false, ended_at = now()
-         WHERE identity_id = $1`, [s.identity],
+        `DELETE FROM ulc_linz_membership WHERE identity_id = $1`,
+        [s.identity],
       );
       await expect(save(s)).rejects.toBeInstanceOf(UlcTrainingActorWriteBlockedError);
+      expect(await count(s.org)).toBe(0);
     });
 
     it("denies canonical permission-administration revoke even when role still grants edit", async () => {
