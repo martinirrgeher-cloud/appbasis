@@ -44,6 +44,19 @@ Die aktuelle `appbasis.database.json` führt **41 Migrationen**, das ältere M5-
 
 Das aktuelle `privacy/m5-provider-compliance-inventory.json` führt **Cloudflare** (Worker/Hyperdrive) und **Neon PostgreSQL** (Zielregion EU/Frankfurt) auf, jeweils mit offenen App-Produktionsbelegen. **Eine angegebene Zielregion ist keine bestätigte tatsächliche Produktionsregion.** Erforderlich: Vertrags-/AVV-/Unterauftragsverarbeiter-Nachweis, Region, Verschlüsselung, genaue Snapshot-/Backup-Aufbewahrung, Restore-Fähigkeit, Zuständigkeit und geprüfte Gültigkeit.
 
+### Read-only Neon-Kontrollbefund (14.11.2026)
+
+Direkte Abfrage der verbundenen Neon-Projektverwaltung (ohne Datenbankabfrage oder Änderung):
+
+- Projektname `appbasis-ulc-linz-production`: konfigurierte Region **`aws-eu-central-1`** (Frankfurt), PostgreSQL 18.
+- Neon-API-Feld `history_retention_seconds=21600` = **6 Stunden** verfügbare Projekt-Änderungshistorie gemäß Projektmetadaten. **Das ist nicht die vollständige gesetzliche oder technische Aufbewahrungsdauer** sämtlicher Snapshots, Exporte, Fremdbackups oder Wiederherstellungsmedien.
+- Snapshots-Liste für das Produktionsprojekt: **keine Einträge**; automatische Snapshotplanung der Default-Branch: **leere Liste**. Dies beweist weder ein vollständiges Fehlen von Backups noch ihre maximale Lebensdauer.
+- Default-Branch `production` wird von Neon als `archived` und `protected=false` gemeldet. Der tatsächliche Zugriffs-/Betriebszustand und produktive Cloudflare-Worker-Bindings müssen getrennt verifiziert werden; **keine automatische Aktivierung, Branchschutz- oder Restoreänderung**.
+- Offene Belege: konkrete App-to-Neon-Verbindung, Cloudflare-Projekt/Region, tatsächlich mögliche Restore-Horizonte einschließlich Exporte, AVV/DPA, Subprozessoren, Verschlüsselungs-/Berechtigungsnachweise.
+
+**Folgerung für D2:** Aus dem 6-Stunden-PITR-Metadatenwert **darf nicht** geschlossen werden, dass die vorhandene 35-Tage-Quellautorität für sämtliche Backup-/Restore-Situationen genügt. Das D2-A/B-Gate bleibt offen.
+
+
 ## Betreiberfreigabe – alle Felder noch offen
 
 - [ ] Verantwortliche Vereinsfunktion, Datum und Datenschutzprüfung
