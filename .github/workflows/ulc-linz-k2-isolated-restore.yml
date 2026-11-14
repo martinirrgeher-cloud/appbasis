@@ -31,6 +31,7 @@ jobs:
       BUCKET: ${{ vars.APPBASIS_ULC_R2_BUCKET }}
       APPBASIS_ULC_R2_BUCKET: ${{ vars.APPBASIS_ULC_R2_BUCKET }}
       APPBASIS_ULC_R2_JURISDICTION: ${{ vars.APPBASIS_ULC_R2_JURISDICTION }}
+      APPBASIS_ULC_EXPECTED_DATABASE_NAME: ${{ vars.APPBASIS_ULC_EXPECTED_DATABASE_NAME }}
       KEY: ${{ inputs.backup_key }}
     steps:
       - name: Check out reviewed code
