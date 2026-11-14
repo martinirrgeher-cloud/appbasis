@@ -299,25 +299,30 @@ if (!DATABASE_URL) {
     it("S6 prototype: writer committed after the deletion fence must be rejected", async () => {
       const org = "p03d-race";
       const { session } = await fixture(org);
-      let announceLocked: (() => void) | null = null;
-      let continueDeletion: (() => void) | null = null;
+      let announceLocked!: () => void;
+      let continueDeletion!: () => void;
       const locked = new Promise<void>((resolve) => { announceLocked = resolve; });
       const release = new Promise<void>((resolve) => { continueDeletion = resolve; });
       const deletion = db().client.begin(async (tx) => {
         await tx.unsafe(acquireFence, [org, TARGET]);
-        announceLocked?.();
+        announceLocked();
         await release;
         await markAndErase(tx, org, TARGET);
       });
 
       await locked;
+      // Use a fresh session with no existing registration to force a real
+      // INSERT through the fence rather than an unrelated CAS conflict.
+      const future = await sessions().ensureScheduledSession(
+        org, "kindertraining", "p03d-race-future", "2026-11-14",
+      );
       const attempted = sessions().saveRegistration(
-        org, session.session.id, TARGET, "not_attending", 1, "p03d-actor",
+        org, future.session.id, TARGET, "attending", null, "p03d-actor",
       ).then(
         () => "unexpected-write-success",
         (error: unknown) => String(error),
       );
-      continueDeletion?.();
+      continueDeletion();
       await deletion;
       const outcome = await attempted;
       expect(outcome).toMatch(/P03D_TEST_SUBJECT_WRITE_BLOCKED/);
