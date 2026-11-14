@@ -20,6 +20,7 @@ import {
   assertUlcLiveRegistrationScope,
   assertUlcLiveTrainingGroupScope,
 } from "./training-session-write-scope";
+import { assertUlcLiveTrainingWriterActor } from "./training-session-write-actor";
 
 type SqlParameter = string | number | boolean | null;
 
@@ -28,7 +29,8 @@ type SqlParameter = string | number | boolean | null;
 export type UlcTrainingSessionWriteGuardMode =
   | "legacy"
   | "require-live-athlete-transaction"
-  | "require-live-athlete-group-transaction";
+  | "require-live-athlete-group-transaction"
+  | "require-live-training-actor-transaction";
 
 export class UlcTrainingSubjectWriteBlockedError extends Error {
   readonly code = "ULC_TRAINING_SUBJECT_WRITE_BLOCKED";
@@ -179,7 +181,8 @@ export class PostgresUlcTrainingSessionRepository {
   ) {
     if (writeGuardMode !== "legacy" &&
         writeGuardMode !== "require-live-athlete-transaction" &&
-        writeGuardMode !== "require-live-athlete-group-transaction") {
+        writeGuardMode !== "require-live-athlete-group-transaction" &&
+        writeGuardMode !== "require-live-training-actor-transaction") {
       throw new UlcTrainingSessionPersistenceError("Unknown ULC training write guard mode.");
     }
     this.#sql = sql;
@@ -516,7 +519,10 @@ export class PostgresUlcTrainingSessionRepository {
 
   async saveSession(
     organizationId: string,
-    input: CreateUlcTrainingSessionInput,
+    input: CreateUlcTrainingSessionInput & {
+      /** Only the server-authenticated HTTP access scope may supply this. */
+      readonly trustedActorIdentityId?: string;
+    },
     attendanceInput: readonly {
       readonly athleteId: string;
       readonly status: UlcTrainingAttendance["status"];
@@ -536,10 +542,21 @@ export class PostgresUlcTrainingSessionRepository {
           trainingTrainerIds, eligibleTrainerIds,
         ));
       }
+      if (this.#writeGuardMode === "require-live-training-actor-transaction") {
+        // Canonical principal administration locks this parent FOR UPDATE.
+        // This FOR SHARE is acquired before any mutation of the session.
+        await assertUlcLiveTrainingWriterActor(this.#sql, {
+          organizationId,
+          groupId: input.groupId,
+          moduleId: input.moduleId,
+          authenticatedIdentityId: input.trustedActorIdentityId as string,
+        });
+      }
       await this.#assertWritableAthletes(
         organizationId, attendanceInput.map((entry) => entry.athleteId),
       );
-      if (this.#writeGuardMode === "require-live-athlete-group-transaction") {
+      if (this.#writeGuardMode === "require-live-athlete-group-transaction" ||
+          this.#writeGuardMode === "require-live-training-actor-transaction") {
         await assertUlcLiveTrainingGroupScope(this.#sql, {
           organizationId,
           groupId: input.groupId,
@@ -877,7 +894,8 @@ export class PostgresUlcTrainingSessionRepository {
         proxyActorAthleteId === undefined
           ? [athleteId] : [athleteId, proxyActorAthleteId],
       );
-      if (this.#writeGuardMode === "require-live-athlete-group-transaction") {
+      if (this.#writeGuardMode === "require-live-athlete-group-transaction" ||
+          this.#writeGuardMode === "require-live-training-actor-transaction") {
         await assertUlcLiveRegistrationScope(this.#sql, {
           organizationId, sessionId, athleteId, actorIdentityId,
           proxyActorAthleteId,
