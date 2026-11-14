@@ -7,6 +7,7 @@ import {
   ulcR2Endpoint,
   assertUlcBackupBucket,
   assertUlcNeonDatabaseUrl,
+  assertUlcBackupSourceDatabase,
   assertIsolatedUlcRestoreTarget,
   assertUlcBackupKey,
 } from "./ulc-linz-k2-backup-plan.mjs";
@@ -64,4 +65,12 @@ test("ULC backup and restore require all eight installed data owners", () => {
   }
   assert.equal((sql.match(/to_regclass/g) || []).length, 8);
   assert.ok(sql.includes('public."user"'), "reserved identity table must be quoted");
+});
+
+test("source database must match the exact approved logical ULC database", () => {
+  const preview = SOURCE.replace("/neondb?", "/appbasis_ulc_linz_preview?");
+  assert.equal(assertUlcBackupSourceDatabase(preview, "appbasis_ulc_linz_preview"), true);
+  assert.throws(() => assertUlcBackupSourceDatabase(SOURCE, "appbasis_ulc_linz_preview"), /does not match/);
+  assert.throws(() => assertUlcBackupSourceDatabase(preview, ""), /missing or invalid/);
+  assert.throws(() => assertUlcBackupSourceDatabase(preview, "../ulc"), /missing or invalid/);
 });
