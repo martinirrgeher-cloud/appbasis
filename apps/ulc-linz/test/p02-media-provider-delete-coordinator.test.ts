@@ -195,7 +195,7 @@ describe("ULC P02-E media provider-proof coordinator (opt-in, no runtime wiring)
   it("preserves requested metadata on provider failure and allows idempotent retry", async () => {
     const f = setup();
     f.throwOnDelete();
-    await expect(f.call()).rejects.toThrow(/provider-delete-failed/);
+    await expect(f.call()).rejects.toThrow(/Private media provider deletion failed/);
     expect(f.counters().finalizes).toBe(0);
     // New coordinator and repo handle retry; provider reports already absent.
     const retry = setup({ providerInitiallyAbsent: true });
@@ -208,7 +208,7 @@ describe("ULC P02-E media provider-proof coordinator (opt-in, no runtime wiring)
   it("fails closed if absence verification fails", async () => {
     const f = setup();
     f.throwOnCheck();
-    await expect(f.call()).rejects.toThrow(/provider-head-failed/);
+    await expect(f.call()).rejects.toThrow(/Private media provider verification failed/);
     expect(f.counters().finalizes).toBe(0);
   });
 
