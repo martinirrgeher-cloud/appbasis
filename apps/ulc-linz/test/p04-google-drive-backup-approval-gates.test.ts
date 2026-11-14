@@ -42,6 +42,9 @@ interface BackupCandidate {
     readonly backupFolderOwnerVerified: boolean;
     readonly accountLossAndSuccessionPlanApproved: boolean;
     readonly appFolderOnlyOAuthIntended: boolean;
+    readonly existingFolderAvailableToSeparateOauthClient: boolean;
+    readonly googlePickerSelectionOrAppOwnedFolderRequired: boolean;
+    readonly oauthTestingRefreshTokenSevenDayRiskReviewed: boolean;
     readonly privateKeyAccessibleToClubWithoutUserAccount: boolean;
     readonly publicSharingAllowed: boolean;
     readonly leastPrivilegeRequired: boolean;
@@ -127,6 +130,9 @@ describe("ULC P04-B future Google Drive backup – offline requirements only", (
       backupFolderOwnerVerified: false,
       accountLossAndSuccessionPlanApproved: false,
       appFolderOnlyOAuthIntended: true,
+      existingFolderAvailableToSeparateOauthClient: false,
+      googlePickerSelectionOrAppOwnedFolderRequired: true,
+      oauthTestingRefreshTokenSevenDayRiskReviewed: false,
       privateKeyAccessibleToClubWithoutUserAccount: false,
       publicSharingAllowed: false,
       leastPrivilegeRequired: true,
@@ -181,6 +187,12 @@ describe("ULC P04-B future Google Drive backup – offline requirements only", (
     );
     expect(plan.blockers).toContain(
       "user-specific-oauth-consent-and-scope-not-granted",
+    );
+    expect(plan.blockers).toContain(
+      "drive-file-oauth-scope-does-not-grant-auto-access-to-folder-created-by-another-app-picker-or-app-owned-folder-required",
+    );
+    expect(plan.blockers).toContain(
+      "oauth-external-testing-mode-refresh-tokens-may-expire-after-seven-days",
     );
   });
 
