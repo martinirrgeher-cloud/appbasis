@@ -18,7 +18,7 @@ function strictDay(value) {
 function dateOfKey(key, databaseName) {
   try {
     assertUlcBackupKey(key, databaseName);
-    const day = key.slice(-24, -14); // YYYY-MM-DD.tar.aesgcm
+    const day = key.slice(-21, -11); // YYYY-MM-DD.tar.aesgcm
     return strictDay(day) ? day : null;
   } catch {
     return null;
