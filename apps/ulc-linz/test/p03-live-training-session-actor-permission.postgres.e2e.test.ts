@@ -103,11 +103,11 @@ if (!DATABASE_URL) {
       );
       return { org, athlete, trainer, group, identity, role };
     }
-    function save(s: Awaited<ReturnType<typeof seed>>, actor: string | undefined = s.identity) {
+    function save(s: Awaited<ReturnType<typeof seed>>, actor: string | null = s.identity) {
       return repo().saveSession(
         s.org,
         { moduleId: MODULE, groupId: s.group, sessionDate: DATE,
-          ...(actor === undefined ? {} : { trustedActorIdentityId: actor }) },
+          ...(actor === null ? {} : { trustedActorIdentityId: actor }) },
         [{ athleteId: s.athlete, status: "present" }], null,
       );
     }
@@ -176,7 +176,7 @@ if (!DATABASE_URL) {
 
     it("fails closed when authenticated actor is missing, not a fallback identity", async () => {
       const s = await seed("p03i-no-actor");
-      await expect(save(s, undefined)).rejects.toBeInstanceOf(UlcTrainingActorWriteBlockedError);
+      await expect(save(s, null)).rejects.toBeInstanceOf(UlcTrainingActorWriteBlockedError);
       expect(await count(s.org)).toBe(0);
     });
 
@@ -227,14 +227,26 @@ if (!DATABASE_URL) {
 
     it("allows direct grant with an active matching role that has no module capability", async () => {
       const s = await seed("p03i-explicit-grant");
-      // Grants override absence of role capability according to PostgresPermissionStore.can.
-      // Do not affect other seeded principals: add an isolated capability that the
-      // role lacks is not possible without changing expected module permission.
+      // Use the isolated test DB to remove the trainer-role default temporarily,
+      // prove the explicit grant is effective, then restore the canonical fixture.
       await db().client.unsafe(
         `INSERT INTO appbasis_permission_principal_grant(principal_id, capability_id)
          VALUES ($1, $2)`, [s.identity, CAPABILITY],
       );
-      await expect(save(s)).resolves.toMatchObject({ attendance: [{ athleteId: s.athlete }] });
+      await db().client.unsafe(
+        `DELETE FROM appbasis_permission_role_capability
+         WHERE role_id = 'ulc-linz:trainer' AND capability_id = $1`,
+        [CAPABILITY],
+      );
+      try {
+        await expect(save(s)).resolves.toMatchObject({ attendance: [{ athleteId: s.athlete }] });
+      } finally {
+        await db().client.unsafe(
+          `INSERT INTO appbasis_permission_role_capability(role_id, capability_id)
+           VALUES ('ulc-linz:trainer', $1) ON CONFLICT DO NOTHING`,
+          [CAPABILITY],
+        );
+      }
     });
 
     it("canonical permission replacement waits for a writer holding principal FOR SHARE; next write denied", async () => {
