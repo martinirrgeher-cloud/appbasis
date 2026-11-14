@@ -33,38 +33,45 @@ jobs:
       APPBASIS_ULC_EXPECTED_DATABASE_NAME: ${{ vars.APPBASIS_ULC_EXPECTED_DATABASE_NAME }}
 
     steps:
-      - name: Fail closed unless separately activated
+      - name: Keep daily schedule disabled; allow explicit manual preflight or upload
         id: gate
         shell: bash
         env:
           MANUAL_APPLY: ${{ inputs.apply && 'true' || 'false' }}
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == "schedule" && "$ENABLED" != "1" ]]; then
-            echo "ULC K2 backup has not been approved or activated; NO backup created." >> "$GITHUB_STEP_SUMMARY"
-            echo "run=0" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [[ "$ENABLED" != "1" || ( "$GITHUB_EVENT_NAME" != "schedule" && "$MANUAL_APPLY" != "true" ) ]]; then
-            echo "ULC K2 backup write requires explicit operator activation and manual apply=true." >&2
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            if [[ "$ENABLED" != "1" ]]; then
+              echo "ULC K2 scheduled backup is disabled; NO backup created." >> "$GITHUB_STEP_SUMMARY"
+              echo "run=0" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "run=upload" >> "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$MANUAL_APPLY" == "true" ]]; then
+              echo "run=upload" >> "$GITHUB_OUTPUT"
+            else
+              echo "run=preflight" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "ULC K2 backup invoked by an unsupported event." >&2
             exit 1
           fi
-          echo "run=1" >> "$GITHUB_OUTPUT"
 
       - name: Check out reviewed code
-        if: steps.gate.outputs.run == '1'
+        if: steps.gate.outputs.run != '0'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Node
-        if: steps.gate.outputs.run == '1'
+        if: steps.gate.outputs.run != '0'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.19.0
 
       - name: Check app-scoped backup policy
-        if: steps.gate.outputs.run == '1'
+        if: steps.gate.outputs.run != '0'
         run: |
           set -euo pipefail
           node --test ./tooling/ulc-linz-k2-backup-plan.test.mjs
@@ -74,7 +81,7 @@ jobs:
           command -v sha256sum
 
       - name: Validate ULC source and EU object-store destination
-        if: steps.gate.outputs.run == '1'
+        if: steps.gate.outputs.run != '0'
         id: settings
         shell: bash
         env:
@@ -98,7 +105,7 @@ jobs:
           echo "endpoint=$ENDPOINT" >> "$GITHUB_OUTPUT"
 
       - name: Create secure temporary workspace and fixed daily object key
-        if: steps.gate.outputs.run == '1'
+        if: steps.gate.outputs.run != '0'
         id: setup
         shell: bash
         run: |
@@ -112,7 +119,7 @@ jobs:
           echo "created_at=$(jq -r .createdAt <<<"$PLAN")" >> "$GITHUB_OUTPUT"
 
       - name: Verify target is ULC and capture consistent PostgreSQL custom dump
-        if: steps.gate.outputs.run == '1'
+        if: steps.gate.outputs.run != '0'
         shell: bash
         env:
           APPBASIS_ULC_SOURCE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_SOURCE_DATABASE_URL }}
@@ -134,7 +141,7 @@ jobs:
           test -s "$WORK/database.pgdump"
 
       - name: Create bounded manifest, encrypt archive, remove plaintext
-        if: steps.gate.outputs.run == '1'
+        if: steps.gate.outputs.run != '0'
         shell: bash
         env:
           WORK: ${{ steps.setup.outputs.workspace }}
@@ -159,8 +166,14 @@ jobs:
           rm -f -- "$WORK/database.pgdump" "$WORK/manifest.json" "$WORK/backup.tar"
           test -s "$WORK/backup.tar.aesgcm"
 
+      - name: Confirm local preflight passed without uploading
+        if: steps.gate.outputs.run == 'preflight'
+        shell: bash
+        run: |
+          echo "ULC K2 PREFLIGHT PASS: source tables, PostgreSQL dump, AES-256-GCM encryption and EU-R2 bucket access checked. No R2 backup object written; scheduled backups remain disabled." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Store immutable ciphertext and verify provider metadata
-        if: steps.gate.outputs.run == '1'
+        if: steps.gate.outputs.run == 'upload'
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_ULC_R2_BACKUP_ACCESS_KEY_ID }}

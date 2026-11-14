@@ -8,7 +8,7 @@ Keine produktive Freigabe und kein Rechts-/Löschbeleg durch diese Workflows.
 - Neon-Organisation hat aktuell Plan **free**. Die ULC-Produktionsbranch ist archiviert; die Neon-History beträgt laut Provider 6 Stunden, automatischer Snapshot-Zeitplan leer. Die kostenpflichtige Neon-Snapshot-Automatik ist **nicht** Voraussetzung für die vorgeschlagene Alternative.
 - Stattdessen: **täglich ein eigener konsistenter `pg_dump -Fc`** der ULC-PostgreSQL-Datenbank (PostgreSQL 18) per GitHub Actions, verschlüsselt mit dem bestehenden getesteten AES-256-GCM-Modul `tooling/m4-backup-crypto.mjs`, **vor** dem Upload in Cloudflare **R2 EU-Jurisdiction**. Objektpfad ausschließlich `appbasis/ulc-linz/pilot/db/<freigegebener-datenbankname>/daily/YYYY-MM-DD.tar.aesgcm`, kein Überschreiben am gleichen Tag.
 - **Keine Vermischung mit M3**: Die alten `m4-free-external-backup`-/`m4-r2-restore-rehearsal`-Workflows bleiben unverändert und sind `m3-preview`-gebunden.
-- **Backup und Restore sind standardmäßig ausgeschaltet**, Credentials fehlen absichtlich im Repo. Neuer GitHub Workflow `.github/workflows/ulc-linz-k2-encrypted-backup.yml` schreibt nur wenn `APPBASIS_ULC_K2_BACKUP_ENABLED=1` in der dedizierten GitHub-Environment `ulc-linz-k2-backup` hinterlegt wurde. Manuelle Ausführung zusätzlich nur mit `apply=true`.
+- **Tägliche Sicherung ist standardmäßig ausgeschaltet**, Credentials fehlen absichtlich im Repo. Der GitHub-Workflow `.github/workflows/ulc-linz-k2-encrypted-backup.yml` schreibt im Zeitplan **nur** bei `APPBASIS_ULC_K2_BACKUP_ENABLED=1` in `ulc-linz-k2-backup`. Ein **manueller Test mit `apply=false`** darf auch bei `ENABLED=0` die Verbindungsdaten, alle acht Owner, lokalen PostgreSQL-Dump, AES-256-GCM-Verschlüsselung und Bucket-Zugriff prüfen; er erstellt **kein R2-Objekt**, löscht lokale temporäre Sicherungsdateien und aktiviert keine Automatik. Ein **manuell ausdrücklich gestarteter** Lauf mit `apply=true` schreibt ein einzelnes verschlüsseltes R2-Tagesobjekt und benötigt weiterhin eine gesonderte Betreiberfreigabe. Das manuelle `apply`-Flag schaltet den Zeitplan nicht an.
 - Ein zweiter **manueller** Workflow `ulc-linz-k2-isolated-restore.yml` entschlüsselt ein streng validiertes, exakt gebundenes Backup. Er prüft, dass der Restore-Host ein **anderer Neon-Endpunkt** und der Ziel-Datenbankkatalog **leer** ist. `apply=false` liest/prüft nur; `apply=true` schreibt nur in den isolierten Quarantäne-Endpunkt. **Keine automatische Promotion/Cloudflare-Routingänderung.**
 
 ## Konfiguration durch Betreiber vor Aktivierung
@@ -26,7 +26,7 @@ GitHub Environment `ulc-linz-k2-restore`:
 ## Einmaliger operativer Nachweis vor einem Echtdaten-Pilot
 
 1. Betreiber prüft Anbieterregion, R2-Ziel, **logischen Datenbanknamen** (in der Neon-Vorschau liegt ULC in `appbasis_ulc_linz_preview`, während `neondb` leer ist), alle **acht Owner-Schemata** und dedizierte Rechte; entscheidet Backup-Aufbewahrung und richtet eine **nachprüfbare Löschfrist z. B. 21 Tage** für den exklusiven R2-Backup-Prefix ein. Nicht nur „alte Dateien nie löschen“.
-2. Nach separater Aktivierungsfreigabe ein manuelles ULC-Backup `apply=true` auf main ausführen; zugehörige GitHub-Run-ID, exakte Commit-SHA, R2-Objektgröße und Hash ohne Schlüssel dokumentieren.
+2. Zuerst ohne Schreibfreigabe `workflow_dispatch apply=false` auf main ausführen. Dieser Preflight prüft die tatsächliche DB-Anmeldung und `pg_dump`/Verschlüsselung und erstellt kein R2-Objekt. Danach nach **separater Freigabe** ein einmaliges ULC-Backup `apply=true` auf main ausführen; zugehörige GitHub-Run-ID, exakte Commit-SHA, R2-Objektgröße und Hash ohne Schlüssel dokumentieren. **`APPBASIS_ULC_K2_BACKUP_ENABLED` dafür nicht auf `1` setzen!** Diese Variable gehört ausschließlich zur täglichen Automatik.
 3. Einen **eigenen leeren Restore-Endpunkt** vorbereiten; Restore-Workflow zunächst `apply=false` ausführen, nach separater Freigabe auf **den verifizierten Quarantäne-Endpunkt** `apply=true` ausführen. Fehlgeschlagene/teilweise Wiederherstellungen auf neuem leeren Ziel wiederholen, niemals auf Hauptbranch.
 4. **App-E2E nach Restore:** Identity, Permissions, Athleten, Trainingsplanung, -blöcke, -doku, Anwesenheit/Registrierung, Katalog, Audits und zentrale Stichproben/Fingerprints. Der Workflow bestätigt momentan **nur** die kryptografische Backup-Integrität, PostgreSQL-Restore und Grundtabellen; **nicht** Vollständigkeit über acht Owner.
 5. **Separate Medienabsicherung:** Übungskatalog-Dateien in R2 sind **nicht** Bestandteil des PostgreSQL-Dumps. Ihre laufenden Aufbewahrungs-/Löschregeln sowie Wiederherstellbarkeit sind vor Echtdaten zu verifizieren.
@@ -40,7 +40,7 @@ GitHub Environment `ulc-linz-k2-restore`:
 | PostgreSQL-`pg_dump` und AES-256-GCM-Verschlüsselung vor R2-Upload | Ja (Code, Providerlauf ausstehend) |
 | Unveränderbare Tagesobjektnamen / kein Überschreiben | Ja (Code) |
 | Eigener verschlüsselter Quarantäne-Restore / Prüfung leerer DB | Ja (Code, Providerlauf ausstehend) |
-| Tatsächlicher automatisierter ULC-Sicherungslauf | **Nein** |
+| Tatsächlicher automatisierter ULC-Sicherungslauf | **Nein** (außer bei späterer Betreiberaktivierung) |
 | Nachgewiesener vollständiger ULC-Restore mit 8 Ownern | **Nein** |
 | R2-Mediendateien, DSGVO-/Kinder-/AVV- und Löschfristbelege | **Nein** |
 | Freigabe für Echtgeld-/Echtdatenbetrieb | **Nein** |
