@@ -153,13 +153,14 @@ if (!DATABASE_URL) {
       )).rejects.toBeInstanceOf(ExerciseCatalogFavoriteDeletedError);
       expect(await favoriteCount()).toBe(0);
       const markers = await db().client.unsafe(
-        `SELECT completed_at::text AS completed_at, purge_after - completed_at AS duration
+        `SELECT completed_at::text AS completed_at,
+                extract(epoch from (purge_after - completed_at))::int AS retention_seconds
          FROM appbasis_exercise_catalog_favorite_deletion
          WHERE organization_id = $1 AND principal_id = $2`,
         [ORG, PRINCIPAL],
       );
       expect(markers).toHaveLength(1);
-      expect(markers[0]?.duration).toBe("840:00:00");
+      expect(Number(markers[0]?.retention_seconds)).toBe(35 * 24 * 3600);
     });
 
     it("real repository: deletion first, concurrently blocked writer cannot resurrect", async () => {
