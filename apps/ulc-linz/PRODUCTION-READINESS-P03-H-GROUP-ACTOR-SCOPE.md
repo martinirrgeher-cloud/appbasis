@@ -18,7 +18,7 @@ Im echten `PostgresUlcTrainingSessionRepository` steht zusätzlich der Guard-Mod
 
 ## Abnahme und echte Grenzen
 
-`test/p03-live-training-session-writer-scope.postgres.e2e.test.ts` läuft ausschließlich auf einer Wegwerf-PostgreSQL-Datenbank mit exakt den bestehenden **41** Migrationen: gültige U12-Trainerliste und Selbstanmeldung, vorzeitig beendete Athleten- und Trainerzuordnung, inaktive Gruppe, gelöschte Actor-Membership und Self-Scope, Proxy-Entzug sowie zwei echte 2-Connection-Race-Reihenfolgen. CI muss Quality Gate + PostgreSQL E2E auf exaktem PR-Head bestehen.
+`test/p03-live-training-session-writer-scope.postgres.e2e.test.ts` läuft mit **12** realen Testfällen ausschließlich auf einer Wegwerf-PostgreSQL-Datenbank mit exakt den bestehenden **41** Migrationen: gültige U12-Trainerliste und Selbstanmeldung, vorzeitig beendete Athleten- und Trainerzuordnung, inaktive Gruppe, gelöschte Actor-Membership und Self-Scope, Proxy-Entzug sowie zwei echte 2-Connection-Race-Reihenfolgen. CI muss Quality Gate + PostgreSQL E2E auf exaktem PR-Head bestehen.
 
 **Sicherheits-Grenzen / weiterhin BLOCKED:**
 
