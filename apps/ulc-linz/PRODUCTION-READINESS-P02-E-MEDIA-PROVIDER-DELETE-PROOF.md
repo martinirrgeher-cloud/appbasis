@@ -17,7 +17,7 @@ Der Ablauf:
 
 ## Testnachweise
 
-- **10 Offline-Vitest-Fälle:** normale Löschung, Wiederholbarkeit, fehlendes Medium, vorhandenes Objekt nach Delete, unbestimmter HEAD, falscher Speicherpfad, fremde Organisation, Provider-Ausfall und erneuter Versuch, Ausfall beim HEAD, Metadaten-Finalize-Race/Fehler sowie ungültige Eingaben. *(Anzahl der konkreten `it()`-Blöcke ist 10.)*
+- **11 Offline-Vitest-Fälle:** normale Löschung, Wiederholbarkeit, fehlendes Medium, vorhandenes Objekt nach Delete, unbestimmter HEAD, falscher Speicherpfad, fremde Organisation, Provider-Ausfall und erneuter Versuch, Ausfall beim HEAD, Metadaten-Finalize-Race/Fehler sowie ungültige Eingaben. *(Anzahl der konkreten `it()`-Blöcke ist 11, einschließlich falscher Objekt-ID bei der Abwesenheitsbestätigung.)*
 - **3 zusätzliche echte isolierte PostgreSQL-E2E**, im bestehenden `p02-catalog-retention-negative.postgres.e2e.test.ts`: (A) SQL-Zeile bleibt nach Fake-Provider-Delete ohne unabhängige Bestätigung gespeichert und wird bei Retry erst nach bestätigter Abwesenheit entfernt, (B) Provider-Ausfall lässt `deletion_requested_at` als Pending für Retry bestehen, (C) gleiches Medium-ID in anderer Organisation bleibt erhalten.
 - Die **vorhandenen vier P02-D-Negativtests bleiben unverändert aussagekräftig**: sie beweisen den unsicheren direkten SQL-Finalize-Bypass weiter. Das ist beabsichtigt. Kein falsch positives `production-ready`-Urteil.
 
