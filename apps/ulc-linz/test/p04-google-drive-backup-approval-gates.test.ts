@@ -13,6 +13,10 @@ interface BackupCandidate {
     readonly googleAccountType: string;
     readonly driveId: string | null;
     readonly folderId: string | null;
+    readonly folderSetupStatus: string;
+    readonly folderShared: boolean;
+    readonly interactiveConnectorAccess: boolean;
+    readonly scheduledJobOAuthAvailable: boolean;
     readonly credentialsConfigured: boolean;
     readonly jobConfigured: boolean;
     readonly uploadEnabled: boolean;
@@ -93,7 +97,11 @@ describe("ULC P04-B future Google Drive backup – offline requirements only", (
       productionDatabase: "unverified",
       googleAccountType: "user-owned-my-drive-consumer-or-workspace-not-verified",
       driveId: null,
-      folderId: null,
+      folderId: "1GpEzbPYeg-3KYHJUses7va8llYWpbl85",
+      folderSetupStatus: "empty-folder-created-and-readback-verified-via-interactive-connector",
+      folderShared: false,
+      interactiveConnectorAccess: true,
+      scheduledJobOAuthAvailable: false,
       credentialsConfigured: false,
       jobConfigured: false,
       uploadEnabled: false,
