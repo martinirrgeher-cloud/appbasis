@@ -13,7 +13,7 @@ Der Betreiber hat sein **persönliches Google Drive / Meine Ablage** als Ziel ge
 - `.github/workflows/ulc-drive-oauth-readonly-preflight.yml`: **Nur** `workflow_dispatch` auf `main`; zusätzlich `approve_readonly=true` pro erstem Run; **kein** Cron, PR-/Push-Trigger, Backupjob, Drive-Upload, SQL, Ordnererstellung oder Delete; `contents:read`, kein persistenter Checkout-Token. Wiederholung braucht einen neuen Dispatch.
 - `test/p04-drive-oauth-readonly.test.ts`: Isolierte Fake-HTTP-Tests: Ohne Approval/Client/Token **0 Anfragen**; getrennte Zielkennung; minimaler Scope; nur Google-Token-POST und genau ein Ordner-GET; falsche Ordner, Sharing, ungültiger OAuth-Zugriff und geheimnisfreie Fehlermeldungen werden abgewiesen.
 
-**Wichtig:** Die Verbindung ist heute **nicht** eingerichtet, solange Google Cloud kein OAuth-Client erzeugt und keine drei GitHub-Geheimnisse separat hinterlegt wurden. Die GitHub-Integration hat keinen Google-Cloud-OAuth-Client- oder Actions-Secrets-Schreibzugriff; diese Schritte können **nicht** aus dem bisherigen ChatGPT-Drive-Zugang abgeleitet werden.
+**Wichtig:** Die Verbindung ist heute **nicht** nachgewiesen: Ein für diesen Zweck autorisierter Google-Cloud-OAuth-Client wurde nicht verifiziert und drei sichere GitHub-Geheimnisse sind hier nicht bereitgestellt. Die GitHub-Integration hat keinen Google-Cloud-OAuth-Client- oder Actions-Secrets-Schreibzugriff; diese Schritte können **nicht** aus dem bisherigen ChatGPT-Drive-Zugang abgeleitet werden.
 
 ## 2. Einmalige Benutzeraktion – möglichst auch über Android-Browser durchführbar
 
