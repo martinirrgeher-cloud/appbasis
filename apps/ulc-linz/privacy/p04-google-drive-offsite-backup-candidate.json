@@ -2,21 +2,22 @@
   "schemaVersion": 1,
   "application": "ulc-linz",
   "documentType": "future-offsite-backup-candidate-not-deployment-config",
-  "intentSource": "operator states future Google Drive backups desired, not existing backups",
+  "intentSource": "Operator requests future database backups in 'mein google drive'; selects user-owned My Drive, not a club Shared Drive. Actual account type (consumer/Workspace) unverified.",
   "provider": "google-drive",
   "status": "planned-not-configured",
   "approvals": {
-    "backupTargetSelection": false,
+    "backupTargetSelection": true,
     "scheduleAndRetention": false,
     "googleDpaAndTransferReview": false,
     "productionReadOnlyDumperRole": false,
     "credentialAndEncryptionKeyProvisioning": false,
     "restoreAndDeletionRehearsal": false,
-    "authorizationToEnable": false
+    "authorizationToEnable": false,
+    "personalDriveOwnershipAndSuccessionReview": false
   },
   "applicationBindings": {
     "productionDatabase": "unverified",
-    "googleAccountType": "undecided",
+    "googleAccountType": "user-owned-my-drive-consumer-or-workspace-not-verified",
     "driveId": null,
     "folderId": null,
     "credentialsConfigured": false,
@@ -42,14 +43,22 @@
     "encryptionKeyRotation": "design-and-test-before-activation"
   },
   "identityAndPermissions": {
-    "preferred": "club-owned-google-workspace-shared-drive-if-supported",
-    "alternative": "club-controlled-account-with-scoped-OAuth-and-explicit-ownership",
-    "personalAccountAsDefault": false,
+    "preferred": "operator-chosen-user-owned-my-drive-with-club-controlled-recovery-and-scoped-access",
+    "alternative": "club-owned-google-account-or-workspace-shared-drive-if-operator-decides-to-change-target",
+    "personalAccountAsDefault": true,
     "publicSharingAllowed": false,
     "leastPrivilegeRequired": true,
     "serviceAccountSharedDriveOwnershipReviewed": false,
     "thirdPartyAppAndGoogleDpaReviewed": false,
-    "transferRiskReviewed": false
+    "transferRiskReviewed": false,
+    "privateMyDriveSelected": true,
+    "userAccountConsentForConnection": false,
+    "googleAccountIdentityVerified": false,
+    "backupFolderOwnerVerified": false,
+    "accountLossAndSuccessionPlanApproved": false,
+    "appFolderOnlyOAuthIntended": true,
+    "privateKeyAccessibleToClubWithoutUserAccount": false,
+    "personalDriveRisk": "Recovery continuity, private account loss, sharing and data-controller access must be proven before storing club/member/minor data"
   },
   "lifecycle": {
     "currentAthleteDeletionMarkerDays": 35,
@@ -84,13 +93,15 @@
     "freeze-backups-on-missing-provider-retention-or-legal-evidence"
   ],
   "blockers": [
-    "club-owned-google-account-and-drive-folder-not-selected",
+    "user-owned-my-drive-chosen-but-google-account-and-dedicated-folder-not-verified",
     "no-google-oauth-or-service-account-connectivity-authorized",
     "drive-retention-versions-trash-recovery-and-other-copy-horizon-not-proven",
     "no-dpa-subprocessors-cross-border-review",
     "no-restore-after-source-deletion-proof-over-eight-owners",
     "no-tested-independent-key-recovery",
     "no-authorized-backup-schedule-or-retention",
-    "no-active-backup-workflow"
+    "no-active-backup-workflow",
+    "personal-my-drive-ownership-and-club-access-after-account-loss-not-approved",
+    "user-specific-oauth-consent-and-scope-not-granted"
   ]
 }
