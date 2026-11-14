@@ -100,7 +100,6 @@ if (!DATABASE_URL) {
         "0001_appbasis_exercise_catalog_tenant_identity.sql",
         "0002_appbasis_exercise_catalog_parity.sql",
         "0003_appbasis_exercise_catalog_private_media_delete_state.sql",
-        "0004_appbasis_exercise_catalog_favorite_deletion.sql",
       ]) {
         const sql = await readFile(
           new URL("../../../modules/exercise-catalog/migrations/" + name, import.meta.url),
@@ -110,6 +109,12 @@ if (!DATABASE_URL) {
           if (statement.trim()) await db().client.unsafe(statement);
         }
       }
+      // A scoped synthetic owner-schema fixture, not an app/module migration.
+      const markerFixture = await readFile(
+        new URL("./fixtures/p02-g-catalog-favorite-erasure-marker.candidate.sql", import.meta.url),
+        "utf8",
+      );
+      await db().client.unsafe(markerFixture);
     });
 
     beforeEach(async () => {
