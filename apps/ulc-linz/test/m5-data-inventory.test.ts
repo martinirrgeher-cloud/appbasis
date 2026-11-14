@@ -136,7 +136,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
 
     expect(inventory.schemaVersion).toBe(2);
     expect(inventory.application).toBe("ulc-linz");
-    expect(inventory.scope).toBe("current-materialized-v0.5");
+    expect(inventory.scope).toBe("repository-declared-schema-v16-review-not-runtime-evidence");
     expect(databaseManifest.application).toBe(inventory.application);
     expect(appManifest.appId).toBe(inventory.application);
     expect(appManifest.modules).toEqual([
@@ -158,37 +158,28 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(inventory.runtimeModules).toEqual(appManifest.modules);
     expect(inventory.m5.unknownRuntimeModule).toBe("fail-closed");
 
-    // The privacy inventory intentionally describes materialized v9.
-    // Published v10 functionary, v11 optional notes, v12 youth contents
-    // v13 standardized content metadata, v14 U12 and v15 separate group categories are not covered by the v9 owner inventory;
-    // only these six exact forward deltas are allowed,
-    // with all other owners required to match exactly. Personal data needs review.
+    // The inventory now tracks the published repository manifest exactly.
+    // All seven former v9→v16 differences were reviewed, and any FUTURE
+    // migration must update the inventory rather than silently pass CI.
+    // This says nothing about what schema has actually been deployed.
     const inventoryOwners = sortedOwnerContracts(inventory.persistentOwners);
     const publishedOwners = sortedOwnerContracts(databaseManifest.owners);
-    const expectedPublishedOwners = inventoryOwners.map((owner) => {
-      if (owner.id !== "ulc-linz-lifecycle") return owner;
-      expect(owner.schemaVersion).toBe(9);
-      expect(owner.migrations).toHaveLength(9);
-      expect(owner.migrations[8]).toBe(
-        "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql",
-      );
-      return {
-        ...owner,
-        schemaVersion: 16,
-        migrations: [
-          ...owner.migrations,
-          "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
-          "apps/ulc-linz/migrations/0010_ulc_linz_registration_notes.sql",
-          "apps/ulc-linz/migrations/0011_ulc_linz_youth_training_content.sql",
-          "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql",
-          "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
-          "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
-          "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
-        ],
-      };
-    });
-    expect(inventoryOwners.filter((owner) => owner.id === "ulc-linz-lifecycle")).toHaveLength(1);
-    expect(publishedOwners).toEqual(expectedPublishedOwners);
+    expect(publishedOwners).toEqual(inventoryOwners);
+    const ulcOwner = inventoryOwners.find((owner) =>
+      owner.id === "ulc-linz-lifecycle"
+    );
+    expect(ulcOwner).toBeDefined();
+    expect(ulcOwner?.schemaVersion).toBe(16);
+    expect(ulcOwner?.migrations).toHaveLength(16);
+    expect(ulcOwner?.migrations.slice(9)).toEqual([
+      "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
+      "apps/ulc-linz/migrations/0010_ulc_linz_registration_notes.sql",
+      "apps/ulc-linz/migrations/0011_ulc_linz_youth_training_content.sql",
+      "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql",
+      "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
+      "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
+      "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
+    ]);
     expect(databaseManifest.owners.map((owner) => owner.id)).toEqual([
       "identity",
       "permissions",
@@ -218,7 +209,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "ulc-linz-lifecycle",
       ),
     ).toMatchObject({
-      schemaVersion: 9,
+      schemaVersion: 16,
       lifecycleStatus: "training-and-catalog-data-lifecycle-pending",
       notes: expect.arrayContaining([
         "app-owned-training-session-and-attendance-lifecycle-pending",
