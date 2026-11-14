@@ -81,10 +81,9 @@ jobs:
           # A restore must never share a live Neon endpoint and must be empty.
           EMPTY="$(docker run --rm \
             --env APPBASIS_ULC_RESTORE_DATABASE_URL \
+            --env "ULC_RESTORE_SQL=SELECT count(*) FROM pg_class AS c JOIN pg_namespace AS n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%'" \
             postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
-            psql --no-psqlrc --tuples-only --no-align \
-              --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" \
-              --command="SELECT count(*) FROM pg_class AS c JOIN pg_namespace AS n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%'")"
+            sh -ceu 'psql --no-psqlrc --tuples-only --no-align --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" --command="$ULC_RESTORE_SQL"')"
           test "$EMPTY" = "0" || { echo "ULC K2 quarantine target already has tables; stop without changes." >&2; exit 1; }
 
       - name: Create private workspace and download ciphertext with digest proof
@@ -160,8 +159,7 @@ jobs:
             --env APPBASIS_ULC_RESTORE_DATABASE_URL \
             --volume "$WORK:/backup:ro" \
             postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
-            pg_restore --single-transaction --no-owner --no-acl --exit-on-error \
-              --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" /backup/database.pgdump
+            sh -ceu 'pg_restore --single-transaction --no-owner --no-acl --exit-on-error --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" /backup/database.pgdump'
 
       - name: Check restored ULC application tables
         if: inputs.apply == true
@@ -171,10 +169,9 @@ jobs:
         run: |
           set -euo pipefail
           STATUS="$(docker run --rm --env APPBASIS_ULC_RESTORE_DATABASE_URL \
+            --env "ULC_RESTORE_SQL=SELECT (to_regclass('ulc_linz_membership') IS NOT NULL AND to_regclass('appbasis_athlete') IS NOT NULL)" \
             postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
-            psql --no-psqlrc --tuples-only --no-align \
-              --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" \
-              --command="SELECT (to_regclass('ulc_linz_membership') IS NOT NULL AND to_regclass('appbasis_athlete') IS NOT NULL)")"
+            sh -ceu 'psql --no-psqlrc --tuples-only --no-align --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" --command="$ULC_RESTORE_SQL"')"
           test "$STATUS" = "t" || { echo "ULC K2 restore did not recreate canonical app tables." >&2; exit 1; }
           echo "ULC K2 encrypted backup restored into separate quarantine; no promotion or user access was enabled." >> "$GITHUB_STEP_SUMMARY"
 
