@@ -41,14 +41,17 @@ function setup(options: {
   let throwsOnDelete = false;
   let throwsOnCheck = false;
   let throwsOnFinalization = false;
+  let forceForeignRow = false;
   const repo: MediaRepository = {
     async requestPrivateMediaDeletion(organizationId, exerciseId, mediaId) {
       requestCount += 1;
       if (
         completed || media === undefined ||
-        organizationId !== media.organizationId ||
-        exerciseId !== media.exerciseId ||
-        mediaId !== media.id
+        (!forceForeignRow && (
+          organizationId !== media.organizationId ||
+          exerciseId !== media.exerciseId ||
+          mediaId !== media.id
+        ))
       ) return undefined;
       return media;
     },
@@ -104,6 +107,8 @@ function setup(options: {
     }),
     setInvalidMedia(value: ExerciseCatalogPrivateMedia | undefined) {
       media = value;
+      forceForeignRow = value !== undefined &&
+        value.organizationId !== MEDIA.organizationId;
     },
     setDeleteOutcome(value: typeof deletionOutcome) { deletionOutcome = value; },
     setResponseKey(value: string) { responseKeyOverride = value; },
