@@ -39,7 +39,7 @@ Neuer `test/p03-recovery-authority-fail-closed.test.ts` prüft sieben konkrete F
 
 ## 4. Noch ausstehender externer Input (ein zusammenhängender Betreiberentscheid)
 
-- **D2:** Ist die tatsächliche maximale Wiederherstellbarkeit inkl. Neon-History, Snapshots, Exporten und Fremdbackups **sicher kürzer als 35 Tage** und können alle Owner davor abgeschlossen werden (Option A)? Andernfalls braucht es eine **gesondert genehmigte** minimaldatenhaltige, atomare Entscheidungs-/Expiry-Autorität (Option B). Aus den Neon-Projektmetadaten `history_retention_seconds=21600` allein folgt nichts über alle externen Kopien.
+- **D2:** Ist die tatsächliche maximale Wiederherstellbarkeit inkl. Neon-History, Snapshots, Exporten, künftig geplanten verschlüsselten **Google-Drive-Backups**, deren Papierkorb/Versionen und Fremdbackups **sicher kürzer als 35 Tage** und können alle Owner davor abgeschlossen werden (Option A)? Andernfalls braucht es eine **gesondert genehmigte** minimaldatenhaltige, atomare Entscheidungs-/Expiry-Autorität (Option B). Aus den Neon-Projektmetadaten `history_retention_seconds=21600` allein folgt nichts über alle externen Kopien. Ein 14-Tage-Rollfenster bei Drive ist nur ein technischer Vorschlag und bei 30 Tagen Trash keineswegs ein 14-Tage-Restorehorizont; siehe [P04-B-Plan](./PRODUCTION-READINESS-P04-B-GOOGLE-DRIVE-BACKUP.md).
 - **D1/D3/D4:** historische personenbezogene Notizen und Trainer-/Actorbezüge, Medien-Providerlöschung, vollständige Restore-/Re-Deletion-Checkpoints und konkrete Retention rechtlich/fachlich entscheiden.
 - Dokumentierte App-/Cloudflare↔Neon-Produktionsbindung und AVV/Providerbelege vor dem echten Pilot.
 
