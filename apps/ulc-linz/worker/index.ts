@@ -1668,6 +1668,7 @@ async function kindertrainingSessionResponse(
           status: "open" | "present" | "excused" | "absent";
         }>,
       },
+      access.actorPrincipalId,
     );
     return Response.json({ snapshot });
   } catch (error) {
@@ -2081,7 +2082,7 @@ async function detailedYouthAreaResponse(
           athleteId: string; status: "open" | "present" | "excused" | "absent";
           contentSlots?: number[];
         }>,
-      });
+      }, access.actorPrincipalId);
       return Response.json({ snapshot }, { headers: { "Cache-Control": "private, no-store" } });
     }
     const groupId = url.searchParams.get("groupId");
@@ -2231,6 +2232,7 @@ async function u12SessionResponse(
           contentSlots?: number[];
         }>,
       },
+      access.actorPrincipalId,
     );
     return Response.json({ snapshot });
   } catch (error) {
