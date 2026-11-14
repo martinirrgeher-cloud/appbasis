@@ -115,5 +115,28 @@
     "user-specific-oauth-consent-and-scope-not-granted",
     "drive-file-oauth-scope-does-not-grant-auto-access-to-folder-created-by-another-app-picker-or-app-owned-folder-required",
     "oauth-external-testing-mode-refresh-tokens-may-expire-after-seven-days"
-  ]
+  ],
+  "oauthReadOnlyPreflight": {
+    "status": "prepared-in-draft-not-run-no-client-secrets",
+    "workflow": ".github/workflows/ulc-drive-oauth-readonly-preflight.yml",
+    "entrypoint": "apps/ulc-linz/tooling/google-drive-oauth-probe.mjs",
+    "enabledOnMain": false,
+    "manualApprovalRequired": true,
+    "readOnly": true,
+    "requiredScope": "https://www.googleapis.com/auth/drive.file",
+    "requiredSecretNames": [
+      "ULC_BACKUP_GOOGLE_CLIENT_ID",
+      "ULC_BACKUP_GOOGLE_CLIENT_SECRET",
+      "ULC_BACKUP_GOOGLE_REFRESH_TOKEN"
+    ],
+    "connectedClientVerified": false,
+    "googleOauthClientCreated": false,
+    "refreshTokenProvisioned": false,
+    "appOwnedFolderOrPickerAuthorized": false,
+    "actionsSecretsConfigured": false,
+    "noAutomaticSchedule": true,
+    "backupUploadEnabled": false,
+    "existingConnectorTokenReusable": false,
+    "personalAccountNoDataUploadYet": true
+  }
 }
