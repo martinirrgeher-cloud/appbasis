@@ -28,7 +28,7 @@ function setup(options: {
   let state: "present" | "absent" = options.providerInitiallyAbsent
     ? "absent"
     : "present";
-  let media = options.media === undefined ? MEDIA : options.media;
+  let media: ExerciseCatalogPrivateMedia | undefined = options.media === undefined ? MEDIA : options.media;
   let completed = false;
   let requestCount = 0;
   let providerDeletes = 0;
