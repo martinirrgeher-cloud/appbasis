@@ -169,7 +169,7 @@ jobs:
           APPBASIS_ULC_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_RESTORE_DATABASE_URL }}
         run: |
           set -euo pipefail
-          ULC_REQUIRED_SCHEMA_SQL="$(node ./tooling/ulc-linz-k2-backup-plan.mjs schema-sql)"
+          export ULC_REQUIRED_SCHEMA_SQL="$(node ./tooling/ulc-linz-k2-backup-plan.mjs schema-sql)"
           STATUS="$(docker run --rm --env APPBASIS_ULC_RESTORE_DATABASE_URL \
             --env ULC_REQUIRED_SCHEMA_SQL \
             postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
