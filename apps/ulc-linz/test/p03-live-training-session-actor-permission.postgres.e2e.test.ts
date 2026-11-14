@@ -6,6 +6,7 @@ import {
   capabilityId,
   principalId,
   PostgresPrincipalPermissionAdministration,
+  PostgresRoleAdministration,
 } from "@appbasis/permissions";
 import {
   PostgresUlcTrainingSessionRepository,
@@ -198,6 +199,16 @@ if (!DATABASE_URL) {
          VALUES ($1,'ulc-linz:admin')`, [s.identity],
       );
       await expect(save(s)).rejects.toBeInstanceOf(UlcTrainingActorWriteBlockedError);
+    });
+
+    it("denies a canonical administrator role-replacement after privileges are withdrawn", async () => {
+      const s = await seed("p03i-real-role-revoke");
+      await new PostgresRoleAdministration(db().client).replacePrincipalRoles(
+        principalId(s.identity), [],
+        { actorPrincipalId: principalId("p03i-supervisor"), reason: "P03-I role revocation" },
+      );
+      await expect(save(s)).rejects.toBeInstanceOf(UlcTrainingActorWriteBlockedError);
+      expect(await count(s.org)).toBe(0);
     });
 
     it("denies trainer after group assignment revocation or inactivity", async () => {
