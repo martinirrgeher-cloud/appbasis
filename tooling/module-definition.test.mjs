@@ -108,13 +108,12 @@ test("pins the checked module inventory and database-owning contracts", async ()
     },
     capabilities: ["exercise-catalog:edit", "exercise-catalog:view"],
     database: {
-      schemaVersion: 5,
+      schemaVersion: 4,
       migrations: [
         "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
         "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql",
         "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql",
         "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql",
-        "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_favorite_deletion.sql",
       ],
     },
   });
