@@ -1,0 +1,53 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  ulcBackupPlan,
+  ulcR2Endpoint,
+  assertUlcBackupBucket,
+  assertUlcNeonDatabaseUrl,
+  assertIsolatedUlcRestoreTarget,
+  assertUlcBackupKey,
+} from "./ulc-linz-k2-backup-plan.mjs";
+
+const SOURCE = "postgresql://readonly:secret@ep-ulcprod.aws-eu-central-1.neon.tech/neondb?sslmode=require";
+const RESTORE = "postgresql://restore:secret@ep-ulcrestore.aws-eu-central-1.neon.tech/neondb?sslmode=require";
+
+test("ULC backup keys are daily, app-isolated, date-bound and immutable by convention", () => {
+  const plan = ulcBackupPlan(new Date("2026-11-14T17:05:00.000Z"));
+  assert.deepEqual(plan, {
+    schemaVersion: 1,
+    appId: "ulc-linz",
+    kind: "daily",
+    createdAt: "2026-11-14T17:05:00.000Z",
+    date: "2026-11-14",
+    key: "appbasis/ulc-linz/pilot/db/daily/2026-11-14.tar.aesgcm",
+  });
+  assert.equal(assertUlcBackupKey(plan.key), plan.key);
+  assert.throws(() => ulcBackupPlan(new Date("bad")), /timestamp/);
+  assert.throws(() => assertUlcBackupKey("appbasis/m3-preview/m4/daily/2026-11-14.tar.aesgcm"), /isolated/);
+});
+
+test("ULC exports require an explicit Neon TLS source and a distinct branch endpoint", () => {
+  assert.equal(assertUlcNeonDatabaseUrl(SOURCE), true);
+  assert.equal(assertIsolatedUlcRestoreTarget(SOURCE, RESTORE), true);
+  assert.throws(() => assertIsolatedUlcRestoreTarget(SOURCE, SOURCE), /separate/);
+  assert.throws(() => assertIsolatedUlcRestoreTarget(SOURCE, SOURCE.replace("neondb?", "anotherdb?")), /separate/);
+  assert.throws(() => assertUlcNeonDatabaseUrl("postgres://role@localhost/db?sslmode=require"), /Neon/);
+  assert.throws(() => assertUlcNeonDatabaseUrl(SOURCE.replace("sslmode=require", "sslmode=disable")), /Neon/);
+});
+
+test("ULC backups require a dedicated EU-bound R2 endpoint", () => {
+  assert.equal(ulcR2Endpoint("a".repeat(32), "eu"), "https://"+"a".repeat(32)+".eu.r2.cloudflarestorage.com");
+  assert.throws(() => ulcR2Endpoint("a".repeat(32), "default"), /EU-jurisdiction/);
+  assert.equal(assertUlcBackupBucket("ulc-linz-pilot-backup"), "ulc-linz-pilot-backup");
+  assert.throws(() => assertUlcBackupBucket("ULC Backup"), /invalid/);
+});
+
+test("rejects noncanonical object names and other app scopes", () => {
+  for (const name of [
+    "../appbasis/ulc-linz/pilot/db/daily/2026-11-14.tar.aesgcm",
+    "appbasis/ulc-linz/pilot/db/daily/2026-02-30.tar.aesgcm",
+    "appbasis/ulc-linz/pilot/db/weekly/2026-11-14.tar.aesgcm",
+    "appbasis/ulc-linz/pilot/db/daily/2026-11-14.sql",
+  ]) assert.throws(() => assertUlcBackupKey(name));
+});
