@@ -32,6 +32,13 @@ interface BackupCandidate {
   };
   readonly identityAndPermissions: {
     readonly personalAccountAsDefault: boolean;
+    readonly privateMyDriveSelected: boolean;
+    readonly userAccountConsentForConnection: boolean;
+    readonly googleAccountIdentityVerified: boolean;
+    readonly backupFolderOwnerVerified: boolean;
+    readonly accountLossAndSuccessionPlanApproved: boolean;
+    readonly appFolderOnlyOAuthIntended: boolean;
+    readonly privateKeyAccessibleToClubWithoutUserAccount: boolean;
     readonly publicSharingAllowed: boolean;
     readonly leastPrivilegeRequired: boolean;
     readonly thirdPartyAppAndGoogleDpaReviewed: boolean;
@@ -77,10 +84,13 @@ describe("ULC P04-B future Google Drive backup – offline requirements only", (
     expect(plan.intentSource).toContain("future Google Drive backups");
     expect(plan.status).toBe("planned-not-configured");
     expect(Object.keys(plan.approvals).length).toBeGreaterThan(5);
-    expect(Object.values(plan.approvals).every((yes) => !yes)).toBe(true);
+    expect(plan.approvals.backupTargetSelection).toBe(true);
+    expect(Object.entries(plan.approvals).filter(
+      ([name]) => name !== "backupTargetSelection",
+    ).every(([, approved]) => approved === false)).toBe(true);
     expect(plan.applicationBindings).toMatchObject({
       productionDatabase: "unverified",
-      googleAccountType: "undecided",
+      googleAccountType: "user-owned-my-drive-consumer-or-workspace-not-verified",
       driveId: null,
       folderId: null,
       credentialsConfigured: false,
@@ -101,7 +111,14 @@ describe("ULC P04-B future Google Drive backup – offline requirements only", (
     });
     expect(plan.encryption.recoveryPrivateKeyCustodian).toContain("outside-drive");
     expect(plan.identityAndPermissions).toMatchObject({
-      personalAccountAsDefault: false,
+      personalAccountAsDefault: true,
+      privateMyDriveSelected: true,
+      userAccountConsentForConnection: false,
+      googleAccountIdentityVerified: false,
+      backupFolderOwnerVerified: false,
+      accountLossAndSuccessionPlanApproved: false,
+      appFolderOnlyOAuthIntended: true,
+      privateKeyAccessibleToClubWithoutUserAccount: false,
       publicSharingAllowed: false,
       leastPrivilegeRequired: true,
       thirdPartyAppAndGoogleDpaReviewed: false,
@@ -150,6 +167,12 @@ describe("ULC P04-B future Google Drive backup – offline requirements only", (
       sourceMarkerExpired: "BLOCKED",
     });
     expect(plan.blockers).toContain("no-active-backup-workflow");
+    expect(plan.blockers).toContain(
+      "personal-my-drive-ownership-and-club-access-after-account-loss-not-approved",
+    );
+    expect(plan.blockers).toContain(
+      "user-specific-oauth-consent-and-scope-not-granted",
+    );
   });
 
   it("preserves the existing 35-day authority and every production privacy/backup gate", async () => {
