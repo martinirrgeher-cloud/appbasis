@@ -126,7 +126,7 @@ jobs:
           WORK: ${{ steps.setup.outputs.workspace }}
         run: |
           set -euo pipefail
-          ULC_REQUIRED_SCHEMA_SQL="$(node ./tooling/ulc-linz-k2-backup-plan.mjs schema-sql)"
+          export ULC_REQUIRED_SCHEMA_SQL="$(node ./tooling/ulc-linz-k2-backup-plan.mjs schema-sql)"
           docker run --rm --user "$(id -u):$(id -g)" \
             --env APPBASIS_ULC_SOURCE_DATABASE_URL \
             --env ULC_REQUIRED_SCHEMA_SQL \
