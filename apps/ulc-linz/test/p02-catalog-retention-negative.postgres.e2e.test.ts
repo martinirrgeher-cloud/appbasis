@@ -304,7 +304,7 @@ if (!DATABASE_URL) {
         mediaId: "p02-retry",
         repository: repo,
         provider,
-      })).rejects.toThrow(/provider temporarily down/);
+      })).rejects.toThrow(/Private media provider deletion failed/);
       const found = await db().client.unsafe(
         `SELECT id, deletion_requested_at IS NOT NULL AS requested
          FROM appbasis_exercise_catalog_private_media
