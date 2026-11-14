@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "documentType": "future-offsite-backup-candidate-not-deployment-config",
+  "intentSource": "operator states future Google Drive backups desired, not existing backups",
+  "provider": "google-drive",
+  "status": "planned-not-configured",
+  "approvals": {
+    "backupTargetSelection": false,
+    "scheduleAndRetention": false,
+    "googleDpaAndTransferReview": false,
+    "productionReadOnlyDumperRole": false,
+    "credentialAndEncryptionKeyProvisioning": false,
+    "restoreAndDeletionRehearsal": false,
+    "authorizationToEnable": false
+  },
+  "applicationBindings": {
+    "productionDatabase": "unverified",
+    "googleAccountType": "undecided",
+    "driveId": null,
+    "folderId": null,
+    "credentialsConfigured": false,
+    "jobConfigured": false,
+    "uploadEnabled": false
+  },
+  "provisionalSchedule": {
+    "frequency": "daily",
+    "retentionDays": 14,
+    "backupKind": "complete-consistent-postgresql-dump-all-eight-owners",
+    "status": "unapproved-engineering-candidate",
+    "safety": "14 days is a proposed accessible-file window, not verified provider/backup recoverability"
+  },
+  "encryption": {
+    "requiredBeforeUpload": true,
+    "mode": "authenticated-encryption-with-public-key-e.g.-age-X25519",
+    "cleartextUploadAllowed": false,
+    "keyStoredInDrive": false,
+    "plaintextFilenameWithPersonIdentifiersAllowed": false,
+    "recoveryPrivateKeyCustodian": "club-appointed-operator-outside-drive",
+    "independentSecondRecoveryCustodian": "to-be-designated",
+    "metadataPrivacy": "no-identifiers-in-file-names-or-drive-labels",
+    "encryptionKeyRotation": "design-and-test-before-activation"
+  },
+  "identityAndPermissions": {
+    "preferred": "club-owned-google-workspace-shared-drive-if-supported",
+    "alternative": "club-controlled-account-with-scoped-OAuth-and-explicit-ownership",
+    "personalAccountAsDefault": false,
+    "publicSharingAllowed": false,
+    "leastPrivilegeRequired": true,
+    "serviceAccountSharedDriveOwnershipReviewed": false,
+    "thirdPartyAppAndGoogleDpaReviewed": false,
+    "transferRiskReviewed": false
+  },
+  "lifecycle": {
+    "currentAthleteDeletionMarkerDays": 35,
+    "postExpiryRetry": "deny",
+    "allowLongerPersonRetainingLedger": false,
+    "requireRealBackupAndExportHorizonEvidence": true,
+    "requirePermanentDeleteNotTrash": true,
+    "requireReadAfterWriteAndDecryptInQuarantine": true,
+    "requireVerifiableRestoreFromRandomSample": true,
+    "requireAllEightOwnerReDeletion": true,
+    "requireNewerIndependentErasureEvidence": true,
+    "requireRestoreQuarantine": true,
+    "noLiveRestoreUntilOperatorApproval": true,
+    "legalRetentionRulesUnchanged": true,
+    "driveTrashCanKeepFilesDays": 30,
+    "driveTrashCannotCountAsDeletion": true,
+    "effectiveMaxRecoverableAge": "unknown-until-drive-versions-trash-provider-and-external-copies-audited",
+    "missingDeletionEvidence": "BLOCKED",
+    "missingProviderProof": "BLOCKED",
+    "staleBackup": "BLOCKED",
+    "sourceMarkerExpired": "BLOCKED"
+  },
+  "plannedWorkflow": [
+    "read-only-backup-credentials-fenced-to-authorized-export",
+    "consistent-postgres-dump-in-disposable-secure-runner",
+    "encrypt-before-upload-with-recovery-key-stored-outside-drive",
+    "upload-only-ciphertext-and-minimal-nonpersonal-manifest",
+    "read-back-and-verify-size-sha256-and-decrypt-restore-in-isolated-db",
+    "only-after-verified-new-backup-prune-expired-objects-with-drive-files.delete-not-trash",
+    "verify-ownership-file-id-delete-result-and-list-reconciliation-without-personal-data",
+    "regular-quarantined-recovery-drill-over-eight-owners-and-newer-erasure-decisions",
+    "freeze-backups-on-missing-provider-retention-or-legal-evidence"
+  ],
+  "blockers": [
+    "club-owned-google-account-and-drive-folder-not-selected",
+    "no-google-oauth-or-service-account-connectivity-authorized",
+    "drive-retention-versions-trash-recovery-and-other-copy-horizon-not-proven",
+    "no-dpa-subprocessors-cross-border-review",
+    "no-restore-after-source-deletion-proof-over-eight-owners",
+    "no-tested-independent-key-recovery",
+    "no-authorized-backup-schedule-or-retention",
+    "no-active-backup-workflow"
+  ]
+}
