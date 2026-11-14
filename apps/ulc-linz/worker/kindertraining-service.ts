@@ -71,6 +71,7 @@ export interface UlcKindertrainingSessionStore {
       readonly sessionDate: string;
       readonly state?: UlcTrainingSessionState;
       readonly note?: string | null;
+      readonly trustedActorIdentityId?: string;
     },
     attendance: readonly {
       readonly athleteId: string;
@@ -178,6 +179,7 @@ export function createUlcKindertrainingService({
           readonly status: UlcTrainingAttendanceStatus;
         }[];
       },
+      trustedActorIdentityId?: string,
     ): Promise<UlcKindertrainingSnapshot> {
       if (!Array.isArray(input.attendance)) {
         throw new UlcTrainingValidationError(
@@ -202,6 +204,8 @@ export function createUlcKindertrainingService({
           sessionDate: context.sessionDate,
           ...(input.state === undefined ? {} : { state: input.state }),
           ...(input.note === undefined ? {} : { note: input.note }),
+          ...(trustedActorIdentityId === undefined
+            ? {} : { trustedActorIdentityId }),
         },
         input.attendance,
         expectedRevision,

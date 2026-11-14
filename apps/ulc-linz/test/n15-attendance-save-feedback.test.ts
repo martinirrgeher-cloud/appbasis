@@ -16,5 +16,13 @@ describe("N15 attendance save feedback", () => {
     expect(save).toContain("Die Entwürfe bleiben markiert.");
     expect(save).toContain("Bitte nicht mehrfach auf Speichern drücken");
     expect(save).not.toContain("setTimeout(() => saveKindertrainingWeek()");
+    // A revoked role is a confirmed denial, not a network uncertainty.
+    expect(save).toContain("result.reason?.status === 403");
+    expect(save).toContain("accessChangedCount > 0");
+    expect(save).toContain("Die Berechtigung zum Bearbeiten mindestens eines Trainings wurde entzogen.");
+    expect(save).toContain("lokale Änderungen vor dem Neuladen notieren");
+    expect(save).toContain("if (result.status === \"fulfilled\")");
+    expect(save).not.toContain("kindertrainingWeekDirtyDates.clear()");
+
   });
 });

@@ -5008,6 +5008,7 @@ async function saveKindertrainingWeek() {
 
     const failedDates = [];
     let conflictCount = 0;
+    let accessChangedCount = 0;
     let savedCount = 0;
     results.forEach((result, index) => {
       const sessionDate = dirtySnapshots[index].sessionDate;
@@ -5018,13 +5019,16 @@ async function saveKindertrainingWeek() {
       } else {
         failedDates.push(germanDate(sessionDate));
         if (result.reason?.status === 409) conflictCount += 1;
+        if (result.reason?.status === 403) accessChangedCount += 1;
       }
     });
 
     if (failedDates.length > 0) {
-      const guidance = conflictCount > 0
-        ? "Mindestens ein Training wurde zwischenzeitlich geändert. Nicht neu laden, bevor die lokalen Änderungen gesichert sind."
-        : "Der Speicherstatus ist unklar (z. B. bei Verbindungsabbruch). Bitte nicht mehrfach auf Speichern drücken; zuerst Verbindung und Serverstand prüfen.";
+      const guidance = accessChangedCount > 0
+        ? "Die Berechtigung zum Bearbeiten mindestens eines Trainings wurde entzogen. Bitte den Administrator kontaktieren und lokale Änderungen vor dem Neuladen notieren."
+        : conflictCount > 0
+          ? "Mindestens ein Training wurde zwischenzeitlich geändert. Nicht neu laden, bevor die lokalen Änderungen gesichert sind."
+          : "Der Speicherstatus ist unklar (z. B. bei Verbindungsabbruch). Bitte nicht mehrfach auf Speichern drücken; zuerst Verbindung und Serverstand prüfen.";
       showMessage(
         elements.kindertrainingMessage,
         "Nicht bestätigt gespeichert: " + failedDates.join(", ") +

@@ -60,6 +60,7 @@ import {
   resolveUlcExerciseCatalogObjectStore,
   ULC_EXERCISE_CATALOG_PRIVATE_VIDEO_MAX_BYTES,
 } from "./exercise-catalog-private-media";
+import { deleteUlcPrivateExerciseMediaWithConfirmation } from "./exercise-catalog-media-delete-confirmed";
 import {
   UlcExerciseCatalogConflictError,
   UlcExerciseCatalogNotFoundError,
@@ -92,6 +93,7 @@ import {
   safeYouthTrainingArea,
 } from "./youth-category-postgres";
 import { UlcTrainingSessionConflictError } from "./training-session-postgres";
+import { trainingWriteGuardHttpResponse } from "./training-write-http-error";
 import { validateU12StatisticsDateRange } from "./u12-statistics-postgres";
 import {
   UlcLinzTrainerIdentityConflictError,
@@ -1667,9 +1669,12 @@ async function kindertrainingSessionResponse(
           status: "open" | "present" | "excused" | "absent";
         }>,
       },
+      access.actorPrincipalId,
     );
     return Response.json({ snapshot });
   } catch (error) {
+    const blocked = trainingWriteGuardHttpResponse(error);
+    if (blocked) return blocked;
     if (error instanceof UlcTrainingSessionConflictError) {
       return kindertrainingSessionConflict();
     }
@@ -2080,7 +2085,7 @@ async function detailedYouthAreaResponse(
           athleteId: string; status: "open" | "present" | "excused" | "absent";
           contentSlots?: number[];
         }>,
-      });
+      }, access.actorPrincipalId);
       return Response.json({ snapshot }, { headers: { "Cache-Control": "private, no-store" } });
     }
     const groupId = url.searchParams.get("groupId");
@@ -2122,6 +2127,8 @@ async function detailedYouthAreaResponse(
     );
     return Response.json({ report }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
+    const blocked = trainingWriteGuardHttpResponse(error);
+    if (blocked) return blocked;
     if (error instanceof UlcTrainingSessionConflictError) return u12SessionConflict();
     if (error instanceof UlcU12NotFoundError) {
       return Response.json({ error: { code: "YOUTH_GROUP_NOT_FOUND" } }, { status: 404 });
@@ -2230,9 +2237,12 @@ async function u12SessionResponse(
           contentSlots?: number[];
         }>,
       },
+      access.actorPrincipalId,
     );
     return Response.json({ snapshot });
   } catch (error) {
+    const blocked = trainingWriteGuardHttpResponse(error);
+    if (blocked) return blocked;
     if (error instanceof UlcTrainingSessionConflictError) {
       return u12SessionConflict();
     }
@@ -4132,24 +4142,39 @@ async function deleteExerciseCatalogPrivateMedia(
   const store = runtime.exerciseCatalogMediaStore;
   if (store === null) return exerciseCatalogPrivateMediaUnavailable();
 
-  const media = await runtime.exerciseCatalog.requestPrivateMediaDeletion(
+  const result = await deleteUlcPrivateExerciseMediaWithConfirmation({
     organizationId,
     exerciseId,
     mediaId,
-  );
-  if (media === undefined) return exerciseCatalogNotFound();
+    catalog: runtime.exerciseCatalog,
+    store,
+  });
+  if (result.status === "not-found") return exerciseCatalogNotFound();
 
-  // The database request hides the media before any object-store mutation.
-  // R2 delete is idempotent, so a failed final DB delete can be retried safely:
-  // the next DELETE request receives the same pending metadata and deletes the
-  // same storage key again before attempting completion.
-  await store.delete(media.storageKey);
-  await runtime.exerciseCatalog.completePrivateMediaDeletion(
-    organizationId,
-    exerciseId,
-    mediaId,
+  if (result.status !== "deleted") {
+    // The media stays marked pending in SQL and hidden from normal reads;
+    // the same DELETE can safely retry after independent provider proof.
+    // Do not return HTTP 200 until provider absence and SQL finalize agree.
+    return Response.json(
+      {
+        error: {
+          code: "EXERCISE_CATALOG_MEDIA_DELETE_UNCONFIRMED",
+          message: "Die vollständige Medienlöschung konnte noch nicht bestätigt werden.",
+        },
+      },
+      {
+        status: 503,
+        headers: {
+          "cache-control": "private, no-store",
+          "retry-after": "60",
+        },
+      },
+    );
+  }
+  return Response.json(
+    { deleted: true },
+    { headers: { "cache-control": "private, no-store" } },
   );
-  return Response.json({ deleted: true });
 }
 
 class PrivateExerciseVideoRequestError extends Error {

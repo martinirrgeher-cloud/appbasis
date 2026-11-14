@@ -104,6 +104,7 @@ export interface UlcU12SessionStore {
       readonly sessionDate: string;
       readonly state?: UlcTrainingSessionState;
       readonly note?: string | null;
+      readonly trustedActorIdentityId?: string;
     },
     attendance: readonly {
       readonly athleteId: string;
@@ -239,6 +240,7 @@ export function createUlcU12Service({
         readonly contentItems?: readonly UlcYouthContentItem[];
         readonly trainerIds?: readonly string[];
       },
+      trustedActorIdentityId?: string,
     ): Promise<UlcU12Snapshot> {
       if (!Array.isArray(input.attendance)) {
         throw new UlcTrainingValidationError(
@@ -312,6 +314,8 @@ export function createUlcU12Service({
           sessionDate: context.sessionDate,
           ...(input.state === undefined ? {} : { state: input.state }),
           ...(input.note === undefined ? {} : { note: input.note }),
+          ...(trustedActorIdentityId === undefined
+            ? {} : { trustedActorIdentityId }),
         },
         input.attendance,
         expectedRevision,

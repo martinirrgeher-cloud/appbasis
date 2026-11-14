@@ -206,6 +206,12 @@ export interface GeneratedPostgresApplicationRuntimeOptions {
   securityLogConnectionString: string;
   /** Explicit isolated-preview-only activation, never the default. */
   registrationCalendarActivation?: "isolated-preview-v17";
+  /** Experimental P03-G protection. OFF unless explicitly requested in an
+   * isolated integration preview with canonical athlete-owner row locking. */
+  trainingSessionWriteGuardMode?:
+    | "require-live-athlete-transaction"
+    | "require-live-athlete-group-transaction"
+    | "require-live-training-actor-transaction";
   baseURL: string;
   secret: string;
   exerciseCatalogRuntimeMode?: UlcExerciseCatalogRuntimeMode;
@@ -558,8 +564,11 @@ export async function createGeneratedPostgresApplicationRuntime(
         return athleteMasterdataRepository.reactivateTrainer(organizationId, trainerId);
       },
     });
-    const trainingSessions =
-      new PostgresUlcTrainingSessionRepository(applicationSql);
+    const trainingSessions = new PostgresUlcTrainingSessionRepository(
+      applicationSql,
+      undefined,
+      options.trainingSessionWriteGuardMode ?? "legacy",
+    );
     // This branch does not turn on v17. Only the separately approved Preview
     // Worker flag can request activation, and the DB attestation fails closed.
     const registrationCalendar =

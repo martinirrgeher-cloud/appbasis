@@ -16,7 +16,33 @@ import {
   type UlcYouthContentItem,
 } from "./training-content-catalog";
 
+import {
+  assertUlcLiveRegistrationScope,
+  assertUlcLiveTrainingGroupScope,
+} from "./training-session-write-scope";
+import { assertUlcLiveTrainingWriterActor } from "./training-session-write-actor";
+
 type SqlParameter = string | number | boolean | null;
+
+/** This gate is only eligible for separately authorized isolated previews.
+ * It cannot replace cross-owner deletion/restore authority or SQL triggers. */
+export type UlcTrainingSessionWriteGuardMode =
+  | "legacy"
+  | "require-live-athlete-transaction"
+  | "require-live-athlete-group-transaction"
+  | "require-live-training-actor-transaction";
+
+export class UlcTrainingSubjectWriteBlockedError extends Error {
+  readonly code = "ULC_TRAINING_SUBJECT_WRITE_BLOCKED";
+  constructor() {
+    super("The training subject is not eligible for a protected write.");
+    this.name = "UlcTrainingSubjectWriteBlockedError";
+  }
+}
+
+// Internal proof that a scoped repository is inside our own PostgreSQL BEGIN.
+// Not an API option; callers cannot forge this via a mode argument.
+const GUARDED_WRITE_TRANSACTION = Symbol("ulc-session-guarded-tx");
 
 export interface UlcTrainingSessionSqlClient {
   unsafe(
@@ -144,13 +170,97 @@ function normalizeTrainingTrainerIds(value: readonly string[]): readonly string[
 export class PostgresUlcTrainingSessionRepository {
   readonly #sql: UlcTrainingSessionSqlClient;
   readonly #createId: () => string;
+  readonly #writeGuardMode: UlcTrainingSessionWriteGuardMode;
+  readonly #insideGuardedTransaction: boolean;
 
   constructor(
     sql: UlcTrainingSessionSqlClient,
     createId: () => string = () => crypto.randomUUID(),
+    writeGuardMode: UlcTrainingSessionWriteGuardMode = "legacy",
+    transactionToken?: typeof GUARDED_WRITE_TRANSACTION,
   ) {
+    if (writeGuardMode !== "legacy" &&
+        writeGuardMode !== "require-live-athlete-transaction" &&
+        writeGuardMode !== "require-live-athlete-group-transaction" &&
+        writeGuardMode !== "require-live-training-actor-transaction") {
+      throw new UlcTrainingSessionPersistenceError("Unknown ULC training write guard mode.");
+    }
     this.#sql = sql;
     this.#createId = createId;
+    this.#writeGuardMode = writeGuardMode;
+    this.#insideGuardedTransaction = transactionToken === GUARDED_WRITE_TRANSACTION;
+  }
+
+  async #withGuardedTransaction<T>(
+    run: (scoped: PostgresUlcTrainingSessionRepository) => Promise<T>,
+  ): Promise<T> {
+    const txClient = this.#sql as UlcTrainingSessionSqlClient & {
+      begin?: <R>(
+        callback: (transaction: UlcTrainingSessionSqlClient) => Promise<R>,
+      ) => Promise<R>;
+    };
+    if (typeof txClient.begin !== "function") {
+      throw new UlcTrainingSessionPersistenceError(
+        "Protected training writes require a PostgreSQL transaction.",
+      );
+    }
+    return txClient.begin(async (transaction) => run(
+      new PostgresUlcTrainingSessionRepository(
+        transaction, this.#createId, this.#writeGuardMode,
+        GUARDED_WRITE_TRANSACTION,
+      ),
+    ));
+  }
+
+  /**
+   * Existing athlete rows are the only *current* canonical proof allowed here.
+   * This protects an in-flight write against the ATHLETES owner's FOR UPDATE
+   * retention deletion, which acquires an incompatible lock on the same row.
+   * It does NOT establish a durable post-restore erasure authority, prevent
+   * direct SQL bypasses, or independently authorize an actor's role.
+   */
+  async #assertWritableAthletes(
+    organizationId: string,
+    subjectIds: readonly string[],
+  ): Promise<void> {
+    if (!this.#insideGuardedTransaction) {
+      throw new UlcTrainingSessionPersistenceError(
+        "Protected training athlete checks require a scoped transaction.",
+      );
+    }
+    const organization = requiredInputIdentifier(organizationId, "Organization id");
+    const sorted = [...new Set(subjectIds.map((id) =>
+      requiredInputIdentifier(id, "Training athlete id"),
+    ))].sort();
+    for (const athleteId of sorted) {
+      // Advisory lock matches the existing P03-D/future erasure fence design;
+      // the ATHLETES owner's actual FOR UPDATE row lock is the current
+      // serialization anchor and must be verified separately at activation.
+      await this.#sql.unsafe(
+        `SELECT pg_advisory_xact_lock(
+           hashtextextended(jsonb_build_array($1::text, $2::text)::text, 0)
+         ) AS acquired`,
+        [organization, athleteId],
+      );
+      const live = await this.#sql.unsafe(
+        `SELECT id FROM appbasis_athlete
+         WHERE organization_id = $1 AND id = $2 AND is_active = true
+         FOR SHARE`,
+        [organization, athleteId],
+      );
+      if (live.length !== 1 || live[0]?.id !== athleteId) {
+        throw new UlcTrainingSubjectWriteBlockedError();
+      }
+      const deletions = await this.#sql.unsafe(
+        `SELECT entity_id FROM appbasis_athletes_deletion
+         WHERE entity_type = 'athlete'
+           AND entity_id = $2 AND organization_id = $1`,
+        [organization, athleteId],
+      );
+      if (deletions.length !== 0) {
+        throw new UlcTrainingSubjectWriteBlockedError();
+      }
+    }
   }
 
   async readSession(
@@ -353,6 +463,9 @@ export class PostgresUlcTrainingSessionRepository {
       const scopedSessions = new PostgresUlcTrainingSessionRepository(
         transaction,
         this.#createId,
+        this.#writeGuardMode,
+        this.#writeGuardMode !== "legacy"
+          ? GUARDED_WRITE_TRANSACTION : undefined,
       );
       return callback(scopedSessions);
     });
@@ -406,7 +519,10 @@ export class PostgresUlcTrainingSessionRepository {
 
   async saveSession(
     organizationId: string,
-    input: CreateUlcTrainingSessionInput,
+    input: CreateUlcTrainingSessionInput & {
+      /** Only the server-authenticated HTTP access scope may supply this. */
+      readonly trustedActorIdentityId?: string;
+    },
     attendanceInput: readonly {
       readonly athleteId: string;
       readonly status: UlcTrainingAttendance["status"];
@@ -418,6 +534,40 @@ export class PostgresUlcTrainingSessionRepository {
     trainingTrainerIds?: readonly string[],
     eligibleTrainerIds?: readonly string[],
   ): Promise<UlcTrainingSessionSnapshot> {
+    if (this.#writeGuardMode !== "legacy") {
+      if (!this.#insideGuardedTransaction) {
+        return this.#withGuardedTransaction((scoped) => scoped.saveSession(
+          organizationId, input, attendanceInput, expectedRevision,
+          trainingContentTitles, trainingContentItems,
+          trainingTrainerIds, eligibleTrainerIds,
+        ));
+      }
+      if (this.#writeGuardMode === "require-live-training-actor-transaction") {
+        // Canonical principal administration locks this parent FOR UPDATE.
+        // This FOR SHARE is acquired before any mutation of the session.
+        await assertUlcLiveTrainingWriterActor(this.#sql, {
+          organizationId,
+          groupId: input.groupId,
+          moduleId: input.moduleId,
+          authenticatedIdentityId: input.trustedActorIdentityId as string,
+        });
+      }
+      await this.#assertWritableAthletes(
+        organizationId, attendanceInput.map((entry) => entry.athleteId),
+      );
+      if (this.#writeGuardMode === "require-live-athlete-group-transaction" ||
+          this.#writeGuardMode === "require-live-training-actor-transaction") {
+        await assertUlcLiveTrainingGroupScope(this.#sql, {
+          organizationId,
+          groupId: input.groupId,
+          sessionDate: input.sessionDate,
+          athleteIds: attendanceInput.map((entry) => entry.athleteId),
+          // Eligibility supplied by the UI may be stale; the real DB is the
+          // authority for every currently listed OR selected trainer.
+          trainerIds: [...(trainingTrainerIds ?? []), ...(eligibleTrainerIds ?? [])],
+        });
+      }
+    }
     const proposed = createUlcTrainingSession(input, {
       id: requiredGeneratedId(this.#createId()),
       organizationId,
@@ -732,6 +882,26 @@ export class PostgresUlcTrainingSessionRepository {
     proxyActorAthleteId?: string,
     note?: string | null,
   ): Promise<UlcTrainingRegistration> {
+    if (this.#writeGuardMode !== "legacy") {
+      if (!this.#insideGuardedTransaction) {
+        return this.#withGuardedTransaction((scoped) => scoped.saveRegistration(
+          organizationId, sessionId, athleteId, intention,
+          expectedRevision, actorIdentityId, proxyActorAthleteId, note,
+        ));
+      }
+      await this.#assertWritableAthletes(
+        organizationId,
+        proxyActorAthleteId === undefined
+          ? [athleteId] : [athleteId, proxyActorAthleteId],
+      );
+      if (this.#writeGuardMode === "require-live-athlete-group-transaction" ||
+          this.#writeGuardMode === "require-live-training-actor-transaction") {
+        await assertUlcLiveRegistrationScope(this.#sql, {
+          organizationId, sessionId, athleteId, actorIdentityId,
+          proxyActorAthleteId,
+        });
+      }
+    }
     const organization = requiredInputIdentifier(
       organizationId,
       "Organization id",

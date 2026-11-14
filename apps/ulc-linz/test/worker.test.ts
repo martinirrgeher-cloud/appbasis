@@ -12,7 +12,12 @@ import {
 } from "../worker/exercise-catalog-exchange";
 import { createGeneratedWorker } from "../worker/index";
 import type { GeneratedPostgresApplicationRuntime } from "../worker/postgres";
-import { UlcTrainingSessionConflictError } from "../worker/training-session-postgres";
+import {
+  UlcTrainingSessionConflictError,
+  UlcTrainingSubjectWriteBlockedError,
+} from "../worker/training-session-postgres";
+import { UlcTrainingActorWriteBlockedError } from "../worker/training-session-write-actor";
+import { UlcTrainingScopeWriteBlockedError } from "../worker/training-session-write-scope";
 import { TrainingBlockConflictError } from "@appbasis/training-blocks";
 import { TrainingPlanConflictError } from "@appbasis/training-plans";
 import {
@@ -1888,7 +1893,12 @@ describe("generated identity+permissions Worker entrypoint", () => {
       );
 
     const failed = await worker.fetch(request(), validEnv);
-    expect(failed.status).toBe(500);
+    expect(failed.status).toBe(503);
+    expect(failed.headers.get("retry-after")).toBe("60");
+    expect(failed.headers.get("cache-control")).toBe("private, no-store");
+    await expect(failed.json()).resolves.toMatchObject({
+      error: { code: "EXERCISE_CATALOG_MEDIA_DELETE_UNCONFIRMED" },
+    });
     expect(requestCalls).toBe(1);
     expect(objectDeleteCalls).toBe(1);
     expect(completionCalls).toBe(0);
@@ -1967,7 +1977,12 @@ describe("generated identity+permissions Worker entrypoint", () => {
       );
 
     const failed = await worker.fetch(request(), validEnv);
-    expect(failed.status).toBe(500);
+    expect(failed.status).toBe(503);
+    expect(failed.headers.get("retry-after")).toBe("60");
+    expect(failed.headers.get("cache-control")).toBe("private, no-store");
+    await expect(failed.json()).resolves.toMatchObject({
+      error: { code: "EXERCISE_CATALOG_MEDIA_DELETE_UNCONFIRMED" },
+    });
     expect(requestCalls).toBe(1);
     expect(objectDeleteCalls).toBe(1);
     expect(completionCalls).toBe(1);
@@ -1979,6 +1994,87 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(requestCalls).toBe(2);
     expect(objectDeleteCalls).toBe(2);
     expect(completionCalls).toBe(2);
+    expect(pending).toBe(false);
+  });
+
+  it("does not falsely complete media deletion when the provider still serves the object", async () => {
+    let requested = 0;
+    let deleted = 0;
+    let verified = 0;
+    let completed = 0;
+    let providerStillHasObject = true;
+    let pending = true;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        exerciseCatalog: {
+          ...base.exerciseCatalog,
+          async requestPrivateMediaDeletion(
+            organizationId: string,
+            exerciseId: string,
+            mediaId: string,
+          ) {
+            requested++;
+            if (!pending) return undefined;
+            return {
+              id: mediaId,
+              organizationId,
+              exerciseId,
+              fileName: "clip.mp4",
+              storageKey: "exercise-catalog/verein-1/exercise-1/media-1",
+              contentType: "video/mp4",
+              sizeBytes: 24,
+              createdAt: "2026-10-09T00:00:00.000Z",
+            };
+          },
+          async completePrivateMediaDeletion() {
+            completed++;
+            pending = false;
+            return true;
+          },
+        },
+        exerciseCatalogMediaStore: {
+          async put() {},
+          async delete(key: string) {
+            deleted++;
+            expect(key).toBe("exercise-catalog/verein-1/exercise-1/media-1");
+          },
+          async get(key: string, options?: { readonly range?: Headers }) {
+            verified++;
+            expect(key).toBe("exercise-catalog/verein-1/exercise-1/media-1");
+            expect(options?.range?.get("range")).toBe("bytes=0-0");
+            return providerStillHasObject ? { body: Uint8Array.of(1) } : null;
+          },
+        },
+      };
+    });
+    const request = () => new Request(
+      "https://ulc.example.test/api/modules/exercise-catalog/exercise-1/private-media/media-1",
+      {
+        method: "DELETE",
+        headers: { cookie: currentIdentity.sessionToken },
+      },
+    );
+    const failed = await worker.fetch(request(), validEnv);
+    expect(failed.status).toBe(503);
+    await expect(failed.json()).resolves.toMatchObject({
+      error: { code: "EXERCISE_CATALOG_MEDIA_DELETE_UNCONFIRMED" },
+    });
+    expect(requested).toBe(1);
+    expect(deleted).toBe(1);
+    expect(verified).toBe(1);
+    expect(completed).toBe(0);
+    expect(pending).toBe(true);
+
+    providerStillHasObject = false;
+    const retried = await worker.fetch(request(), validEnv);
+    expect(retried.status).toBe(200);
+    await expect(retried.json()).resolves.toEqual({ deleted: true });
+    expect(requested).toBe(2);
+    expect(deleted).toBe(2);
+    expect(verified).toBe(2);
+    expect(completed).toBe(1);
     expect(pending).toBe(false);
   });
 
@@ -6822,4 +6918,53 @@ describe("U14 and Kindertraining detailed attendance API scopes", () => {
       module: { moduleId: "kindertraining" },
     });
   });
+});
+
+describe("pilot attendance save: guarded HTTP responses", () => {
+  const cases = [
+    { name: "U12 denied actor", route: "u12", status: 403,
+      error: new UlcTrainingActorWriteBlockedError(), code: "TRAINING_WRITE_ACCESS_CHANGED" },
+    { name: "Kindertraining changed group", route: "kindertraining", status: 409,
+      error: new UlcTrainingScopeWriteBlockedError(), code: "TRAINING_WRITE_SCOPE_CHANGED" },
+    { name: "U12 deleted athlete", route: "u12", status: 409,
+      error: new UlcTrainingSubjectWriteBlockedError(), code: "TRAINING_WRITE_SCOPE_CHANGED" },
+  ] as const;
+
+  for (const testCase of cases) {
+    it(testCase.name + " is an actionable non-500 and never leaks DB details", async () => {
+      const worker = createGeneratedWorker(() => {
+        const base = runtime();
+        return {
+          ...base,
+          u12: { ...base.u12, async saveSession() { throw testCase.error; } },
+          kindertraining: {
+            ...base.kindertraining,
+            async saveSession() { throw testCase.error; },
+          },
+        };
+      });
+      const response = await worker.fetch(
+        new Request("https://ulc.example.test/api/modules/" + testCase.route + "/session", {
+          method: "POST",
+          headers: {
+            cookie: currentIdentity.sessionToken,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            groupId: "group-1",
+            sessionDate: "2026-09-27",
+            expectedRevision: null,
+            attendance: [],
+          }),
+        }),
+        validEnv,
+      );
+      expect(response.status).toBe(testCase.status);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      const body = await response.json();
+      expect(body).toMatchObject({ error: { code: testCase.code } });
+      expect(JSON.stringify(body)).not.toContain("appbasis_");
+      expect(JSON.stringify(body)).not.toContain("identity-worker");
+    });
+  }
 });
