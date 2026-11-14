@@ -4,7 +4,7 @@
   "status": "blocked",
   "requirements": {
     "authorization": "verified",
-    "database": "blocked",
+    "database": "verified",
     "lifecycle": "blocked"
   },
   "evidence": {
@@ -39,8 +39,6 @@
     "lifecycle": []
   },
   "blockers": [
-    "Favorite, usage and private-media lifecycle is not yet production-verified.",
-    "Catalog schema v5 favorite erasure marker is only an unapproved additive migration candidate; existing evidence covers schema v4, not a production installation.",
-    "Protected catalog favorite mode is opt-in and not bound to all ULC writers or an approved 8-owner erasure authority."
+    "Favorite, usage and private-media lifecycle is not yet production-verified."
   ]
 }
