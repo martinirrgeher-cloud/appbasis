@@ -1888,7 +1888,12 @@ describe("generated identity+permissions Worker entrypoint", () => {
       );
 
     const failed = await worker.fetch(request(), validEnv);
-    expect(failed.status).toBe(500);
+    expect(failed.status).toBe(503);
+    expect(failed.headers.get("retry-after")).toBe("60");
+    expect(failed.headers.get("cache-control")).toBe("private, no-store");
+    await expect(failed.json()).resolves.toMatchObject({
+      error: { code: "EXERCISE_CATALOG_MEDIA_DELETE_UNCONFIRMED" },
+    });
     expect(requestCalls).toBe(1);
     expect(objectDeleteCalls).toBe(1);
     expect(completionCalls).toBe(0);
@@ -1967,7 +1972,12 @@ describe("generated identity+permissions Worker entrypoint", () => {
       );
 
     const failed = await worker.fetch(request(), validEnv);
-    expect(failed.status).toBe(500);
+    expect(failed.status).toBe(503);
+    expect(failed.headers.get("retry-after")).toBe("60");
+    expect(failed.headers.get("cache-control")).toBe("private, no-store");
+    await expect(failed.json()).resolves.toMatchObject({
+      error: { code: "EXERCISE_CATALOG_MEDIA_DELETE_UNCONFIRMED" },
+    });
     expect(requestCalls).toBe(1);
     expect(objectDeleteCalls).toBe(1);
     expect(completionCalls).toBe(1);
@@ -1979,6 +1989,83 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(requestCalls).toBe(2);
     expect(objectDeleteCalls).toBe(2);
     expect(completionCalls).toBe(2);
+    expect(pending).toBe(false);
+  });
+
+  it("does not falsely complete media deletion when the provider still serves the object", async () => {
+    let requested = 0;
+    let deleted = 0;
+    let verified = 0;
+    let completed = 0;
+    let providerStillHasObject = true;
+    let pending = true;
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        exerciseCatalog: {
+          ...base.exerciseCatalog,
+          async requestPrivateMediaDeletion(organizationId, exerciseId, mediaId) {
+            requested++;
+            if (!pending) return undefined;
+            return {
+              id: mediaId,
+              organizationId,
+              exerciseId,
+              fileName: "clip.mp4",
+              storageKey: "exercise-catalog/verein-1/exercise-1/media-1",
+              contentType: "video/mp4",
+              sizeBytes: 24,
+              createdAt: "2026-10-09T00:00:00.000Z",
+            };
+          },
+          async completePrivateMediaDeletion() {
+            completed++;
+            pending = false;
+            return true;
+          },
+        },
+        exerciseCatalogMediaStore: {
+          async put() {},
+          async delete(key) {
+            deleted++;
+            expect(key).toBe("exercise-catalog/verein-1/exercise-1/media-1");
+          },
+          async get(key, options) {
+            verified++;
+            expect(key).toBe("exercise-catalog/verein-1/exercise-1/media-1");
+            expect(options?.range?.get("range")).toBe("bytes=0-0");
+            return providerStillHasObject ? { body: Uint8Array.of(1) } : null;
+          },
+        },
+      };
+    });
+    const request = () => new Request(
+      "https://ulc.example.test/api/modules/exercise-catalog/exercise-1/private-media/media-1",
+      {
+        method: "DELETE",
+        headers: { cookie: currentIdentity.sessionToken },
+      },
+    );
+    const failed = await worker.fetch(request(), validEnv);
+    expect(failed.status).toBe(503);
+    await expect(failed.json()).resolves.toMatchObject({
+      error: { code: "EXERCISE_CATALOG_MEDIA_DELETE_UNCONFIRMED" },
+    });
+    expect(requested).toBe(1);
+    expect(deleted).toBe(1);
+    expect(verified).toBe(1);
+    expect(completed).toBe(0);
+    expect(pending).toBe(true);
+
+    providerStillHasObject = false;
+    const retried = await worker.fetch(request(), validEnv);
+    expect(retried.status).toBe(200);
+    await expect(retried.json()).resolves.toEqual({ deleted: true });
+    expect(requested).toBe(2);
+    expect(deleted).toBe(2);
+    expect(verified).toBe(2);
+    expect(completed).toBe(1);
     expect(pending).toBe(false);
   });
 
