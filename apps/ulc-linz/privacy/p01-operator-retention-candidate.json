@@ -1,0 +1,291 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "documentType": "operator-confirmed-target-guideline-not-runtime-policy",
+  "status": "FACHLICHE_ZIELVORGABE_BESTAETIGT",
+  "runtimeActive": false,
+  "legalApproval": false,
+  "baseline": {
+    "manifestMigrationCount": 41,
+    "tableCount": 64,
+    "originalSourceMarkerRetentionDays": 35,
+    "postExpiryRetry": "deny",
+    "noAutomaticRetentionPurge": true,
+    "productionPrivacyGate": "blocked",
+    "note": "Policy choices are recommendations only; current technical lifecycle and retention code remains unchanged."
+  },
+  "recommendedDecisions": {
+    "D1": "Treat ambiguous historic usage and free text as potentially personal; no guessed subject attribution; limit access and inspect; prevent new freely identifying usage notes.",
+    "D2": "Keep current 35-day source authority and post-expiry deny. Choose A only if all restoreable backups/exports and all owner workflows demonstrably fit; otherwise separately approve minimal time-bounded authority B after provider and legal review.",
+    "D3": "Provider-level confirmed deletion before SQL media completion; no recognizable minors/private media until AVV/region/access/deletion evidence is verified.",
+    "D4": "Restore into writer-isolated quarantine, replay complete newer erasure decisions over all eight owners, prove residual checks, obtain explicit operator release."
+  },
+  "tableGroups": [
+    {
+      "id": "accounts_memberships",
+      "tables": [
+        "appbasis_identity_security_state",
+        "appbasis_person",
+        "account",
+        "session",
+        "user",
+        "appbasis_permission_principal",
+        "appbasis_permission_principal_role",
+        "appbasis_permission_principal_grant",
+        "appbasis_permission_principal_revoke",
+        "ulc_linz_membership",
+        "ulc_linz_subject_scope"
+      ],
+      "purpose": "Authentifizierung, Benutzer- und Rollenverwaltung",
+      "proposal": "Nur bei aktiver Mitgliedschaft/Berechtigung, nach Austritt maximal 12 Monate sofern konkret nötig; Sessions nach Sicherheitsbedarf früher ungültig; Lösch-/Auskunftsrecht und technische Abhängigkeiten gesondert prüfen",
+      "trigger": "Austritt/Deaktivierung/Zweckende",
+      "duration": "max-12-months-after-exit-conditional",
+      "condition": "Keine gesetzliche generelle 12-Monatsfrist; Erforderlichkeit pro Personenkategorie/Kind prüfen."
+    },
+    {
+      "id": "identity_operation",
+      "tables": [
+        "appbasis_identity_operation"
+      ],
+      "purpose": "Login-/Löschoperationen der Identität",
+      "proposal": "Betriebs-/Auditdaten zweckabhängig; im bestehenden Inventar Teil einer 35-Tage-Markerlogik, keine eigenmächtige Verlängerung",
+      "trigger": "Operation und berechtigter Löschvorgang",
+      "duration": "existing-lifecycle-plus-35-day-marker-unchanged",
+      "condition": "Achtung Operation enthält möglicherweise mehrere Zeit- und Zwecktypen; Migration-/Spaltenprüfung erforderlich."
+    },
+    {
+      "id": "people_masterdata",
+      "tables": [
+        "appbasis_athlete",
+        "appbasis_athlete_contact",
+        "appbasis_trainer",
+        "appbasis_athlete_group_membership",
+        "appbasis_trainer_group_membership"
+      ],
+      "purpose": "Training und Vereinsorganisation inklusive Minderjähriger und Eltern",
+      "proposal": "Solange benötigt, nach Deaktivierung maximal 12 Monate sofern für Austritt/Organisation begründet; erforderliche Rechnungs-/Förderbelege gesondert und datenminimiert",
+      "trigger": "Deaktivierung/Austritt/Zweckende",
+      "duration": "max-12-months-after-deactivation-conditional",
+      "condition": "Kinder-/Elterninformation und Ausnahme bei rechtlicher Aufbewahrungspflicht gesondert prüfen."
+    },
+    {
+      "id": "security_audit",
+      "tables": [
+        "appbasis_permission_administration_audit",
+        "ulc_linz_lifecycle_audit",
+        "ulc_linz_security_event_log",
+        "ulc_linz_trainer_identity_audit"
+      ],
+      "purpose": "Nachvollziehbarkeit sicherheitsrelevanter Zugriffe und Rechteänderungen",
+      "proposal": "Bestandsvorgabe 12 Monate nur bei dokumentiertem Sicherheitsbedarf und Zugriffsbeschränkung; besondere Nachweispflichten separat",
+      "trigger": "Log-/Audit-Ereignis",
+      "duration": "max-12-months-if-justified",
+      "condition": "Trainer-/Sicherheits-Audit darf nicht pauschal zu langfristiger Fachtrainingsteilnahme werden; teils Purge noch inaktiv."
+    },
+    {
+      "id": "training_person_records",
+      "tables": [
+        "ulc_linz_training_attendance",
+        "ulc_linz_training_registration",
+        "ulc_linz_training_registration_change",
+        "ulc_linz_training_trainer_attendance"
+      ],
+      "purpose": "Trainingsorganisation, Anwesenheits- und Jahresstatistik, Trainerpräsenz",
+      "proposal": "Vorschlag 24 Monate ab Training für zwei Saisonen Vergleich; früher nach berechtigter Löschanforderung, dauerhafter Statistikbestand nur nach wirksamer Anonymisierung",
+      "trigger": "Trainingstag",
+      "duration": "candidate-24-months-after-training",
+      "condition": "Zwei-Saison-Vergleich muss vom Verein als nötig begründet werden; Grant-/Vergütungsunterlagen von Trainingsteilnahmen getrennt behandeln."
+    },
+    {
+      "id": "session_content",
+      "tables": [
+        "ulc_linz_training_session"
+      ],
+      "purpose": "Termin und allgemeine Inhalte, bei Freitext potenziell Personenbezug",
+      "proposal": "Termin-/Inhaltshistorie zweckgebunden bis zu 24 Monate; personenbezogene Notiz- und JSON-Felder gesondert minimieren und spätestens nach 90 Tagen prüfen/löschen, wenn nicht erforderlich",
+      "trigger": "Trainingstag bzw. Freitext-Review",
+      "duration": "candidate-24-months-record-90-days-personal-free-text-review",
+      "condition": "Session ist gemeinsam mit anderen Athleten und darf bei Individual-Löschung nicht blind gelöscht werden."
+    },
+    {
+      "id": "favorites",
+      "tables": [
+        "ulc_linz_exercise_favorite",
+        "appbasis_exercise_catalog_favorite",
+        "appbasis_training_block_favorite"
+      ],
+      "purpose": "Persönliche Übungs-/Blockfavoriten und Vorlieben",
+      "proposal": "Nur solange das Konto beziehungsweise die Präferenz aktiv ist, danach personenbezogene Favoriten entfernen; keine Wiederanlage durch alte Clients/Restore",
+      "trigger": "Löschwunsch oder Wegfall des Nutzerzwecks",
+      "duration": "delete-on-subject-erasure-or-purpose-end",
+      "condition": "Ausnahme nicht pauschal auf Trainingsevents ausdehnen; Eigentümerbeleg und Marker-Replay erforderlich."
+    },
+    {
+      "id": "usage_events",
+      "tables": [
+        "appbasis_exercise_catalog_usage",
+        "appbasis_training_block_usage",
+        "appbasis_training_block_usage_subject"
+      ],
+      "purpose": "Auswertung von Nutzungsereignissen und attributionierten Trainingsblöcken",
+      "proposal": "Personenbezug maximal 12 Monate nach Nutzung nur sofern betrieblicher Statistikzweck belegt; Alt-Usage mit unklaren source_ref/note als potenziell personenbezogen sperren und manuell prüfen",
+      "trigger": "Nutzungsereignis/Verifikation",
+      "duration": "candidate-12-months-after-use-if-justified",
+      "condition": "Keine unbestätigte Umdeutung zu anonymen Daten oder automatische Textheuristik zur Ownerzuordnung."
+    },
+    {
+      "id": "plans_blocks_documentation",
+      "tables": [
+        "appbasis_training_block",
+        "appbasis_training_block_revision",
+        "appbasis_training_block_revision_item",
+        "appbasis_training_block_revision_item_parameter",
+        "appbasis_training_documentation",
+        "appbasis_training_documentation_revision",
+        "appbasis_training_plan",
+        "appbasis_training_plan_revision",
+        "appbasis_training_plan_revision_item"
+      ],
+      "purpose": "Training planen, nachbereiten, ausgewählte historische Revisionen",
+      "proposal": "Personenbezogene Zuordnungen/Teilnahmen als Vorschlag maximal 24 Monate nach letzter Trainingseinheit; allgemeine fachliche Vorlagen ohne Personenbezug können länger bestehen; fremde Teilnehmer aus allen Revisionen redigieren",
+      "trigger": "letzte zugeordnete Trainingseinheit bzw. Zweckende",
+      "duration": "candidate-24-months-personal-links-general-content-by-purpose",
+      "condition": "Freitext/Trainerkommentare, Revisionshistorie und Förder-/Finanznachweis separat prüfen."
+    },
+    {
+      "id": "private_media",
+      "tables": [
+        "appbasis_exercise_catalog_private_media"
+      ],
+      "purpose": "Private Übungsvideos/Bilder und externe Provider-Dateien",
+      "proposal": "Keine neue Speicherung erkennbarer Minderjähriger bis Provider/AVV/Region/Objektlöschung geklärt; danach nur zweckgebunden, mit nachweisbarer Objekt- und Metadatenlöschung",
+      "trigger": "Löschwunsch, Zweckende, Provider-Frist",
+      "duration": "blocked-provider-and-photo-purpose-approval",
+      "condition": "Der DB-Status alleine beweist keine physische Storage-Löschung."
+    },
+    {
+      "id": "deletion_markers",
+      "tables": [
+        "appbasis_athletes_deletion",
+        "ulc_linz_lifecycle_deletion",
+        "appbasis_training_block_usage_subject_deletion",
+        "appbasis_training_block_favorite_deletion",
+        "appbasis_training_documentation_subject_deletion",
+        "appbasis_training_plan_subject_deletion"
+      ],
+      "purpose": "Nachweis und Replay zuvor autorisierter Löschungen",
+      "proposal": "Bestehende Source- und Owner-Marker 35 Tage, danach deny; nur nach tatsächlich dokumentierter Backup-/Exportzeit eine separate minimierte und rechtlich geprüfte länger haltbare Autorität erwägen",
+      "trigger": "verifizierter Löschabschluss",
+      "duration": "existing-35-days-post-expiry-deny",
+      "condition": "Nicht unabhängig vom tatsächlichen Backuphorizont als ausreichend bewerten; keine stillschweigende Retentionänderung."
+    },
+    {
+      "id": "unused_verification",
+      "tables": [
+        "verification"
+      ],
+      "purpose": "Technisch unbenutzte Identitäts-Verifikationstabelle",
+      "proposal": "Nicht aktivieren; falls Daten auftauchen, fail closed und manuelle Privacy-Prüfung",
+      "trigger": "nicht verwendet",
+      "duration": "not-used-fail-closed",
+      "condition": "Keine automatische Freigabe für eingetragene Datensätze."
+    },
+    {
+      "id": "general_configuration",
+      "tables": [
+        "appbasis_permission_capability",
+        "appbasis_permission_role",
+        "appbasis_permission_role_capability",
+        "appbasis_training_group",
+        "ulc_linz_training_module_group",
+        "ulc_linz_exercise_catalog_item",
+        "ulc_linz_exercise_parameter",
+        "ulc_linz_exercise_group",
+        "appbasis_exercise_catalog_item",
+        "appbasis_exercise_catalog_parameter",
+        "appbasis_exercise_catalog_audience",
+        "appbasis_exercise_catalog_video",
+        "appbasis_exercise_catalog_similarity",
+        "ulc_linz_youth_content_category",
+        "ulc_linz_youth_group_category"
+      ],
+      "purpose": "Nicht-personale Gruppen-/Katalog-/Berechtigungsvorlagen",
+      "proposal": "Zweck-/Versionspflege statt personenbezogener Frist, aber Labels/Beschreibungen/Videoobjekte auf Personenbezug kontrollieren",
+      "trigger": "Vorlagen-Lifecycle",
+      "duration": "content-by-purpose-if-verified-nonpersonal",
+      "condition": "Eine fachliche Kategorie oder Video-URL ist nicht automatisch anonym; bei personenbezogenem Material andere Gruppe zuordnen."
+    }
+  ],
+  "freeTextExceptions": [
+    {
+      "table": "ulc_linz_training_registration",
+      "field": "note",
+      "proposal": "Review/remove personal registration notes within 90 days after training unless justified; historical data are separate."
+    },
+    {
+      "table": "ulc_linz_training_registration_change",
+      "field": "note",
+      "proposal": "Apply same 90-day personal note review to every append-only change row; clearing current note is insufficient."
+    },
+    {
+      "table": "ulc_linz_training_session",
+      "field": "note",
+      "proposal": "Review/remove identifiable session note within 90 days if no continuing purpose."
+    },
+    {
+      "table": "ulc_linz_training_session",
+      "field": "training_content_titles/training_content_items",
+      "proposal": "Only generic training content; forbid medical/person-identifying free text by default, investigate legacy entries."
+    },
+    {
+      "table": "appbasis_training_documentation_revision",
+      "field": "free-text-and-participant-links",
+      "proposal": "Check every revision for personal third-party names, actor references and necessary redaction."
+    },
+    {
+      "table": "appbasis_training_block_usage",
+      "field": "source_ref/note",
+      "proposal": "Ambiguous legacy owner/free text is personal until manual review; not automatically anonymous."
+    }
+  ],
+  "additionalEvidenceRequired": [
+    "Document the signing ULC Linz legal entity/function and retain the original authorization record (current chat confirms only self-declared authority)",
+    "Per-purpose lawful basis and age-specific information for minors, parents, trainers, and club functionaries",
+    "Need and proportionality for two-year training-specific personal history; separate grants/payroll/bookkeeping retention, if applicable",
+    "Actual Cloudflare worker-to-Neon production binding, DPA/AVV, sub-processors, encryption and access",
+    "Maximum restorable backup/snapshot/export lifetime and proof of provider object deletion",
+    "Release of P03 subject no-resurrection and cross-owner reconciliation tests before applying",
+    "Private pilot population, access rights, documented security response/rollback and operators",
+    "Independent provider/legal check where appropriate"
+  ],
+  "approval": {
+    "category": "purpose-and-retention-target-guideline-only",
+    "decidedOn": "2026-11-14",
+    "source": "explicit-chat-confirmation-to-listed-purpose-dependent-retention-rules",
+    "authorization": "user-self-declared-entitled-to-approve-for-ULC-Linz",
+    "exactScope": [
+      "conditional-12-months-after-exit-for-people-and-roles",
+      "up-to-24-months-from-training-for-personal-attendance-registration-and-trainer-history",
+      "90-day-review-delete-personal-notes-unless-further-justified",
+      "up-to-12-months-personal-usage-if-statistics-purpose-justified",
+      "keep-existing-35-days-source-deletion-markers-and-deny-after-expiry",
+      "block-new-person-identifiable-private-media-of-minors-pending-provider-and-lawful-basis-proof",
+      "D1-D4-principles-no-unverified-restore-or-new-durable-deletion-authority"
+    ],
+    "excludes": [
+      "no-independent-legal-basis-audit-or-DPA-verification",
+      "no-approval-of-specific-longer-post-expiry-ledger-or-provider-backup-duration",
+      "no-approval-of-production-retention-enforcement-deployment-database-migrations-or-erasure",
+      "no-GitHub-PR-merge-authorization-implied-by-data-policy-approval",
+      "no-confirmation-of-approver-full-name-office-or-signed-record"
+    ]
+  },
+  "reviewedAt": "2026-11-14",
+  "sources": [
+    "apps/ulc-linz/privacy/m5-data-inventory.json",
+    "apps/ulc-linz/PRODUCTION-PRIVACY-P01-DECISION-PACK.md",
+    "https://dsb.gv.at/sites/site0344/media/downloads/dsgvo_leitfaden_2022.pdf",
+    "https://commission.europa.eu/law/law-topic/data-protection/information-business-and-organisations/principles-gdpr_en",
+    "https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+  ]
+}
