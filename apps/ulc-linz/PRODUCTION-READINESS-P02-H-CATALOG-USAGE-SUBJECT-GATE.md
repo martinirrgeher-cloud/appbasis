@@ -31,7 +31,9 @@ Zusätzlich zu der bestehenden P02-G-Test-Fixture gibt es ausschließlich für d
 7. Zwei Connections: Writer zuerst → Löschung entfernt seine gerade geschriebene Notiz.
 8. Historische `source_ref`-Notiz ohne sichere Principal-Zuordnung bleibt ausdrücklich unerkannt – **Privacy-GAP weiter offen**.
 9. Fehlende Löschmarkertabelle führt zu einem Block statt einer Umgehung.
-10. (Der letzte Block ist getrennte Gate-/Integritätsabdeckung; die konkrete Gesamtzahl wird von der Vitest-CI ermittelt.)
+10. Bei geschützter Usage-Nutzung wird der ältere Teil-Löschpfad für nur Favoriten ausdrücklich zurückgewiesen (im Test zusammen mit der Modusvalidierung geprüft).
+
+Die Testdatei enthält zehn `it()`-Blöcke; einzelne Blöcke decken mehrere Negativvarianten ab.
 
 ## Grenzen vor realem Betrieb
 
