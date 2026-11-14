@@ -134,7 +134,7 @@ export async function deleteExerciseCatalogPrivateMediaWithProviderProof(
 
   // Fail closed if provider is unreachable or delete throws. The metadata
   // remains (requested/deferred), so a later verified retry is possible.
-  let deleteEvidence;
+  let deleteEvidence: Awaited<ReturnType<ExerciseCatalogMediaDeletionProvider["deleteExactObject"]>>;
   try {
     deleteEvidence = await input.provider.deleteExactObject(scope);
   } catch {
@@ -152,7 +152,7 @@ export async function deleteExerciseCatalogPrivateMediaWithProviderProof(
       providerDeletionConfirmed: false,
     });
   }
-  let absenceEvidence;
+  let absenceEvidence: Awaited<ReturnType<ExerciseCatalogMediaDeletionProvider["verifyExactObjectAbsence"]>>;
   try {
     absenceEvidence = await input.provider.verifyExactObjectAbsence(scope);
   } catch {
