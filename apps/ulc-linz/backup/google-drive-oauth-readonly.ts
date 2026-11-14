@@ -74,7 +74,7 @@ async function fetchWithBoundedTimeout(
   url: string,
   request: RequestInit,
   timeoutMs: number,
-): Promise<Response> {
+): Promise<{ readonly status: number; readonly body: unknown }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -86,7 +86,12 @@ async function fetchWithBoundedTimeout(
     if (!(response instanceof Response) || response.redirected) {
       throw new Error("Unexpected transport response");
     }
-    return response;
+    // Keep the timeout active WHILE consuming the response body. A request
+    // that returns headers and stalls forever must not hold the runner.
+    const body: unknown = response.status === 200
+      ? await response.json()
+      : null;
+    return { status: response.status, body };
   } finally {
     clearTimeout(timeout);
   }
@@ -148,7 +153,7 @@ export async function checkUlcGoogleDriveOAuthReadOnly(
     if (response.status !== 200) {
       return blocked("oauth-refresh-rejected");
     }
-    const token: unknown = await response.json();
+    const token: unknown = response.body;
     if (
       !token ||
       typeof token !== "object" ||
@@ -197,7 +202,7 @@ export async function checkUlcGoogleDriveOAuthReadOnly(
     if (response.status !== 200) {
       return blocked("provider-response-invalid");
     }
-    const folder: unknown = await response.json();
+    const folder: unknown = response.body;
     if (!folder || typeof folder !== "object" || Array.isArray(folder)) {
       return blocked("provider-response-invalid");
     }
