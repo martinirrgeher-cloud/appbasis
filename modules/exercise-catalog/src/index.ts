@@ -22,6 +22,7 @@ export {
 export {
   PostgresExerciseCatalogRepository,
   ExerciseCatalogFavoriteDeletedError,
+  ExerciseCatalogUsageSubjectRequiredError,
 } from "./postgres-repository";
 export { ExerciseCatalogService } from "./service";
 export {
@@ -50,6 +51,9 @@ export type {
 export type {
   ExerciseCatalogFavoriteDeletionResult,
   ExerciseCatalogFavoriteFenceMode,
+  ExerciseCatalogPersonalDeletionResult,
+  ExerciseCatalogUsageSubjectContext,
+  ExerciseCatalogUsageWriteMode,
   ExerciseCatalogPostgresClient,
   ExerciseCatalogPostgresQueryClient,
   ExerciseCatalogSqlParameter,
