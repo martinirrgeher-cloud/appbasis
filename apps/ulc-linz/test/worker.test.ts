@@ -3909,7 +3909,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       "https://ulc.example.test/api/auth/session",
       { headers: { cookie: currentIdentity.sessionToken } },
     );
-    let optionsSeen: GeneratedPostgresApplicationRuntimeOptions | null = null;
+    let optionsSeen: unknown = null;
     const worker = createGeneratedWorker(async (options) => {
       optionsSeen = options;
       return runtime();
@@ -3958,7 +3958,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       { ...base, APPBASIS_RUNTIME_ENVIRONMENT: "production" },
       { ...base, APPBASIS_GENERATED_APP_ID: "different-app" },
       { ...base, APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "enabled" },
-      { ...base, HYPERDRIVE: { connectionString: appConnection.replace("appbasis_ulc_linz_preview", "ulc_linz_k2_restore_quarantine") } },
+      { ...base, HYPERDRIVE: { connectionString: appConnection.replace("/appbasis_ulc_linz_preview", "/ulc_linz_k2_restore_quarantine") } },
       { ...base, SECURITY_LOG_HYPERDRIVE: { connectionString: logConnection.replace("preview-db", "quarantine-db") } },
       { ...base, HYPERDRIVE: { connectionString: appConnection.replace("appbasis_ulc_linz_preview_application", "ulc_linz_k2_restore_owner") } },
     ];
