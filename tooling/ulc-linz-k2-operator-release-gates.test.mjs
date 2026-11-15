@@ -12,7 +12,7 @@ test("retention never implicitly authorizes R2 deletion",()=>{
   assert.match(doc,/21 Tage nur Vorschlag/); assert.match(doc,/keine.*automatische R2-Lifecycle-Löschung/);
 });
 test("media evidence is independent of database restore",()=>{
-  assert.match(doc,/isolierter Medien-Restore/);assert.match(doc,/Medien-\\/DSGVO-Nachweis/);
+  assert.match(doc,/isolierter Medien-Restore/);assert.match(doc,/Medien-\/DSGVO-Nachweis/);
 });
 test("role and row-level security checks remain separate gates",()=>{
   assert.match(doc,/RLS/);assert.match(doc,/Cross-Org/);assert.match(doc,/--no-owner --no-acl/);
