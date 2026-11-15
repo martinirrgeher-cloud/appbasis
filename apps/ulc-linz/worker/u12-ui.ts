@@ -1927,6 +1927,10 @@ async function saveU12Attendance() {
           .filter((trainer) => trainer.present).map((trainer) => trainer.trainerId));
         u12TouchedAthletes.clear();
         u12DirtyDates.clear();
+        // A confirmed manual retry also clears the global background warning.
+        if (typeof clearBackgroundAttendanceSaveError === "function") {
+          clearBackgroundAttendanceSaveError("u12");
+        }
       }
       u12AutoSaveFailed = false;
       return true;
