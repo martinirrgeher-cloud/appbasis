@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { K2_ROLES, validateK2RestoreContract, planK2RestoreRights } from "./ulc-linz-k2-restore-rights-plan.mjs";
+import { K2_ROLES, K2_RESTORE_PREFLIGHT_EXPECTED, evaluateK2RestorePreflight, validateK2RestoreContract, planK2RestoreRights } from "./ulc-linz-k2-restore-rights-plan.mjs";
 
 const file = readFileSync(new URL("./ulc-linz-k2-restore-privilege-contract.json", import.meta.url));
 const EXPECTED_SOURCE_GIT_BLOB = "c9ca9fdc7280d4f6671515b6e6ddb7002636c2dc";
@@ -119,4 +119,33 @@ test("plan functions have no provider or SQL execution code paths",()=>{
  assert.doesNotMatch(code,/from ["']node:(?:fs|http|https|net|tls|child_process)/);
  assert.doesNotMatch(code,/\.unsafe\(|\.query\(|\bfetch\s*\(/);
  assert.doesNotMatch(code,/^\s*(?:await\s+)?(?:runSql|executeSql|applyGrants)\(/m);
+});
+
+
+test("actual pre-repair K2 read-only catalog evidence is a match, never authorization",()=>{
+  const result=evaluateK2RestorePreflight({...K2_RESTORE_PREFLIGHT_EXPECTED});
+  assert.equal(result.status,"CATALOG_MATCH_ONLY");
+  assert.deepEqual(result.failures,[]);
+  assert.equal(result.writeAuthorized,false);
+  assert.equal(result.cloudflareAccountWideIsolationVerified,false);
+  assert.equal(result.physicalBranchIndependentlyVerified,false);
+  assert.equal(result.appRestoreReady,false);
+});
+test("any changed catalog metric must BLOCK before a future owner/grant step",()=>{
+  for(const [key,value] of Object.entries(K2_RESTORE_PREFLIGHT_EXPECTED)){
+    const changed={...K2_RESTORE_PREFLIGHT_EXPECTED,[key]:typeof value==="boolean"?!value:value+1};
+    const r=evaluateK2RestorePreflight(changed);
+    assert.equal(r.status,"BLOCK",key);
+    assert.ok(r.failures.includes("MISMATCH_"+key.toUpperCase()),key);
+  }
+  for(const value of [null,undefined,[],{},false])assert.equal(evaluateK2RestorePreflight(value).status,"BLOCK");
+});
+test("preflight catalog SQL is read-only and requires named restore DB",()=>{
+  const sql=readFileSync(new URL("./ulc-linz-k2-owner-preflight-readonly.sql",import.meta.url),"utf8");
+  assert.match(sql,/current_database\(\)='ulc_linz_k2_restore_quarantine'/);
+  assert.match(sql,/pg_catalog\.pg_roles/);
+  assert.match(sql,/proposed_owner_exists_count/);
+  assert.match(sql,/public_routine_execute_count/);
+  assert.doesNotMatch(sql,/^\s*(?:GRANT|REVOKE|CREATE|ALTER|DROP|TRUNCATE|INSERT|UPDATE|DELETE|CALL|DO|COPY)\b/im);
+  assert.ok(sql.trim().endsWith(";"));
 });
