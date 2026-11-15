@@ -97,11 +97,19 @@ jobs:
           import { createPostgresDatabase } from './packages/database/src/node-runtime.mjs';
           import { validateUlcLinzD4PreviewDatabaseCredentials } from './tooling/ulc-linz-d4-preview-hyperdrive.mjs';
 
-          validateUlcLinzD4PreviewDatabaseCredentials({
+          const previewOrigins = validateUlcLinzD4PreviewDatabaseCredentials({
             migrationDatabaseUrl: process.env.APPBASIS_MIGRATION_DATABASE_URL,
             applicationDatabaseUrl: process.env.APPBASIS_DATABASE_URL,
             securityLogDatabaseUrl: process.env.APPBASIS_SECURITY_LOG_DATABASE_URL,
           });
+          // Source-role identities must be checked against the real Neon
+          // URLs, NEVER the dynamically generated Hyperdrive proxy URLs.
+          if (
+            previewOrigins.application.user !== 'appbasis_ulc_linz_preview_application' ||
+            previewOrigins.securityLog.user !== 'appbasis_ulc_linz_preview_security_log'
+          ) {
+            throw new Error('P03-I origin role attestation refused unexpected Preview roles.');
+          }
           const db = createPostgresDatabase(process.env.APPBASIS_MIGRATION_DATABASE_URL);
           try {
             const columns = await db.client.unsafe(`
