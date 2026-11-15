@@ -49,6 +49,18 @@ Die 800 expliziten Tabellenberechtigungen enthalten **496 Einträge der ursprün
 
 Die bereits geprüfte App- und Sicherheits-Log-Hyperdrive-Konfiguration des laufenden Test-Workers zeigt laut Cloudflare-Dashboard jeweils auf den originalen Preview-Neon-Compute, nicht auf den K2-Quarantäne-Compute. Das ist ein **PASS für diese zwei Bindings**, keine accountweite Bestätigung aller aktiven Worker-Versionen, Service-Bindings oder verborgenen direkten Datenbank-Secrets. Bis zur vollständigen Isolation und expliziten Schreibfreigabe bleibt der Restore **HARD NO-GO**.
 
+## Konkret vorbereitete, aber **nicht ausgeführte** erste Schutzkorrektur
+
+`tooling/ulc-linz-k2-quarantine-function-revoke-proposal.sql` ist ein vollständig eingegrenzter **Transaktionsvorschlag**, kein Workflow. Seine einzigen beiden möglichen Schreiboperationen sind:
+- `REVOKE EXECUTE` von `PUBLIC` auf der geschützten Security-Event-Purge-Funktion.
+- `REVOKE EXECUTE` von `PUBLIC` auf der Registration-Calendar-Guard-Funktion.
+
+Er enthält `BEGIN/COMMIT`, kurze Transaktions-Timeouts, eine harte Prüfung des logischen Ziel-Datenbanknamens `ulc_linz_k2_restore_quarantine`, die erwarteten 62 Anwendungstabellen und die beiden bekannten Nullargument-Routinen. Er verweigert die Ausführung, falls andere nicht autorisierte Routinenrechte vorhanden sind, und prüft **vor dem Commit**, dass `PUBLIC EXECUTE` auf beiden Routinen tatsächlich gesperrt ist. Die Revoke-Aktion ist bei unverändert sicherem Zustand wiederholbar.
+
+**STOP vor einer eventuellen Ausführung:** Der Datenbankname beweist nicht den richtigen Neon-Branch. Ein unabhängiger Operator muss unmittelbar davor den **eigenen K2-Quarantäne-Compute** und den exakten Datenbanknamen erneut mit Neon-Metadaten prüfen, die fehlende Cloudflare-/Service-/Secret-Verknüpfung bestätigen, den funktionsbezogenen SECURITY-DEFINER-Owner einschließlich seiner Fähigkeiten reviewen und diese zwei konkreten DB-**Schreiboperationen separat freigeben**. Das Original-Preview darf niemals als Restore-Ziel verwendet werden. Diese SQL-Datei wurde bislang **nicht gegen Neon ausgeführt** und ist daher kein Live-Write-Test.
+
+**Begrenzter Nutzen:** Auch nach einem künftig autorisierten Revoke wäre die K2-App **weiter NO-GO**: Die 839 direkten Quellrechte/373 effektiven Runtime-Rechte sind noch nicht korrekt rekonstruiert, und alle 94 Owner unterscheiden sich. Daher bedeutet die erste defensive Revoke-Aktion nur das Schließen der konkret gemessenen Function-EXECUTE-Ausweitung, nicht die Aktivierung der App oder eine vollständige Restore-Freigabe.
+
 ## Technischer Designvorschlag für späteren, separat freizugebenden Rechteaufbau
 
 **0 – Verbindliches Ziel und Schutzgrenze.** Betreiber bestätigt schriftlich K2-Branch, **die separate Restore-Datenbank** und ihren Compute. Auf demselben Branch liegt noch eine geklonte Preview-Datenbank; ein alleiniger Branch-Check wäre gefährlich. Cloudflare-Routen, Worker-/Hyperdrive-Bindings und Scheduler werden unabhängig als nicht verbunden bestätigt. Keine Secrets/Hostnames in Logs.
