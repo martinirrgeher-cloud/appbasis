@@ -1,3 +1,6 @@
+-- HISTORICAL K2-A03 proposal: the two PUBLIC EXECUTE REVOKEs were
+-- separately approved, applied to the isolated K2 DB, and verified
+-- on 2026-11-15. DO NOT RE-RUN this historical snippet as a new step.
 -- K2-A03 proposal ONLY: isolated quarantine defensive function ACL correction.
 -- NOT AUTHORIZED FOR EXECUTION. No workflow or CI invokes this file.
 -- Requires separate, explicit operator approval of a Neon DB WRITE, exact
