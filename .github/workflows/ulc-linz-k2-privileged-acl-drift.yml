@@ -12,6 +12,7 @@ on:
       - "tooling/ulc-linz-k2-restore-rights-plan.test.mjs"
       - "tooling/ulc-linz-k2-owner-preflight-readonly.sql"
       - "tooling/ulc-linz-k2-future-acl-owner-readonly.sql"
+      - "tooling/ulc-linz-k2-runtime-rights-readonly.sql"
       - "apps/ulc-linz/docs/K2-A03-ACCESS-RESTORE-PROPOSAL.md"
       - ".github/workflows/ulc-linz-k2-privileged-acl-drift.yml"
 permissions:
