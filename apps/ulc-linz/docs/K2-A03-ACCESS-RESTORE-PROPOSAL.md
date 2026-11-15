@@ -27,6 +27,28 @@ Die Routine `public.appbasis_ulc_linz_purge_expired_security_events()` besitzt `
 
 Dies ist eine **unerwünschte Privilegienaufweitung in der isolierten Restore-Datenbank**; es liegt kein Nachweis vor, dass ein Angreifer darauf zugreifen konnte. Die K2-Quarantäne hat zwar einen separaten Neon-Branch und Compute-Endpunkt, aber die tatsächliche Nichtanbindung an Cloudflare-Routen/Hyperdrive ist **noch nicht unabhängig geprüft**. Bis dahin: **kein App-Start, kein öffentlicher oder interner Worker-Zugriff, kein Smoke-Test mit Schreibfunktion gegen K2**.
 
+## Zweite unabhängig lesende Prüfung: direkte GRANTs statt effektiver Privilegien
+
+Der technische Restore-Ausfall wurde zusätzlich über `tooling/ulc-linz-k2-acl-direct-readonly.sql` bestätigt. Dieser neue Nur-Lese-Bericht verwendet ausdrücklich die **direkten PostgreSQL-ACL-Arrays**, nicht bloß die geerbten bzw. effektiven Rechte aus `has_*_privilege`.
+
+| Direkte ACL-Einträge pro Objektfamilie | Preview-Quelle | K2-Restore |
+| --- | ---: | ---: |
+| Tabellen | 800 | 0 |
+| Sequenzen | 22 | 0 |
+| Geschützte Einzelspalten | 15 | 0 |
+| Funktionen | 2 | 0 |
+| **Gesamt** | **839** | **0** |
+| Berechtigungen mit GRANT OPTION | 0 | 0 |
+| Explizite Default-ACL-Einträge für Schema `public` | 4 | 2 |
+
+Die 800 expliziten Tabellenberechtigungen enthalten **496 Einträge der ursprünglichen Migrationsrolle**, **242 der Anwendungsrolle** und **62 der Backup-Rolle**. Die 22 Sequenzberechtigungen verteilen sich auf Migration (12), Anwendung (5), Backup (4) und Sicherheits-Ingest (1); die 15 Spaltenrechte gelten der eingeschränkten Sicherheits-Ingest-Rolle. Beide expliziten Funktionsrechte der Quelle gelten der Migrationsrolle; `PUBLIC EXECUTE` ist dort für beide Routinen wirksam untersagt.
+
+**Sicherheitsrelevante Schlussfolgerung:** Die oben genannten **373 effektiven Fehlberechtigungen** dürfen nicht mechanisch in 373 direkt anzulegende GRANTs übersetzt werden. Effektiver Zugriff hängt auch von Eigentümerschaft, Mitgliedschaften, Default-ACLs und impliziten PostgreSQL-Rechten ab. Ebenso dürfen die **839 expliziten Quell-ACL-Einträge** nicht blind ins Restore kopiert werden: 496 Tabellengrant-Einträge beziehen sich auf den ursprünglichen Migration-Owner, während sämtliche 94 Objekt-Owner im Restore abweichen. Andernfalls kann die Eigentümer-/SECURITY-DEFINER-Grenze erneut verändert werden.
+
+**Praktischer nächster Fix für die gesonderte Betreiberfreigabe:** erst alle nicht beabsichtigten `PUBLIC EXECUTE`-Rechte auf beiden Funktionen explizit schließen (Vorsicht: ohne geprüfte Quarantäne-Zielbindung nicht ausführen), dann gewünschte **eigene Quarantäne-Owner** samt Eigentümer-/SECURITY-DEFINER-Kontext bestätigen, schließlich nur gezielte **nicht-eigentümerbezogene** Tabellen-, Spalten- und Sequenzrechte für separat genehmigte Quarantäne-Testrollen wiederherstellen. Danach direkte ACLs **und effektive Rechte** erneut vergleichen. Der alte Migrations-Owner wird nicht zum Runtime-Login oder pauschalen Grant-Empfänger.
+
+Die bereits geprüfte App- und Sicherheits-Log-Hyperdrive-Konfiguration des laufenden Test-Workers zeigt laut Cloudflare-Dashboard jeweils auf den originalen Preview-Neon-Compute, nicht auf den K2-Quarantäne-Compute. Das ist ein **PASS für diese zwei Bindings**, keine accountweite Bestätigung aller aktiven Worker-Versionen, Service-Bindings oder verborgenen direkten Datenbank-Secrets. Bis zur vollständigen Isolation und expliziten Schreibfreigabe bleibt der Restore **HARD NO-GO**.
+
 ## Technischer Designvorschlag für späteren, separat freizugebenden Rechteaufbau
 
 **0 – Verbindliches Ziel und Schutzgrenze.** Betreiber bestätigt schriftlich K2-Branch, **die separate Restore-Datenbank** und ihren Compute. Auf demselben Branch liegt noch eine geklonte Preview-Datenbank; ein alleiniger Branch-Check wäre gefährlich. Cloudflare-Routen, Worker-/Hyperdrive-Bindings und Scheduler werden unabhängig als nicht verbunden bestätigt. Keine Secrets/Hostnames in Logs.
