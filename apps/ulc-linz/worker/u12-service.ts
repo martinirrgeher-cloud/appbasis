@@ -208,12 +208,13 @@ export function createUlcU12Service({
       // when switching training days on a mobile connection.
       // Capture session errors so a rejected roster read keeps its original
       // (e.g. inactive/foreign group) response without an unhandled rejection.
+      const normalizedSessionDate = isoDate(sessionDate);
       const sessionRead = Promise.resolve()
         .then(() => sessions.readSession(
           normalizedOrganizationId,
           area,
           normalizedGroupId,
-          sessionDate,
+          normalizedSessionDate,
         ))
         .then(
           (value) => ({ ok: true as const, value }),
@@ -223,7 +224,7 @@ export function createUlcU12Service({
         masterdata,
         normalizedOrganizationId,
         normalizedGroupId,
-        sessionDate,
+        normalizedSessionDate,
         false,
       );
       const sessionResult = await sessionRead;
