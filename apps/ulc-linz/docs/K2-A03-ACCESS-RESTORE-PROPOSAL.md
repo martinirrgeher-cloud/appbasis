@@ -23,9 +23,9 @@ Die K2-Preview-Quelle und die separate K2-Restore-Datenbank wurden über **expli
 
 ### Besonders kritischer Befund
 
-Die Routine `public.appbasis_ulc_linz_purge_expired_security_events()` besitzt `SECURITY DEFINER` und kann abgelaufene Sicherheitsprotokolle löschen. In der Preview-Quelle ist ihre Ausführung über PUBLIC und die geprüften Runtime-Rollen untersagt. Im Restore haben PUBLIC und sämtliche sechs geprüften Rollen aufgrund der Standard-ACL das Recht `EXECUTE`. Die zweite Funktion `public.ulc_linz_registration_calendar_guard()` ist ebenfalls im Restore für PUBLIC ausführbar, obwohl die Quelle dies nicht erlaubt.
+Die Routine `public.appbasis_ulc_linz_purge_expired_security_events()` besitzt `SECURITY DEFINER` und kann abgelaufene Sicherheitsprotokolle löschen. In der Preview-Quelle ist ihre Ausführung über PUBLIC und die geprüften Runtime-Rollen untersagt. Vor der bereits ausgeführten Korrektur hatten PUBLIC und die sechs geprüften Rollen durch Standard-ACLs das Recht `EXECUTE`. Auch die Funktion `public.ulc_linz_registration_calendar_guard()` war zuvor für PUBLIC ausführbar; **beide öffentlichen Ausführungsrechte sind inzwischen erfolgreich gesperrt**.
 
-Dies ist eine **unerwünschte Privilegienaufweitung in der isolierten Restore-Datenbank**; es liegt kein Nachweis vor, dass ein Angreifer darauf zugreifen konnte. Die K2-Quarantäne hat zwar einen separaten Neon-Branch und Compute-Endpunkt, aber die tatsächliche Nichtanbindung an Cloudflare-Routen/Hyperdrive ist **noch nicht unabhängig geprüft**. Bis dahin: **kein App-Start, kein öffentlicher oder interner Worker-Zugriff, kein Smoke-Test mit Schreibfunktion gegen K2**.
+Dies war eine **unerwünschte Privilegienaufweitung in der isolierten Restore-Datenbank**, die nach gesonderter Freigabe behoben wurde; es liegt kein Nachweis vor, dass ein Angreifer darauf zugreifen konnte. Die K2-Quarantäne hat einen separaten Neon-Branch und Compute-Endpunkt. Die beiden bekannten aktiven Preview-Hyperdrive-Bindings wurden unabhängig geprüft und zeigen auf den Quell-Compute; **andere Worker-, Service- und Secret-Wege sind nicht vollständig ausgeschlossen**. Bis dahin: **kein App-Start, kein öffentlicher oder interner Worker-Zugriff, kein Smoke-Test mit Schreibfunktion gegen K2**.
 
 ## Zweite unabhängig lesende Prüfung: direkte GRANTs statt effektiver Privilegien
 
@@ -36,8 +36,8 @@ Der technische Restore-Ausfall wurde zusätzlich über `tooling/ulc-linz-k2-acl-
 | Tabellen | 800 | 0 |
 | Sequenzen | 22 | 0 |
 | Geschützte Einzelspalten | 15 | 0 |
-| Funktionen | 2 | 0 |
-| **Gesamt** | **839** | **0** |
+| Funktionen | 2 | 2 (nur Owner, nach REVOKE) |
+| **Gesamt** | **839** | **2** (nach REVOKE) |
 | Berechtigungen mit GRANT OPTION | 0 | 0 |
 | Explizite Default-ACL-Einträge für Schema `public` | 4 | 2 |
 
@@ -59,7 +59,7 @@ Er enthält `BEGIN/COMMIT`, kurze Transaktions-Timeouts, eine harte Prüfung des
 
 **Historische Stop-Gates des bereits ausgeführten Eingriffs; nicht erneut anwenden:** Der Datenbankname beweist nicht den richtigen Neon-Branch. Ein unabhängiger Operator muss unmittelbar davor den **eigenen K2-Quarantäne-Compute** und den exakten Datenbanknamen erneut mit Neon-Metadaten prüfen, die fehlende Cloudflare-/Service-/Secret-Verknüpfung bestätigen, den funktionsbezogenen SECURITY-DEFINER-Owner einschließlich seiner Fähigkeiten reviewen und diese zwei konkreten DB-**Schreiboperationen separat freigeben**. Das Original-Preview darf niemals als Restore-Ziel verwendet werden. Die beiden REVOKE-Anweisungen wurden am 15.11.2026 nach konkreter Betreiberfreigabe auf dem ausdrücklich gewählten K2-Branch und der K2-Restore-Datenbank in einer Transaktion ausgeführt. Der Nachtest bestätigte `0 PUBLIC EXECUTE`, `0 App EXECUTE` und keine weiteren direkten EXECUTE-Rechte. Das hier abgelegte Skript bleibt nur historischer Nachweis; **nicht erneut starten**.
 
-**Begrenzter Nutzen:** Auch nach einem künftig autorisierten Revoke wäre die K2-App **weiter NO-GO**: Die 839 direkten Quellrechte/373 effektiven Runtime-Rechte sind noch nicht korrekt rekonstruiert, und alle 94 Owner unterscheiden sich. Daher bedeutet die erste defensive Revoke-Aktion nur das Schließen der konkret gemessenen Function-EXECUTE-Ausweitung, nicht die Aktivierung der App oder eine vollständige Restore-Freigabe.
+**Begrenzter Nutzen:** Auch nach den bereits autorisierten und abgeschlossenen REVOKEs bleibt die K2-App **NO-GO**: Die 839 direkten Quellrechte/373 effektiven Runtime-Rechte sind noch nicht korrekt rekonstruiert, und alle 94 Owner unterscheiden sich. Daher bedeutet die erste defensive Revoke-Aktion nur das Schließen der konkret gemessenen Function-EXECUTE-Ausweitung, nicht die Aktivierung der App oder eine vollständige Restore-Freigabe.
 
 ## Technischer Designvorschlag für späteren, separat freizugebenden Rechteaufbau
 
