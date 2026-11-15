@@ -1,6 +1,6 @@
 # K2-A03 – Wiederherstellung der Zugriffsrechte (Entscheidungs- und Testentwurf)
 
-**Datum:** 15.11.2026 · **Status:** HARD NO-GO für App-Anbindung der K2-Quarantäne · **Keine DB-Rechteänderung freigegeben.**
+**Datum:** 15.11.2026 · **Status:** HARD NO-GO für App-Anbindung der K2-Quarantäne · Die zwei `PUBLIC EXECUTE`-REVOKEs wurden nach gesonderter Betreiberfreigabe bereits ausgeführt und erfolgreich geprüft. **Alle weiteren DB-Rechteänderungen sind nicht freigegeben.**
 
 ## Nachweis aus echten Neon-Katalogen
 
@@ -139,3 +139,27 @@ Die weiteren **510** direkten Quell-ACL-Einträge gehören dem ursprünglichen M
 - Die tatsächliche App-Quarantäne bleibt **HARD NO-GO**, solange neutrale Owner, fehlende Rechte, Default-ACL, Cloudflare-Gesamtrouting und negative App-/Medientests ausstehen.
 - Die Quell-Datei bildet einen **festen Zeitpunkt** ab. Vor einer späteren Durchführung müssen Snapshot, Main-App-Stand und Datenbankschema erneut lesend abgeglichen werden. Der neue Source-Katalog darf nicht stillschweigend als aktueller Stand übernommen werden.
 
+
+## A04 – Risiko-Review: effektive Eigentümerrechte und zukünftige ACLs
+
+Dieser Abschnitt ergänzt den **historischen Vorher-Befund** oben. Die ursprünglichen 14 zusätzlichen Funktions-EXECUTE-Einträge sind nach den gesondert freigegebenen beiden `REVOKE EXECUTE FROM PUBLIC` vom **15.11.2026 behoben**. Eine unabhängige Katalogprüfung bestätigte anschließend `0 PUBLIC EXECUTE` und `0 App EXECUTE` in der K2-Quarantäne sowie dieselben gesperrten Ausführungsrechte in der unveränderten Preview-Quelle. **Das ist keine Freigabe für den App-Restore**.
+
+### Weitere tatsächlich verifizierte Rechte-Risiken
+
+- **Hochprivilegierter Owner:** Alle 62 Tabellen, vier Sequenzen und zwei Funktionen gehören auf dem Restore weiterhin zur Rolle `ulc_linz_k2_restore_owner`, die `CREATEDB`, `CREATEROLE` und `BYPASSRLS` besitzt. Ihre `SECURITY DEFINER`-Funktion ist zwar derzeit gesperrt, soll aber nicht später von einer hochprivilegierten Owner-Rolle abhängig bleiben.
+- **Rollen-Erreichbarkeit:** Ein reiner K2-Lesecheck über `pg_has_role(..., 'MEMBER'/'USAGE'/'SET')` bestätigt für die vier geprüften Runtime-/Backup-Rollen **0** Mitgliedschaften, geerbte Rechte und mögliche `SET ROLE`-Wege zum aktuellen Restore-Owner. Das beweist keine accountweite Isolation und **sagt nichts über eine künftig neu anzulegende Owner-Rolle**.
+- **Standardrechte für künftige Objekte:** `pg_default_acl` zeigt vier `public`-Konfigurationen in der Quelle und zwei im Restore. Zwei Quellrechte erteilen der Backup-Rolle automatisch `SELECT` auf künftig von der eingeschränkten Migrationsrolle angelegten Tabellen und Sequenzen; im Restore fehlen genau diese zwei Regeln. Die übrigen Regeln betreffen das Neon-interne `cloud_admin`-Modell und dürfen nicht manuell übernommen werden. Der Dateivergleich `tooling/ulc-linz-k2-future-acl-owner-readonly.sql` wurde **rein lesend gegen beide echten Datenbanken** ausgeführt.
+- **Keine blinde Übertragung der Defaults:** PostgreSQL-Standardprivilegien gelten für **den tatsächlich erstellenden Rolle-Owner**. Eine neue `NOLOGIN`-Objekteigentümerrolle wird nicht automatisch zum Ausführungskonto für künftige Migrationen. **Deshalb bleibt die zukünftige DDL-/Default-ACL-Policy explizit unentschieden**, bis klar ist, welcher separate Quarantäne-Migrationsprozess neue Objekte erzeugen darf.
+
+### Abnahmeschnittstelle für den späteren Eigentümerwechsel
+
+Vor einem separaten Schreibauftrag müssen mindestens diese Bedingungen nachgewiesen werden:
+
+1. Quelle und Ziel-DB anhand **Branch, Compute, Datenbankname und Objektinventar** separat bestätigt; kein Proxy/Worker/Service/Secret-Pfad auf K2. Die zwei verwendeten Preview-Hyperdrives sind bereits nachweislich an den **ursprünglichen** Preview-Branch gebunden; weitere Infrastruktur bleibt offen.
+2. Neuer Owner `ulc_linz_k2_object_owner` ist nach Erstellung **NOLOGIN, NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOBYPASSRLS und ohne privilegierte Rollenmitgliedschaft**. Runtime- und Backup-Rollen dürfen den Owner **weder erben noch per SET ROLE übernehmen**. `CREATEROLE` des ausführenden Operators allein stellt diese Eigenschaft nicht sicher.
+3. Eigentümerwechsel für 68 Objekte geprüft, insbesondere mögliche automatische Sequenz-Owner-Änderungen durch `ALTER TABLE ... OWNER`, erforderliche Admin-/Owner-Mitgliedschaften für die DDL-Ausführung und die Rechte der `SECURITY DEFINER`-Funktion.
+4. **329 direkte Nicht-Eigentümer-Rechte** aus dem quellenbasierten, SHA-gepinnten Contract in 146 Gruppen – keine Grant-All-Berechtigungen, kein `PUBLIC EXECUTE`, keine Grants für die alte Migrations- oder privilegierte Restore-Ownerrolle.
+5. Getrennter Beschluss, ob die Quarantäne überhaupt **zukünftige Migrationen** unterstützen muss; danach zielgenaue Default-ACLs für den **tatsächlichen** künftigen Objektersteller und negative Rechte-Tests. Nicht auf Verdacht `ALTER DEFAULT PRIVILEGES` für die `NOLOGIN`-Objekteigentümerrolle generieren.
+6. Transaktion/Backout sowie **unabhängiger Nachtest** aller direkten und effektiven Rechte, Rolle-SET-/Inherit-Pfade, Owner, Funktions-EXECUTE und gruppenbezogener App-Ablehnungsfälle; ein grüner CI-Test allein ist kein realer Restore-Nachweis.
+
+**Status:** Der Code in #642 liefert ausschließlich Review-Vorschläge; nachgewiesene Default-ACL-/Owner-Abweichungen **BLOCK** einen unkontrollierten K2-App-Restore. Keine automatischen Provider-/DB-Schreibaktionen.
