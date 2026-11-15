@@ -34,7 +34,17 @@ Rechts-/Praxisquellen: [Österreichische Datenschutzbehörde – DSGVO-Leitfaden
 - **D3 – Private Medien:** **Ja** zum echten Provider-Delete vor Metadatenabschluss; neue erkennbare Medien von Minderjährigen vor Provider-/Rechts- und Löschbeleg **gesperrt**.
 - **D4 – Wiederherstellung:** **Ja** zu isoliertem Restore, neueren vollständigen Löschbelegen, Re-Deletion aller Owner und expliziter Betreiber-/Sicherheitsfreigabe; sonst **kein Restore-Promotion**.
 
-## 3. Ein einziger fachlicher Entscheid – aber keine fingierten Belege
+## 3. Praktischer Schema-Abgleich der laufenden Test-App (read-only, 15.11.2026)
+
+Der fachliche Beschluss umfasst **64 im Repository deklarierte Tabellen**; diese Zahl ist **kein Beleg für 64 tatsächlich installierte Preview-Tabellen**. Eine direkte, rein lesende Neon-Tabelleninventur der laufenden Testdatenbank `appbasis_ulc_linz_preview` (Preview-Hauptbranch) zählt **62 Anwendungstabellen**. Der exakte Mengenvergleich mit `privacy/m5-data-inventory.json` ergibt:
+
+- **Vier im fachlichen Inventar, aber nicht in der Preview vorhanden:** `appbasis_training_block_usage_subject`, `appbasis_training_block_usage_subject_deletion`, `appbasis_training_block_favorite_deletion`, `appbasis_training_documentation_subject_deletion`.
+- **Zwei in der Preview vorhanden, aber im statischen v16-Inventar nicht aufgeführt:** `ulc_linz_registration_calendar_rule`, `ulc_linz_registration_calendar_exception` (spätere Trainingskalenderfunktion).
+- **Kein Schreibzugriff, keine Migration, keine personenbezogenen Tabelleninhalte gelesen.** Die Differenz ist eine Bestands-/Versionsabweichung und noch **kein** Nachweis eines tatsächlichen Fehlers in den aktuell benutzten Modulen.
+
+**Konkretes Go-live-Gate:** Vor dem getrennten Produktionsaufbau das Manifest samt v17-Kalendertabellen auf die gewünschte App-Version abgleichen und die vier fehlenden Modul-/Lifecycle-Tabellen auf Migrationserfordernis und Nutzung prüfen. Erst dann die Fachfristen und Löschprüfungen auf das **wirklich installierte** Schema anwenden. Weder dieses Blatt noch ein grüner CI-Lauf dürfen die fehlenden Live-/Restore-Belege ersetzen.
+
+## 4. Ein einziger fachlicher Entscheid – aber keine fingierten Belege
 
 **Bestätigte Verantwortung und Umfang:** Der Betreiber hat am 14.11.2026 erklärt, er könne den Vereinsbeschluss selbst freigeben, und hat danach die konkret vorgelegte Fristenzusammenfassung als **fachliche Zielvorgabe** ausdrücklich bejaht. Das gilt für den Zweck-/Fristenentwurf und die genannten D1–D4-Sicherheitsgrundsätze, **nicht** als Nachweis einer DSGVO-Rechtsgrundlagenprüfung, unterschriebenen Funktionärserklärung, AVV, vollständigen Backuphorizonts oder Freigabe einer neuen personenbezogenen Post-Expiry-Autorität. Eine Unterschrift, Name oder Funktion wird nicht erfunden.
 
