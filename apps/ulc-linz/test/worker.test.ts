@@ -3929,6 +3929,20 @@ describe("generated identity+permissions Worker entrypoint", () => {
       securityLogConnectionString: logConnection,
     });
     optionsSeen = null;
+    const separateProxyConnection = logConnection.replace(
+      "preview-db.example.test", "security-log-proxy.example.test",
+    );
+    const separateProxyResponse = await worker.fetch(request(), {
+      ...preview,
+      SECURITY_LOG_HYPERDRIVE: { connectionString: separateProxyConnection },
+      APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "p03i-preview",
+    });
+    expect(separateProxyResponse.status).toBe(200);
+    expect(optionsSeen).toMatchObject({
+      trainingSessionWriteGuardMode: "require-live-training-actor-transaction",
+      securityLogConnectionString: separateProxyConnection,
+    });
+    optionsSeen = null;
     const disabledResponse = await worker.fetch(request(), {
       ...preview,
       APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "disabled",
@@ -3959,7 +3973,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
       { ...base, APPBASIS_GENERATED_APP_ID: "different-app" },
       { ...base, APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "enabled" },
       { ...base, HYPERDRIVE: { connectionString: appConnection.replace("/appbasis_ulc_linz_preview", "/ulc_linz_k2_restore_quarantine") } },
-      { ...base, SECURITY_LOG_HYPERDRIVE: { connectionString: logConnection.replace("preview-db", "quarantine-db") } },
+      { ...base, SECURITY_LOG_HYPERDRIVE: { connectionString: logConnection.replace("preview-db.example.test", "preview-db.example.test:5434") } },
       { ...base, HYPERDRIVE: { connectionString: appConnection.replace("appbasis_ulc_linz_preview_application", "ulc_linz_k2_restore_owner") } },
     ];
     for (const env of invalid) {
