@@ -142,3 +142,14 @@ test("catalog inventory is a single read-only query with no data rows",()=>{
   assert.doesNotMatch(sql,/^\s*(?:GRANT|REVOKE|CREATE|ALTER|DROP|TRUNCATE|INSERT|UPDATE|DELETE|CALL|DO|COPY)\b/im);
   assert.equal(sql.trim().endsWith(";"),true);
 });
+
+test("direct ACL inventory is a separate strictly read-only PostgreSQL catalog query",()=>{
+  const sql=readFileSync(new URL("./ulc-linz-k2-acl-direct-readonly.sql",import.meta.url),"utf8");
+  assert.match(sql,/\bpg_catalog\.aclexplode\(c\.relacl\)/);
+  assert.match(sql,/\bpg_catalog\.aclexplode\(a\.attacl\)/);
+  assert.match(sql,/\bpg_catalog\.aclexplode\(p\.proacl\)/);
+  assert.match(sql,/\bpg_catalog\.pg_namespace\b/);
+  assert.match(sql,/\bCOUNT\(\*\)/);
+  assert.doesNotMatch(sql,/^\s*(?:GRANT|REVOKE|CREATE|ALTER|DROP|TRUNCATE|INSERT|UPDATE|DELETE|CALL|DO|COPY)\b/im);
+  assert.equal(sql.trim().endsWith(";"),true);
+});
