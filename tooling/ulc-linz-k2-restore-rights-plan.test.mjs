@@ -186,6 +186,8 @@ test("read-only default-ACL inventory does not write roles or alter default priv
 });
 test("review plan explicitly blocks silent future-DDL and implicit owner transfer",()=>{
  const plan=planK2RestoreRights(copy());
+ assert.equal(plan.ownerSchemaCreatePrecondition,"UNVERIFIED_NEUTRAL_OWNER_NEEDS_PUBLIC_CREATE");
+ assert.equal(plan.neutralOwnerSchemaPrivilegeDecision,"OPERATOR_APPROVAL_REQUIRED");
  assert.equal(plan.defaultAclMigrationPolicy,"REQUIRES_OPERATOR_DECISION");
  assert.equal(plan.legacySourceDefaultAclOwnerMustNotBeCopied,true);
  assert.equal(plan.runtimeAccessToNewOwnerMustBeDeniedAndIndependentlyVerified,true);
