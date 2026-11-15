@@ -68,3 +68,49 @@ export function pilotTrainingWriteGuardActivation(
   }
   return "enabled";
 }
+
+
+/**
+ * Read-only B3 diagnosis while the existing preview Worker remains in
+ * the proven working "disabled" mode. No connection is opened and no
+ * connection fields, role names, hosts, database names, or secrets
+ * leave the Worker. This predicts what the next activation would do.
+ */
+export type PilotTrainingGuardPreflightCode =
+  | "READY"
+  | "PREVIEW_SCOPE"
+  | "APP_PROXY_FORMAT"
+  | "SECURITY_PROXY_FORMAT"
+  | "PROXY_DATABASE"
+  | "PROXY_ROLE"
+  | "UNEXPECTED_GUARD_REJECTION";
+
+export function pilotTrainingGuardPreflightCode(
+  env: Record<string, unknown>,
+  appConnectionString: unknown,
+  securityLogConnectionString: unknown,
+): PilotTrainingGuardPreflightCode {
+  if (env.APPBASIS_RUNTIME_ENVIRONMENT !== "generated-preview-ulc-linz" ||
+      env.APPBASIS_GENERATED_APP_ID !== "ulc-linz") {
+    return "PREVIEW_SCOPE";
+  }
+  const app = typeof appConnectionString === "string"
+    ? connectionIdentity(appConnectionString) : null;
+  if (app === null) return "APP_PROXY_FORMAT";
+  const log = typeof securityLogConnectionString === "string"
+    ? connectionIdentity(securityLogConnectionString) : null;
+  if (log === null) return "SECURITY_PROXY_FORMAT";
+  if (app.database !== PREVIEW_DB || log.database !== PREVIEW_DB) {
+    return "PROXY_DATABASE";
+  }
+  if (app.role !== APP_ROLE || log.role !== LOG_ROLE) {
+    return "PROXY_ROLE";
+  }
+  const simulatedEnv = {
+    ...env,
+    APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: PILOT_ENABLE_VALUE,
+  };
+  return pilotTrainingWriteGuardActivation(
+    simulatedEnv, appConnectionString as string, securityLogConnectionString as string,
+  ) === "enabled" ? "READY" : "UNEXPECTED_GUARD_REJECTION";
+}
