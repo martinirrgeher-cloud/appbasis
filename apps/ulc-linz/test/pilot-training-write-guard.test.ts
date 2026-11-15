@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { pilotTrainingWriteGuardActivation } from "../worker/pilot-training-write-guard";
+import { pilotTrainingGuardPreflightCode, pilotTrainingWriteGuardActivation } from "../worker/pilot-training-write-guard";
 
 const app = "postgresql://appbasis_ulc_linz_preview_application:test@preview-db.example.test:5432/appbasis_ulc_linz_preview";
 const log = "postgresql://appbasis_ulc_linz_preview_security_log:test@preview-db.example.test:5432/appbasis_ulc_linz_preview";
@@ -70,4 +70,21 @@ describe("ULC pilot write guard: exact Preview operator switch", () => {
       "postgresql://appbasis_ulc_linz_preview_security_log:test@preview-db.example.test/appbasis_ulc_linz_preview",
     )).toBe("enabled");
   });
+  it("read-only preflight predicts enablement and redacts actual binding identities", () => {
+    const activePreview = { ...approved, APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "disabled" };
+    expect(pilotTrainingGuardPreflightCode(activePreview, app, log)).toBe("READY");
+    expect(pilotTrainingGuardPreflightCode(
+      { ...activePreview, APPBASIS_RUNTIME_ENVIRONMENT: "production" }, app, log,
+    )).toBe("PREVIEW_SCOPE");
+    expect(pilotTrainingGuardPreflightCode(activePreview, null, log)).toBe("APP_PROXY_FORMAT");
+    expect(pilotTrainingGuardPreflightCode(activePreview, app, null)).toBe("SECURITY_PROXY_FORMAT");
+    expect(pilotTrainingGuardPreflightCode(
+      activePreview, app.replace("/appbasis_ulc_linz_preview", "/neondb"), log,
+    )).toBe("PROXY_DATABASE");
+    expect(pilotTrainingGuardPreflightCode(
+      activePreview, app.replace("preview_application", "preview_migration"), log,
+    )).toBe("PROXY_ROLE");
+    expect(pilotTrainingWriteGuardActivation(activePreview, app, log)).toBe("disabled");
+  });
+
 });
