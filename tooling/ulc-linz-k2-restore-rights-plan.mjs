@@ -149,6 +149,8 @@ export function planK2RestoreRights(snapshot){
   status:"REVIEW_ONLY", targetDatabase:snapshot.restoreDatabase,
   targetBranchMustBeIndependentlyConfirmed:true,
   oldOwnerRoleHasDangerousCreateRoleAndBypassRls:true,
+  ownerSchemaCreatePrecondition:"UNVERIFIED_NEUTRAL_OWNER_NEEDS_PUBLIC_CREATE",
+  neutralOwnerSchemaPrivilegeDecision:"OPERATOR_APPROVAL_REQUIRED",
   defaultAclMigrationPolicy:"REQUIRES_OPERATOR_DECISION",
   legacySourceDefaultAclOwnerMustNotBeCopied:true,
   runtimeAccessToNewOwnerMustBeDeniedAndIndependentlyVerified:true,
