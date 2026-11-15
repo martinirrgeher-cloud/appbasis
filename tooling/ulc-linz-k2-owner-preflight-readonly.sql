@@ -18,6 +18,8 @@ SELECT
   COUNT(*) FILTER (WHERE pg_catalog.pg_get_userbyid(relowner)='ulc_linz_k2_restore_owner')::integer AS old_owner_object_count,
   COUNT(*) FILTER (WHERE relacl IS NOT NULL)::integer AS relation_acl_count,
   (SELECT COUNT(*)::integer FROM routines) AS routine_count,
+  (SELECT md5(string_agg(p.proname||'='||pg_catalog.pg_get_functiondef(p.oid),
+    '|' ORDER BY p.proname)) FROM routines p) AS protected_function_definition_digest,
   (SELECT COUNT(*)::integer FROM routines
     WHERE pg_catalog.pg_get_userbyid(proowner)='ulc_linz_k2_restore_owner') AS routine_old_owner_count,
   (SELECT COUNT(*)::integer FROM routines
