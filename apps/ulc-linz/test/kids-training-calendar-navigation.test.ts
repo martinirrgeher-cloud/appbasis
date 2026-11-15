@@ -21,6 +21,7 @@ function plannedDaysHarness(
   invalid = false,
   weekdays: number[] | null = [2],
   initiallyLoadedWeekdays: number[] | null = null,
+  firstCalendarStatus: number | null = null,
 ) {
   const sourceStart = ULC_KIDS_SCRIPT.indexOf("function kidsCalendarWeekStart(");
   const sourceEnd = ULC_KIDS_SCRIPT.indexOf("async function loadKidsAttendance(", sourceStart);
@@ -28,11 +29,16 @@ function plannedDaysHarness(
   expect(sourceEnd).toBeGreaterThan(sourceStart);
   const code = ULC_KIDS_SCRIPT.slice(sourceStart, sourceEnd);
   const requested: string[] = [];
+  let calendarFailedOnce = false;
   const requestJson = async (url: string) => {
     const params = new URL(url, "https://example.org").searchParams;
     const monday = params.get("weekStart") || "";
     const batched = params.get("weeks") === "8";
     requested.push(monday + (batched ? "|8" : ""));
+    if (firstCalendarStatus !== null && !calendarFailedOnce) {
+      calendarFailedOnce = true;
+      throw Object.assign(new Error("TRANSIENT_CALENDAR"), { status: firstCalendarStatus });
+    }
     if (invalid) return { groupId: "some-other-group", weekStart: monday, dates: [],
       ...(batched ? { weekCount: 8 } : {}), calendarEnabled: true, weekdays };
     const dates = batched
@@ -159,6 +165,19 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     await expect(plannedDaysHarness({}, true)
       .populate("kids-group", "2026-11-10", () => true))
       .rejects.toThrow("INVALID_CALENDAR_RANGE");
+  });
+
+  it("retries one transient calendar GET but never a permission denial", async () => {
+    const weeks = { "2026-11-09": ["2026-11-10"] };
+    const transient = plannedDaysHarness(weeks, false, [2], null, 503);
+    expect(await transient.fetch("kids-group", "2026-11-09"))
+      .toEqual(["2026-11-10"]);
+    expect(transient.requested).toEqual(["2026-11-09", "2026-11-09"]);
+
+    const forbidden = plannedDaysHarness(weeks, false, [2], null, 403);
+    await expect(forbidden.fetch("kids-group", "2026-11-09"))
+      .rejects.toMatchObject({ status: 403 });
+    expect(forbidden.requested).toEqual(["2026-11-09"]);
   });
 
   it("reuses only the freshly verified Kids date and never another group or visit", () => {
