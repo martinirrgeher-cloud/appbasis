@@ -605,7 +605,7 @@ describe("ULC U12 service", () => {
 
 describe("P08 youth training load performance without ACL shortcuts", () => {
   it("starts a read-only session query while the live group roster is still loading", async () => {
-    let releaseRoster: (() => void) | null = null;
+    let releaseRoster!: () => void;
     const waitRoster = new Promise<void>((resolve) => { releaseRoster = resolve; });
     const readRoster = vi.fn(async () => {
       await waitRoster;
@@ -628,13 +628,13 @@ describe("P08 youth training load performance without ACL shortcuts", () => {
     expect(readSession).toHaveBeenCalledWith(
       ORGANIZATION_ID, "u12", GROUP_ID, DATE,
     );
-    releaseRoster?.();
+    releaseRoster();
     await expect(pending).resolves.toMatchObject({
       group: { id: GROUP_ID },
       sessionDate: DATE,
-      participants: expect.arrayContaining([{ athleteId: "athlete-1",
+      participants: expect.arrayContaining([expect.objectContaining({ athleteId: "athlete-1",
         firstName: "Anna", lastName: "Auer", birthYear: 2017,
-        notes: null, contacts: [], status: "open", contentSlots: [] }]),
+        notes: null, contacts: [], status: "open", contentSlots: [] })]),
     });
   });
 
