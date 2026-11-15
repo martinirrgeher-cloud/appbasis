@@ -42,6 +42,39 @@ SELECT current_database() AS database_name,
        'appbasis_ulc_linz_preview_security_ingest',
        'ulc_linz_k2_preview_backup'
      )) AS unsafe_runtime_owner_memberships,
+  (SELECT COUNT(*)::integer
+   FROM pg_catalog.pg_roles current_owner
+   JOIN pg_catalog.pg_roles runtime_role ON runtime_role.rolname IN (
+     'appbasis_ulc_linz_preview_application',
+     'appbasis_ulc_linz_preview_security_log',
+     'appbasis_ulc_linz_preview_security_ingest',
+     'ulc_linz_k2_preview_backup'
+   )
+   WHERE current_owner.rolname='ulc_linz_k2_restore_owner'
+     AND pg_catalog.pg_has_role(runtime_role.oid,current_owner.oid,'MEMBER')
+  ) AS runtime_member_of_existing_owner,
+  (SELECT COUNT(*)::integer
+   FROM pg_catalog.pg_roles current_owner
+   JOIN pg_catalog.pg_roles runtime_role ON runtime_role.rolname IN (
+     'appbasis_ulc_linz_preview_application',
+     'appbasis_ulc_linz_preview_security_log',
+     'appbasis_ulc_linz_preview_security_ingest',
+     'ulc_linz_k2_preview_backup'
+   )
+   WHERE current_owner.rolname='ulc_linz_k2_restore_owner'
+     AND pg_catalog.pg_has_role(runtime_role.oid,current_owner.oid,'USAGE')
+  ) AS runtime_inherits_existing_owner,
+  (SELECT COUNT(*)::integer
+   FROM pg_catalog.pg_roles current_owner
+   JOIN pg_catalog.pg_roles runtime_role ON runtime_role.rolname IN (
+     'appbasis_ulc_linz_preview_application',
+     'appbasis_ulc_linz_preview_security_log',
+     'appbasis_ulc_linz_preview_security_ingest',
+     'ulc_linz_k2_preview_backup'
+   )
+   WHERE current_owner.rolname='ulc_linz_k2_restore_owner'
+     AND pg_catalog.pg_has_role(runtime_role.oid,current_owner.oid,'SET')
+  ) AS runtime_can_set_existing_owner,
   (SELECT elevated_restore_owner FROM role_flags) AS elevated_restore_owner,
   (SELECT neutral_owner_exists FROM role_flags) AS neutral_owner_exists,
   (SELECT restricted_migration_owner FROM role_flags) AS restricted_migration_owner;
