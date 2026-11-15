@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { ULC_U12_SCRIPT } from "../worker/u12-ui";
+import { ULC_U14_SCRIPT, ULC_KIDS_SCRIPT } from "../worker/youth-attendance-ui";
 import {
   ULC_LINZ_APP_CSS,
   ULC_LINZ_APP_HTML,
@@ -57,7 +59,7 @@ function setup({
     "u14Saving", "u14DirtyDates", "u14AutoSaveFailed", "u14Conflict", "u14FlushChanges",
     "kidsSaving", "kidsDirtyDates", "kidsAutoSaveFailed", "kidsConflict", "kidsFlushChanges",
     "closeTrainingPlanEditor", "prepareTrainingDocumentationForLeave",
-    scriptUnderTest() + "\nreturn { navigateAppSection, backgroundAttendanceSaves, failedBackgroundAttendanceSaves };",
+    scriptUnderTest() + "\nreturn { navigateAppSection, backgroundAttendanceSaves, failedBackgroundAttendanceSaves, clearBackgroundAttendanceSaveError };",
   );
   const u12 = current === "u12" ? flush : vi.fn(async () => true);
   const u14 = current === "u14" ? flush : vi.fn(async () => true);
@@ -72,6 +74,7 @@ function setup({
     navigateAppSection: (section: string) => Promise<boolean>;
     backgroundAttendanceSaves: Map<string, Promise<void>>;
     failedBackgroundAttendanceSaves: Set<string>;
+    clearBackgroundAttendanceSaveError: (section: string) => void;
   };
   return { ...result, show, status, u12, u14, kids };
 }
@@ -128,6 +131,18 @@ describe("P07 mobile attendance: nonblocking main navigation", () => {
     expect(flush).not.toHaveBeenCalled();
     expect(app.status.dataset.state).toBe("failed");
     expect(app.status.textContent).toContain("Zurückwechseln");
+  });
+
+  it("clears a stale global failure after confirmed manual retry in any youth view", async () => {
+    const app = setup({ current: "u12", failed: true });
+    expect(await app.navigateAppSection("registration")).toBe(true);
+    expect(app.status.dataset.state).toBe("failed");
+    app.clearBackgroundAttendanceSaveError("u12");
+    expect(app.status.hidden).toBe(true);
+    expect(app.failedBackgroundAttendanceSaves.size).toBe(0);
+    expect(ULC_U12_SCRIPT).toContain('clearBackgroundAttendanceSaveError("u12")');
+    expect(ULC_U14_SCRIPT).toContain('clearBackgroundAttendanceSaveError("u14")');
+    expect(ULC_KIDS_SCRIPT).toContain('clearBackgroundAttendanceSaveError("kids")');
   });
 
   it("does not create a second flush while the prior one remains pending", async () => {
