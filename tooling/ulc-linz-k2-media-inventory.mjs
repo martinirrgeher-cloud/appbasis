@@ -35,7 +35,7 @@ function requireKey(value) {
     let decoded;
     try { decoded = decodeURIComponent(part); }
     catch { throw new K2MediaInventoryError("Invalid media key."); }
-    if (!decoded || decoded.length > 200 || decoded.trim() !== decoded ||
+    if (!decoded || decoded === "." || decoded === ".." || /%[0-9a-f]{2}/i.test(decoded) || decoded.length > 200 || decoded.trim() !== decoded ||
         /[\u0000-\u001f\u007f/\\]/u.test(decoded) ||
         encodeURIComponent(decoded) !== part) {
       throw new K2MediaInventoryError("Invalid media key.");
