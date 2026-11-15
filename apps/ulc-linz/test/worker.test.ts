@@ -3895,6 +3895,83 @@ describe("generated identity+permissions Worker entrypoint", () => {
     }
   });
 
+  it("pilots the existing P03-I write guard only with the exact Preview binding contract", async () => {
+    const appConnection = "postgresql://appbasis_ulc_linz_preview_application:example@preview-db.example.test/appbasis_ulc_linz_preview";
+    const logConnection = "postgresql://appbasis_ulc_linz_preview_security_log:example@preview-db.example.test/appbasis_ulc_linz_preview";
+    const preview = {
+      ...validEnv,
+      HYPERDRIVE: { connectionString: appConnection },
+      SECURITY_LOG_HYPERDRIVE: { connectionString: logConnection },
+      APPBASIS_RUNTIME_ENVIRONMENT: "generated-preview-ulc-linz",
+      APPBASIS_GENERATED_APP_ID: "ulc-linz",
+    };
+    const request = () => new Request(
+      "https://ulc.example.test/api/auth/session",
+      { headers: { cookie: currentIdentity.sessionToken } },
+    );
+    let optionsSeen: GeneratedPostgresApplicationRuntimeOptions | null = null;
+    const worker = createGeneratedWorker(async (options) => {
+      optionsSeen = options;
+      return runtime();
+    });
+    const defaultResponse = await worker.fetch(request(), preview);
+    expect(defaultResponse.status).toBe(200);
+    expect(optionsSeen).not.toHaveProperty("trainingSessionWriteGuardMode");
+    optionsSeen = null;
+    const enabledResponse = await worker.fetch(request(), {
+      ...preview,
+      APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "p03i-preview",
+    });
+    expect(enabledResponse.status).toBe(200);
+    expect(optionsSeen).toMatchObject({
+      trainingSessionWriteGuardMode: "require-live-training-actor-transaction",
+      connectionString: appConnection,
+      securityLogConnectionString: logConnection,
+    });
+    optionsSeen = null;
+    const disabledResponse = await worker.fetch(request(), {
+      ...preview,
+      APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "disabled",
+    });
+    expect(disabledResponse.status).toBe(200);
+    expect(optionsSeen).not.toHaveProperty("trainingSessionWriteGuardMode");
+  });
+
+  it("blocks requested P03-I activation on any non-Preview role, route or database", async () => {
+    const appConnection = "postgresql://appbasis_ulc_linz_preview_application:example@preview-db.example.test/appbasis_ulc_linz_preview";
+    const logConnection = "postgresql://appbasis_ulc_linz_preview_security_log:example@preview-db.example.test/appbasis_ulc_linz_preview";
+    const base = {
+      ...validEnv,
+      HYPERDRIVE: { connectionString: appConnection },
+      SECURITY_LOG_HYPERDRIVE: { connectionString: logConnection },
+      APPBASIS_RUNTIME_ENVIRONMENT: "generated-preview-ulc-linz",
+      APPBASIS_GENERATED_APP_ID: "ulc-linz",
+      APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "p03i-preview",
+    };
+    let created = 0;
+    const worker = createGeneratedWorker(() => {
+      created += 1;
+      return runtime();
+    });
+    const request = () => new Request("https://ulc.example.test/api/auth/session");
+    const invalid = [
+      { ...base, APPBASIS_RUNTIME_ENVIRONMENT: "production" },
+      { ...base, APPBASIS_GENERATED_APP_ID: "different-app" },
+      { ...base, APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "enabled" },
+      { ...base, HYPERDRIVE: { connectionString: appConnection.replace("appbasis_ulc_linz_preview", "ulc_linz_k2_restore_quarantine") } },
+      { ...base, SECURITY_LOG_HYPERDRIVE: { connectionString: logConnection.replace("preview-db", "quarantine-db") } },
+      { ...base, HYPERDRIVE: { connectionString: appConnection.replace("appbasis_ulc_linz_preview_application", "ulc_linz_k2_restore_owner") } },
+    ];
+    for (const env of invalid) {
+      const response = await worker.fetch(request(), env);
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: "RUNTIME_NOT_CONFIGURED" },
+      });
+    }
+    expect(created).toBe(0);
+  });
+
   it("returns a generic runtime failure without leaking provider error details", async () => {
     const originalError = console.error;
     const logged: string[] = [];
