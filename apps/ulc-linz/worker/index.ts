@@ -1520,17 +1520,35 @@ async function kindertrainingCalendarResponse(
   const access = await authorizeKindertrainingRequest(request, runtime, url, "view");
   if (access instanceof Response) return access;
   const keys = [...url.searchParams.keys()];
-  if (keys.length !== 2 || keys.some(key => key !== "groupId" && key !== "weekStart") ||
+  // The 8-week dropdown gets one server read instead of eight concurrent
+  // independently authorized HTTP/DB round trips. Each navigation still
+  // revalidates its chosen week via the original two-param endpoint.
+  const batched = url.searchParams.has("weeks");
+  if (keys.length !== (batched ? 3 : 2) ||
+      keys.some(key => key !== "groupId" && key !== "weekStart" &&
+        !(batched && key === "weeks")) ||
       url.searchParams.getAll("groupId").length !== 1 ||
-      url.searchParams.getAll("weekStart").length !== 1) {
+      url.searchParams.getAll("weekStart").length !== 1 ||
+      (batched && (url.searchParams.getAll("weeks").length !== 1 ||
+        url.searchParams.get("weeks") !== "8"))) {
     return Response.json({ error: { code: "INVALID_ATTENDANCE_CALENDAR" } },
       { status: 400 });
   }
   const groupId = url.searchParams.get("groupId") || "";
   const weekStart = url.searchParams.get("weekStart") || "";
+  const weekCount = batched ? 8 : 1;
+  let weekStarts: string[];
   let weekDates: readonly string[];
   try {
-    weekDates = attendanceWeekDates(weekStart);
+    // Validate that the anchor is a genuine Monday before building any range.
+    attendanceWeekDates(weekStart);
+    const monday = new Date(weekStart + "T12:00:00.000Z");
+    weekStarts = Array.from({ length: weekCount }, (_, index) => {
+      const current = new Date(monday);
+      current.setUTCDate(current.getUTCDate() + 7 * index);
+      return current.toISOString().slice(0, 10);
+    });
+    weekDates = weekStarts.flatMap((start) => attendanceWeekDates(start));
   } catch {
     return Response.json({ error: { code: "INVALID_ATTENDANCE_CALENDAR" } },
       { status: 400 });
@@ -1544,39 +1562,36 @@ async function kindertrainingCalendarResponse(
   if (!groups.some(group => group.id === groupId)) {
     return kindertrainingGroupNotFound();
   }
-  // A null repository means the v17 feature is intentionally disabled
-  // (e.g. production). Preserve its existing seven-day attendance behavior.
-  // If v17 is enabled but the DB is broken, runtime startup already fails
-  // closed instead of returning a null repository.
   const calendar = runtime.registrationCalendar;
   if (!calendar) {
     return Response.json({
       groupId, weekStart, dates: weekDates, calendarEnabled: false, weekdays: null,
+      ...(batched ? { weekCount } : {}),
     }, {
       headers: { "Cache-Control": "private, no-store" },
     });
   }
   const [rule, exceptions] = await Promise.all([
     calendar.readRule(access.organizationId, groupId),
-    // Always read the entire authorized week freshly, but in one SQL query.
-    // No cross-request cache: v17 rules and special days may change at any time.
-    calendar.readWeekExceptions(access.organizationId, groupId, weekStart),
+    // One bounded SQL read replaces the previous eight calendar HTTP reads.
+    calendar.readRangeExceptions(access.organizationId, groupId, weekStart, weekCount),
   ]);
-  const dates = selectAttendanceCalendarDates({
-    weekStart,
-    weekdays: rule?.schedule.weekdays ?? null,
-    exceptions: weekDates.map((date) => ({
-      date,
-      kind: exceptions.get(date)?.kind ?? null,
-    })),
-  });
-  // Publish the authoritative schedule state to the Kids day navigator.
-  // No rule and seven explicitly planned days may look identical as a list,
-  // but must not be interpreted identically for the navigation buttons.
+  const dates = weekStarts.flatMap((monday) =>
+    selectAttendanceCalendarDates({
+      weekStart: monday,
+      weekdays: rule?.schedule.weekdays ?? null,
+      exceptions: attendanceWeekDates(monday).map((date) => ({
+        date,
+        kind: exceptions.get(date)?.kind ?? null,
+      })),
+    }),
+  );
+  // Keep rule/exception checks server-authoritative; no cross-request caching.
   return Response.json({
     groupId, weekStart, dates,
     calendarEnabled: true,
     weekdays: rule?.schedule.weekdays ?? null,
+    ...(batched ? { weekCount } : {}),
   }, {
     headers: { "Cache-Control": "private, no-store" },
   });
