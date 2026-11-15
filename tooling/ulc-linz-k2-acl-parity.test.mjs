@@ -71,7 +71,8 @@ test("no numeric field can drift silently", () => {
     const baseline = source();
     if (field === "rls_forced_count") baseline.rls_enabled_count = 1;
     const changed = { ...baseline };
-    changed[field] = baseline[field] === 0 ? 1 : baseline[field] - 1;
+    changed[field] = field === "tables_count" ? baseline[field] + 1
+      : baseline[field] === 0 ? 1 : baseline[field] - 1;
     const r = check({ source: baseline, restored: changed, controls: goodControls() });
     assert.ok(r.failures.includes("MISMATCH_" + field.toUpperCase()), field);
   }
