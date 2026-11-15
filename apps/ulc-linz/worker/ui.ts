@@ -2988,6 +2988,11 @@ function refreshBackgroundAttendanceSaveStatus() {
   status.hidden = failed.length === 0 && backgroundAttendanceSaves.size === 0;
 }
 
+function clearBackgroundAttendanceSaveError(section) {
+  failedBackgroundAttendanceSaves.delete(section);
+  refreshBackgroundAttendanceSaveStatus();
+}
+
 function backgroundFlushAttendanceOnLeave(section, dirty, failed, flush) {
   if (backgroundAttendanceSaves.has(section)) return;
   if (!dirty) {
