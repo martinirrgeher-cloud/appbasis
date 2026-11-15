@@ -71,7 +71,7 @@ inventory AS (
         )
         OR EXISTS (
           SELECT 1 FROM pg_catalog.aclexplode(
-            COALESCE(a.attacl, ARRAY[]::aclitem[])
+            a.attacl
           ) acl
           WHERE acl.grantee = 0 AND acl.privilege_type = p.privilege
         )
