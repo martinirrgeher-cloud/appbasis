@@ -20,6 +20,13 @@ describe("ULC current UI preview refresh: no historical schema rollback", () => 
     expect(workflow).toContain("Require existing standard-module preview runtime");
     expect(workflow).toContain('Require compatible Preview registration-note schema');
     expect(workflow).toContain('validateUlcLinzD4PreviewDatabaseCredentials');
+    expect(workflow).toContain("pilotTrainingOriginAttested: true");
+    expect(workflow.indexOf('validateUlcLinzD4PreviewDatabaseCredentials')).toBeLessThan(
+      workflow.indexOf("pilotTrainingOriginAttested: true"),
+    );
+    expect(workflow.indexOf("Resolve isolated ULC preview Hyperdrives")).toBeLessThan(
+      workflow.indexOf("pilotTrainingOriginAttested: true"),
+    );
     expect(workflow).toContain('ulc_linz_training_registration_change_note_check');
     expect(workflow).toContain('STOP before Worker update; migration requires separate operator approval.');
     expect(workflow.indexOf('Require compatible Preview registration-note schema')).toBeLessThan(
