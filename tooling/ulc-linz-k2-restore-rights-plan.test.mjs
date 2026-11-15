@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { K2_ROLES, K2_OWNER_FUTURE_ACL_EXPECTED, evaluateK2OwnerAndDefaultAclEvidence, K2_RESTORE_PREFLIGHT_EXPECTED, evaluateK2RestorePreflight, validateK2RestoreContract, planK2RestoreRights } from "./ulc-linz-k2-restore-rights-plan.mjs";
+import { K2_ROLES, K2_RUNTIME_RIGHTS_EXPECTED, evaluateK2RuntimeRightsEvidence, K2_OWNER_FUTURE_ACL_EXPECTED, evaluateK2OwnerAndDefaultAclEvidence, K2_RESTORE_PREFLIGHT_EXPECTED, evaluateK2RestorePreflight, validateK2RestoreContract, planK2RestoreRights } from "./ulc-linz-k2-restore-rights-plan.mjs";
 
 const file = readFileSync(new URL("./ulc-linz-k2-restore-privilege-contract.json", import.meta.url));
 const EXPECTED_SOURCE_GIT_BLOB = "c9ca9fdc7280d4f6671515b6e6ddb7002636c2dc";
@@ -190,4 +190,58 @@ test("review plan explicitly blocks silent future-DDL and implicit owner transfe
  assert.equal(plan.legacySourceDefaultAclOwnerMustNotBeCopied,true);
  assert.equal(plan.runtimeAccessToNewOwnerMustBeDeniedAndIndependentlyVerified,true);
  assert.ok(plan.phases.every(p=>p.completed===false));
+});
+
+
+test("actual K2 runtime catalog snapshot correctly reports missing privileges",()=>{
+ const r=evaluateK2RuntimeRightsEvidence({
+   source:{...K2_RUNTIME_RIGHTS_EXPECTED.source},
+   restore:{...K2_RUNTIME_RIGHTS_EXPECTED.restoreBefore},
+ });
+ assert.equal(r.status,"KNOWN_RESTORE_PRIVILEGES_MISSING");
+ assert.ok(r.failures.includes("RESTORE_MISMATCH_APP_SELECT"));
+ assert.ok(r.failures.includes("RESTORE_MISMATCH_BACKUP_SELECT"));
+ assert.ok(r.failures.includes("RESTORE_MISMATCH_SECURITY_INGEST_INSERT_COLUMNS"));
+ assert.equal(r.appReady,false);
+ assert.equal(r.dbWriteAuthorized,false);
+});
+test("matching aggregate rights still never pass app security or deploy",()=>{
+ const goodRestore={
+   ...K2_RUNTIME_RIGHTS_EXPECTED.source,
+   database_name:"ulc_linz_k2_restore_quarantine",
+ };
+ const r=evaluateK2RuntimeRightsEvidence({
+   source:{...K2_RUNTIME_RIGHTS_EXPECTED.source},
+   restore:goodRestore,
+ });
+ assert.equal(r.status,"CATALOG_AGGREGATES_MATCH_ONLY");
+ assert.deepEqual(r.failures,[]);
+ for(const key of ["perObjectPrivilegesVerified","ownerMembershipVerified",
+   "realAppNegativeTestsPassed","mediaRestoreVerified","appReady",
+   "dbWriteAuthorized","deployAuthorized"])assert.equal(r[key],false);
+});
+test("every source and restore metric mismatch blocks rather than pretending app-ready",()=>{
+ const baseline={
+   source:{...K2_RUNTIME_RIGHTS_EXPECTED.source},
+   restore:{...K2_RUNTIME_RIGHTS_EXPECTED.source,
+     database_name:"ulc_linz_k2_restore_quarantine"},
+ };
+ for(const key of Object.keys(K2_RUNTIME_RIGHTS_EXPECTED.source)){
+   const source=structuredClone(baseline);
+   source.source[key]=typeof source.source[key]==="string"?"bad-source":source.source[key]+1;
+   assert.equal(evaluateK2RuntimeRightsEvidence(source).status,"BLOCK",key);
+   const restore=structuredClone(baseline);
+   restore.restore[key]=typeof restore.restore[key]==="string"?"bad-restore":restore.restore[key]+1;
+   assert.equal(evaluateK2RuntimeRightsEvidence(restore).status,"BLOCK",key);
+ }
+ assert.equal(evaluateK2RuntimeRightsEvidence({}).status,"BLOCK");
+});
+test("runtime acceptance SQL remains metadata-only and read-only",()=>{
+ const sql=readFileSync(new URL("./ulc-linz-k2-runtime-rights-readonly.sql",import.meta.url),"utf8");
+ assert.match(sql,/pg_catalog\.has_table_privilege/);
+ assert.match(sql,/pg_catalog\.has_column_privilege/);
+ assert.match(sql,/pg_catalog\.has_sequence_privilege/);
+ assert.match(sql,/public_function_execute/);
+ assert.doesNotMatch(sql,/^\s*(?:GRANT|REVOKE|CREATE|ALTER|DROP|TRUNCATE|INSERT|UPDATE|DELETE|CALL|DO|COPY)\b/im);
+ assert.equal(sql.trim().endsWith(";"),true);
 });
