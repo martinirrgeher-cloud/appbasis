@@ -409,6 +409,46 @@ test("G-04 uses only existing ULC Preview Worker with explicit v17 opt-in and or
   assert.equal(config.secrets.required.length, 1);
 });
 
+test("B3 emits a build-bound origin attestation only for validated isolated ULC preview", () => {
+  const input = {
+    appId: "ulc-linz",
+    hyperdriveId: "ulc-app-hyperdrive",
+    securityLogHyperdriveId: "ulc-security-hyperdrive",
+    baseURL: "https://appbasis-ulc-linz.demo-account.workers.dev",
+    entrypoint: "./worker/preview-exercise-catalog-standard.ts",
+    buildSha: "b".repeat(40),
+    registrationCalendarV17: true,
+  };
+  const without = renderGeneratedPreviewWranglerConfig(input);
+  assert.equal("APPBASIS_ULC_P03I_ORIGIN_ATTESTATION" in without.vars, false);
+  const signed = renderGeneratedPreviewWranglerConfig({
+    ...input, pilotTrainingOriginAttested: true,
+  });
+  assert.equal(
+    signed.vars.APPBASIS_ULC_P03I_ORIGIN_ATTESTATION,
+    "e6h-origin-checked:" + "b".repeat(40),
+  );
+  assert.equal(signed.vars.APPBASIS_BUILD_SHA, "b".repeat(40));
+  assert.equal(signed.keep_vars, true);
+  for (const invalid of [
+    { ...input, buildSha: undefined },
+    { ...input, securityLogHyperdriveId: undefined },
+    { ...input, registrationCalendarV17: false },
+    { ...input, appId: "tasks-minimal" },
+    { ...input, pilotTrainingOriginAttested: "yes" },
+  ]) {
+    assert.throws(() => renderGeneratedPreviewWranglerConfig({
+      ...invalid, pilotTrainingOriginAttested: invalid.pilotTrainingOriginAttested ?? true,
+    }));
+  }
+  const another = renderGeneratedPreviewWranglerConfig({
+    appId: "tasks-minimal",
+    hyperdriveId: "provider-id",
+    baseURL: "https://tasks-minimal.example.test",
+  });
+  assert.equal("APPBASIS_ULC_P03I_ORIGIN_ATTESTATION" in another.vars, false);
+});
+
 test("G-04 v17 preview activation refuses production, wrong app or accidental enablement", () => {
   const input = {
     appId: "ulc-linz",

@@ -1,13 +1,14 @@
 /**
- * A single, explicit, pilot-only switch for the already-tested P03-I
- * transactional ULC attendance/registration writer.
+ * Pilot-only P03-I transactional write guard.
  *
- * This is NOT a user-controlled request flag. It is evaluated only from
- * Cloudflare Worker environment bindings before a runtime is created.
- * Disabled unless all expected preview identities match.
+ * Cloudflare Hyperdrive gives Workers a dynamic proxy connectionString.
+ * Its URL host, username and database path are transport details and MUST
+ * NOT be mistaken for the underlying Neon origin identity.
  *
- * If an operator requests the switch with a typo or different database,
- * BLOCK the request rather than silently falling back to legacy writes.
+ * The ULC E6H deploy workflow independently validates source PostgreSQL
+ * database, endpoint, owner/application/security-log roles and the two
+ * cache-disabled Hyperdrive configs before rendering a build-bound marker.
+ * The marker is NOT a credential, and does not replace DB access controls.
  */
 export type PilotTrainingWriteGuardActivation =
   | "disabled"
@@ -16,29 +17,36 @@ export type PilotTrainingWriteGuardActivation =
 
 const PILOT_ENABLE_VALUE = "p03i-preview";
 const PILOT_DISABLE_VALUE = "disabled";
-const PREVIEW_DB = "appbasis_ulc_linz_preview";
-const APP_ROLE = "appbasis_ulc_linz_preview_application";
-const LOG_ROLE = "appbasis_ulc_linz_preview_security_log";
+const EXACT_PREVIEW_RUNTIME = "generated-preview-ulc-linz";
+const EXACT_PREVIEW_APP = "ulc-linz";
+const ORIGIN_ATTESTATION_PREFIX = "e6h-origin-checked:";
+const BUILD_SHA_PATTERN = /^[a-f0-9]{40}$/;
 
-function connectionIdentity(connectionString: string): {
-  host: string;
-  port: string;
-  database: string;
-  role: string;
-} | null {
+function previewScope(env: Record<string, unknown>): boolean {
+  return env.APPBASIS_RUNTIME_ENVIRONMENT === EXACT_PREVIEW_RUNTIME &&
+    env.APPBASIS_GENERATED_APP_ID === EXACT_PREVIEW_APP;
+}
+
+function originAttestedForBuild(env: Record<string, unknown>): boolean {
+  const buildSha = env.APPBASIS_BUILD_SHA;
+  return typeof buildSha === "string" &&
+    BUILD_SHA_PATTERN.test(buildSha) &&
+    env.APPBASIS_ULC_P03I_ORIGIN_ATTESTATION ===
+      `${ORIGIN_ATTESTATION_PREFIX}${buildSha}`;
+}
+
+function validProxyConnectionString(connectionString: unknown): boolean {
+  if (typeof connectionString !== "string" ||
+      connectionString.trim() !== connectionString) return false;
   try {
     const url = new URL(connectionString);
-    if ((url.protocol !== "postgres:" && url.protocol !== "postgresql:") ||
-        url.hostname.length === 0 ||
-        (url.port !== "" && url.port !== "5432")) {
-      return null;
-    }
-    const database = decodeURIComponent(url.pathname.slice(1));
-    const role = decodeURIComponent(url.username);
-    if (database.length === 0 || role.length === 0) return null;
-    return { host: url.hostname.toLowerCase(), port: url.port || "5432", database, role };
+    return (url.protocol === "postgres:" || url.protocol === "postgresql:") &&
+      url.hostname.length > 0 &&
+      url.username.length > 0 &&
+      url.pathname.length > 1 &&
+      url.hash === "";
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -50,39 +58,29 @@ export function pilotTrainingWriteGuardActivation(
   const setting = env.APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD;
   if (setting === undefined || setting === PILOT_DISABLE_VALUE) return "disabled";
   if (setting !== PILOT_ENABLE_VALUE ||
-      env.APPBASIS_RUNTIME_ENVIRONMENT !== "generated-preview-ulc-linz" ||
-      env.APPBASIS_GENERATED_APP_ID !== "ulc-linz") {
+      !previewScope(env) ||
+      !originAttestedForBuild(env) ||
+      !validProxyConnectionString(appConnectionString) ||
+      !validProxyConnectionString(securityLogConnectionString) ||
+      appConnectionString === securityLogConnectionString) {
     return "invalid";
   }
-  const app = connectionIdentity(appConnectionString);
-  const log = connectionIdentity(securityLogConnectionString);
-  if (app === null || log === null ||
-      app.database !== PREVIEW_DB || log.database !== PREVIEW_DB ||
-      app.role !== APP_ROLE || log.role !== LOG_ROLE) {
-    // Cloudflare's two distinct Hyperdrive bindings can expose different
-    // per-binding proxy hostnames, even when they reach the same Neon origin.
-    // The E6H deployment preflight verifies both underlying origin endpoints
-    // and distinct roles before it binds either Hyperdrive ID to the Worker.
-    // Comparing their runtime *proxy* hostnames would reject that valid setup.
-    return "invalid";
-  }
+  // These values are PROXY URLs; actual Neon database/roles are attested
+  // by E6H at deploy, and P03-I checks live actor rights in the same BEGIN.
   return "enabled";
 }
 
-
 /**
- * Read-only B3 diagnosis while the existing preview Worker remains in
- * the proven working "disabled" mode. No connection is opened and no
- * connection fields, role names, hosts, database names, or secrets
- * leave the Worker. This predicts what the next activation would do.
+ * Read-only preview diagnostic while P03-I stays disabled. No DB connection,
+ * no raw URL, host, role, username, database name, password or key is returned.
  */
 export type PilotTrainingGuardPreflightCode =
   | "READY"
   | "PREVIEW_SCOPE"
+  | "ORIGIN_NOT_ATTESTED"
   | "APP_PROXY_FORMAT"
   | "SECURITY_PROXY_FORMAT"
-  | "PROXY_DATABASE"
-  | "PROXY_ROLE"
+  | "PROXY_BINDINGS_IDENTICAL"
   | "UNEXPECTED_GUARD_REJECTION";
 
 export function pilotTrainingGuardPreflightCode(
@@ -90,21 +88,12 @@ export function pilotTrainingGuardPreflightCode(
   appConnectionString: unknown,
   securityLogConnectionString: unknown,
 ): PilotTrainingGuardPreflightCode {
-  if (env.APPBASIS_RUNTIME_ENVIRONMENT !== "generated-preview-ulc-linz" ||
-      env.APPBASIS_GENERATED_APP_ID !== "ulc-linz") {
-    return "PREVIEW_SCOPE";
-  }
-  const app = typeof appConnectionString === "string"
-    ? connectionIdentity(appConnectionString) : null;
-  if (app === null) return "APP_PROXY_FORMAT";
-  const log = typeof securityLogConnectionString === "string"
-    ? connectionIdentity(securityLogConnectionString) : null;
-  if (log === null) return "SECURITY_PROXY_FORMAT";
-  if (app.database !== PREVIEW_DB || log.database !== PREVIEW_DB) {
-    return "PROXY_DATABASE";
-  }
-  if (app.role !== APP_ROLE || log.role !== LOG_ROLE) {
-    return "PROXY_ROLE";
+  if (!previewScope(env)) return "PREVIEW_SCOPE";
+  if (!originAttestedForBuild(env)) return "ORIGIN_NOT_ATTESTED";
+  if (!validProxyConnectionString(appConnectionString)) return "APP_PROXY_FORMAT";
+  if (!validProxyConnectionString(securityLogConnectionString)) return "SECURITY_PROXY_FORMAT";
+  if (appConnectionString === securityLogConnectionString) {
+    return "PROXY_BINDINGS_IDENTICAL";
   }
   const simulatedEnv = {
     ...env,

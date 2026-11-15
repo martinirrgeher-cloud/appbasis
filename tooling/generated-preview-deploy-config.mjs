@@ -19,6 +19,7 @@ export function renderGeneratedPreviewWranglerConfig({
   r2Binding = "EXERCISE_MEDIA",
   r2Jurisdiction,
   registrationCalendarV17 = false,
+  pilotTrainingOriginAttested = false,
 } = {}) {
   const normalizedAppId = requiredIdentifier(appId, "appId");
   const workerName = generatedPreviewWorkerName(normalizedAppId);
@@ -46,6 +47,9 @@ export function renderGeneratedPreviewWranglerConfig({
   if (typeof registrationCalendarV17 !== "boolean") {
     throw new Error("registrationCalendarV17 must be a boolean.");
   }
+  if (typeof pilotTrainingOriginAttested !== "boolean") {
+    throw new Error("pilotTrainingOriginAttested must be a boolean.");
+  }
   if (registrationCalendarV17 && (
     normalizedAppId !== "ulc-linz" ||
     workerName !== "appbasis-ulc-linz" ||
@@ -54,6 +58,16 @@ export function renderGeneratedPreviewWranglerConfig({
     !/^https:\/\/appbasis-ulc-linz\.[a-z0-9-]+\.workers\.dev$/.test(normalizedBaseURL)
   )) {
     throw new Error("v17 calendar is restricted to the existing ULC Linz Preview Worker.");
+  }
+  // This proof is generated ONLY after the E6H workflow has checked
+  // Neon source URLs and resolved two distinct exact Hyperdrive origins.
+  // Bind to the deployed commit: stale proof fails closed.
+  if (pilotTrainingOriginAttested && (
+    !registrationCalendarV17 ||
+    normalizedBuildSha === null ||
+    normalizedSecurityLogHyperdriveId === null
+  )) {
+    throw new Error("P03-I origin attestation requires a pinned isolated ULC Preview build.");
   }
 
   return Object.freeze({
@@ -71,6 +85,10 @@ export function renderGeneratedPreviewWranglerConfig({
         APPBASIS_GENERATED_APP_ID: "ulc-linz",
         APPBASIS_RUNTIME_ENVIRONMENT: "generated-preview-ulc-linz",
         APPBASIS_REGISTRATION_CALENDAR_V17: "enabled",
+      } : {}),
+      ...(pilotTrainingOriginAttested ? {
+        APPBASIS_ULC_P03I_ORIGIN_ATTESTATION:
+          `e6h-origin-checked:${normalizedBuildSha}`,
       } : {}),
       ...(normalizedBuildSha === null
         ? {}
