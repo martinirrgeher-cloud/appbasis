@@ -163,3 +163,32 @@ Vor einem separaten Schreibauftrag müssen mindestens diese Bedingungen nachgewi
 6. Transaktion/Backout sowie **unabhängiger Nachtest** aller direkten und effektiven Rechte, Rolle-SET-/Inherit-Pfade, Owner, Funktions-EXECUTE und gruppenbezogener App-Ablehnungsfälle; ein grüner CI-Test allein ist kein realer Restore-Nachweis.
 
 **Status:** Der Code in #642 liefert ausschließlich Review-Vorschläge; nachgewiesene Default-ACL-/Owner-Abweichungen **BLOCK** einen unkontrollierten K2-App-Restore. Keine automatischen Provider-/DB-Schreibaktionen.
+
+## A04 – tatsächliche Runtime-Berechtigungsabnahme nach dem späteren Rechte-Fix
+
+Neu: `tooling/ulc-linz-k2-runtime-rights-readonly.sql` wird **ohne Datensatzlesezugriff** auf den Systemkatalogen beider getrennten Neon-Datenbanken ausgeführt. Die SQL-Datei wurde am 15.11.2026 wirklich mit zwei reinen `SELECT`-Abfragen validiert; sie liefert aktuell folgende, für den Betrieb maßgebliche Referenz:
+
+| Effektives Recht / Anzahl | Preview-Quelle | K2-Restore (Stand vor Owner-/GRANT-Fix) |
+| --- | ---: | ---: |
+| Tabellen | 62 | 62 |
+| App SELECT / INSERT | 61 / 61 | 0 / 0 |
+| App UPDATE / DELETE | 60 / 60 | 0 / 0 |
+| Backup SELECT | 62 | 0 |
+| Backup INSERT / UPDATE / DELETE | 0 / 0 / 0 | 0 / 0 / 0 |
+| Security-Ingest: geschützte INSERT-Spalten | 15 | 0 |
+| App: INSERT / SELECT in Sicherheitslog-Spalten | 0 / 0 | 0 / 0 |
+| App: Sequence USAGE / SELECT | 3 / 2 | 0 / 0 |
+| Backup: Sequence SELECT | 4 | 0 |
+| App: Function EXECUTE | 0 | 0 |
+| PUBLIC: Function EXECUTE | 0 | 0 |
+
+Der Offline-Prüfer `evaluateK2RuntimeRightsEvidence` trennt sauber zwischen **`KNOWN_RESTORE_PRIVILEGES_MISSING`** (aktueller, tatsächlich geprüfter Zustand), `BLOCK` (abweichende/unvollständige Evidenz) und `CATALOG_AGGREGATES_MATCH_ONLY` (alle Zähler nach künftigen, separat freigegebenen Änderungen gleich). **Selbst beim letzten Ergebnis bleibt `appReady=false`**, bis die tatsächlichen Rechte pro Objekt, die Owner-/Mitgliedschaftsgrenzen und App-API-Negativtests bestanden sind. Eine aggregierte ACL-Parität ersetzt keine Prüfung der Organisations-/Gruppenberechtigungen auf Service-Ebene (Quelle und Restore besitzen keine aktivierten PostgreSQL-RLS-Policies).
+
+### Übertragbares zusammenhängendes Operatorpaket
+
+- **Ist-Zustand gesichert:** Branch/Compute/DB, 68 Objekte, zwei bereits gesperrte öffentliche Funktionen, privilegierter alter Owner und fehlende Grants sind rein lesend dokumentiert.
+- **Soll-Zustand im Code:** neutrales, nicht anmeldbares Owner-Modell, 68 geplante Owner-Änderungen, 146 direkte rollen- und objektspezifische GRANT-Gruppen mit 329 Einträgen. Kein pauschales `GRANT ALL` und keine unmittelbare Datenbank-Ausführung.
+- **Zwei harte Entscheidungsfragen vor einem echten Rechte-Write:** (a) Wer darf künftige Quarantäne-Migrationen ausführen und welche Default-ACL-Policy gilt für den **wirklichen DDL-Ersteller**? (b) Ist die vollständige Cloudflare-/Service-/Secret-Nichtanbindung des K2-Compute nachgewiesen? Solange ungeklärt, kein App-Restore-Go.
+- **Nachträgliche Abnahme:** exakte Soll-Summen dieses Tabellenvergleichs **plus** 94er per-Objekt-/Spaltenmatrix, Ownership-/Rollen-Set-/Inherit-Rechte, Sicherheitslog-Denials, echte isolierte Test-App und Medien-Restore; anschließende bewusste Entscheidung über wiederverwendbaren Restore-Ablauf.
+
+**Änderungsgrenze dieses größeren Pakets:** ausschließlich GitHub-Draft #642, Offline-CI und SELECT-Abfragen an beiden Datenbanken. Keine weitere DB-Schreibaktion, kein Merge, kein Deployment, keine Provider- oder Cloudflare-Konfigurationsänderung.
