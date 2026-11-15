@@ -1604,6 +1604,17 @@ async function u12FetchCalendarDates(groupId, weekStart) {
   return result.dates;
 }
 
+// A Kids arrow or dropdown selection has already validated the exact
+// group/week/date against a fresh server response in the current operation.
+// Only that caller may reuse this verified week; all independent visits,
+// reloads and group changes still start with a fresh calendar query.
+function u12HasVerifiedCalendarDateForLoad(groupId, date, calendarDateVerified) {
+  if (!u12FollowGroupCalendar || !calendarDateVerified) return false;
+  const dates = u12CalendarWeekCache.get(
+    groupId + "|" + u12CalendarWeekStart(date));
+  return Array.isArray(dates) && dates.includes(date);
+}
+
 // An accessible, native select contains only verified training days, unlike
 // a browser date picker which cannot disable individual weekdays reliably.
 async function u12PopulateCalendarChoices(groupId, selected, isCurrent) {
@@ -1723,7 +1734,9 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false,
     u12Ui.date.value = chosen;
     // Keep the old draft locked throughout the destination load. Never clear
     // calendarBusy between the last flush and the new attendance snapshot.
-    await loadU12Attendance({ calendarChoicesReady: true });
+    await loadU12Attendance({
+      calendarChoicesReady: true, calendarDateVerified: true,
+    });
   } catch {
     if (generation === attendanceSessionGeneration && u12Ui.group?.value === groupId) {
       showMessage(u12Ui.message,
@@ -1737,7 +1750,9 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false,
   }
 }
 
-async function loadU12Attendance({ calendarChoicesReady = false } = {}) {
+async function loadU12Attendance({
+  calendarChoicesReady = false, calendarDateVerified = false,
+} = {}) {
   const groupId = u12Ui.group?.value || "";
   let date = u12Ui.date?.value || "";
   if (!u12Ready || u12Loading || u12Saving || !groupId || !date) {
@@ -1747,13 +1762,18 @@ async function loadU12Attendance({ calendarChoicesReady = false } = {}) {
   const generation = attendanceSessionGeneration;
   const loadId = ++u12LoadId;
   if (u12FollowGroupCalendar) {
-    // Revalidate on every new attendance read; never trust a prior visit.
-    u12CalendarWeekCache = new Map();
+    // Never reuse dates from a previous visit: only a just-validated target
+    // from this same guarded navigation may skip the duplicate GET.
+    const verifiedCalendarDate = u12HasVerifiedCalendarDateForLoad(
+      groupId, date, calendarDateVerified);
+    if (!verifiedCalendarDate) u12CalendarWeekCache = new Map();
     u12CalendarBusy = true;
     refreshU12Controls();
     try {
       const requestedDate = date;
-      const dates = await u12FetchCalendarDates(groupId, u12CalendarWeekStart(date));
+      const dates = verifiedCalendarDate
+        ? u12CalendarWeekCache.get(groupId + "|" + u12CalendarWeekStart(date))
+        : await u12FetchCalendarDates(groupId, u12CalendarWeekStart(date));
       if (!dates.includes(date)) {
         date = await u12FindCalendarDate(groupId, date, 1, true);
       }
@@ -2036,7 +2056,7 @@ async function u12ChangeDate() {
           "Dieser Tag ist kein geplanter Trainingstag. Bitte einen Trainingstag wählen.");
         return;
       }
-      await loadU12Attendance();
+      await loadU12Attendance({ calendarDateVerified: true });
     } catch {
       if (generation === attendanceSessionGeneration && u12Ui.group?.value === groupId) {
         u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());

@@ -125,17 +125,42 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
       ULC_KIDS_SCRIPT.indexOf("async function saveKidsAttendance("),
     );
     expect(nav).toContain("await kidsPopulateCalendarChoices(");
-    expect(nav).toContain("await loadKidsAttendance({ calendarChoicesReady: true });");
+    expect(nav).toContain("await loadKidsAttendance({");
+    expect(nav).toContain("calendarChoicesReady: true, calendarDateVerified: true,");
     // Existing CAS/autosave guard must still lock the old draft.
     expect(nav).toContain("if (!(await kidsFlushChanges())) return;");
-    // The destination week is still read fresh, never accepted from the cache.
-    expect(load).toContain("kidsCalendarWeekCache = new Map();");
-    expect(load).toContain("const dates = await kidsFetchCalendarDates(groupId, kidsCalendarWeekStart(date));");
+    // An arrow always checks the target week fresh in the guarded navigation.
+    // The immediately following load can reuse ONLY that already checked date;
+    // a stand-alone load still clears its old cache and rechecks the server.
+    expect(load).toContain("if (!verifiedCalendarDate) kidsCalendarWeekCache = new Map();");
+    expect(load).toContain("const verifiedCalendarDate = kidsHasVerifiedCalendarDateForLoad(");
+    expect(load).toContain(": await kidsFetchCalendarDates(groupId, kidsCalendarWeekStart(date));");
     expect(load).toContain("if (!dates.includes(date))");
     // A removed day must rebuild choices from current server-authorized dates.
     expect(load).toContain("if (!calendarChoicesReady || date !== requestedDate)");
   });
 
+
+  it("reuses only the freshly verified Kids date and never another group or visit", () => {
+    const sourceStart = ULC_KIDS_SCRIPT.indexOf("function kidsHasVerifiedCalendarDateForLoad(");
+    const sourceEnd = ULC_KIDS_SCRIPT.indexOf("// An accessible, native select", sourceStart);
+    expect(sourceStart).toBeGreaterThan(0);
+    expect(sourceEnd).toBeGreaterThan(sourceStart);
+    const factory = new Function(
+      "calendar", "groupId", "date", "verified", "startOfWeek",
+      "const kidsFollowGroupCalendar = true;\n" +
+      "const kidsCalendarWeekCache = calendar;\n" +
+      "const kidsCalendarWeekStart = (value) => startOfWeek(new Date(value + 'T12:00:00Z'));\n" +
+      ULC_KIDS_SCRIPT.slice(sourceStart, sourceEnd) +
+      "\nreturn kidsHasVerifiedCalendarDateForLoad(groupId, date, verified);",
+    ) as (...args: any[]) => boolean;
+    const calendar = new Map([["kids-group|2026-11-16", ["2026-11-17"]]]);
+    expect(factory(calendar, "kids-group", "2026-11-17", true, weekStart)).toBe(true);
+    expect(factory(calendar, "kids-group", "2026-11-17", false, weekStart)).toBe(false);
+    expect(factory(calendar, "foreign-group", "2026-11-17", true, weekStart)).toBe(false);
+    expect(factory(calendar, "kids-group", "2026-11-18", true, weekStart)).toBe(false);
+    expect(factory(new Map(), "kids-group", "2026-11-17", true, weekStart)).toBe(false);
+  });
 
   it("reuses the existing 8-week options on adjacent training arrows after fresh calendar reads", async () => {
     const weeks = {
@@ -329,7 +354,7 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     expect(ULC_KIDS_SCRIPT).toContain("kidsLoading || kidsCalendarBusy || !kidsWriteAllowed");
     const populate = nav.indexOf("await kidsPopulateCalendarChoices(");
     const assignment = nav.indexOf("kidsUi.date.value = chosen");
-    const load = nav.indexOf("await loadKidsAttendance({ calendarChoicesReady: true });");
+    const load = nav.indexOf("await loadKidsAttendance({");
     const release = nav.indexOf("} finally {");
     const freeze = nav.indexOf("kidsCalendarBusy = true");
     const flush = nav.indexOf("await kidsFlushChanges()");
@@ -350,7 +375,7 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     expect(assignment).toBeGreaterThan(populate);
     expect(load).toBeGreaterThan(assignment);
     expect(release).toBeGreaterThan(load);
-    expect(change.indexOf("await loadKidsAttendance()")).toBeLessThan(
+    expect(change.indexOf("await loadKidsAttendance({ calendarDateVerified: true })")).toBeLessThan(
       change.indexOf("} finally {"),
     );
   });
