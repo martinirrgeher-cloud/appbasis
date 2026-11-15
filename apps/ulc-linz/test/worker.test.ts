@@ -3986,6 +3986,54 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(created).toBe(0);
   });
 
+  it("exposes only redacted B3 preflight codes when Preview guard is disabled", async () => {
+    let runtimeCreated = false;
+    const worker = createGeneratedWorker(() => {
+      runtimeCreated = true;
+      throw new Error("B3 diagnostics must never create a database runtime");
+    });
+    const origin = "https://ulc.example.test/api/health/b3-guard-preflight";
+    const preview = {
+      ...validEnv,
+      HYPERDRIVE: {
+        connectionString: "postgresql://appbasis_ulc_linz_preview_application:privatePassword@app-proxy.example.test/appbasis_ulc_linz_preview",
+      },
+      SECURITY_LOG_HYPERDRIVE: {
+        connectionString: "postgresql://appbasis_ulc_linz_preview_security_log:otherPassword@log-proxy.example.test/appbasis_ulc_linz_preview",
+      },
+      APPBASIS_RUNTIME_ENVIRONMENT: "generated-preview-ulc-linz",
+      APPBASIS_GENERATED_APP_ID: "ulc-linz",
+      APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "disabled",
+    };
+    const response = await worker.fetch(new Request(origin), preview);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = await response.text();
+    expect(JSON.parse(body)).toEqual({ status: "ready", reasonCode: "READY" });
+    expect(body).not.toContain("privatePassword");
+    expect(body).not.toContain("otherPassword");
+    expect(body).not.toContain("appbasis_ulc_linz_preview_application");
+    expect(body).not.toContain("app-proxy.example.test");
+
+    const blocked = await worker.fetch(new Request(origin), {
+      ...preview, SECURITY_LOG_HYPERDRIVE: {
+        connectionString: preview.SECURITY_LOG_HYPERDRIVE.connectionString.replace(
+          "preview_security_log", "preview_migration",
+        ),
+      },
+    });
+    expect(blocked.status).toBe(200);
+    expect(await blocked.json()).toEqual({ status: "blocked", reasonCode: "PROXY_ROLE" });
+    expect((await worker.fetch(new Request(origin), {
+      ...preview, APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "p03i-preview",
+    })).status).toBe(404);
+    expect((await worker.fetch(new Request(origin), {
+      ...preview, APPBASIS_RUNTIME_ENVIRONMENT: "production",
+    })).status).toBe(404);
+    expect((await worker.fetch(new Request(origin, { method: "POST" }), preview)).status).toBe(405);
+    expect(runtimeCreated).toBe(false);
+  });
+
   it("returns a generic runtime failure without leaking provider error details", async () => {
     const originalError = console.error;
     const logged: string[] = [];
