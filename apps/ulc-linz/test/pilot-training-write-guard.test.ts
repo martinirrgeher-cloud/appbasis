@@ -79,7 +79,7 @@ describe("ULC pilot write guard: exact Preview operator switch", () => {
     expect(pilotTrainingGuardPreflightCode(activePreview, null, log)).toBe("APP_PROXY_FORMAT");
     expect(pilotTrainingGuardPreflightCode(activePreview, app, null)).toBe("SECURITY_PROXY_FORMAT");
     expect(pilotTrainingGuardPreflightCode(
-      activePreview, app.replace("/appbasis_ulc_linz_preview", "/neondb"), log,
+      activePreview, app.replace(/\/appbasis_ulc_linz_preview$/, "/neondb"), log,
     )).toBe("PROXY_DATABASE");
     expect(pilotTrainingGuardPreflightCode(
       activePreview, app.replace("preview_application", "preview_migration"), log,
