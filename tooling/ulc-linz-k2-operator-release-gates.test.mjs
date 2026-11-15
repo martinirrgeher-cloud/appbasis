@@ -21,5 +21,5 @@ test("no promotion, deploy, production or daily backup is authorized",()=>{
   for(const s of ["APPBASIS_ULC_K2_BACKUP_ENABLED","keine Secret-Änderung","keine Echtdatenfreigabe","kein Deployment","gesondert"])assert.ok(doc.includes(s),s);
 });
 test("restore deletion reconciliation is a stop gate",()=>{
-  assert.match(doc,/bereits gelöschte Personendaten/);assert.match(doc,/Re-Deletion/);
+  assert.match(doc,/[Bb]ereits gelöschte Personendaten/);assert.match(doc,/Re-Deletion/);
 });
