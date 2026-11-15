@@ -68,9 +68,11 @@ test("each independent evidence control missing, false or textual blocks", () =>
 });
 test("no numeric field can drift silently", () => {
   for (const field of K2_ACL_FIELDS) {
-    const changed = source();
-    changed[field] += 1;
-    const r = check({ restored: changed, controls: goodControls() });
+    const baseline = source();
+    if (field === "rls_forced_count") baseline.rls_enabled_count = 1;
+    const changed = { ...baseline };
+    changed[field] = baseline[field] === 0 ? 1 : baseline[field] - 1;
+    const r = check({ source: baseline, restored: changed, controls: goodControls() });
     assert.ok(r.failures.includes("MISMATCH_" + field.toUpperCase()), field);
   }
 });
