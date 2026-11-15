@@ -89,3 +89,53 @@ Er enthält `BEGIN/COMMIT`, kurze Transaktions-Timeouts, eine harte Prüfung des
 **Begrenzung:** Erfolgreiche Tests sind synthetisch; der echte K2-Restore bleibt wegen der oben **real gemessenen** Abweichungen HARD NO-GO. Kein SQL-Write, Cloudflare-API-Zugriff, Merge, Deployment, Backup-/Restore-Run oder Provider-Ressourcenwechsel erfolgt durch dieses Paket. Die bestehende K2-Quarantäne ist nicht leer und darf nicht einfach erneut mit `apply=true` beschrieben werden.
 
 **Nachweise/Tracking:** Issue #640 (P1), Issue #607 (Audit), Issue #530 (Übergabe); PR #641 (aggregierte ACL-Parität) bleibt ein eigenständiger Draft.
+
+## A04 – vollständiges, eigentümergetrenntes Rechte-Restore-Paket (15.11.2026)
+
+Dieses Arbeitspaket ersetzt weitere kleinteilige Teil-PRs durch einen **gemeinsamen, rein offline geprüften Reparaturvorschlag** im bereits bestehenden Draft #642. Die Quelle ist **kein ausgedachter ACL-Standard**, sondern ein aus dem originalen Neon-Preview-Branch einmalig read-only entnommener Katalog-Snapshot:
+
+- `tooling/ulc-linz-k2-restore-privilege-contract.json` – 62 Tabellen, vier Sequenzen, zwei Funktionen sowie die **329 direkten Nicht-Eigentümer-Rechteeinträge** der ursprünglichen Anwendung, Sicherheits-Ingest-Rolle und Backup-Rolle (146 Objekt/Rollen-Gruppen). **Keine Zugangsdaten oder Personen-/Tabellenzeilen.** Die Snapshot-Datei ist im Test auf die Git-Blob-Prüfsumme fixiert; Änderungen erzwingen ein erneutes Code-Review.
+- `tooling/ulc-linz-k2-restore-rights-plan.mjs` – reiner, deterministischer Offline-Planer mit strikten Rollen- und Privileg-Allowlisten, Prüfung aller 68 Objektidentitäten und der exakten 329 Berechtigungszellen. Er gibt ausschließlich **`REVIEW_ONLY`** zurück und führt keinerlei SQL, APIs oder Provider-Writes aus.
+- `tooling/ulc-linz-k2-restore-rights-plan.test.mjs` – umfangreiche Tests mit dem tatsächlichen Source-Snapshot sowie mutierten Negativfällen; kontrolliert u. a. `PUBLIC`, `GRANT ALL`, Funktions-`EXECUTE`, Schutz der Audit-Tabellen und unzulässige Owner.
+
+### Der wesentliche neue Owner-Befund
+
+Die originale Eigentümerrolle aller 62 Tabellen, vier Sequenzen und zwei Funktionen ist die eingeschränkte `appbasis_ulc_linz_preview_migration` (keine `CREATEDB`-, `CREATEROLE`- oder `BYPASSRLS`-Privilegien). Im Restore gehören alle 68 eigenständigen Objekte `ulc_linz_k2_restore_owner`. Dessen Neon-Rolle besitzt **`CREATEDB`, `CREATEROLE` und `BYPASSRLS`** und ist ein Login. Die privilegierte Sicherheitsprotokoll-Löschfunktion ist `SECURITY DEFINER`. **Eine erneute pauschale Freigabe der Funktionsausführung mit diesem Owner wäre besonders riskant.**
+
+Deshalb sieht der Plan **vor einer App-Anbindung** eine neue, ausschließlich für die Quarantäne vorgesehene `NOLOGIN`-Objekteigentümerrolle `ulc_linz_k2_object_owner` vor: ohne Superuser, `CREATEDB`, `CREATEROLE`, `BYPASSRLS`, Replikations- und vererbte Mitgliedschaftsrechte. Diese Rolle **existiert im Restore noch nicht**, wie eine aktuelle read-only PostgreSQL-Rollenprüfung bestätigt. Ein menschlicher Operator muss erst Rolleneinrichtung, Erreichbarkeit, Mitgliedschaften, SECURITY-DEFINER-Rechte und spätere Ausführbarkeit fachlich prüfen. **Der Plan legt diese Rolle nicht an und ändert keinen Owner.**
+
+Die **94** vorher gemessenen Owner-Abweichungen umfassen 62 Tabellen, vier Sequenzen, zwei Funktionen und 26 geschützte Spalten-Metadatensichten. Zur fachlichen Wiederherstellung des Eigentümermodells sind demnach **68 eigentliche Objekt-Eigentümeränderungen** vorzusehen; Spalten besitzen keinen unabhängig über `ALTER COLUMN OWNER` umstellbaren Eigentümer. Die geplanten Ownership-Anweisungen sind ein technischer Vorschlag, **noch keine ausführbare Freigabe**. Zu prüfen ist insbesondere, welche Sequenzen durch Tabellen-Spalten-Ownership automatisch mitwechseln, und ob alle `ALTER OWNER`-Vorbedingungen/Neon-Rollenrechte erfüllt sind.
+
+### Rechte-Matrix nach Aufgaben (jeweils nur bei separater Freigabe)
+
+| Bereich | Direkte Source-Rechte | Review-Anweisungen |
+| --- | ---: | ---: |
+| Anwendungstabellen | 242 Rechte auf 61 Tabellen | 61 objektgenaue Gruppen |
+| Anwendungssequenzen | 5 Rechte auf drei Sequenzen | 3 Gruppen |
+| Sicherheitslog-Spalten-Ingest | 15 einzelne INSERT-Rechte | 15 Gruppen |
+| Sicherheitslog-ID-Sequenz | ein USAGE-Recht | eine Gruppe |
+| Backup-Tabellen | 62 SELECT-Rechte auf 62 Tabellen | 62 Gruppen |
+| Backup-Sequenzen | 4 SELECT-Rechte auf vier Sequenzen | 4 Gruppen |
+| **Gesamt** | **329 Rechte** | **146 Gruppen** |
+
+Die weiteren **510** direkten Quell-ACL-Einträge gehören dem ursprünglichen Migrations-Owner (496 Tabellen, 12 Sequenzen, zwei Funktionen). Sie werden **nicht** als Rechte für die originale Migration oder den privilegierten Restore-Owner neu vergeben. Die geplante isolierte `NOLOGIN`-Rolle wird stattdessen zum eigenständigen Objekteigentümer; die Anwendung erhält niemals Eigentümerrechte. Für Sicherheitsfunktionen werden **keine direkten EXECUTE-Grants** vorbereitet. Der bereits separat genehmigte und erfolgreich ausgeführte Zwei-Funktions-`REVOKE EXECUTE FROM PUBLIC`-Fix bleibt Voraussetzung.
+
+### Einmaliges, zusammenhängendes Abnahmeverfahren
+
+**Stufe 1 – externe, unveränderliche Zielbindung.** Original-Preview-Branch und eigener K2-Quarantäne-Branch/Compute/DB werden direkt in Neon bestätigt. Die zwei aktiven App-Hyperdrives zeigen laut Cloudflare-Dashboard korrekt auf den ursprünglichen Preview-Compute. Vor tatsächlichen Schritten sind darüber hinaus aktive Worker-Versionen, Service-Bindings, weitere Worker/Hyperdrives und direkte Connection-Strings/Secrets **ohne Herausgabe der Secret-Werte** unabhängig auf Nichtanbindung zu kontrollieren. Ohne diesen Nachweis keine Änderung der Quarantäne-App-Verbindung.
+
+**Stufe 2 – geprüfter Besitzerwechsel.** Neutrale isolierte `NOLOGIN`-Ownerrolle samt rollenübergreifenden Negativprüfungen fachlich beschließen; 68 Objekt-Ownerships in einem ausdrücklich freigegebenen, atomaren/rollbackfähigen Quarantäne-only-Operatorablauf vorsehen. Vorher/nachher insbesondere Funktion-`SECURITY DEFINER`, ausdrückliches `PUBLIC EXECUTE`-Verbot, Schemanutzungsrechte und Owner-Mitgliedschaft prüfen.
+
+**Stufe 3 – streng geteilte GRANT-Stufen.** Anwendungsrechte (64 Gruppen), Sicherheitslog-Ingest (16 Gruppen) und Backup-Read-Only (66 Gruppen) separat genehmigen und getrennt auswertbar halten; keine generischen `GRANT ALL`, keine Funktion-`EXECUTE`, keine Grants an Migrations-/Restore-Owner oder `PUBLIC`. Für Testanmeldungen idealerweise spezifische, separate Quarantäne-Identitäten und nicht die produktiven Runtime-Secrets verwenden. Eine Sicherheitslog-Gruppe ist keine Freigabe für die Anwendung, Sicherheitslogs allgemein zu lesen.
+
+**Stufe 4 – vollständiger, tatsächlicher Nachtest.** Erneute direkte und effektive Katalogvergleiche inklusive Rollenmitgliedschaften und `GRANT OPTION`, abweichender Default-ACLs (vier Quell- vs. zwei Restore-Definitionen), Owner-/RLS-Status und geschützter Funktionen. Zusätzlich reale Ablehnungsfälle für fremde Organisations-/Gruppen-/Benutzerrollen auf einer getrennt gerouteten, privaten Test-App. Bei aktivem `SECURITY DEFINER` ist die zukünftige Bereinigung sicherzustellen, ohne privilegierten Runtimezugriff freizugeben.
+
+**Stufe 5 – fachliche Wiederanlaufabnahme.** Tatsächliche R2-Medien-Wiederherstellung, Login/Logout, Anwesenheit, Anmeldung, Training, Statistik, Berechtigungen und Re-Deletion prüfen; RPO/RTO nach Ausfallbeginn bis vollständiger Abnahme messen. Erst danach darf separat über Backup-Automatik und Produktivstart entschieden werden.
+
+### Technische und organisatorische Stop-Gates
+
+- Die in diesem PR erzeugten SQL-Satzvorschläge sind **prüfbares Material**, kein automatisches Anwenden. Es gibt weder eine CLI-Apply-Funktion noch einen Workflow, der sie ausführt.
+- Für jeden schreibenden Owner-/Grant-Schritt ist eine neue **ausdrückliche und auf exakte DB und Aktionen begrenzte Betreiberfreigabe** erforderlich. Die bisherige „Ok“-Freigabe betraf **nur zwei PUBLIC-REVOKEs**, die erfolgreich ausgeführt und unabhängig geprüft wurden.
+- Die tatsächliche App-Quarantäne bleibt **HARD NO-GO**, solange neutrale Owner, fehlende Rechte, Default-ACL, Cloudflare-Gesamtrouting und negative App-/Medientests ausstehen.
+- Die Quell-Datei bildet einen **festen Zeitpunkt** ab. Vor einer späteren Durchführung müssen Snapshot, Main-App-Stand und Datenbankschema erneut lesend abgeglichen werden. Der neue Source-Katalog darf nicht stillschweigend als aktueller Stand übernommen werden.
+
