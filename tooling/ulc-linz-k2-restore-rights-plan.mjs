@@ -287,3 +287,63 @@ export function evaluateK2OwnerAndDefaultAclEvidence({source,restore}={}){
     deployAuthorized:false,productionReady:false,
   });
 }
+
+
+/**
+ * Effective-privilege read-back contract: values obtained from live
+ * read-only PostgreSQL catalogs of source and K2 restore on 2026-11-15.
+ * An exact aggregate match is a diagnostic, NOT object-level/app proof.
+ */
+export const K2_RUNTIME_RIGHTS_EXPECTED = Object.freeze({
+  source:Object.freeze({
+    database_name:"appbasis_ulc_linz_preview",
+    tables:62,
+    app_select:61,app_insert:61,app_update:60,app_delete:60,
+    backup_select:62,backup_insert:0,backup_update:0,backup_delete:0,
+    security_ingest_insert_columns:15,
+    app_security_insert_columns:0,app_security_select_columns:0,
+    app_sequence_usage:3,app_sequence_select:2,backup_sequence_select:4,
+    app_function_execute:0,public_function_execute:0,
+  }),
+  restoreBefore:Object.freeze({
+    database_name:"ulc_linz_k2_restore_quarantine",
+    tables:62,
+    app_select:0,app_insert:0,app_update:0,app_delete:0,
+    backup_select:0,backup_insert:0,backup_update:0,backup_delete:0,
+    security_ingest_insert_columns:0,
+    app_security_insert_columns:0,app_security_select_columns:0,
+    app_sequence_usage:0,app_sequence_select:0,backup_sequence_select:0,
+    app_function_execute:0,public_function_execute:0,
+  }),
+});
+export function evaluateK2RuntimeRightsEvidence({source,restore}={}){
+  if(!source||typeof source!=="object"||Array.isArray(source)||
+     !restore||typeof restore!=="object"||Array.isArray(restore)){
+    return Object.freeze({status:"BLOCK",failures:Object.freeze(["MISSING_RUNTIME_EVIDENCE"]),appReady:false});
+  }
+  const failures=[];
+  for(const [key,correct] of Object.entries(K2_RUNTIME_RIGHTS_EXPECTED.source)){
+    if(source[key]!==correct) failures.push("SOURCE_DRIFT_"+key.toUpperCase());
+  }
+  if(restore.database_name!=="ulc_linz_k2_restore_quarantine"){
+    failures.push("WRONG_RESTORE_DATABASE");
+  }
+  for(const [key,correct] of Object.entries(K2_RUNTIME_RIGHTS_EXPECTED.source)){
+    if(key==="database_name")continue;
+    if(restore[key]!==correct)failures.push("RESTORE_MISMATCH_"+key.toUpperCase());
+  }
+  const knownBefore=Object.entries(K2_RUNTIME_RIGHTS_EXPECTED.restoreBefore)
+    .every(([key,value])=>restore[key]===value);
+  return Object.freeze({
+    status:failures.length
+      ? knownBefore && failures.every(x=>x.startsWith("RESTORE_MISMATCH_"))
+        ? "KNOWN_RESTORE_PRIVILEGES_MISSING" : "BLOCK"
+      : "CATALOG_AGGREGATES_MATCH_ONLY",
+    failures:Object.freeze(failures),
+    perObjectPrivilegesVerified:false,
+    ownerMembershipVerified:false,
+    realAppNegativeTestsPassed:false,
+    mediaRestoreVerified:false,
+    dbWriteAuthorized:false,appReady:false,deployAuthorized:false,
+  });
+}
