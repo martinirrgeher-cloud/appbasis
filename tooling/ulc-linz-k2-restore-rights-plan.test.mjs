@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { K2_ROLES, K2_RESTORE_PREFLIGHT_EXPECTED, evaluateK2RestorePreflight, validateK2RestoreContract, planK2RestoreRights } from "./ulc-linz-k2-restore-rights-plan.mjs";
+import { K2_ROLES, K2_OWNER_FUTURE_ACL_EXPECTED, evaluateK2OwnerAndDefaultAclEvidence, K2_RESTORE_PREFLIGHT_EXPECTED, evaluateK2RestorePreflight, validateK2RestoreContract, planK2RestoreRights } from "./ulc-linz-k2-restore-rights-plan.mjs";
 
 const file = readFileSync(new URL("./ulc-linz-k2-restore-privilege-contract.json", import.meta.url));
 const EXPECTED_SOURCE_GIT_BLOB = "c9ca9fdc7280d4f6671515b6e6ddb7002636c2dc";
@@ -148,4 +148,46 @@ test("preflight catalog SQL is read-only and requires named restore DB",()=>{
   assert.match(sql,/public_routine_execute_count/);
   assert.doesNotMatch(sql,/^\s*(?:GRANT|REVOKE|CREATE|ALTER|DROP|TRUNCATE|INSERT|UPDATE|DELETE|CALL|DO|COPY)\b/im);
   assert.ok(sql.trim().endsWith(";"));
+});
+
+
+test("real source/restore default-ACL evidence is gap-not-ready, never automatic authorization",()=>{
+  const result=evaluateK2OwnerAndDefaultAclEvidence(structuredClone(K2_OWNER_FUTURE_ACL_EXPECTED));
+  assert.equal(result.status,"OBSERVED_GAPS_REQUIRE_REVIEW");
+  assert.equal(result.restoreHasNoPublicFunctionExec,true);
+  assert.equal(result.sourceBackupDefaultAclEntries,2);
+  assert.equal(result.restoredBackupDefaultAclEntries,0);
+  assert.ok(result.failures.includes("FUTURE_DDL_DEFAULT_ACL_POLICY_UNDECIDED"));
+  assert.ok(result.failures.includes("PRIVILEGED_SECURITY_DEFINER_OWNER"));
+  for(const k of ["grantAuthorized","ownerChangeAuthorized","deployAuthorized","productionReady"])
+    assert.equal(result[k],false);
+});
+test("unexpected role, PUBLIC, database or default ACL evidence is blocked",()=>{
+  for(const side of ["source","restore"]){
+    for(const [key,value] of Object.entries(K2_OWNER_FUTURE_ACL_EXPECTED[side])){
+      const copy=structuredClone(K2_OWNER_FUTURE_ACL_EXPECTED);
+      copy[side][key]=typeof value==="string"?"unreviewed_database":value+1;
+      const result=evaluateK2OwnerAndDefaultAclEvidence(copy);
+      assert.equal(result.status,"BLOCK",side+"."+key);
+      assert.ok(result.failures.includes("DRIFT_"+side.toUpperCase()+"_"+key.toUpperCase()),key);
+    }
+  }
+  assert.equal(evaluateK2OwnerAndDefaultAclEvidence({}).status,"BLOCK");
+  assert.equal(evaluateK2OwnerAndDefaultAclEvidence({source:[],restore:null}).status,"BLOCK");
+});
+test("read-only default-ACL inventory does not write roles or alter default privileges",()=>{
+  const sql=readFileSync(new URL("./ulc-linz-k2-future-acl-owner-readonly.sql",import.meta.url),"utf8");
+  assert.match(sql,/pg_catalog\.pg_default_acl/);
+  assert.match(sql,/pg_catalog\.pg_auth_members/);
+  assert.match(sql,/migration_backup_default_select_entries/);
+  assert.match(sql,/unsafe_runtime_owner_memberships/);
+  assert.doesNotMatch(sql,/^\s*(?:GRANT|REVOKE|CREATE|ALTER|DROP|TRUNCATE|INSERT|UPDATE|DELETE|CALL|DO|COPY)\b/im);
+  assert.equal(sql.trim().endsWith(";"),true);
+});
+test("review plan explicitly blocks silent future-DDL and implicit owner transfer",()=>{
+ const plan=planK2RestoreRights(copy());
+ assert.equal(plan.defaultAclMigrationPolicy,"REQUIRES_OPERATOR_DECISION");
+ assert.equal(plan.legacySourceDefaultAclOwnerMustNotBeCopied,true);
+ assert.equal(plan.runtimeAccessToNewOwnerMustBeDeniedAndIndependentlyVerified,true);
+ assert.ok(plan.phases.every(p=>p.completed===false));
 });
