@@ -153,3 +153,26 @@ test("direct ACL inventory is a separate strictly read-only PostgreSQL catalog q
   assert.doesNotMatch(sql,/^\s*(?:GRANT|REVOKE|CREATE|ALTER|DROP|TRUNCATE|INSERT|UPDATE|DELETE|CALL|DO|COPY)\b/im);
   assert.equal(sql.trim().endsWith(";"),true);
 });
+
+test("unexecuted quarantine function-revoke candidate is strictly bounded",()=>{
+  const sql=readFileSync(
+    new URL("./ulc-linz-k2-quarantine-function-revoke-proposal.sql",import.meta.url),
+    "utf8",
+  );
+  assert.match(sql,/NOT AUTHORIZED FOR EXECUTION/);
+  assert.match(sql,/current_database\(\) <> 'ulc_linz_k2_restore_quarantine'/);
+  assert.match(sql,/table_count <> 62/);
+  assert.match(sql,/p\.prosecdef/);
+  assert.match(sql,/unreviewed function grants/);
+  assert.match(sql,/PUBLIC still has function EXECUTE/);
+  assert.match(sql,/\bBEGIN;/);
+  assert.match(sql,/\bCOMMIT;/);
+  const statements=sql.split("\n").map(line=>line.trim()).filter(line=>/^REVOKE\b/.test(line));
+  assert.deepEqual(statements,[
+    "REVOKE EXECUTE ON FUNCTION public.appbasis_ulc_linz_purge_expired_security_events() FROM PUBLIC;",
+    "REVOKE EXECUTE ON FUNCTION public.ulc_linz_registration_calendar_guard() FROM PUBLIC;",
+  ]);
+  assert.doesNotMatch(sql,/^\s*(?:GRANT|ALTER|DROP|CREATE|TRUNCATE|INSERT|UPDATE|DELETE|CALL|COPY)\b/im);
+  assert.doesNotMatch(sql,/^\s*REVOKE\s+(?!EXECUTE\s+ON\s+FUNCTION)/im);
+  assert.doesNotMatch(sql,/DO\s*\$\$.*\bEXECUTE\b/si);
+});
