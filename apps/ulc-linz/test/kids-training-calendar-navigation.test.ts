@@ -148,11 +148,11 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     expect(sourceEnd).toBeGreaterThan(sourceStart);
     const factory = new Function(
       "calendar", "groupId", "date", "verified", "startOfWeek",
-      "const kidsFollowGroupCalendar = true;\\n" +
-      "const kidsCalendarWeekCache = calendar;\\n" +
-      "const kidsCalendarWeekStart = (value) => startOfWeek(new Date(value + 'T12:00:00Z'));\\n" +
+      "const kidsFollowGroupCalendar = true;\n" +
+      "const kidsCalendarWeekCache = calendar;\n" +
+      "const kidsCalendarWeekStart = (value) => startOfWeek(new Date(value + 'T12:00:00Z'));\n" +
       ULC_KIDS_SCRIPT.slice(sourceStart, sourceEnd) +
-      "\\nreturn kidsHasVerifiedCalendarDateForLoad(groupId, date, verified);",
+      "\nreturn kidsHasVerifiedCalendarDateForLoad(groupId, date, verified);",
     ) as (...args: any[]) => boolean;
     const calendar = new Map([["kids-group|2026-11-16", ["2026-11-17"]]]);
     expect(factory(calendar, "kids-group", "2026-11-17", true, weekStart)).toBe(true);
