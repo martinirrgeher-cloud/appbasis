@@ -58,8 +58,12 @@ export function pilotTrainingWriteGuardActivation(
   const log = connectionIdentity(securityLogConnectionString);
   if (app === null || log === null ||
       app.database !== PREVIEW_DB || log.database !== PREVIEW_DB ||
-      app.role !== APP_ROLE || log.role !== LOG_ROLE ||
-      app.host !== log.host || app.port !== log.port) {
+      app.role !== APP_ROLE || log.role !== LOG_ROLE) {
+    // Cloudflare's two distinct Hyperdrive bindings can expose different
+    // per-binding proxy hostnames, even when they reach the same Neon origin.
+    // The E6H deployment preflight verifies both underlying origin endpoints
+    // and distinct roles before it binds either Hyperdrive ID to the Worker.
+    // Comparing their runtime *proxy* hostnames would reject that valid setup.
     return "invalid";
   }
   return "enabled";

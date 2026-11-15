@@ -33,11 +33,10 @@ describe("ULC pilot write guard: exact Preview operator switch", () => {
     }
   });
 
-  it("blocks wrong database, privileged role and separate host instead of legacy fallback", () => {
+  it("blocks wrong database, privileged role and port instead of legacy fallback", () => {
     const unsafeConnections = [
       ["postgresql://appbasis_ulc_linz_preview_application:test@preview-db.example.test/neondb",log],
       [app,"postgresql://appbasis_ulc_linz_preview_security_log:test@preview-db.example.test/ulc_linz_k2_restore_quarantine"],
-      [app,"postgresql://appbasis_ulc_linz_preview_security_log:test@quarantine-db.example.test/appbasis_ulc_linz_preview"],
       ["postgresql://ulc_linz_k2_restore_owner:test@preview-db.example.test/appbasis_ulc_linz_preview",log],
       [app,"postgresql://appbasis_ulc_linz_preview_application:test@preview-db.example.test/appbasis_ulc_linz_preview"],
       ["postgresql://appbasis_ulc_linz_preview_application:test@preview-db.example.test:5433/appbasis_ulc_linz_preview",log],
@@ -45,6 +44,21 @@ describe("ULC pilot write guard: exact Preview operator switch", () => {
     ] as const;
     for(const [one,two] of unsafeConnections)
       expect(pilotTrainingWriteGuardActivation(approved,one,two)).toBe("invalid");
+  });
+
+  it("accepts distinct Hyperdrive proxy hosts after separately attested origin pairing", () => {
+    const separateProxy = "postgresql://appbasis_ulc_linz_preview_security_log:test@security-log-proxy.example.test:5432/appbasis_ulc_linz_preview";
+    // The deploy preflight attests origin endpoint equality using the Neon
+    // source URLs. These are runtime Hyperdrive proxy addresses, not origins.
+    expect(pilotTrainingWriteGuardActivation(approved, app, separateProxy)).toBe("enabled");
+    expect(pilotTrainingWriteGuardActivation(
+      approved,
+      "postgresql://appbasis_ulc_linz_preview_application:test@app-proxy.example.test/appbasis_ulc_linz_preview",
+      separateProxy,
+    )).toBe("enabled");
+    expect(pilotTrainingWriteGuardActivation(
+      { ...approved, APPBASIS_GENERATED_APP_ID: "other-app" }, app, separateProxy,
+    )).toBe("invalid");
   });
 
   it("rejects malformed connection identities and accepts URL-encoded valid identities", () => {

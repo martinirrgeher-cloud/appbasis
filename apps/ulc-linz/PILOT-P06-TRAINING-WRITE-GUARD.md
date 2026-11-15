@@ -1,6 +1,6 @@
 # ULC Linz – P06: sicherer Anwesenheits-/Anmelde-Pilot auf bestehender Preview
 
-**Stand: Code-Draft. Nicht aktiviert, nicht gemergt und nicht deployed.**
+**Stand 15.11.2026:** P06-Code ist inzwischen in `main`; **Cloudflare-Pilotflag nach fehlgeschlagenem Aktivierungsversuch vorerst auf `disabled` setzen**. B3-Fix bleibt separat bis CI und Betreiberfreigabe ungemergt.
 
 ## Ziel für ca. 30 Vereinsnutzer
 
@@ -18,7 +18,7 @@ Nur nach **separater Merge- und Preview-Deployment-Freigabe** kann eine autorisi
 | \`APPBASIS_RUNTIME_ENVIRONMENT\` | \`generated-preview-ulc-linz\` |
 | \`APPBASIS_GENERATED_APP_ID\` | \`ulc-linz\` |
 
-Zusätzlich müssen **beide** tatsächlich zugewiesenen Hyperdrive-Connection-Strings zur Datenbank \`appbasis_ulc_linz_preview\` auf demselben Host und Standardport 5432 führen: App-Binding mit Rolle \`appbasis_ulc_linz_preview_application\`, Sicherheitsprotokoll-Binding mit Rolle \`appbasis_ulc_linz_preview_security_log\`. Diese Namen wurden im ursprünglichen Betreiber-Screenshot bereits geprüft; der Schalter kontrolliert diese Werte beim Request erneut. Das ersetzt **keinen** Live-PostgreSQL-Branch-/Routenbeweis und es wird **keine** Quarantäne angebunden.
+Zusätzlich müssen die **zugrunde liegenden Neon-Origin-Verbindungen** beider Hyperdrive-Konfigurationen auf dieselbe Datenbank `appbasis_ulc_linz_preview`, denselben Neon-Endpunkt und unterschiedliche, nicht privilegierte Rollen zeigen: `appbasis_ulc_linz_preview_application` und `appbasis_ulc_linz_preview_security_log`. Das verifiziert der bestehende E6H-Deploy-Preflight anhand der Original-Origin-URLs und beiden Hyperdrive-Konfigurationen. **Die zwei zur Laufzeit gelieferten Cloudflare-Hyperdrive-Proxyhostnamen dürfen unterschiedlich sein**; ein Proxyhostname ist nicht der Neon-Origin-Hostname. Die Runtime prüft daher weiterhin nur exakte DB-Namen, Rollen, URI-Schema und Port, die App-/Environment-Kennung und die getrennten Bindings. Bei fehlerhafter Aktivierung bleibt `RUNTIME_NOT_CONFIGURED` fail-closed; der Betreiber muss auf `disabled` zurücksetzen.
 
 **Fail-closed:** Fehlender Schalter oder explizit \`disabled\` = unverändertes Legacy-Verhalten. Ein vorhandener aber falscher Schalter, abweichende Rollen, falscher DB-Name oder eine unzulässige Runtime-Kennung = **HTTP 503 / \`RUNTIME_NOT_CONFIGURED\`**, nicht stillschweigend unsichere Legacy-Schreiboperationen. Bei erwarteter Aktivierung verwendet der einzige gemeinsame Session-Writer den bereits implementierten Modus \`require-live-training-actor-transaction\`. Kein HTTP-Client darf den Schalter aus dem Request-Body setzen.
 
