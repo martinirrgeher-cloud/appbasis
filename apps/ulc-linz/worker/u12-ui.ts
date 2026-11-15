@@ -1568,12 +1568,28 @@ function refreshU12CalendarHint() {
   }
 }
 
+// Retry a calendar GET once only for transient connection/server failures.
+// Never retry denied access (401/403), invalid schedules (400/422), or
+// rejected/invalid JSON. Writes and attendance-save CAS are never retried.
+async function u12RequestCalendarJson(url) {
+  try {
+    return await requestJson(url);
+  } catch (error) {
+    const status = error?.status;
+    if (!(status === 0 || status === 429 ||
+          (typeof status === "number" && status >= 500 && status <= 599))) {
+      throw error;
+    }
+    return requestJson(url);
+  }
+}
+
 async function u12FetchCalendarDates(groupId, weekStart) {
   const cache = u12CalendarWeekCache;
   const generation = attendanceSessionGeneration;
   const cacheKey = groupId + "|" + weekStart;
   if (cache.has(cacheKey)) return cache.get(cacheKey);
-  const result = await requestJson(
+  const result = await u12RequestCalendarJson(
     "/api/modules/kindertraining/calendar?groupId=" + encodeURIComponent(groupId) +
     "&weekStart=" + encodeURIComponent(weekStart));
   if (generation !== attendanceSessionGeneration || cache !== u12CalendarWeekCache) {
@@ -1628,7 +1644,7 @@ async function u12PopulateCalendarChoices(groupId, selected, isCurrent) {
   const generation = attendanceSessionGeneration;
   // Exactly one server-authorized response for the dropdown, instead of
   // eight concurrent calendar HTTP requests and their repeated DB lookups.
-  const result = await requestJson(
+  const result = await u12RequestCalendarJson(
     "/api/modules/kindertraining/calendar?groupId=" + encodeURIComponent(groupId) +
     "&weekStart=" + encodeURIComponent(firstWeek) + "&weeks=8");
   if (generation !== attendanceSessionGeneration ||
