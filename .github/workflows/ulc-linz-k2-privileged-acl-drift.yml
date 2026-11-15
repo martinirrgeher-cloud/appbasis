@@ -6,6 +6,7 @@ on:
       - "tooling/ulc-linz-k2-acl-object-drift.test.mjs"
       - "tooling/ulc-linz-k2-acl-object-readonly.sql"
       - "tooling/ulc-linz-k2-acl-direct-readonly.sql"
+      - "tooling/ulc-linz-k2-quarantine-function-revoke-proposal.sql"
       - "apps/ulc-linz/docs/K2-A03-ACCESS-RESTORE-PROPOSAL.md"
       - ".github/workflows/ulc-linz-k2-privileged-acl-drift.yml"
 permissions:
