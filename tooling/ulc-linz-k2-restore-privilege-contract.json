@@ -1,0 +1,1647 @@
+{
+  "schemaVersion": 1,
+  "capturedUtc": "2026-11-15",
+  "sourceDatabase": "appbasis_ulc_linz_preview",
+  "restoreDatabase": "ulc_linz_k2_restore_quarantine",
+  "sourceOwner": "appbasis_ulc_linz_preview_migration",
+  "existingRestoreOwner": "ulc_linz_k2_restore_owner",
+  "proposedQuarantineOwner": "ulc_linz_k2_object_owner",
+  "sourceEvidence": "read-only pg_catalog, verified against original preview Neon branch",
+  "expected": {
+    "tables": 62,
+    "sequences": 4,
+    "functions": 2,
+    "protectedColumns": 26,
+    "directNonOwnerPrivilegeEntries": 329
+  },
+  "objects": [
+    {
+      "kind": "function",
+      "name": "appbasis_ulc_linz_purge_expired_security_events()",
+      "securityDefiner": true
+    },
+    {
+      "kind": "function",
+      "name": "ulc_linz_registration_calendar_guard()",
+      "securityDefiner": false
+    },
+    {
+      "kind": "sequence",
+      "name": "appbasis_permission_administration_audit_event_id_seq"
+    },
+    {
+      "kind": "sequence",
+      "name": "ulc_linz_lifecycle_audit_event_id_seq"
+    },
+    {
+      "kind": "sequence",
+      "name": "ulc_linz_security_event_log_id_seq"
+    },
+    {
+      "kind": "sequence",
+      "name": "ulc_linz_trainer_identity_audit_event_id_seq"
+    },
+    {
+      "kind": "table",
+      "name": "account"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_athlete"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_athlete_contact"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_athlete_group_membership"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_athletes_deletion"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_exercise_catalog_audience"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_exercise_catalog_favorite"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_exercise_catalog_item"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_exercise_catalog_parameter"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_exercise_catalog_private_media"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_exercise_catalog_similarity"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_exercise_catalog_usage"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_exercise_catalog_video"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_identity_operation"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_identity_security_state"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_permission_administration_audit"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_permission_capability"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_permission_principal"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_permission_principal_grant"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_permission_principal_revoke"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_permission_principal_role"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_permission_role"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_permission_role_capability"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_person"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_trainer"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_trainer_group_membership"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_block"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_block_favorite"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_block_revision"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_block_revision_item"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_block_revision_item_parameter"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_block_usage"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_documentation"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_documentation_revision"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_group"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_plan"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_plan_revision"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_plan_revision_item"
+    },
+    {
+      "kind": "table",
+      "name": "appbasis_training_plan_subject_deletion"
+    },
+    {
+      "kind": "table",
+      "name": "session"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_exercise_catalog_item"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_exercise_favorite"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_exercise_group"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_exercise_parameter"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_lifecycle_audit"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_lifecycle_deletion"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_membership"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_registration_calendar_exception"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_registration_calendar_rule"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_security_event_log"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_subject_scope"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_trainer_identity_audit"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_training_attendance"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_training_module_group"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_training_registration"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_training_registration_change"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_training_session"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_training_trainer_attendance"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_youth_content_category"
+    },
+    {
+      "kind": "table",
+      "name": "ulc_linz_youth_group_category"
+    },
+    {
+      "kind": "table",
+      "name": "user"
+    },
+    {
+      "kind": "table",
+      "name": "verification"
+    }
+  ],
+  "grants": [
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.action",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.actor_principal_id",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.app_id",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.category",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.error_code",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.event_type",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.http_status",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.occurred_at",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.operation",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.organization_id",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.reason_code",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.retained_until",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.schema_version",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.target_id",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "column",
+      "object": "ulc_linz_security_event_log.target_type",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "INSERT"
+      ]
+    },
+    {
+      "kind": "sequence",
+      "object": "appbasis_permission_administration_audit_event_id_seq",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "SELECT",
+        "USAGE"
+      ]
+    },
+    {
+      "kind": "sequence",
+      "object": "appbasis_permission_administration_audit_event_id_seq",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "sequence",
+      "object": "ulc_linz_lifecycle_audit_event_id_seq",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "SELECT",
+        "USAGE"
+      ]
+    },
+    {
+      "kind": "sequence",
+      "object": "ulc_linz_lifecycle_audit_event_id_seq",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "sequence",
+      "object": "ulc_linz_security_event_log_id_seq",
+      "role": "appbasis_ulc_linz_preview_security_ingest",
+      "privileges": [
+        "USAGE"
+      ]
+    },
+    {
+      "kind": "sequence",
+      "object": "ulc_linz_security_event_log_id_seq",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "sequence",
+      "object": "ulc_linz_trainer_identity_audit_event_id_seq",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "USAGE"
+      ]
+    },
+    {
+      "kind": "sequence",
+      "object": "ulc_linz_trainer_identity_audit_event_id_seq",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "account",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "account",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_athlete",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_athlete",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_athlete_contact",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_athlete_contact",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_athlete_group_membership",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_athlete_group_membership",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_athletes_deletion",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_athletes_deletion",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_audience",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_audience",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_favorite",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_favorite",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_item",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_item",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_parameter",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_parameter",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_private_media",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_private_media",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_similarity",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_similarity",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_usage",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_usage",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_video",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_exercise_catalog_video",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_identity_operation",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_identity_operation",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_identity_security_state",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_identity_security_state",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_administration_audit",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_administration_audit",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_capability",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_capability",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_principal",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_principal",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_principal_grant",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_principal_grant",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_principal_revoke",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_principal_revoke",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_principal_role",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_principal_role",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_role",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_role",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_role_capability",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_permission_role_capability",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_person",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_person",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_trainer",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_trainer",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_trainer_group_membership",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_trainer_group_membership",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_block",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_block",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_block_favorite",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_block_favorite",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_block_revision",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_block_revision",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_block_revision_item",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_block_revision_item",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_block_revision_item_parameter",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_block_revision_item_parameter",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_block_usage",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_block_usage",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_documentation",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_documentation",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_documentation_revision",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_documentation_revision",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_group",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_group",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_plan",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_plan",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_plan_revision",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_plan_revision",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_plan_revision_item",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_plan_revision_item",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_plan_subject_deletion",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "appbasis_training_plan_subject_deletion",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "session",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "session",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_exercise_catalog_item",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_exercise_catalog_item",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_exercise_favorite",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_exercise_favorite",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_exercise_group",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_exercise_group",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_exercise_parameter",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_exercise_parameter",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_lifecycle_audit",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_lifecycle_audit",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_lifecycle_deletion",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_lifecycle_deletion",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_membership",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_membership",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_registration_calendar_exception",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_registration_calendar_exception",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_registration_calendar_rule",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_registration_calendar_rule",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_security_event_log",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_subject_scope",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_subject_scope",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_trainer_identity_audit",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "INSERT",
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_trainer_identity_audit",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_training_attendance",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_training_attendance",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_training_module_group",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_training_module_group",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_training_registration",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_training_registration",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_training_registration_change",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_training_registration_change",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_training_session",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_training_session",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_training_trainer_attendance",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_training_trainer_attendance",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_youth_content_category",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_youth_content_category",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_youth_group_category",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "ulc_linz_youth_group_category",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "user",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "user",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "verification",
+      "role": "appbasis_ulc_linz_preview_application",
+      "privileges": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "kind": "table",
+      "object": "verification",
+      "role": "ulc_linz_k2_preview_backup",
+      "privileges": [
+        "SELECT"
+      ]
+    }
+  ],
+  "disclaimer": "This source snapshot is a proposed ACL reference, not an authorization to apply privileges, create roles, alter owners, deploy or connect a Worker."
+}
