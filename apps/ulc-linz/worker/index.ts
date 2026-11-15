@@ -1573,8 +1573,11 @@ async function kindertrainingCalendarResponse(
   }
   const [rule, exceptions] = await Promise.all([
     calendar.readRule(access.organizationId, groupId),
-    // One bounded SQL read replaces the previous eight calendar HTTP reads.
-    calendar.readRangeExceptions(access.organizationId, groupId, weekStart, weekCount),
+    // Preserve the existing single-week API contract and its read path.
+    // Only the dropdown's 8-week request uses the bounded range query.
+    batched
+      ? calendar.readRangeExceptions(access.organizationId, groupId, weekStart, weekCount)
+      : calendar.readWeekExceptions(access.organizationId, groupId, weekStart),
   ]);
   const dates = weekStarts.flatMap((monday) =>
     selectAttendanceCalendarDates({
