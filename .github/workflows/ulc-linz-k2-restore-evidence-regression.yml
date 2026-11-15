@@ -1,0 +1,25 @@
+name: K2 offline restore evidence regression
+on:
+  pull_request:
+    paths:
+      - "tooling/ulc-linz-k2-restore-evidence.mjs"
+      - "tooling/ulc-linz-k2-restore-evidence.test.mjs"
+      - "apps/ulc-linz/docs/K2-E01-RESTORE-E2E-ACCEPTANCE.md"
+      - ".github/workflows/ulc-linz-k2-restore-evidence-regression.yml"
+permissions:
+  contents: read
+jobs:
+  offline-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+      - name: Validate offline-only restore evidence
+        run: |
+          node --check tooling/ulc-linz-k2-restore-evidence.mjs
+          node --test tooling/ulc-linz-k2-restore-evidence.test.mjs
