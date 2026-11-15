@@ -1,0 +1,92 @@
+name: K2 combined offline draft regression
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ulc-linz-k2-combined-offline-regression.yml"
+      - "tooling/ulc-linz-k2-pr-integration.mjs"
+      - "tooling/ulc-linz-k2-pr-integration.test.mjs"
+      - "tooling/ulc-linz-k2-combined-regression.test.mjs"
+      - "apps/ulc-linz/docs/K2-I01-NIGHT-PR-INTEGRATION.md"
+permissions:
+  contents: read
+jobs:
+  cross-package-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Stage exact audited PR HEADs in ephemeral workspace (no merge)
+        shell: bash
+        env:
+          SHA_633: "4622f97ae335a12de815bb4e960512d7dbcb9c97"
+          SHA_634: "e08f9619a37ef2b9d418a70e0fcbbc4483db7286"
+          SHA_635: "363cdc28768e9292d0ed83d979dbb09c5bb691f3"
+          SHA_636: "8c773866fb4a1308dccf0b461ee7b9f6c807467f"
+          SHA_637: "662f44093d8dd8b8872f41486ac407c627aa560b"
+          SHA_638: "4a3304a4248100a2d7558566d85eea943c40cb87"
+        run: |
+          set -euo pipefail
+          stage() {
+            local pr="$1" expected="$2" actual file
+            shift 2
+            git fetch --no-tags --depth=1 origin "refs/pull/$pr/head" >/dev/null
+            actual="$(git rev-parse FETCH_HEAD)"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "BLOCK: PR #$pr changed since audited SHA." >&2
+              exit 1
+            fi
+            for file in "$@"; do
+              mkdir -p "$(dirname "$file")"
+              git show "$actual:$file" > "$file"
+            done
+          }
+          stage 633 "$SHA_633" \
+            docs/ULC-LINZ-K2-R2-RETENTION-CANDIDATE.md \
+            tooling/ulc-linz-k2-retention-plan.mjs \
+            tooling/ulc-linz-k2-retention-plan.test.mjs
+          stage 634 "$SHA_634" \
+            apps/ulc-linz/PRODUCTION-READINESS-K2-M01-MEDIA-INVENTORY.md \
+            tooling/ulc-linz-k2-media-inventory.mjs \
+            tooling/ulc-linz-k2-media-inventory.test.mjs
+          stage 635 "$SHA_635" \
+            apps/ulc-linz/docs/K2-Q01-RESTORE-QUARANTINE-SECURITY-GATES.md \
+            tooling/ulc-linz-k2-restore-boundary.test.mjs
+          stage 636 "$SHA_636" \
+            .github/workflows/ulc-linz-k2-restore-evidence-regression.yml \
+            apps/ulc-linz/docs/K2-E01-RESTORE-E2E-ACCEPTANCE.md \
+            tooling/ulc-linz-k2-restore-evidence.mjs \
+            tooling/ulc-linz-k2-restore-evidence.test.mjs
+          stage 637 "$SHA_637" \
+            .github/workflows/ulc-linz-k2-operator-release-gates.yml \
+            apps/ulc-linz/docs/K2-P01-OPERATOR-RELEASE-GATES.md \
+            tooling/ulc-linz-k2-operator-release-gates.test.mjs
+          stage 638 "$SHA_638" \
+            .github/workflows/ulc-linz-k2-recovery-objectives-regression.yml \
+            apps/ulc-linz/docs/K2-R02-RECOVERY-OBJECTIVES.md \
+            tooling/ulc-linz-k2-recovery-objectives.mjs \
+            tooling/ulc-linz-k2-recovery-objectives.test.mjs
+          # Token is no longer needed; no downloaded test script gets a GitHub token.
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          echo "Six pinned source snapshots overlaid into ephemeral CI workspace; zero git merges."
+      - name: Run all seven source test suites plus actual cross-module regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tooling/ulc-linz-k2-retention-plan.test.mjs \
+            tooling/ulc-linz-k2-media-inventory.test.mjs \
+            tooling/ulc-linz-k2-restore-boundary.test.mjs \
+            tooling/ulc-linz-k2-restore-evidence.test.mjs \
+            tooling/ulc-linz-k2-operator-release-gates.test.mjs \
+            tooling/ulc-linz-k2-recovery-objectives.test.mjs \
+            tooling/ulc-linz-k2-pr-integration.test.mjs \
+            tooling/ulc-linz-k2-combined-regression.test.mjs
+      - name: Explicitly delimit the conclusion
+        if: success()
+        run: |
+          echo "Synthetic combined K2 offline regression PASS. No real media restore, RLS proof, provider action, CI merge or production authorization." >> "$GITHUB_STEP_SUMMARY"
