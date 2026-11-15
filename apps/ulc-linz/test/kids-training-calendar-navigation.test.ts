@@ -31,11 +31,16 @@ function plannedDaysHarness(
   const requestJson = async (url: string) => {
     const params = new URL(url, "https://example.org").searchParams;
     const monday = params.get("weekStart") || "";
-    requested.push(monday);
+    const batched = params.get("weeks") === "8";
+    requested.push(monday + (batched ? "|8" : ""));
     if (invalid) return { groupId: "some-other-group", weekStart: monday, dates: [],
-      calendarEnabled: true, weekdays };
+      ...(batched ? { weekCount: 8 } : {}), calendarEnabled: true, weekdays };
+    const dates = batched
+      ? Array.from({ length: 8 }, (_, i) => weeks[dateShift(monday, i * 7)] || [])
+        .flat()
+      : weeks[monday] || [];
     return { groupId: params.get("groupId"), weekStart: monday,
-      dates: weeks[monday] || [], calendarEnabled: true, weekdays };
+      dates, ...(batched ? { weekCount: 8 } : {}), calendarEnabled: true, weekdays };
   };
   const selectedDate = {
     value: "",
@@ -140,6 +145,21 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     expect(load).toContain("if (!calendarChoicesReady || date !== requestedDate)");
   });
 
+
+  it("loads eight authorized dropdown weeks in one request, not eight", async () => {
+    const { populate, requested, selectedDate } = plannedDaysHarness({
+      "2026-11-09": ["2026-11-10"],
+      "2026-11-16": ["2026-11-17"],
+    });
+    await populate("kids-group", "2026-11-10", () => true);
+    expect(requested).toEqual(["2026-10-19|8"]);
+    expect(selectedDate.options.map(option => option.value)).toEqual([
+      "2026-11-10", "2026-11-17",
+    ]);
+    await expect(plannedDaysHarness({}, true)
+      .populate("kids-group", "2026-11-10", () => true))
+      .rejects.toThrow("INVALID_CALENDAR_RANGE");
+  });
 
   it("reuses only the freshly verified Kids date and never another group or visit", () => {
     const sourceStart = ULC_KIDS_SCRIPT.indexOf("function kidsHasVerifiedCalendarDateForLoad(");
