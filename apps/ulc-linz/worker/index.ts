@@ -94,6 +94,7 @@ import {
 } from "./youth-category-postgres";
 import { UlcTrainingSessionConflictError } from "./training-session-postgres";
 import { trainingWriteGuardHttpResponse } from "./training-write-http-error";
+import { pilotTrainingWriteGuardActivation } from "./pilot-training-write-guard";
 import { validateU12StatisticsDateRange } from "./u12-statistics-postgres";
 import {
   UlcLinzTrainerIdentityConflictError,
@@ -5572,6 +5573,11 @@ function runtimeConfiguration(
     return null;
   }
 
+  const pilotTrainingGuard = pilotTrainingWriteGuardActivation(
+    env, connectionString, securityLogConnectionString,
+  );
+  if (pilotTrainingGuard === "invalid") return null;
+
   const exerciseCatalogMediaStore =
     resolveUlcExerciseCatalogObjectStore(env.EXERCISE_MEDIA);
 
@@ -5583,6 +5589,11 @@ function runtimeConfiguration(
     ...(exerciseCatalogMediaStore === null
       ? {}
       : { exerciseCatalogMediaStore }),
+    // Only a separately approved Preview Worker variable activates P03-I.
+    // Wrong Preview identity or DB role returns 503, not legacy writes.
+    ...(pilotTrainingGuard === "enabled"
+      ? { trainingSessionWriteGuardMode: "require-live-training-actor-transaction" as const }
+      : {}),
     // Explicit two-key release gate plus DB identity/trigger/privileges
     // attestation at runtime. No v17 access for existing Preview/Production.
     ...(env.APPBASIS_REGISTRATION_CALENDAR_V17 === "enabled" &&
