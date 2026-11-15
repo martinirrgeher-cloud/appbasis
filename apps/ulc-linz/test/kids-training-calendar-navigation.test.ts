@@ -167,6 +167,39 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
       .rejects.toThrow("INVALID_CALENDAR_RANGE");
   });
 
+  it("does not invalidate an in-flight calendar response when Kids view reopens", () => {
+    const start = ULC_KIDS_SCRIPT.indexOf("function prepareKidsView()");
+    const end = ULC_KIDS_SCRIPT.indexOf("// Only a confirmed offline state", start);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const factory = new Function(
+      "const kidsFollowGroupCalendar = true;\n" +
+      "let kidsReady = true, kidsLoading = false, kidsSaving = false;\n" +
+      "let kidsCalendarBusy = true;\n" +
+      "let kidsCalendarWeekCache = new Map([['kids-group|2026-11-09', ['2026-11-10']]]);\n" +
+      "const kidsDirtyDates = new Set();\n" +
+      "const kidsUi = { group: { value: 'kids-group' }, date: { value: '2026-11-10' } };\n" +
+      "let loads = 0; const loadKidsAttendance = () => { loads += 1; };\n" +
+      ULC_KIDS_SCRIPT.slice(start, end) +
+      "\nreturn { prepare: prepareKidsView, cache: () => kidsCalendarWeekCache," +
+      " setBusy: (value) => { kidsCalendarBusy = value; }, loads: () => loads };",
+    ) as () => {
+      prepare: () => void;
+      cache: () => Map<string, string[]>;
+      setBusy: (busy: boolean) => void;
+      loads: () => number;
+    };
+    const app = factory();
+    const inFlight = app.cache();
+    app.prepare();
+    expect(app.cache()).toBe(inFlight);
+    expect(app.loads()).toBe(0);
+    app.setBusy(false);
+    app.prepare();
+    expect(app.cache()).not.toBe(inFlight);
+    expect(app.loads()).toBe(1);
+  });
+
   it("retries one transient calendar GET but never a permission denial", async () => {
     const weeks = { "2026-11-09": ["2026-11-10"] };
     const transient = plannedDaysHarness(weeks, false, [2], null, 503);
