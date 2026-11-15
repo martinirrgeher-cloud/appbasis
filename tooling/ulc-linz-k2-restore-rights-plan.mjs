@@ -193,6 +193,7 @@ export const K2_RESTORE_PREFLIGHT_EXPECTED = Object.freeze({
   old_owner_object_count:66,
   relation_acl_count:0,
   routine_count:2,
+  protected_function_definition_digest:"f096a8e6786da42145aa56c2a6e61d87",
   routine_old_owner_count:2,
   protected_definer_count:1,
   public_routine_execute_count:0,
