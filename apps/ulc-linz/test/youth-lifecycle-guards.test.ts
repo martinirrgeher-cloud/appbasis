@@ -15,18 +15,28 @@ describe("ULC youth attendance unsaved-change lifecycle", () => {
     expect(handler).toContain('event.returnValue = ""');
   });
 
-  it("flushes each youth area before switching away, and blocks on save failure", () => {
+  it("flushes each youth area in the background without blocking main navigation", () => {
     const start = ULC_LINZ_APP_SCRIPT.indexOf("async function navigateAppSection(section)");
     const end = ULC_LINZ_APP_SCRIPT.indexOf('for (const control of document.querySelectorAll("[data-nav-view]"))', start);
     const navigation = ULC_LINZ_APP_SCRIPT.slice(start, end);
     expect(start).toBeGreaterThan(-1);
     for (const area of ["u12", "u14", "kids"]) {
       expect(navigation).toContain(
-        'current === "' + area + '" && section !== "' + area + '" &&',
+        'current === "' + area + '" && section !== "' + area + '"',
       );
-      expect(navigation).toContain("!(await " + area + "FlushChanges())) return false;");
+      expect(navigation).toContain('backgroundFlushAttendanceOnLeave("' + area + '",');
+      expect(navigation).toContain(area + "FlushChanges);");
+      expect(navigation).not.toContain("!(await " + area + "FlushChanges())) return false;");
     }
     expect(navigation).toContain("showAppSection(section);");
+    const flush = ULC_LINZ_APP_SCRIPT.slice(
+      ULC_LINZ_APP_SCRIPT.indexOf("function backgroundFlushAttendanceOnLeave("),
+      start,
+    );
+    expect(flush).toContain("if (backgroundAttendanceSaves.has(section)) return;");
+    expect(flush).toContain("if (failed) {");
+    expect(flush).toContain("failedBackgroundAttendanceSaves.add(section);");
+    expect(flush).toContain(".then(() => flush())");
   });
 
   it("prevents sign-out while youth data loads/saves, flushes all drafts before session reset", () => {

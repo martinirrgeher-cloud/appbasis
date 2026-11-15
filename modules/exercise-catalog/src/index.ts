@@ -21,8 +21,17 @@ export {
 } from "./in-memory-repository";
 export {
   PostgresExerciseCatalogRepository,
+  ExerciseCatalogFavoriteDeletedError,
+  ExerciseCatalogUsageSubjectRequiredError,
 } from "./postgres-repository";
 export { ExerciseCatalogService } from "./service";
+export {
+  deleteExerciseCatalogPrivateMediaWithProviderProof,
+} from "./private-media-deletion-coordinator";
+export type {
+  ExerciseCatalogMediaDeletionProvider,
+  ExerciseCatalogPrivateMediaDeleteOutcome,
+} from "./private-media-deletion-coordinator";
 export type {
   CreateExerciseCatalogItemInput,
   ExerciseCatalogCategory,
@@ -40,6 +49,11 @@ export type {
   RegisterExerciseCatalogPrivateMediaInput,
 } from "./domain/catalog";
 export type {
+  ExerciseCatalogFavoriteDeletionResult,
+  ExerciseCatalogFavoriteFenceMode,
+  ExerciseCatalogPersonalDeletionResult,
+  ExerciseCatalogUsageSubjectContext,
+  ExerciseCatalogUsageWriteMode,
   ExerciseCatalogPostgresClient,
   ExerciseCatalogPostgresQueryClient,
   ExerciseCatalogSqlParameter,

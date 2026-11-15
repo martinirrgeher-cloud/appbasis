@@ -1568,12 +1568,28 @@ function refreshU12CalendarHint() {
   }
 }
 
+// Retry a calendar GET once only for transient connection/server failures.
+// Never retry denied access (401/403), invalid schedules (400/422), or
+// rejected/invalid JSON. Writes and attendance-save CAS are never retried.
+async function u12RequestCalendarJson(url) {
+  try {
+    return await requestJson(url);
+  } catch (error) {
+    const status = error?.status;
+    if (!(status === 0 || status === 429 ||
+          (typeof status === "number" && status >= 500 && status <= 599))) {
+      throw error;
+    }
+    return requestJson(url);
+  }
+}
+
 async function u12FetchCalendarDates(groupId, weekStart) {
   const cache = u12CalendarWeekCache;
   const generation = attendanceSessionGeneration;
   const cacheKey = groupId + "|" + weekStart;
   if (cache.has(cacheKey)) return cache.get(cacheKey);
-  const result = await requestJson(
+  const result = await u12RequestCalendarJson(
     "/api/modules/kindertraining/calendar?groupId=" + encodeURIComponent(groupId) +
     "&weekStart=" + encodeURIComponent(weekStart));
   if (generation !== attendanceSessionGeneration || cache !== u12CalendarWeekCache) {
@@ -1604,24 +1620,64 @@ async function u12FetchCalendarDates(groupId, weekStart) {
   return result.dates;
 }
 
+// A Kids arrow or dropdown selection has already validated the exact
+// group/week/date against a fresh server response in the current operation.
+// Only that caller may reuse this verified week; all independent visits,
+// reloads and group changes still start with a fresh calendar query.
+function u12HasVerifiedCalendarDateForLoad(groupId, date, calendarDateVerified) {
+  if (!u12FollowGroupCalendar || !calendarDateVerified) return false;
+  const dates = u12CalendarWeekCache.get(
+    groupId + "|" + u12CalendarWeekStart(date));
+  return Array.isArray(dates) && dates.includes(date);
+}
+
 // An accessible, native select contains only verified training days, unlike
 // a browser date picker which cannot disable individual weekdays reliably.
 async function u12PopulateCalendarChoices(groupId, selected, isCurrent) {
   if (!u12FollowGroupCalendar || !u12Ui.date) return;
   const weekStart = u12CalendarWeekStart(selected);
+  const firstWeek = shiftIsoDate(weekStart, -3 * 7);
   const weekStarts = Array.from({ length: 8 }, (_, i) =>
-    shiftIsoDate(weekStart, (i - 3) * 7));
-  const days = (await Promise.all(
-    weekStarts.map(async (monday) => {
-      try { return await u12FetchCalendarDates(groupId, monday); }
-      catch { return []; } // Keep other authorized weeks available.
-    }),
-  )).flat();
-  if (!isCurrent()) return;
-  if (!days.includes(selected)) throw new Error("SELECTED_DATE_NOT_IN_CALENDAR");
+    shiftIsoDate(firstWeek, i * 7));
+  const validDates = weekStarts.flatMap((monday) => registrationWeekDates(monday));
+  const cache = u12CalendarWeekCache;
+  const generation = attendanceSessionGeneration;
+  // Exactly one server-authorized response for the dropdown, instead of
+  // eight concurrent calendar HTTP requests and their repeated DB lookups.
+  const result = await u12RequestCalendarJson(
+    "/api/modules/kindertraining/calendar?groupId=" + encodeURIComponent(groupId) +
+    "&weekStart=" + encodeURIComponent(firstWeek) + "&weeks=8");
+  if (generation !== attendanceSessionGeneration ||
+      cache !== u12CalendarWeekCache || !isCurrent()) return;
+  const positions = result?.dates?.map((date) => validDates.indexOf(date));
+  if (result?.groupId !== groupId || result?.weekStart !== firstWeek ||
+      result?.weekCount !== 8 || !Array.isArray(result.dates) ||
+      typeof result.calendarEnabled !== "boolean" ||
+      !(result.weekdays === null ||
+        (Array.isArray(result.weekdays) &&
+         result.weekdays.length > 0 &&
+         result.weekdays.length <= 7 &&
+         result.weekdays.every((day, i) => Number.isInteger(day) &&
+           day >= 1 && day <= 7 && (i === 0 || day > result.weekdays[i - 1])))) ||
+      (!result.calendarEnabled && result.weekdays !== null) ||
+      !positions.every((index, i) => index >= 0 &&
+        (i === 0 || index > positions[i - 1])) ||
+      !result.dates.includes(selected)) {
+    throw new Error("INVALID_CALENDAR_RANGE");
+  }
+  u12CalendarEnabled = result.calendarEnabled;
+  u12CalendarRuleWeekdays = result.weekdays;
+  refreshU12CalendarHint();
+  // Reuse this freshly verified, bounded response only within the current
+  // view. Navigating or reopening clears the cache before any fresh check.
+  for (const monday of weekStarts) {
+    const lastDay = shiftIsoDate(monday, 6);
+    cache.set(groupId + "|" + monday, result.dates.filter((date) =>
+      date >= monday && date <= lastDay));
+  }
   const select = u12Ui.date;
   select.replaceChildren();
-  for (const day of [...new Set(days)].sort()) {
+  for (const day of result.dates) {
     const option = document.createElement("option");
     option.value = day;
     option.textContent = germanWeekday(day).slice(0, 2) + " · " + germanDate(day);
@@ -1723,7 +1779,9 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false,
     u12Ui.date.value = chosen;
     // Keep the old draft locked throughout the destination load. Never clear
     // calendarBusy between the last flush and the new attendance snapshot.
-    await loadU12Attendance({ calendarChoicesReady: true });
+    await loadU12Attendance({
+      calendarChoicesReady: true, calendarDateVerified: true,
+    });
   } catch {
     if (generation === attendanceSessionGeneration && u12Ui.group?.value === groupId) {
       showMessage(u12Ui.message,
@@ -1737,7 +1795,9 @@ async function u12NavigateCalendarDate(anchor, direction, includeAnchor = false,
   }
 }
 
-async function loadU12Attendance({ calendarChoicesReady = false } = {}) {
+async function loadU12Attendance({
+  calendarChoicesReady = false, calendarDateVerified = false,
+} = {}) {
   const groupId = u12Ui.group?.value || "";
   let date = u12Ui.date?.value || "";
   if (!u12Ready || u12Loading || u12Saving || !groupId || !date) {
@@ -1747,13 +1807,18 @@ async function loadU12Attendance({ calendarChoicesReady = false } = {}) {
   const generation = attendanceSessionGeneration;
   const loadId = ++u12LoadId;
   if (u12FollowGroupCalendar) {
-    // Revalidate on every new attendance read; never trust a prior visit.
-    u12CalendarWeekCache = new Map();
+    // Never reuse dates from a previous visit: only a just-validated target
+    // from this same guarded navigation may skip the duplicate GET.
+    const verifiedCalendarDate = u12HasVerifiedCalendarDateForLoad(
+      groupId, date, calendarDateVerified);
+    if (!verifiedCalendarDate) u12CalendarWeekCache = new Map();
     u12CalendarBusy = true;
     refreshU12Controls();
     try {
       const requestedDate = date;
-      const dates = await u12FetchCalendarDates(groupId, u12CalendarWeekStart(date));
+      const dates = verifiedCalendarDate
+        ? u12CalendarWeekCache.get(groupId + "|" + u12CalendarWeekStart(date))
+        : await u12FetchCalendarDates(groupId, u12CalendarWeekStart(date));
       if (!dates.includes(date)) {
         date = await u12FindCalendarDate(groupId, date, 1, true);
       }
@@ -1927,6 +1992,10 @@ async function saveU12Attendance() {
           .filter((trainer) => trainer.present).map((trainer) => trainer.trainerId));
         u12TouchedAthletes.clear();
         u12DirtyDates.clear();
+        // A confirmed manual retry also clears the global background warning.
+        if (typeof clearBackgroundAttendanceSaveError === "function") {
+          clearBackgroundAttendanceSaveError("u12");
+        }
       }
       u12AutoSaveFailed = false;
       return true;
@@ -2032,7 +2101,7 @@ async function u12ChangeDate() {
           "Dieser Tag ist kein geplanter Trainingstag. Bitte einen Trainingstag wählen.");
         return;
       }
-      await loadU12Attendance();
+      await loadU12Attendance({ calendarDateVerified: true });
     } catch {
       if (generation === attendanceSessionGeneration && u12Ui.group?.value === groupId) {
         u12Ui.date.value = u12LoadedDate || localIsoDate(new Date());
@@ -2240,13 +2309,15 @@ async function openU12NewAthlete() {
 
 function prepareU12View() {
   if (u12FollowGroupCalendar) {
+    // Reopening Kids while a calendar request is running must NOT replace
+    // its cache: that would reject the fresh in-flight response as stale and
+    // leave "Trainingskalender nicht verfügbar" on an otherwise valid view.
+    // Also preserve pending edits; no update may discard an unsaved draft.
+    if (!u12Ready || !u12Ui.group?.value || u12Loading ||
+        u12Saving || u12CalendarBusy || u12DirtyDates.size > 0) return;
+    // An independent view entry does require a fresh authorized calendar.
     u12CalendarWeekCache = new Map();
-    // Returning from the group-calendar editor must refresh existing options,
-    // unless a draft is pending (never discard unsaved attendance).
-    if (u12Ready && u12Ui.group?.value && !u12Loading &&
-        !u12Saving && !u12CalendarBusy && u12DirtyDates.size === 0) {
-      void loadU12Attendance();
-    }
+    void loadU12Attendance();
     return;
   }
   if (u12Ready && u12Ui.group?.value && u12Ui.date?.value &&

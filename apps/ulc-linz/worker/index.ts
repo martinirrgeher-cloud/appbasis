@@ -60,6 +60,7 @@ import {
   resolveUlcExerciseCatalogObjectStore,
   ULC_EXERCISE_CATALOG_PRIVATE_VIDEO_MAX_BYTES,
 } from "./exercise-catalog-private-media";
+import { deleteUlcPrivateExerciseMediaWithConfirmation } from "./exercise-catalog-media-delete-confirmed";
 import {
   UlcExerciseCatalogConflictError,
   UlcExerciseCatalogNotFoundError,
@@ -92,6 +93,8 @@ import {
   safeYouthTrainingArea,
 } from "./youth-category-postgres";
 import { UlcTrainingSessionConflictError } from "./training-session-postgres";
+import { trainingWriteGuardHttpResponse } from "./training-write-http-error";
+import { pilotTrainingWriteGuardActivation } from "./pilot-training-write-guard";
 import { validateU12StatisticsDateRange } from "./u12-statistics-postgres";
 import {
   UlcLinzTrainerIdentityConflictError,
@@ -1517,17 +1520,35 @@ async function kindertrainingCalendarResponse(
   const access = await authorizeKindertrainingRequest(request, runtime, url, "view");
   if (access instanceof Response) return access;
   const keys = [...url.searchParams.keys()];
-  if (keys.length !== 2 || keys.some(key => key !== "groupId" && key !== "weekStart") ||
+  // The 8-week dropdown gets one server read instead of eight concurrent
+  // independently authorized HTTP/DB round trips. Each navigation still
+  // revalidates its chosen week via the original two-param endpoint.
+  const batched = url.searchParams.has("weeks");
+  if (keys.length !== (batched ? 3 : 2) ||
+      keys.some(key => key !== "groupId" && key !== "weekStart" &&
+        !(batched && key === "weeks")) ||
       url.searchParams.getAll("groupId").length !== 1 ||
-      url.searchParams.getAll("weekStart").length !== 1) {
+      url.searchParams.getAll("weekStart").length !== 1 ||
+      (batched && (url.searchParams.getAll("weeks").length !== 1 ||
+        url.searchParams.get("weeks") !== "8"))) {
     return Response.json({ error: { code: "INVALID_ATTENDANCE_CALENDAR" } },
       { status: 400 });
   }
   const groupId = url.searchParams.get("groupId") || "";
   const weekStart = url.searchParams.get("weekStart") || "";
+  const weekCount = batched ? 8 : 1;
+  let weekStarts: string[];
   let weekDates: readonly string[];
   try {
-    weekDates = attendanceWeekDates(weekStart);
+    // Validate that the anchor is a genuine Monday before building any range.
+    attendanceWeekDates(weekStart);
+    const monday = new Date(weekStart + "T12:00:00.000Z");
+    weekStarts = Array.from({ length: weekCount }, (_, index) => {
+      const current = new Date(monday);
+      current.setUTCDate(current.getUTCDate() + 7 * index);
+      return current.toISOString().slice(0, 10);
+    });
+    weekDates = weekStarts.flatMap((start) => attendanceWeekDates(start));
   } catch {
     return Response.json({ error: { code: "INVALID_ATTENDANCE_CALENDAR" } },
       { status: 400 });
@@ -1541,39 +1562,39 @@ async function kindertrainingCalendarResponse(
   if (!groups.some(group => group.id === groupId)) {
     return kindertrainingGroupNotFound();
   }
-  // A null repository means the v17 feature is intentionally disabled
-  // (e.g. production). Preserve its existing seven-day attendance behavior.
-  // If v17 is enabled but the DB is broken, runtime startup already fails
-  // closed instead of returning a null repository.
   const calendar = runtime.registrationCalendar;
   if (!calendar) {
     return Response.json({
       groupId, weekStart, dates: weekDates, calendarEnabled: false, weekdays: null,
+      ...(batched ? { weekCount } : {}),
     }, {
       headers: { "Cache-Control": "private, no-store" },
     });
   }
   const [rule, exceptions] = await Promise.all([
     calendar.readRule(access.organizationId, groupId),
-    // Always read the entire authorized week freshly, but in one SQL query.
-    // No cross-request cache: v17 rules and special days may change at any time.
-    calendar.readWeekExceptions(access.organizationId, groupId, weekStart),
+    // Preserve the existing single-week API contract and its read path.
+    // Only the dropdown's 8-week request uses the bounded range query.
+    batched
+      ? calendar.readRangeExceptions(access.organizationId, groupId, weekStart, weekCount)
+      : calendar.readWeekExceptions(access.organizationId, groupId, weekStart),
   ]);
-  const dates = selectAttendanceCalendarDates({
-    weekStart,
-    weekdays: rule?.schedule.weekdays ?? null,
-    exceptions: weekDates.map((date) => ({
-      date,
-      kind: exceptions.get(date)?.kind ?? null,
-    })),
-  });
-  // Publish the authoritative schedule state to the Kids day navigator.
-  // No rule and seven explicitly planned days may look identical as a list,
-  // but must not be interpreted identically for the navigation buttons.
+  const dates = weekStarts.flatMap((monday) =>
+    selectAttendanceCalendarDates({
+      weekStart: monday,
+      weekdays: rule?.schedule.weekdays ?? null,
+      exceptions: attendanceWeekDates(monday).map((date) => ({
+        date,
+        kind: exceptions.get(date)?.kind ?? null,
+      })),
+    }),
+  );
+  // Keep rule/exception checks server-authoritative; no cross-request caching.
   return Response.json({
     groupId, weekStart, dates,
     calendarEnabled: true,
     weekdays: rule?.schedule.weekdays ?? null,
+    ...(batched ? { weekCount } : {}),
   }, {
     headers: { "Cache-Control": "private, no-store" },
   });
@@ -1667,9 +1688,12 @@ async function kindertrainingSessionResponse(
           status: "open" | "present" | "excused" | "absent";
         }>,
       },
+      access.actorPrincipalId,
     );
     return Response.json({ snapshot });
   } catch (error) {
+    const blocked = trainingWriteGuardHttpResponse(error);
+    if (blocked) return blocked;
     if (error instanceof UlcTrainingSessionConflictError) {
       return kindertrainingSessionConflict();
     }
@@ -2080,7 +2104,7 @@ async function detailedYouthAreaResponse(
           athleteId: string; status: "open" | "present" | "excused" | "absent";
           contentSlots?: number[];
         }>,
-      });
+      }, access.actorPrincipalId);
       return Response.json({ snapshot }, { headers: { "Cache-Control": "private, no-store" } });
     }
     const groupId = url.searchParams.get("groupId");
@@ -2122,6 +2146,8 @@ async function detailedYouthAreaResponse(
     );
     return Response.json({ report }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
+    const blocked = trainingWriteGuardHttpResponse(error);
+    if (blocked) return blocked;
     if (error instanceof UlcTrainingSessionConflictError) return u12SessionConflict();
     if (error instanceof UlcU12NotFoundError) {
       return Response.json({ error: { code: "YOUTH_GROUP_NOT_FOUND" } }, { status: 404 });
@@ -2230,9 +2256,12 @@ async function u12SessionResponse(
           contentSlots?: number[];
         }>,
       },
+      access.actorPrincipalId,
     );
     return Response.json({ snapshot });
   } catch (error) {
+    const blocked = trainingWriteGuardHttpResponse(error);
+    if (blocked) return blocked;
     if (error instanceof UlcTrainingSessionConflictError) {
       return u12SessionConflict();
     }
@@ -4132,24 +4161,39 @@ async function deleteExerciseCatalogPrivateMedia(
   const store = runtime.exerciseCatalogMediaStore;
   if (store === null) return exerciseCatalogPrivateMediaUnavailable();
 
-  const media = await runtime.exerciseCatalog.requestPrivateMediaDeletion(
+  const result = await deleteUlcPrivateExerciseMediaWithConfirmation({
     organizationId,
     exerciseId,
     mediaId,
-  );
-  if (media === undefined) return exerciseCatalogNotFound();
+    catalog: runtime.exerciseCatalog,
+    store,
+  });
+  if (result.status === "not-found") return exerciseCatalogNotFound();
 
-  // The database request hides the media before any object-store mutation.
-  // R2 delete is idempotent, so a failed final DB delete can be retried safely:
-  // the next DELETE request receives the same pending metadata and deletes the
-  // same storage key again before attempting completion.
-  await store.delete(media.storageKey);
-  await runtime.exerciseCatalog.completePrivateMediaDeletion(
-    organizationId,
-    exerciseId,
-    mediaId,
+  if (result.status !== "deleted") {
+    // The media stays marked pending in SQL and hidden from normal reads;
+    // the same DELETE can safely retry after independent provider proof.
+    // Do not return HTTP 200 until provider absence and SQL finalize agree.
+    return Response.json(
+      {
+        error: {
+          code: "EXERCISE_CATALOG_MEDIA_DELETE_UNCONFIRMED",
+          message: "Die vollständige Medienlöschung konnte noch nicht bestätigt werden.",
+        },
+      },
+      {
+        status: 503,
+        headers: {
+          "cache-control": "private, no-store",
+          "retry-after": "60",
+        },
+      },
+    );
+  }
+  return Response.json(
+    { deleted: true },
+    { headers: { "cache-control": "private, no-store" } },
   );
-  return Response.json({ deleted: true });
 }
 
 class PrivateExerciseVideoRequestError extends Error {
@@ -5547,6 +5591,11 @@ function runtimeConfiguration(
     return null;
   }
 
+  const pilotTrainingGuard = pilotTrainingWriteGuardActivation(
+    env, connectionString, securityLogConnectionString,
+  );
+  if (pilotTrainingGuard === "invalid") return null;
+
   const exerciseCatalogMediaStore =
     resolveUlcExerciseCatalogObjectStore(env.EXERCISE_MEDIA);
 
@@ -5558,6 +5607,11 @@ function runtimeConfiguration(
     ...(exerciseCatalogMediaStore === null
       ? {}
       : { exerciseCatalogMediaStore }),
+    // Only a separately approved Preview Worker variable activates P03-I.
+    // Wrong Preview identity or DB role returns 503, not legacy writes.
+    ...(pilotTrainingGuard === "enabled"
+      ? { trainingSessionWriteGuardMode: "require-live-training-actor-transaction" as const }
+      : {}),
     // Explicit two-key release gate plus DB identity/trigger/privileges
     // attestation at runtime. No v17 access for existing Preview/Production.
     ...(env.APPBASIS_REGISTRATION_CALENDAR_V17 === "enabled" &&

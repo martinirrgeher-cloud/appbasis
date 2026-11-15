@@ -103,6 +103,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
 
       <div id="app-view" hidden>
         <p class="message message--error app-session-message" id="app-session-message" role="alert" hidden></p>
+        <p class="app-background-save-status" id="app-background-save-status" role="status" aria-live="polite" hidden></p>
         <nav class="app-nav" aria-label="Hauptnavigation">
           <div class="app-nav__primary" id="app-nav-primary">
             <button class="app-nav__link is-active" type="button" data-nav-view="home" data-nav-priority="0">Start</button>
@@ -989,6 +990,31 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   font-size: .86rem;
   line-height: 1.4;
 }
+.app-background-save-status {
+  position: fixed;
+  right: 12px;
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  left: 12px;
+  z-index: 29;
+  width: max-content;
+  max-width: min(calc(100% - 24px), 36rem);
+  margin: 0 auto;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: .85rem;
+  font-weight: 600;
+  box-shadow: 0 5px 16px rgb(15 23 42 / 12%);
+  pointer-events: none;
+}
+.app-background-save-status[data-state="failed"] {
+  color: #991b1b;
+  border-color: #fca5a5;
+  background: #fff7f7;
+}
+.app-background-save-status[hidden] { display: none; }
 .app-session-message {
   position: fixed;
   right: 12px;
@@ -2298,6 +2324,7 @@ const elements = {
   passwordSignOut: document.querySelector("#password-sign-out"),
   appSignOut: document.querySelector("#app-sign-out"),
   appSessionMessage: document.querySelector("#app-session-message"),
+  backgroundSaveStatus: document.querySelector("#app-background-save-status"),
   welcomeEyebrow: document.querySelector("#welcome-eyebrow"),
   appMessage: document.querySelector("#app-message"),
   countdownQuickAction: document.querySelector("#countdown-quick-action"),
@@ -2931,14 +2958,94 @@ document.addEventListener("keydown", (event) => {
   if (attendanceWasOpen) elements.appNavAttendance?.focus();
   if (!elements.masterdataImportPreview?.hidden) closeMasterdataImportPreview();
 });
+// Main-menu navigation is independent from a pending attendance POST.
+// The draft and CAS revision stay in the original, still-mounted page until
+// the save finishes. Date/group changes within that page remain serialized.
+const backgroundAttendanceSaves = new Map();
+const failedBackgroundAttendanceSaves = new Set();
+const attendanceSectionNames = {
+  u12: "U12",
+  u14: "U14",
+  kids: "Kindertraining",
+};
+
+function refreshBackgroundAttendanceSaveStatus() {
+  const status = elements.backgroundSaveStatus;
+  if (!status) return;
+  const failed = [...failedBackgroundAttendanceSaves];
+  if (failed.length > 0) {
+    status.dataset.state = "failed";
+    status.textContent = "Nicht gespeichert: " +
+      failed.map((section) => attendanceSectionNames[section]).join(", ") +
+      ". Zurückwechseln und Änderungen prüfen.";
+  } else if (backgroundAttendanceSaves.size > 0) {
+    status.dataset.state = "saving";
+    status.textContent = "Speichert im Hintergrund – du kannst weiterarbeiten.";
+  } else {
+    status.textContent = "";
+    status.removeAttribute("data-state");
+  }
+  status.hidden = failed.length === 0 && backgroundAttendanceSaves.size === 0;
+}
+
+function clearBackgroundAttendanceSaveError(section) {
+  failedBackgroundAttendanceSaves.delete(section);
+  refreshBackgroundAttendanceSaveStatus();
+}
+
+function backgroundFlushAttendanceOnLeave(section, dirty, failed, flush) {
+  if (backgroundAttendanceSaves.has(section)) return;
+  if (!dirty) {
+    failedBackgroundAttendanceSaves.delete(section);
+    refreshBackgroundAttendanceSaveStatus();
+    return;
+  }
+  // A failed POST may already have committed on the server. Never retry
+  // automatically after an uncertain result just because the user navigates.
+  if (failed) {
+    failedBackgroundAttendanceSaves.add(section);
+    refreshBackgroundAttendanceSaveStatus();
+    return;
+  }
+  const operation = Promise.resolve()
+    .then(() => flush())
+    .then((saved) => {
+      if (backgroundAttendanceSaves.get(section) !== operation) return;
+      if (saved) failedBackgroundAttendanceSaves.delete(section);
+      else failedBackgroundAttendanceSaves.add(section);
+    })
+    .catch(() => {
+      if (backgroundAttendanceSaves.get(section) === operation) {
+        failedBackgroundAttendanceSaves.add(section);
+      }
+    })
+    .finally(() => {
+      if (backgroundAttendanceSaves.get(section) === operation) {
+        backgroundAttendanceSaves.delete(section);
+        refreshBackgroundAttendanceSaveStatus();
+      }
+    });
+  backgroundAttendanceSaves.set(section, operation);
+  refreshBackgroundAttendanceSaveStatus();
+}
+
 async function navigateAppSection(section) {
   const current = document.querySelector("[data-app-section]:not([hidden])")?.dataset.appSection || "home";
-  if (current === "u12" && section !== "u12" &&
-      !(await u12FlushChanges())) return false;
-  if (current === "u14" && section !== "u14" &&
-      !(await u14FlushChanges())) return false;
-  if (current === "kids" && section !== "kids" &&
-      !(await kidsFlushChanges())) return false;
+  if (current === "u12" && section !== "u12") {
+    backgroundFlushAttendanceOnLeave("u12",
+      u12Saving || u12DirtyDates.size > 0, u12AutoSaveFailed || u12Conflict,
+      u12FlushChanges);
+  }
+  if (current === "u14" && section !== "u14") {
+    backgroundFlushAttendanceOnLeave("u14",
+      u14Saving || u14DirtyDates.size > 0, u14AutoSaveFailed || u14Conflict,
+      u14FlushChanges);
+  }
+  if (current === "kids" && section !== "kids") {
+    backgroundFlushAttendanceOnLeave("kids",
+      kidsSaving || kidsDirtyDates.size > 0, kidsAutoSaveFailed || kidsConflict,
+      kidsFlushChanges);
+  }
   if (
     current === "training-plans" &&
     section !== "training-plans" &&
@@ -3107,6 +3214,9 @@ async function handlePasswordChange(event) {
 
 function resetAttendanceSessionState() {
   attendanceSessionGeneration += 1;
+  backgroundAttendanceSaves.clear();
+  failedBackgroundAttendanceSaves.clear();
+  refreshBackgroundAttendanceSaveStatus();
 
   selfRegistrationReady = false;
   selfRegistrationLoading = false;
@@ -5008,6 +5118,7 @@ async function saveKindertrainingWeek() {
 
     const failedDates = [];
     let conflictCount = 0;
+    let accessChangedCount = 0;
     let savedCount = 0;
     results.forEach((result, index) => {
       const sessionDate = dirtySnapshots[index].sessionDate;
@@ -5018,13 +5129,16 @@ async function saveKindertrainingWeek() {
       } else {
         failedDates.push(germanDate(sessionDate));
         if (result.reason?.status === 409) conflictCount += 1;
+        if (result.reason?.status === 403) accessChangedCount += 1;
       }
     });
 
     if (failedDates.length > 0) {
-      const guidance = conflictCount > 0
-        ? "Mindestens ein Training wurde zwischenzeitlich geändert. Nicht neu laden, bevor die lokalen Änderungen gesichert sind."
-        : "Der Speicherstatus ist unklar (z. B. bei Verbindungsabbruch). Bitte nicht mehrfach auf Speichern drücken; zuerst Verbindung und Serverstand prüfen.";
+      const guidance = accessChangedCount > 0
+        ? "Die Berechtigung zum Bearbeiten mindestens eines Trainings wurde entzogen. Bitte den Administrator kontaktieren und lokale Änderungen vor dem Neuladen notieren."
+        : conflictCount > 0
+          ? "Mindestens ein Training wurde zwischenzeitlich geändert. Nicht neu laden, bevor die lokalen Änderungen gesichert sind."
+          : "Der Speicherstatus ist unklar (z. B. bei Verbindungsabbruch). Bitte nicht mehrfach auf Speichern drücken; zuerst Verbindung und Serverstand prüfen.";
       showMessage(
         elements.kindertrainingMessage,
         "Nicht bestätigt gespeichert: " + failedDates.join(", ") +

@@ -150,10 +150,27 @@ export class PostgresUlcRegistrationCalendarRepository {
     groupId: string,
     weekStart: string,
   ): Promise<ReadonlyMap<string, UlcRegistrationExceptionRecord>> {
+    return this.readRangeExceptions(organizationId, groupId, weekStart, 1);
+  }
+
+  /**
+   * P10: Read a bounded 1–8 week calendar window with a single scoped SQL
+   * query. Caller still authorizes group access for each HTTP request.
+   * Never cache across HTTP requests; saved calendar updates stay authoritative.
+   */
+  async readRangeExceptions(
+    organizationId: string,
+    groupId: string,
+    weekStart: string,
+    weekCount: number,
+  ): Promise<ReadonlyMap<string, UlcRegistrationExceptionRecord>> {
+    if (!Number.isSafeInteger(weekCount) || weekCount < 1 || weekCount > 8) {
+      throw new UlcRegistrationCalendarDataError();
+    }
     const first = date(weekStart);
     const monday = new Date(first + "T12:00:00.000Z");
     if (monday.getUTCDay() !== 1) throw new UlcRegistrationCalendarDataError();
-    monday.setUTCDate(monday.getUTCDate() + 6);
+    monday.setUTCDate(monday.getUTCDate() + weekCount * 7 - 1);
     const last = monday.toISOString().slice(0, 10);
     const rows = await this.sql.unsafe(
       `SELECT session_date::text AS session_date, kind, revision
@@ -163,7 +180,7 @@ export class PostgresUlcRegistrationCalendarRepository {
         ORDER BY session_date`,
       [identifier(organizationId), identifier(groupId), first, last],
     );
-    if (rows.length > 7) throw new UlcRegistrationCalendarDataError();
+    if (rows.length > weekCount * 7) throw new UlcRegistrationCalendarDataError();
     const exceptions = new Map<string, UlcRegistrationExceptionRecord>();
     for (const row of rows) {
       const sessionDate = date(row.session_date);

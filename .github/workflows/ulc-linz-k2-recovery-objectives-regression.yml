@@ -1,0 +1,21 @@
+name: K2 recovery objectives offline regression
+on:
+  pull_request:
+    paths:
+      - "tooling/ulc-linz-k2-recovery-objectives.mjs"
+      - "tooling/ulc-linz-k2-recovery-objectives.test.mjs"
+      - "apps/ulc-linz/docs/K2-R02-RECOVERY-OBJECTIVES.md"
+      - ".github/workflows/ulc-linz-k2-recovery-objectives-regression.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test tooling/ulc-linz-k2-recovery-objectives.test.mjs
