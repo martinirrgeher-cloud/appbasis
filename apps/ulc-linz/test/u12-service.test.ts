@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AthleteMasterdataSnapshot } from "@appbasis/athletes";
 
@@ -600,4 +600,89 @@ describe("ULC U12 service", () => {
     expect(calls).toBe(0);
   });
 
+});
+
+
+describe("P08 youth training load performance without ACL shortcuts", () => {
+  it("starts a read-only session query while the live group roster is still loading", async () => {
+    let releaseRoster!: () => void;
+    const waitRoster = new Promise<void>((resolve) => { releaseRoster = resolve; });
+    const readRoster = vi.fn(async () => {
+      await waitRoster;
+      return masterdataSnapshot();
+    });
+    const readSession = vi.fn(async () => null);
+    const service = createUlcU12Service({
+      masterdata: { readOrganizationSnapshot: readRoster },
+      moduleGroups: moduleGroups(),
+      sessions: {
+        readSession,
+        async saveSession() { throw new Error("not used"); },
+      },
+    });
+    const pending = service.readSnapshot(ORGANIZATION_ID, GROUP_ID, DATE);
+    // This has to complete BEFORE the roster gate opens; a serial
+    // implementation would hang the test here.
+    await vi.waitFor(() => expect(readSession).toHaveBeenCalledOnce());
+    expect(readRoster).toHaveBeenCalledOnce();
+    expect(readSession).toHaveBeenCalledWith(
+      ORGANIZATION_ID, "u12", GROUP_ID, DATE,
+    );
+    releaseRoster();
+    await expect(pending).resolves.toMatchObject({
+      group: { id: GROUP_ID },
+      sessionDate: DATE,
+      participants: expect.arrayContaining([expect.objectContaining({ athleteId: "athlete-1",
+        firstName: "Anna", lastName: "Auer", birthYear: 2017,
+        notes: null, contacts: [], status: "open", contentSlots: [] })]),
+    });
+  });
+
+  it("never starts a readSession for a group that is not configured for the area", async () => {
+    const readSession = vi.fn(async () => null);
+    const readRoster = vi.fn(async () => masterdataSnapshot());
+    const service = createUlcU12Service({
+      masterdata: { readOrganizationSnapshot: readRoster },
+      moduleGroups: moduleGroups(null),
+      sessions: {
+        readSession,
+        async saveSession() { throw new Error("not used"); },
+      },
+    });
+    await expect(service.readSnapshot(ORGANIZATION_ID, GROUP_ID, DATE))
+      .rejects.toBeInstanceOf(UlcU12NotFoundError);
+    expect(readSession).not.toHaveBeenCalled();
+    expect(readRoster).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid training date before starting a potentially unsafe session query", async () => {
+    const readSession = vi.fn(async () => null);
+    const service = createUlcU12Service({
+      masterdata: { async readOrganizationSnapshot() { return masterdataSnapshot(); } },
+      moduleGroups: moduleGroups(),
+      sessions: {
+        readSession,
+        async saveSession() { throw new Error("not used"); },
+      },
+    });
+    await expect(service.readSnapshot(ORGANIZATION_ID, GROUP_ID, "not-a-date"))
+      .rejects.toThrow();
+    expect(readSession).not.toHaveBeenCalled();
+  });
+
+  it("preserves the roster-denial error even when the parallel stored-session read fails", async () => {
+    const rosterError = new UlcU12NotFoundError();
+    const service = createUlcU12Service({
+      masterdata: {
+        async readOrganizationSnapshot() { throw rosterError; },
+      },
+      moduleGroups: moduleGroups(),
+      sessions: {
+        async readSession() { throw new Error("internal store error"); },
+        async saveSession() { throw new Error("not used"); },
+      },
+    });
+    await expect(service.readSnapshot(ORGANIZATION_ID, GROUP_ID, DATE))
+      .rejects.toBe(rosterError);
+  });
 });

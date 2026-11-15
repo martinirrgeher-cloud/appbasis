@@ -202,19 +202,34 @@ export function createUlcU12Service({
         normalizedGroupId,
         area,
       );
+      // The module/group authorization above must complete before either read.
+      // The masterdata roster and the historical session are independent,
+      // read-only DB queries; run them together to avoid a second round-trip
+      // when switching training days on a mobile connection.
+      // Capture session errors so a rejected roster read keeps its original
+      // (e.g. inactive/foreign group) response without an unhandled rejection.
+      const normalizedSessionDate = isoDate(sessionDate);
+      const sessionRead = Promise.resolve()
+        .then(() => sessions.readSession(
+          normalizedOrganizationId,
+          area,
+          normalizedGroupId,
+          normalizedSessionDate,
+        ))
+        .then(
+          (value) => ({ ok: true as const, value }),
+          (reason: unknown) => ({ ok: false as const, reason }),
+        );
       const context = await resolveContext(
         masterdata,
         normalizedOrganizationId,
         normalizedGroupId,
-        sessionDate,
+        normalizedSessionDate,
         false,
       );
-      const stored = await sessions.readSession(
-        context.organizationId,
-        area,
-        context.group.id,
-        context.sessionDate,
-      );
+      const sessionResult = await sessionRead;
+      if (!sessionResult.ok) throw sessionResult.reason;
+      const stored = sessionResult.value;
       const selected = stored && sessions.readTrainerPresence
         ? await sessions.readTrainerPresence(
             context.organizationId, area, context.group.id, stored.session.id,
