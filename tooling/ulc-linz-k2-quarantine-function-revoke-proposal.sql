@@ -31,6 +31,14 @@ BEGIN
   SELECT COUNT(*)::integer INTO routine_count
   FROM pg_catalog.pg_proc p
   JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public';
+  IF routine_count <> 2 THEN
+    RAISE EXCEPTION 'K2 ACL repair blocked: unexpected public function inventory.';
+  END IF;
+
+  SELECT COUNT(*)::integer INTO routine_count
+  FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public' AND p.pronargs = 0
     AND p.proname IN (
       'appbasis_ulc_linz_purge_expired_security_events',
