@@ -2309,13 +2309,15 @@ async function openU12NewAthlete() {
 
 function prepareU12View() {
   if (u12FollowGroupCalendar) {
+    // Reopening Kids while a calendar request is running must NOT replace
+    // its cache: that would reject the fresh in-flight response as stale and
+    // leave "Trainingskalender nicht verfügbar" on an otherwise valid view.
+    // Also preserve pending edits; no update may discard an unsaved draft.
+    if (!u12Ready || !u12Ui.group?.value || u12Loading ||
+        u12Saving || u12CalendarBusy || u12DirtyDates.size > 0) return;
+    // An independent view entry does require a fresh authorized calendar.
     u12CalendarWeekCache = new Map();
-    // Returning from the group-calendar editor must refresh existing options,
-    // unless a draft is pending (never discard unsaved attendance).
-    if (u12Ready && u12Ui.group?.value && !u12Loading &&
-        !u12Saving && !u12CalendarBusy && u12DirtyDates.size === 0) {
-      void loadU12Attendance();
-    }
+    void loadU12Attendance();
     return;
   }
   if (u12Ready && u12Ui.group?.value && u12Ui.date?.value &&
