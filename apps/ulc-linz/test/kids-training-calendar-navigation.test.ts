@@ -21,6 +21,7 @@ function plannedDaysHarness(
   invalid = false,
   weekdays: number[] | null = [2],
   initiallyLoadedWeekdays: number[] | null = null,
+  firstCalendarStatus: number | null = null,
 ) {
   const sourceStart = ULC_KIDS_SCRIPT.indexOf("function kidsCalendarWeekStart(");
   const sourceEnd = ULC_KIDS_SCRIPT.indexOf("async function loadKidsAttendance(", sourceStart);
@@ -28,14 +29,24 @@ function plannedDaysHarness(
   expect(sourceEnd).toBeGreaterThan(sourceStart);
   const code = ULC_KIDS_SCRIPT.slice(sourceStart, sourceEnd);
   const requested: string[] = [];
+  let calendarFailedOnce = false;
   const requestJson = async (url: string) => {
     const params = new URL(url, "https://example.org").searchParams;
     const monday = params.get("weekStart") || "";
-    requested.push(monday);
+    const batched = params.get("weeks") === "8";
+    requested.push(monday + (batched ? "|8" : ""));
+    if (firstCalendarStatus !== null && !calendarFailedOnce) {
+      calendarFailedOnce = true;
+      throw Object.assign(new Error("TRANSIENT_CALENDAR"), { status: firstCalendarStatus });
+    }
     if (invalid) return { groupId: "some-other-group", weekStart: monday, dates: [],
-      calendarEnabled: true, weekdays };
+      ...(batched ? { weekCount: 8 } : {}), calendarEnabled: true, weekdays };
+    const dates = batched
+      ? Array.from({ length: 8 }, (_, i) => weeks[dateShift(monday, i * 7)] || [])
+        .flat()
+      : weeks[monday] || [];
     return { groupId: params.get("groupId"), weekStart: monday,
-      dates: weeks[monday] || [], calendarEnabled: true, weekdays };
+      dates, ...(batched ? { weekCount: 8 } : {}), calendarEnabled: true, weekdays };
   };
   const selectedDate = {
     value: "",
@@ -140,6 +151,67 @@ describe("G-04.11 Kindertraining day navigation obeys shared group calendar", ()
     expect(load).toContain("if (!calendarChoicesReady || date !== requestedDate)");
   });
 
+
+  it("loads eight authorized dropdown weeks in one request, not eight", async () => {
+    const { populate, requested, selectedDate } = plannedDaysHarness({
+      "2026-11-09": ["2026-11-10"],
+      "2026-11-16": ["2026-11-17"],
+    });
+    await populate("kids-group", "2026-11-10", () => true);
+    expect(requested).toEqual(["2026-10-19|8"]);
+    expect(selectedDate.options.map(option => option.value)).toEqual([
+      "2026-11-10", "2026-11-17",
+    ]);
+    await expect(plannedDaysHarness({}, true)
+      .populate("kids-group", "2026-11-10", () => true))
+      .rejects.toThrow("INVALID_CALENDAR_RANGE");
+  });
+
+  it("does not invalidate an in-flight calendar response when Kids view reopens", () => {
+    const start = ULC_KIDS_SCRIPT.indexOf("function prepareKidsView()");
+    const end = ULC_KIDS_SCRIPT.indexOf("// Only a confirmed offline state", start);
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const factory = new Function(
+      "const kidsFollowGroupCalendar = true;\n" +
+      "let kidsReady = true, kidsLoading = false, kidsSaving = false;\n" +
+      "let kidsCalendarBusy = true;\n" +
+      "let kidsCalendarWeekCache = new Map([['kids-group|2026-11-09', ['2026-11-10']]]);\n" +
+      "const kidsDirtyDates = new Set();\n" +
+      "const kidsUi = { group: { value: 'kids-group' }, date: { value: '2026-11-10' } };\n" +
+      "let loads = 0; const loadKidsAttendance = () => { loads += 1; };\n" +
+      ULC_KIDS_SCRIPT.slice(start, end) +
+      "\nreturn { prepare: prepareKidsView, cache: () => kidsCalendarWeekCache," +
+      " setBusy: (value) => { kidsCalendarBusy = value; }, loads: () => loads };",
+    ) as () => {
+      prepare: () => void;
+      cache: () => Map<string, string[]>;
+      setBusy: (busy: boolean) => void;
+      loads: () => number;
+    };
+    const app = factory();
+    const inFlight = app.cache();
+    app.prepare();
+    expect(app.cache()).toBe(inFlight);
+    expect(app.loads()).toBe(0);
+    app.setBusy(false);
+    app.prepare();
+    expect(app.cache()).not.toBe(inFlight);
+    expect(app.loads()).toBe(1);
+  });
+
+  it("retries one transient calendar GET but never a permission denial", async () => {
+    const weeks = { "2026-11-09": ["2026-11-10"] };
+    const transient = plannedDaysHarness(weeks, false, [2], null, 503);
+    expect(await transient.fetch("kids-group", "2026-11-09"))
+      .toEqual(["2026-11-10"]);
+    expect(transient.requested).toEqual(["2026-11-09", "2026-11-09"]);
+
+    const forbidden = plannedDaysHarness(weeks, false, [2], null, 403);
+    await expect(forbidden.fetch("kids-group", "2026-11-09"))
+      .rejects.toMatchObject({ status: 403 });
+    expect(forbidden.requested).toEqual(["2026-11-09"]);
+  });
 
   it("reuses only the freshly verified Kids date and never another group or visit", () => {
     const sourceStart = ULC_KIDS_SCRIPT.indexOf("function kidsHasVerifiedCalendarDateForLoad(");

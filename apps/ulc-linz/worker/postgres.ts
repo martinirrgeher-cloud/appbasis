@@ -182,7 +182,8 @@ export interface GeneratedPostgresApplicationRuntime {
    * approved schema-v17 Preview migration and runtime activation.
    */
   registrationCalendar?: Pick<PostgresUlcRegistrationCalendarRepository,
-    "readRule" | "writeRule" | "readException" | "readWeekExceptions" | "writeException"> | null;
+    "readRule" | "writeRule" | "readException" | "readWeekExceptions" |
+    "readRangeExceptions" | "writeException"> | null;
   u12: ReturnType<typeof createUlcU12Service>;
   /** Separate detailed youth modules; optional only for historical test fixture runtimes. */
   u14?: ReturnType<typeof createUlcYouthAreaService>;

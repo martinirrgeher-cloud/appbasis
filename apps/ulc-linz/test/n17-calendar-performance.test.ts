@@ -40,6 +40,50 @@ describe("N17 calendar week batching and navigation critical path", () => {
     ]);
   });
 
+  it("reads eight Kids calendar weeks as one scoped SQL request", async () => {
+    const queries: Array<{ statement: string; params: unknown[] }> = [];
+    const calendar = new PostgresUlcRegistrationCalendarRepository({
+      unsafe: async (statement, params = []) => {
+        queries.push({ statement, params });
+        return [
+          { session_date: "2026-11-10", kind: "cancelled", revision: 1 },
+          { session_date: "2026-12-25", kind: "extra", revision: 2 },
+        ];
+      },
+    });
+    const range = await calendar.readRangeExceptions(
+      "org-a", "kids-group", "2026-11-09", 8);
+    expect([...range.keys()]).toEqual(["2026-11-10", "2026-12-25"]);
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.statement).toContain(
+      "organization_id = $1 AND group_id = $2");
+    expect(queries[0]?.params).toEqual([
+      "org-a", "kids-group", "2026-11-09", "2027-01-03",
+    ]);
+  });
+
+  it("denies invalid or unbounded multiweek calendar reads", async () => {
+    const calendar = new PostgresUlcRegistrationCalendarRepository({
+      unsafe: async () => [],
+    });
+    for (const count of [0, 9, 1.5]) {
+      await expect(calendar.readRangeExceptions(
+        "org-a", "kids-group", "2026-11-09", count))
+        .rejects.toBeInstanceOf(UlcRegistrationCalendarDataError);
+    }
+    await expect(calendar.readRangeExceptions(
+      "org-a", "kids-group", "2026-11-10", 8))
+      .rejects.toBeInstanceOf(UlcRegistrationCalendarDataError);
+    const rogue = new PostgresUlcRegistrationCalendarRepository({
+      unsafe: async () => [
+        { session_date: "2027-01-04", kind: "extra", revision: 1 },
+      ],
+    });
+    await expect(rogue.readRangeExceptions(
+      "org-a", "kids-group", "2026-11-09", 8))
+      .rejects.toBeInstanceOf(UlcRegistrationCalendarDataError);
+  });
+
   it("fails closed on invalid week boundaries, cross-week dates and duplicates", async () => {
     const invalidWeek = new PostgresUlcRegistrationCalendarRepository({
       unsafe: async () => [],
