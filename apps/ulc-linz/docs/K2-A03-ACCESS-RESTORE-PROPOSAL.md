@@ -192,3 +192,12 @@ Der Offline-Prüfer `evaluateK2RuntimeRightsEvidence` trennt sauber zwischen **`
 - **Nachträgliche Abnahme:** exakte Soll-Summen dieses Tabellenvergleichs **plus** 94er per-Objekt-/Spaltenmatrix, Ownership-/Rollen-Set-/Inherit-Rechte, Sicherheitslog-Denials, echte isolierte Test-App und Medien-Restore; anschließende bewusste Entscheidung über wiederverwendbaren Restore-Ablauf.
 
 **Änderungsgrenze dieses größeren Pakets:** ausschließlich GitHub-Draft #642, Offline-CI und SELECT-Abfragen an beiden Datenbanken. Keine weitere DB-Schreibaktion, kein Merge, kein Deployment, keine Provider- oder Cloudflare-Konfigurationsänderung.
+
+
+### Eigentümerwechsel: zusätzliche PostgreSQL-Schema-Voraussetzung (real geprüft)
+
+Ein ergänzender read-only `has_schema_privilege(...,'public','CREATE')`-Vergleich ergab: Der eingeschränkte **originale Migrationseigentümer** besitzt auf der Quell-DB `CREATE` für `public`. Auf dem Restore fehlt ihm dieses Recht, während der **alte privilegierte Restore-Owner** dort `CREATE` besitzt. Schema-Owner ist in beiden Datenbanken `pg_database_owner`. Der vorgeschlagene neutrale `NOLOGIN`-Objektowner **existiert noch nicht** und besitzt somit keine nachweisbaren Schema-Rechte.
+
+**Harter technischer Stop:** `ALTER TABLE/SEQUENCE/FUNCTION ... OWNER TO ...` setzt im regulären PostgreSQL-Berechtigungsmodell neben der ausführenden Objekt-Owner-/Rollenbefugnis grundsätzlich auch ausreichende Rechte des **neuen Owners** am Schema voraus (insbesondere `CREATE`). Der Plan setzt dieses Recht deshalb **nicht stillschweigend voraus**, sondern verlangt vor einem echten Eigentümerwechsel die separate Prüfung und Freigabe eines minimalen `public`-Schema-Privilege-Konzepts für die neutrale Ownerrolle. Eine beliebige `GRANT CREATE`-Zuweisung an Runtime-/Backup-Rollen oder `PUBLIC` bleibt verboten. Nach Eigentümerwechsel sind Mitgliedschaften, `SET ROLE`-/Inherit-Rechte und Funktions-Denials erneut zu testen.
+
+Damit ist das Eigentümerpaket **fachlich vorbereitet, aber nicht ausführungsfreigegeben**. Keine zusätzliche SQL-Write-Aktion ist erfolgt.
