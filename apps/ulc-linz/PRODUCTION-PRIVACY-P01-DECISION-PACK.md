@@ -40,6 +40,8 @@ Der vorangegangene Abgleich **41 vs. 34 Migrationen** ist in der aktuellen Inven
 
 **P01-Gate:** Der **statische** Migrationsabgleich auf 41 ist erledigt; personenbezogene Feldbehandlung, aktuelle Deploy-Migrationen, freigegebene Retention und vollständige Cross-Owner-Erasure- sowie Restore-Belege sind **weiterhin offen**.
 
+**Neuer Laufzeitbefund (15.11., reine Inventur):** Die laufende Preview enthält **62** Anwendungstabellen, davon zwei v17-Kalendertabellen außerhalb des bisherigen v16-Inventars; vier der 64 statisch deklarierten Tabellen sind dort noch nicht installiert. Der exakte Vergleich und die notwendigen Folgeschritte stehen im [P01-Beschlussvorschlag](./PRODUCTION-PRIVACY-P01-OPERATOR-APPROVAL-PROPOSAL.md). Keine Live-Migration oder Fristenaktivierung aus dieser Feststellung ableiten.
+
 ## Produktive Providerbelege: noch offen
 
 Das aktuelle `privacy/m5-provider-compliance-inventory.json` führt **Cloudflare** (Worker/Hyperdrive) und **Neon PostgreSQL** (Zielregion EU/Frankfurt) auf, jeweils mit offenen App-Produktionsbelegen. **Eine angegebene Zielregion ist keine bestätigte tatsächliche Produktionsregion.** Erforderlich: Vertrags-/AVV-/Unterauftragsverarbeiter-Nachweis, Region, Verschlüsselung, genaue Snapshot-/Backup-Aufbewahrung, Restore-Fähigkeit, Zuständigkeit und geprüfte Gültigkeit.
