@@ -175,3 +175,41 @@ export function planK2RestoreRights(snapshot){
   audited:validated,
  });
 }
+
+
+/**
+ * Checks the actual READ-ONLY, pre-repair K2 catalog state.
+ * NOT a physical branch fingerprint; operator must verify Neon/Worker separately.
+ */
+export const K2_RESTORE_PREFLIGHT_EXPECTED = Object.freeze({
+  exact_database_name:true,
+  table_count:62,
+  sequence_count:4,
+  old_owner_object_count:66,
+  relation_acl_count:0,
+  routine_count:2,
+  routine_old_owner_count:2,
+  protected_definer_count:1,
+  public_routine_execute_count:0,
+  app_routine_execute_count:0,
+  proposed_owner_exists_count:0,
+  privileged_current_owner_count:1,
+  app_select_tables:0,
+});
+export function evaluateK2RestorePreflight(row){
+  if(!row||typeof row!=="object"||Array.isArray(row))
+    return Object.freeze({status:"BLOCK",failures:Object.freeze(["MISSING_CATALOG_ROW"]),writeAuthorized:false});
+  const failures=[];
+  for(const [key,expected] of Object.entries(K2_RESTORE_PREFLIGHT_EXPECTED)){
+    if(row[key]!==expected)failures.push("MISMATCH_"+key.toUpperCase());
+  }
+  return Object.freeze({
+    status:failures.length?"BLOCK":"CATALOG_MATCH_ONLY",
+    failures:Object.freeze(failures),
+    physicalBranchIndependentlyVerified:false,
+    cloudflareAccountWideIsolationVerified:false,
+    writeAuthorized:false,
+    deployAuthorized:false,
+    appRestoreReady:false,
+  });
+}
