@@ -149,6 +149,9 @@ export function planK2RestoreRights(snapshot){
   status:"REVIEW_ONLY", targetDatabase:snapshot.restoreDatabase,
   targetBranchMustBeIndependentlyConfirmed:true,
   oldOwnerRoleHasDangerousCreateRoleAndBypassRls:true,
+  defaultAclMigrationPolicy:"REQUIRES_OPERATOR_DECISION",
+  legacySourceDefaultAclOwnerMustNotBeCopied:true,
+  runtimeAccessToNewOwnerMustBeDeniedAndIndependentlyVerified:true,
   isolatedOwnerProposal:Object.freeze({
    role:K2_ROLES.newOwner,canLogin:false,createRole:false,
    createDb:false,superuser:false,bypassRls:false,inherit:false,
@@ -211,5 +214,70 @@ export function evaluateK2RestorePreflight(row){
     writeAuthorized:false,
     deployAuthorized:false,
     appRestoreReady:false,
+  });
+}
+
+
+/**
+ * Read-only default-ACL/ownership evidence compared to the observed real
+ * source and restore catalogs (2026-11-15). Evidence is NOT approval.
+ * A NOLOGIN owner alone cannot guarantee isolation if runtime roles can
+ * inherit or SET ROLE to it, or if privileged migration roles own functions.
+ * Default privileges apply to the role which CREATES future objects; granting
+ * defaults for the new NOLOGIN owner is not a substitute for a future DDL plan.
+ */
+export const K2_OWNER_FUTURE_ACL_EXPECTED = Object.freeze({
+  source:Object.freeze({
+    database_name:"appbasis_ulc_linz_preview",
+    public_default_acl_configs:4,
+    migration_backup_default_select_entries:2,
+    explicit_public_function_default_exec:0,
+    unsafe_runtime_owner_memberships:0,
+    elevated_restore_owner:0,
+    neutral_owner_exists:0,
+    restricted_migration_owner:1,
+  }),
+  restore:Object.freeze({
+    database_name:"ulc_linz_k2_restore_quarantine",
+    public_default_acl_configs:2,
+    migration_backup_default_select_entries:0,
+    explicit_public_function_default_exec:0,
+    unsafe_runtime_owner_memberships:0,
+    elevated_restore_owner:1,
+    neutral_owner_exists:0,
+    restricted_migration_owner:1,
+  }),
+});
+export function evaluateK2OwnerAndDefaultAclEvidence({source,restore}={}){
+  const failures=[];
+  for(const [label,value] of [["source",source],["restore",restore]]){
+    const expected=K2_OWNER_FUTURE_ACL_EXPECTED[label];
+    if(!value||typeof value!=="object"||Array.isArray(value)){
+      failures.push("MISSING_"+label.toUpperCase()+"_CATALOG");continue;
+    }
+    for(const [field,correct] of Object.entries(expected)){
+      if(value[field]!==correct)
+        failures.push("DRIFT_"+label.toUpperCase()+"_"+field.toUpperCase());
+    }
+  }
+  if(failures.length)return Object.freeze({
+    status:"BLOCK",failures:Object.freeze(failures),grantAuthorized:false,
+    ownerChangeAuthorized:false,deployAuthorized:false,productionReady:false,
+  });
+  return Object.freeze({
+    status:"OBSERVED_GAPS_REQUIRE_REVIEW",
+    failures:Object.freeze([
+      "PRIVILEGED_SECURITY_DEFINER_OWNER",
+      "NEUTRAL_NOLOGIN_OWNER_NOT_CREATED",
+      "FUTURE_DDL_DEFAULT_ACL_POLICY_UNDECIDED",
+      "DEFAULT_ACL_SOURCE_RESTORE_DIFFER",
+      "ROLE_SET_AND_INHERIT_GRAPH_REQUIRES_INDEPENDENT_ATTESTATION",
+    ]),
+    restoreHasNoPublicFunctionExec:true,
+    oldOwnerStillTooPrivileged:true,
+    sourceBackupDefaultAclEntries:2,
+    restoredBackupDefaultAclEntries:0,
+    grantAuthorized:false,ownerChangeAuthorized:false,
+    deployAuthorized:false,productionReady:false,
   });
 }
