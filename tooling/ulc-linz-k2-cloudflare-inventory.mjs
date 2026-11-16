@@ -101,7 +101,7 @@ function markBinding(binding, worker, hyperdriveRefs, review, serviceEdges) {
       serviceEdges.add(target);
     }
   }
-  if (DB_NAME.test(name) && (type === 'secret_text' || type === 'plain_text' || type === 'secret_key' || type === 'secret')) {
+  if (DB_NAME.test(name) && type !== 'hyperdrive' && type !== 'service') {
     review.push({ worker, code: 'POSSIBLE_DIRECT_DB_VARIABLE' });
   }
 }
@@ -139,7 +139,7 @@ export async function inspectK2Cloudflare({ accountId, apiToken }, { fetchImpl =
         !Array.isArray(deployments.result?.deployments)) fail('WORKER_METADATA_INCOMPLETE');
     const active = deployments.result.deployments[0];
     if (!active || !Array.isArray(active.versions) || active.versions.length === 0 ||
-        deployments.result_info?.total_pages > 1) fail('ACTIVE_DEPLOYMENT_INCOMPLETE');
+) fail('ACTIVE_DEPLOYMENT_INCOMPLETE');
     const versionIds = new Set();
     for (const version of active.versions) {
       if (typeof version?.version_id !== 'string' || !UUID.test(version.version_id) ||
