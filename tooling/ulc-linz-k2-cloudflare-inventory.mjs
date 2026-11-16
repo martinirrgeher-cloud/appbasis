@@ -138,8 +138,8 @@ export async function inspectK2Cloudflare({ accountId, apiToken }, { fetchImpl =
     if (settings.result?.bindings === undefined || !Array.isArray(secrets.result) ||
         !Array.isArray(deployments.result?.deployments)) fail('WORKER_METADATA_INCOMPLETE');
     const active = deployments.result.deployments[0];
-    if (!active || !Array.isArray(active.versions) || active.versions.length === 0 ||
-) fail('ACTIVE_DEPLOYMENT_INCOMPLETE');
+    if (!active || !Array.isArray(active.versions) || active.versions.length === 0)
+      fail('ACTIVE_DEPLOYMENT_INCOMPLETE');
     const versionIds = new Set();
     for (const version of active.versions) {
       if (typeof version?.version_id !== 'string' || !UUID.test(version.version_id) ||
