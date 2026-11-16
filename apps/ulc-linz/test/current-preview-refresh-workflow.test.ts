@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const workflow = readFileSync(
@@ -53,6 +54,31 @@ describe("ULC current UI preview refresh: no historical schema rollback", () => 
     expect(workflow).toContain('401|403) ;;');
     expect(workflow).toContain("Verify preview application database binding");
     expect(workflow).toContain("Verify preview UI and protected audit path");
+  });
+
+  it("parses the exact E6H embedded JS config renderer before a provider deploy", () => {
+    const stepStart = workflow.indexOf(
+      "      - name: Render standard-module preview config",
+    );
+    expect(stepStart).toBeGreaterThanOrEqual(0);
+    const marker = "node --input-type=module <<'NODE'";
+    const start = workflow.indexOf(marker, stepStart);
+    expect(start).toBeGreaterThan(stepStart);
+    const end = workflow.indexOf("\n          NODE", start);
+    expect(end).toBeGreaterThan(start);
+
+    // The GitHub runner dedents the run: block before feeding it to Node.
+    // Check the exact embedded source: TypeScript typecheck alone never sees it.
+    const inlineSource = workflow
+      .slice(start + marker.length, end)
+      .replace(/^ {10}/gm, "");
+    expect(inlineSource).toContain("pilotTrainingOriginAttested: true");
+    const check = spawnSync(
+      process.execPath, ["--input-type=module", "--check"],
+      { input: inlineSource, encoding: "utf8", timeout: 5000 },
+    );
+    expect(check.error).toBeUndefined();
+    expect(check.status, check.stderr).toBe(0);
   });
 
   it("does not execute migrations or provider resource provisioning", () => {

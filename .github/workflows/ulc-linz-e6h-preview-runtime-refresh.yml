@@ -284,9 +284,9 @@ jobs:
             buildSha: process.env.GITHUB_SHA,
             entrypoint: "./worker/preview-exercise-catalog-standard.ts",
             registrationCalendarV17: true,
-            # The steps above validate canonical Neon source URLs and resolve
-            # both independently cache-disabled Hyperdrive origin configs.
-            # Generate the commit-bound proof only AFTER those validations.
+            // The steps above validate canonical Neon source URLs and resolve
+            // both independently cache-disabled Hyperdrive origin configs.
+            // Generate the commit-bound proof only AFTER those validations.
             pilotTrainingOriginAttested: true,
             r2BucketName: "appbasis-ulc-linz-preview-exercise-media",
             r2Jurisdiction: "eu",
