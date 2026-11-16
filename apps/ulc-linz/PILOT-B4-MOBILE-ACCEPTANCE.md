@@ -36,7 +36,7 @@
 | T05 | Trainer → Trainingsplanung | Testplan ändern und ohne Speichern-Button navigieren; zurückkommen | Autosave bzw. klare noch-offene/Fehler-Rückmeldung; keine stillen Datenverluste |
 | S01 | IRG-Testathlet → Selbstanmeldung | Für einen erlaubten Tag selbst anmelden, Seite neu laden und wieder abmelden | Eigene Anmeldung persistiert, unzulässige Kalendertage nicht als zulässig dargestellt |
 | S02 | IRG → Anmeldefrist / Proxy | Fristüberschreitung oder gesperrten Tag prüfen; Proxy nur mit bereits autorisierter Testrolle | Keine unzulässige Anmeldung möglich; keine fremden Athleten auswählbar |
-| F01 | Trainer → Offline/Netzfehler | **Nur bei fiktivem Testtermin:** Verbindung vor einem noch nicht gesendeten Entwurf kurz deaktivieren und wiederherstellen | Entwurf sichtbar; kein heimliches doppeltes POST; bei unsicherem Ergebnis klare Wiederholungs-/Konfliktinformation |
+| F01 | Trainer → Offline/Netzfehler / Abmelden | **Nur bei fiktivem Testtermin:** Verbindung vor einem noch nicht gesendeten Entwurf kurz deaktivieren und wiederherstellen; bei offenem oder fehlgeschlagenem Speichervorgang Abmelden versuchen | Entwurf sichtbar; kein heimliches doppeltes POST; bei unbestätigtem Ergebnis blockiert Abmelden mit klarer Meldung bis zur Prüfung; bei normalem Entwurf bleibt Autosave erhalten |
 
 **Umfang bewusst begrenzt:** 13 Checks, keine zweite Abnahme bereits geprüfter Detailoptionen, kein verpflichtender Volltest aller Rollenvarianten oder langfristiger Performance-Benchmarks.
 
@@ -45,7 +45,7 @@
 | Bereich | Vorhandene Tests | Nicht damit bewiesen |
 | --- | --- | --- |
 | U12/U14/Kinder Parität & Date Navigation | `youth-attendance-parity.test.ts`, `kids-training-calendar-navigation.test.ts`, `u12-athlete-return.test.ts` | Tatsächliche Handybedienung und reale Netzwerkzeiten |
-| Verlässliches Speichern / Offline / Navigation | `p07-background-attendance-navigation.test.ts`, `youth-network-reliability-g02.test.ts`, `youth-autosave-notes.test.ts` | Echte End-to-End-Sitzung mit Unterbrechung |
+| Verlässliches Speichern / Offline / Navigation / Abmelden | `p07-background-attendance-navigation.test.ts`, `youth-network-reliability-g02.test.ts`, `youth-autosave-notes.test.ts`; **neu in diesem Branch:** `b4-signout-pending-attendance.test.ts` | Echte End-to-End-Sitzung mit Unterbrechung; neuer B4-Code/Test noch ohne CI |
 | Trainer-Anwesenheit / Statistik / CSV | `youth-trainer-attendance.test.ts`, `youth-statistics-a042.test.ts`, `u12-statistics-export.test.ts` | Fachliche Plausibilitätsabnahme anhand Testterminen |
 | IRG / Kalender / Fristen / Proxy | `self-registration-calendar-service.test.ts`, `self-registration-service.test.ts`, `registration-calendar.postgres.e2e.test.ts` | Reale Bedienberechtigung einer Testathletenrolle |
 | Athleten / Rollen / Funktionsprofile | `athlete-complete-create.test.ts`, `user-admin-access-roles.test.ts`, `trainer-identity.postgres.e2e.test.ts` | Bedienablauf von Anlage bis Rechtwechsel |
@@ -64,6 +64,6 @@ Ergebnisse gesammelt zurückmelden, z. B. `A01–A05 PASS; T01 FAIL (nach Neulad
 
 ## 6. Vorgehen während GitHub Actions gestört ist
 
-- Dieser Stand ist **Vorbereitungsarbeit im Branch**, nicht in der laufenden App. Kein Mergen/Deployen nötig, um mit fiktiven Testpersonen die alte funktionierende Preview zu bedienen.
+- Dieser Stand enthält **Abnahmeplan plus kleinen Sign-out-Sicherheitsfix** in einem separaten Branch, nicht in der laufenden App. Kein Mergen/Deployen nötig, um mit fiktiven Testpersonen die alte funktionierende Preview zu bedienen. Die neuen B4-Tests wurden **noch nicht in CI ausgeführt**, solange GitHub Actions blockiert.
 - GitHub-Lauf `43940894792` nicht durch parallele Deploys oder geänderte Concurrency umgehen. Nach GitHub-Klärung den neuen B3-Build gezielt deployen und erst bei `READY` den Sicherheitscheck fortsetzen.
 - Nach gesammelt gemeldeten B4-Abweichungen **ein gemeinsamer kleiner Fehlerbehebungs-PR**, statt zahlreiche getrennte Details.
