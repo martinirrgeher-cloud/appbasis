@@ -214,6 +214,8 @@ export const K2_RESTORE_PREFLIGHT_EXPECTED = Object.freeze({
   exact_database_name:true,
   table_count:62,
   sequence_count:4,
+  identity_sequence_link_count:4,
+  reviewed_identity_sequence_link_count:4,
   old_owner_object_count:66,
   relation_acl_count:0,
   routine_count:2,
