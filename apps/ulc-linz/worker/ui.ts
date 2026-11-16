@@ -3331,6 +3331,31 @@ function resetMasterdataSessionState() {
 async function handleSignOut() {
   if (busy) return;
 
+  // Navigation may have queued a CAS save that has not begun its network
+  // request yet. Do not discard the draft or change account mid-flight.
+  if (backgroundAttendanceSaves.size > 0) {
+    showMessage(elements.appSessionMessage,
+      "Anwesenheit wird noch im Hintergrund gespeichert. Bitte zuerst abschließen lassen.");
+    return;
+  }
+  // A failed POST may have committed despite a lost response. A sign-out
+  // must never silently retry an uncertain write or discard its draft.
+  // The user must return to the affected area to review/retry explicitly.
+  const unconfirmedAttendance = [
+    ["U12", u12DirtyDates.size > 0 &&
+      (u12AutoSaveFailed || u12Conflict || failedBackgroundAttendanceSaves.has("u12"))],
+    ["U14", u14DirtyDates.size > 0 &&
+      (u14AutoSaveFailed || u14Conflict || failedBackgroundAttendanceSaves.has("u14"))],
+    ["Kindertraining", kidsDirtyDates.size > 0 &&
+      (kidsAutoSaveFailed || kidsConflict || failedBackgroundAttendanceSaves.has("kids"))],
+  ].filter((entry) => entry[1]).map((entry) => entry[0]);
+  if (unconfirmedAttendance.length > 0) {
+    showMessage(elements.appSessionMessage, "Nicht gespeicherte Änderungen: " +
+      unconfirmedAttendance.join(", ") +
+      ". Bitte vor dem Abmelden zurückwechseln und die Änderungen prüfen.");
+    return;
+  }
+
   if (selfRegistrationSavingKeys.size > 0 || selfRegistrationProxy?.saving) {
     showMessage(
       elements.appSessionMessage,
