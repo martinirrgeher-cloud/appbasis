@@ -1,0 +1,77 @@
+name: ULC K2 Cloudflare read-only account inventory
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ulc-linz-k2-cloudflare-inventory.yml"
+      - "tooling/ulc-linz-k2-cloudflare-inventory.mjs"
+      - "tooling/ulc-linz-k2-cloudflare-inventory.test.mjs"
+      - "apps/ulc-linz/docs/K2-CLOUDFLARE-INVENTORY-SETUP.md"
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Enter READ-K2-CLOUDFLARE to run a GET-only account-wide inspection"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ulc-k2-cloudflare-inventory-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  offline-regression:
+    name: Offline API + redaction regression (no credentials)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+      - name: GET-only inventory negative tests
+        run: node --test tooling/ulc-linz-k2-cloudflare-inventory.test.mjs
+
+  manual-cloudflare-read:
+    name: Manual Cloudflare GET-only account scan
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: offline-regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: ulc-k2-cloudflare-readonly
+    steps:
+      - name: Require explicit operator confirmation
+        shell: bash
+        env:
+          APPROVAL: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$APPROVAL" = "READ-K2-CLOUDFLARE" || { echo "Exact read-only confirmation required."; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+      - name: Validate protected read-only inputs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_K2_READ_TOKEN: ${{ secrets.CLOUDFLARE_K2_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo "Missing account ID secret."; exit 1; }
+          test -n "${CLOUDFLARE_K2_READ_TOKEN:-}" || { echo "Missing isolated read-only token secret."; exit 1; }
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          echo "::add-mask::$CLOUDFLARE_K2_READ_TOKEN"
+      - name: Read account metadata without emitting provider payloads
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_K2_READ_TOKEN: ${{ secrets.CLOUDFLARE_K2_READ_TOKEN }}
+        run: node ./tooling/ulc-linz-k2-cloudflare-inventory.mjs
