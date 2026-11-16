@@ -6,6 +6,25 @@ WITH objects AS (
   SELECT c.oid, c.relkind, c.relowner, c.relacl
   FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace=n.oid
   WHERE n.nspname='public' AND c.relkind IN ('r','p','S')
+), expected_identity(sequence_name,table_name,column_name) AS (
+  VALUES
+  ('appbasis_permission_administration_audit_event_id_seq','appbasis_permission_administration_audit','event_id'),
+  ('ulc_linz_lifecycle_audit_event_id_seq','ulc_linz_lifecycle_audit','event_id'),
+  ('ulc_linz_security_event_log_id_seq','ulc_linz_security_event_log','id'),
+  ('ulc_linz_trainer_identity_audit_event_id_seq','ulc_linz_trainer_identity_audit','event_id')
+), identity_links AS (
+  SELECT s.relname AS sequence_name,t.relname AS table_name,
+    a.attname AS column_name,d.deptype
+  FROM pg_catalog.pg_class s
+  JOIN pg_catalog.pg_namespace sn ON sn.oid=s.relnamespace
+  JOIN pg_catalog.pg_depend d
+    ON d.classid='pg_class'::regclass AND d.objid=s.oid
+      AND d.refclassid='pg_class'::regclass AND d.deptype IN ('a','i')
+  JOIN pg_catalog.pg_class t ON t.oid=d.refobjid
+  JOIN pg_catalog.pg_namespace tn ON tn.oid=t.relnamespace
+  JOIN pg_catalog.pg_attribute a ON a.attrelid=t.oid AND a.attnum=d.refobjsubid
+  WHERE sn.nspname='public' AND tn.nspname='public'
+    AND s.relkind='S' AND t.relkind IN ('r','p')
 ), routines AS (
   SELECT p.oid,p.proowner,p.proacl,p.proname,p.prosecdef
   FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON p.pronamespace=n.oid
@@ -15,6 +34,10 @@ SELECT
   current_database()='ulc_linz_k2_restore_quarantine' AS exact_database_name,
   COUNT(*) FILTER (WHERE relkind IN ('r','p'))::integer AS table_count,
   COUNT(*) FILTER (WHERE relkind='S')::integer AS sequence_count,
+  (SELECT COUNT(*)::integer FROM identity_links) AS identity_sequence_link_count,
+  (SELECT COUNT(*)::integer FROM identity_links l
+    JOIN expected_identity e USING (sequence_name,table_name,column_name)
+    WHERE l.deptype='i') AS reviewed_identity_sequence_link_count,
   COUNT(*) FILTER (WHERE pg_catalog.pg_get_userbyid(relowner)='ulc_linz_k2_restore_owner')::integer AS old_owner_object_count,
   COUNT(*) FILTER (WHERE relacl IS NOT NULL)::integer AS relation_acl_count,
   (SELECT COUNT(*)::integer FROM routines) AS routine_count,
