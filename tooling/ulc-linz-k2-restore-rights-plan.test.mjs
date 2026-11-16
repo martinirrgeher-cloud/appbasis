@@ -16,11 +16,12 @@ test("read-only source contract exact Git blob was independently verified", () =
   assert.equal(validateK2RestoreContract(copy()).privilegeEntries,329);
 });
 
-test("full real-source snapshot yields 68 owners and 329 non-owner grants in 146 groups", () => {
+test("real-source snapshot yields 64 direct owners plus 4 linked sequence transfers, and 329 grants", () => {
  const plan = planK2RestoreRights(copy());
  assert.equal(plan.status,"REVIEW_ONLY");
  assert.deepEqual(plan.counts,{
-   objects:68,grantGroups:146,privilegeEntries:329,ownerStatements:68,
+   objects:68,grantGroups:146,privilegeEntries:329,ownerStatements:64,
+   identitySequenceOwnerTransfersViaTable:4,
    applicationGrantStatements:64,securityIngestGrantStatements:16,backupGrantStatements:66,
  });
  assert.equal(plan.audited.objectCounts.table,62);
@@ -41,9 +42,10 @@ test("a dedicated NOLOGIN owner is proposed instead of privileging current BYPAS
    reachableFromRuntimeRoles:false,
  });
  const changes=plan.phases[2].proposedStatements;
- assert.equal(changes.length,68);
+ assert.equal(changes.length,64);
+ assert.equal(plan.identitySequenceOwnerTransferMode,"TABLE_OWNER_RECURSION_REQUIRES_READONLY_DEPENDENCY_EVIDENCE");
  assert.equal(changes.filter(x=>x.startsWith("ALTER TABLE ")).length,62);
- assert.equal(changes.filter(x=>x.startsWith("ALTER SEQUENCE ")).length,4);
+ assert.equal(changes.filter(x=>x.startsWith("ALTER SEQUENCE ")).length,0);
  assert.equal(changes.filter(x=>x.startsWith("ALTER FUNCTION ")).length,2);
  assert.ok(changes.every(x=>x.endsWith('OWNER TO "ulc_linz_k2_object_owner";')));
  assert.ok(changes.some(x=>x.includes('"appbasis_ulc_linz_purge_expired_security_events"()')));
@@ -93,6 +95,7 @@ test("manifest tampering with unexpected role, privileges or object causes BLOCK
   s=>{s.grants[0].role=K2_ROLES.backup;},
   s=>{s.grants[0].role=K2_ROLES.app;},
   s=>{s.objects[0].name="function(); DROP TABLE x";},
+  s=>{s.objects.find(o=>o.kind==="sequence").name="unexpected_sequence";},
   s=>{s.objects[0].securityDefiner=false;},
   s=>{s.objects[0].kind="table";},
   s=>{s.expected.directNonOwnerPrivilegeEntries=330;},
@@ -146,6 +149,9 @@ test("preflight catalog SQL is read-only and requires named restore DB",()=>{
   assert.match(sql,/pg_catalog\.pg_roles/);
   assert.match(sql,/proposed_owner_exists_count/);
   assert.match(sql,/public_routine_execute_count/);
+ assert.match(sql,/identity_sequence_link_count/);
+ assert.match(sql,/reviewed_identity_sequence_link_count/);
+ assert.match(sql,/pg_catalog\.pg_depend/);
   assert.doesNotMatch(sql,/^\s*(?:GRANT|REVOKE|CREATE|ALTER|DROP|TRUNCATE|INSERT|UPDATE|DELETE|CALL|DO|COPY)\b/im);
   assert.ok(sql.trim().endsWith(";"));
 });
