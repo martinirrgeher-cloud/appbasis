@@ -26,6 +26,16 @@ const EXPECTED_ENTRIES = {
  security:{table:0,sequence:1,column:15},
  backup:{table:62,sequence:4,column:0},
 };
+// Real read-only pg_depend inventories on both source and restore (2026-11-16):
+// all four sequences are IDENTITY (DEPENDENCY_INTERNAL, 'i') and OWNED BY
+// their parent table columns. PostgreSQL rejects standalone ALTER SEQUENCE
+// OWNER for such objects. ALTER TABLE OWNER transfers them recursively.
+const IDENTITY_SEQUENCE_TABLES = Object.freeze({
+  appbasis_permission_administration_audit_event_id_seq: "appbasis_permission_administration_audit",
+  ulc_linz_lifecycle_audit_event_id_seq: "ulc_linz_lifecycle_audit",
+  ulc_linz_security_event_log_id_seq: "ulc_linz_security_event_log",
+  ulc_linz_trainer_identity_audit_event_id_seq: "ulc_linz_trainer_identity_audit",
+});
 const FUNCTION_DEF = new Map([
  ["appbasis_ulc_linz_purge_expired_security_events()",true],
  ["ulc_linz_registration_calendar_guard()",false],
@@ -72,6 +82,16 @@ export function validateK2RestoreContract(snapshot){
  }
  if(count.table!==62||count.sequence!==4||count.function!==2)
   fail("unexpected object family counts");
+ // Fail closed: unknown or free-standing sequences require a new review.
+ // A separate read-only pg_depend preflight must prove every listed link.
+ for(const [sequence,table] of Object.entries(IDENTITY_SEQUENCE_TABLES)){
+  if(!objectKeys.has("sequence|"+sequence)||!tableNames.has(table))
+   fail("unreviewed identity-sequence/table mapping");
+ }
+ for(const o of snapshot.objects){
+  if(o.kind==="sequence"&&!Object.hasOwn(IDENTITY_SEQUENCE_TABLES,o.name))
+   fail("unreviewed standalone or altered sequence");
+ }
  const groups={table:0,sequence:0,column:0};
  const entryCounts={app:{table:0,sequence:0,column:0},
   security:{table:0,sequence:0,column:0},backup:{table:0,sequence:0,column:0}};
@@ -139,7 +159,9 @@ export function planK2RestoreRights(snapshot){
  });
  const grants=[...snapshot.grants].sort((a,b)=>
    (a.kind+"|"+a.object+"|"+a.role).localeCompare(b.kind+"|"+b.object+"|"+b.role,"en"));
- const ownerStatements=objects.map(toOwner);
+ // Standalone ALTER SEQUENCE OWNER would fail for all four IDENTITY
+ // sequences. Their ownership follows the respective TABLE owner change.
+ const ownerStatements=objects.filter(o=>o.kind!=="sequence").map(toOwner);
  const grantStages={
   application:grants.filter(g=>g.role===K2_ROLES.app).map(toGrant),
   securityIngest:grants.filter(g=>g.role===K2_ROLES.security).map(toGrant),
@@ -161,9 +183,11 @@ export function planK2RestoreRights(snapshot){
   }),
   counts:Object.freeze({objects:68,grantGroups:146,privilegeEntries:329,
    ownerStatements:ownerStatements.length,
+   identitySequenceOwnerTransfersViaTable:4,
    applicationGrantStatements:grantStages.application.length,
    securityIngestGrantStatements:grantStages.securityIngest.length,
    backupGrantStatements:grantStages.backup.length}),
+  identitySequenceOwnerTransferMode:"TABLE_OWNER_RECURSION_REQUIRES_READONLY_DEPENDENCY_EVIDENCE",
   phases:Object.freeze([
    Object.freeze({name:"Independent quarantine Worker/Neon isolation review",completed:false}),
    Object.freeze({name:"Dedicated isolated NOLOGIN owner and membership checks",completed:false}),
