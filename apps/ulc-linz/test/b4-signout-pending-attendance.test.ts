@@ -60,7 +60,7 @@ function signoutPreflight({
   const enabled = (list: readonly Section[], section: Section) => list.includes(section);
   const run = make(
     false,
-    new Map(pending.map(section => [section, Promise.resolve()])),
+    new Map(pending.map((section): [Section, Promise<void>] => [section, Promise.resolve()])),
     new Set(previousBackgroundFailure),
     { appSessionMessage: message },
     showMessage,
