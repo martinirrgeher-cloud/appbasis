@@ -18,6 +18,7 @@ on:
       - "tooling/ulc-linz-k2-operator-admission.test.mjs"
       - "tooling/ulc-linz-k2-backout-gate.mjs"
       - "tooling/ulc-linz-k2-backout-gate.test.mjs"
+      - "apps/ulc-linz/docs/K2-A08-BACKOUT-AND-RECOVERY.md"
       - "apps/ulc-linz/docs/K2-A03-ACCESS-RESTORE-PROPOSAL.md"
       - ".github/workflows/ulc-linz-k2-privileged-acl-drift.yml"
 permissions:
