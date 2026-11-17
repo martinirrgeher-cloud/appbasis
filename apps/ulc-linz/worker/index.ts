@@ -3416,7 +3416,7 @@ async function exerciseCatalogModuleResponse(
         },
         access: { view: true, edit: access.canEdit },
         catalog,
-      });
+      }, { headers: { "cache-control": "private, no-store" } });
     }
 
     const body = await exerciseCatalogJsonBody(
@@ -3429,7 +3429,7 @@ async function exerciseCatalogModuleResponse(
       access.actorPrincipalId,
       body as unknown as CreateUlcExerciseCatalogItemInput,
     );
-    return Response.json({ item }, { status: 201 });
+    return Response.json({ item }, { status: 201, headers: { "cache-control": "private, no-store" } });
   } catch (error) {
     return exerciseCatalogErrorResponse(error);
   }
@@ -3899,7 +3899,7 @@ async function exerciseCatalogItemResponse(
         id,
       );
       if (item === null) return exerciseCatalogNotFound();
-      return Response.json({ item });
+      return Response.json({ item }, { headers: { "cache-control": "private, no-store" } });
     }
 
     if (update !== null) {
@@ -3915,19 +3915,19 @@ async function exerciseCatalogItemResponse(
         id,
         body as unknown as CreateUlcExerciseCatalogItemInput,
       );
-      return Response.json({ item });
+      return Response.json({ item }, { headers: { "cache-control": "private, no-store" } });
     }
 
     if (deactivate !== null) {
       const id = decodeExerciseCatalogPathIdentifier(deactivate[1]);
       await runtime.exerciseCatalog.deactivate(access.organizationId, id);
-      return Response.json({ deactivated: true });
+      return Response.json({ deactivated: true }, { headers: { "cache-control": "private, no-store" } });
     }
 
     if (reactivate !== null) {
       const id = decodeExerciseCatalogPathIdentifier(reactivate[1]);
       await runtime.exerciseCatalog.reactivate(access.organizationId, id);
-      return Response.json({ reactivated: true });
+      return Response.json({ reactivated: true }, { headers: { "cache-control": "private, no-store" } });
     }
 
     if (favorite !== null) {
@@ -3938,7 +3938,7 @@ async function exerciseCatalogItemResponse(
         id,
         request.method === "PUT",
       );
-      return Response.json({ item });
+      return Response.json({ item }, { headers: { "cache-control": "private, no-store" } });
     }
 
     if (usage !== null) {
@@ -3974,7 +3974,7 @@ async function exerciseCatalogItemResponse(
         },
       );
       if (event === undefined) return exerciseCatalogNotFound();
-      return Response.json({ event }, { status: 201 });
+      return Response.json({ event }, { status: 201, headers: { "cache-control": "private, no-store" } });
     }
 
     if (privateMedia !== null) {
@@ -4113,7 +4113,7 @@ async function uploadExerciseCatalogPrivateMedia(
       await store.delete(storageKey);
       return exerciseCatalogNotFound();
     }
-    return Response.json({ media }, { status: 201 });
+    return Response.json({ media }, { status: 201, headers: { "cache-control": "private, no-store" } });
   } catch (error) {
     try {
       await store.delete(storageKey);
