@@ -1819,6 +1819,54 @@ describe("generated identity+permissions Worker entrypoint", () => {
     });
   });
 
+  it("never caches private exercise catalog reads or successful writes", async () => {
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        exerciseCatalog: {
+          ...base.exerciseCatalog,
+          async read(organizationId, identityId, exerciseId) {
+            return base.exerciseCatalog.setFavorite(
+              organizationId,
+              identityId,
+              exerciseId,
+              false,
+            );
+          },
+        },
+      };
+    });
+    const item = JSON.stringify({ name: "Sprint", categoryKey: "acceleration" });
+    const requests = [
+      { method: "GET", path: "/api/modules/exercise-catalog", status: 200 },
+      { method: "GET", path: "/api/modules/exercise-catalog/exercise-1", status: 200 },
+      { method: "POST", path: "/api/modules/exercise-catalog", status: 201, body: item },
+      { method: "POST", path: "/api/modules/exercise-catalog/exercise-1/update", status: 200, body: item },
+      { method: "POST", path: "/api/modules/exercise-catalog/exercise-1/deactivate", status: 200 },
+      { method: "POST", path: "/api/modules/exercise-catalog/exercise-1/reactivate", status: 200 },
+      { method: "PUT", path: "/api/modules/exercise-catalog/exercise-1/favorite", status: 200 },
+      { method: "DELETE", path: "/api/modules/exercise-catalog/exercise-1/favorite", status: 200 },
+    ] as const;
+
+    for (const input of requests) {
+      const headers = new Headers({ cookie: currentIdentity.sessionToken });
+      if ("body" in input) headers.set("content-type", "application/json");
+      const response = await worker.fetch(
+        new Request("https://ulc.example.test" + input.path, {
+          method: input.method,
+          headers,
+          body: "body" in input ? input.body : undefined,
+        }),
+        validEnv,
+      );
+      expect(response.status, input.path).toBe(input.status);
+      expect(response.headers.get("cache-control"), input.path).toBe(
+        "private, no-store",
+      );
+    }
+  });
+
   it("retries private-media deletion after an object-store failure without losing metadata", async () => {
     let requestCalls = 0;
     let objectDeleteCalls = 0;
