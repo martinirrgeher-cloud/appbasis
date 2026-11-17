@@ -13,6 +13,9 @@ on:
       - "tooling/ulc-linz-k2-owner-preflight-readonly.sql"
       - "tooling/ulc-linz-k2-future-acl-owner-readonly.sql"
       - "tooling/ulc-linz-k2-runtime-rights-readonly.sql"
+      - "tooling/ulc-linz-k2-operator-admission-readonly.sql"
+      - "tooling/ulc-linz-k2-operator-admission.mjs"
+      - "tooling/ulc-linz-k2-operator-admission.test.mjs"
       - "apps/ulc-linz/docs/K2-A03-ACCESS-RESTORE-PROPOSAL.md"
       - ".github/workflows/ulc-linz-k2-privileged-acl-drift.yml"
 permissions:
@@ -29,7 +32,7 @@ jobs:
         with:
           node-version: "22"
       - name: Detect unauthorized PUBLIC and SECURITY DEFINER privileges without provider access
-        run: node --test tooling/ulc-linz-k2-acl-object-drift.test.mjs tooling/ulc-linz-k2-restore-rights-plan.test.mjs
+        run: node --test tooling/ulc-linz-k2-acl-object-drift.test.mjs tooling/ulc-linz-k2-restore-rights-plan.test.mjs tooling/ulc-linz-k2-operator-admission.test.mjs
       - name: Explicit PASS limitation
         if: success()
         run: |
