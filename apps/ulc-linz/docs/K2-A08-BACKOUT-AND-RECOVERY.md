@@ -1,5 +1,7 @@
 # K2-A08 – K2-Restore: Vor-Commit- und Nach-Commit-Rückfall (17.11.2026)
 
+> **Update vom 17.11.2026 – Snapshot-Pfad für den K2-Branch technisch NICHT verfügbar:** Neon lehnt `create_snapshot` für den nicht-root K2-Branch mit `HTTP 400: not allowed to snapshot non-root branch` ab. Die nachstehenden Snapshot-Schritte sind dadurch **nicht ausführbar**. Die vom Betreiber genehmigte, tatsächlich durchgeführte Alternative ist ein separater Copy-on-write-Kind-Branch vom K2-Branch, mit 3/3 read-only verifizierten DB-Strukturen. **Maßgeblicher aktueller Ablauf:** [K2-A09-BRANCH-CHECKPOINT-RECOVERY.md](./K2-A09-BRANCH-CHECKPOINT-RECOVERY.md). Dies ist weder ein Neon-Snapshot noch ein externes Backup; jeder echte K2-Rechte-Write braucht unverändert eine eigene Freigabe.
+
 **Status: Review-only. Keine Neon-Snapshots oder Restore-Aktionen angelegt/ausgeführt; keine Datenbankrechte geändert.** Dieses Dokument gilt ausschließlich für das isolierte K2-Ziel, nicht für die laufende ULC-Preview-/Produktiv-App.
 
 ## Tatsächliche aktuelle Neon-Evidenz (nur gelesene Projektmetadaten)
