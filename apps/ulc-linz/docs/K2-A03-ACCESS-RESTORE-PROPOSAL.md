@@ -242,3 +242,21 @@ Damit ist das Eigentümerpaket **fachlich vorbereitet, aber nicht ausführungsfr
 **Stand 17.11.2026:** Fachlich-technische Live-Bestandsaufnahme **PASS**, alle tatsächlichen Owner-/GRANT-Reparaturen **NICHT AUSGEFÜHRT** und weiter **NO-GO** bis zur gesonderten **konkret benannten** Schreibfreigabe und geklärtem Post-Commit-Rückfallverfahren. PR #642 bleibt Draft. Kein Merge/Deploy/Provider-Write aus A07.
 
 PostgreSQL-18-Rollenregeln: [GRANT](https://www.postgresql.org/docs/18/sql-grant.html), [Role Membership](https://www.postgresql.org/docs/18/role-membership.html), [ALTER TABLE](https://www.postgresql.org/docs/18/sql-altertable.html).
+
+### K2-A07 – aktuelle source-of-truth Privilegienparität (17.11.2026)
+
+Zur Absicherung des historischen Vertrags vom 15.11. wurden **alle direkten** für App, Security-Ingest und Backup vorgesehenen Berechtigungen erneut per `pg_catalog.aclexplode` auf der tatsächlichen Original-Preview-DB ausgelesen, und zwar getrennt nach Tabelle/Sequenz/Spalte, Objektname, Rolle, Privileg und `is_grantable`. Die 146 Grant-Gruppen aus dem SHA-gepinnten Manifest ergeben **329 erwartete Einzelberechtigungen**.
+
+**Tatsächliches Ergebnis des direkten Mengenvergleichs (nicht nur Summen):**
+
+| Metadatenprüfung | Original-Preview | K2-Quarantäne |
+| --- | ---: | ---: |
+| Direkte Rechte der drei freizugebenden Laufzeit-/Backup-Rollen | **329** | **0** |
+| Gegen Manifest fehlende Rechte | **0** | **329** |
+| Gegen Manifest zusätzliche Rechte | **0** | **0** |
+| `WITH GRANT OPTION` der untersuchten Rechte | **0** | **0** |
+| Abgeschnittene SQL-Ergebnismenge | nein | nein |
+
+Die Originalquelle stimmt damit **329/329** exakt zum freigegebenen Prüfumfang des gespeicherten Vertrags; der Restore hat weiterhin null dieser Rechte. Es wurden keine Appdaten gelesen oder Veränderungen vorgenommen. **Der Vergleich prüft diese 329 Nicht-Eigentümer-Grants, nicht alle denkbaren Rollen-, Provider- oder Objektberechtigungen.**
+
+Damit ist keine Notwendigkeit erkennbar, den Quell-ACL-Vertrag neu zu erstellen oder die alten 510 Eigentümer-Grants zu übertragen. Die erforderliche nächste Stufe bleibt eine **separat ausdrücklich genehmigte**, in einer Transaktion kontrollierte K2-Owner-/Grant-Wiederherstellung samt exakter Nachkontrolle und Rückfallregelung. Ohne diese Freigabe **kein** DB-Write und keine App-Anbindung.
