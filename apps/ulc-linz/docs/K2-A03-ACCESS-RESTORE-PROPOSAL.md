@@ -211,3 +211,34 @@ Damit ist das Eigentümerpaket **fachlich vorbereitet, aber nicht ausführungsfr
 **Korrigierter, nicht ausführender Plan:** 68 unterschiedliche Objekte bleiben unter Eigentümerkontrolle, jedoch nur **64 direkte Owner-Anweisungen** = 62 Tabellen + zwei Funktionen; die vier IDENTITY-Sequenzen gehören zu den automatischen Tabellen-Owner-Folgen. Genau 146 objektgenaue GRANT-Gruppen / 329 Nicht-Owner-Rechte bleiben unverändert; der bereits gepinnte ACL-Source-Contract bleibt unangetastet. Bei unbekannten Sequences oder einer Abweichung im Live-Abhängigkeitsnachweis blockiert die nächste Prüfung. Aktualisierte Regressionen testen den Verzicht auf eigenständige `ALTER SEQUENCE OWNER`-Anweisungen sowie die Preflight-Pflicht.
 
 **Nicht erfolgt:** Keine Eigentümer-/Rechte-DB-Writes, keine Neuvergabe von Credentials, kein Cloudflare-Deploy, keine Merges. Cloudflare-Account-weit fehlende Worker-/Route-/Service-/Secret-Isolationsnachweise bleiben offen. Vor einem echten DBA-Eingriff sind ein gesonderter präziser Betreiber-Writeauftrag, Rollen-/Schema-CREATE-Entscheidung, atomarer Rollback und ein unabhängiger nachheriger Funktions-/ACL-/Owner-Test unverzichtbar.
+
+## K2-A07 – tatsächlicher 18er-PostgreSQL-Operator-Preflight (17.11.2026)
+
+**Ziel:** Ein zusammenhängender, realitätsnaher Reparaturdurchgang für die isolierte K2-Quarantäne, nicht wieder eine Reihe neuer kleiner Provider-Aktionen.
+
+### Neuer Live-Nachweis (ausschließlich lesend)
+
+`tooling/ulc-linz-k2-operator-admission-readonly.sql` wurde am 17.11.2026 direkt über die getrennt ausgewählte Neon-Verbindung für Projekt `cool-unit-46141580`, Branch `br-small-wind-b10p67j8`, Compute `ep-snowy-fog-b1xzh562`, logische DB `ulc_linz_k2_restore_quarantine` ausgeführt. **Nur Systemkataloge**, keine Athleten-/Trainings-/Anmeldedaten, keine Secrets, keine DB-Änderungen. Beobachtete Zähler:
+
+- PostgreSQL `180007` (18.x), aktive Rolle `ulc_linz_k2_restore_owner`; 62 Tabellen, 4 IDENTITY-Sequenzen, 2 Funktionen.
+- 66 Relation-/2 Funktionsobjekte weiterhin beim alten Restore-Owner; **0** explizite Tabellen-/Sequenz-ACLs.
+- Vier `pg_depend`-Sequenzverknüpfungen exakt zugeordnet (**4/4**); bei späterem Owner-Wechsel **keine** eigenständigen `ALTER SEQUENCE OWNER`-Befehle ausführen.
+- Funktionsdefinitionen unverändert (Digest `f096a8e6786da42145aa56c2a6e61d87`), eine `SECURITY DEFINER`-Funktion mit eingeschränktem `search_path=pg_catalog`, **0** `PUBLIC EXECUTE` / **0** App-Funktions-`EXECUTE`.
+- Neutrale `NOLOGIN`-Ownerrolle noch nicht vorhanden; bestehender Restore-Owner hat weiterhin `CREATEROLE`, `CREATEDB` und `BYPASSRLS`. Seine Mitgliedschaft in `neon_superuser` ist nachweislich **1** und damit ein **Break-Glass-/Admin-Risiko**, kein Nachweis einer Runtime-Eskalation.
+- App-/Backup-Tabellen-`SELECT` noch **0/0**; drei geprüfte Runtime-/Backup-Rollen haben **0** unerlaubte Mitgliedschaften zum vorgesehenen/bisherigen Restore-Owner.
+- `public` ist im DB-Owner-Kontext; Restore-Owner besitzt dort `CREATE`, der neue Eigentümer noch keine Rechte. **0** weitere DB-Sitzungen zum Prüfzeitpunkt (Momentaufnahme, kein dauerhaftes Routing-Verbot).
+
+`tooling/ulc-linz-k2-operator-admission.mjs` bewertet diesen exakt bekannten Ist-Zustand nur mit `CATALOG_MATCH_ONLY`, bei jedem Feld-/Versions-/Schema-Drift mit `BLOCK`; **nie** mit einer Schreib-/Merge-/Deploy-/App-Betriebsfreigabe. Der Test ist im bestehenden PR-Workflow integriert. Auch der echte Cloudflare-Lesecheck [#44165601049](https://github.com/martinirrgeher-cloud/appbasis/actions/runs/44165601049) belegt nur die acht untersuchten Hyperdrive-Ziele und sieben aktiven Worker-Versionen; Secret-Werte wurden **nicht** geprüft.
+
+### Ein fachlich zusammenhängender, separat freizugebender Betreiber-Eingriff
+
+1. **Unmittelbar vor Ausführung:** Neon-Branch, Compute, DB, aktueller Original-Quelle/K2-Schema-Snapshot und Quarantäne-/Worker-Nichtanbindung erneut bestätigen. Keinerlei App-/Scheduler-Connection auf K2; direkte verschlüsselte Secret-Inhalte lassen sich nicht aus Metadaten ausschließen. Keine Preview-/Production-Verbindung umstellen.
+2. **DB-Rollenansatz:** Nur auf diesem K2-Ziel eine neue `ulc_linz_k2_object_owner` als `NOLOGIN, NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOINHERIT, NOREPLICATION, NOBYPASSRLS` anlegen. PostgreSQL 18 erfordert für `ALTER ... OWNER TO` u.a. temporäre `SET ROLE`-Berechtigung und `CREATE` des neuen Owners auf dem Schema. Diese Rechte ausschließlich während des kontrollierten Vorgangs gewähren und vor Commit wieder entfernen. **Wichtig:** Die alte Neon-Adminrolle bleibt auch nach dem Wechsel administrativ mächtig; neutrale Objekt-Ownership ist daher keine vollständige Admin-Isolation.
+3. **Objekte und Grants:** Exakt **64 direkte Owner-Anweisungen** aus dem SHA-gepinnten Quellvertrag (62 Tabellen, zwei Funktionen), die vier gekoppelten IDENTITY-Sequenzen über ihre Tabellen, dann exakt **146 minimale, objektgenaue Grant-Gruppen / 329 Nicht-Eigentümer-Rechte** für App, getrennte Security-Ingest und reine Backup-Leserolle. Keine Übernahme der 510 alten Migration-Owner-Grants, kein `PUBLIC`-/Funktions-`EXECUTE`, kein `GRANT ALL`, keine pauschalen Rechte.
+4. **Atomar/prüfbar:** Nur in **einer** kontrollierten, mit Timeouts versehenen, abbrechbaren Transaktion auf K2 durchführen. Während der Transaktion: neue Owner, alle vier Sequenzen, alle direkten/effektiven Rechte, deny-Fälle, Verbot von PUBLIC-Funktionsausführung und entfernte temporäre Owner-Mitgliedschaft unabhängig prüfen. Bei *irgendeinem* abweichenden Ergebnis **ROLLBACK** – nie teilweise committen.
+5. **Post-Commit-Fall:** Eine Transaktion schützt nur *bis zum Commit*. Für Fehler danach ist **vorher** ein eigener nachgewiesener Wiederherstellungs-/Backout-Pfad der K2-Quarantäne bereitzuhalten; kein improvisiertes `GRANT ALL`, kein `pg_restore --no-acl` auf die nichtleere K2-DB. Die unentschiedene zukünftige DDL-/Default-ACL-Strategie bleibt bis zu einem eigenen Beschluss außerhalb dieses statischen Test-Restores.
+6. **Getrennte fachliche Abnahme:** Erst nach unabhängiger DB-Nachprüfung kontrollierte, **isolierte** App-Testidentitäten mit erfolgreichen und verweigerten Aktionen über Anwesenheit, Anmeldung, Trainingsplanung, Benutzerrechte, Statistik sowie ein verifizierter Medienrestore. Noch keine Produktiv- oder Worker-Freigabe.
+
+**Stand 17.11.2026:** Fachlich-technische Live-Bestandsaufnahme **PASS**, alle tatsächlichen Owner-/GRANT-Reparaturen **NICHT AUSGEFÜHRT** und weiter **NO-GO** bis zur gesonderten **konkret benannten** Schreibfreigabe und geklärtem Post-Commit-Rückfallverfahren. PR #642 bleibt Draft. Kein Merge/Deploy/Provider-Write aus A07.
+
+PostgreSQL-18-Rollenregeln: [GRANT](https://www.postgresql.org/docs/18/sql-grant.html), [Role Membership](https://www.postgresql.org/docs/18/role-membership.html), [ALTER TABLE](https://www.postgresql.org/docs/18/sql-altertable.html).
