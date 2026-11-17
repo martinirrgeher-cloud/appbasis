@@ -1,3 +1,6 @@
+
+> **K2-A10 Sicherheits-Stopp (17.11.2026):** Der kontrollierte atomare Rechte-Reparaturversuch wurde **vollständig zurückgerollt**. PostgreSQL 18/Neon legt über `cloud_admin` automatisch `ADMIN TRUE, SET FALSE, INHERIT FALSE` für den bisherigen Restore-Owner an. Der vorgesehene Null-Mitgliedschaft-Nachtest ist mit den vorhandenen Neon-Rechten nicht erfüllbar. **Nicht erneut ausführen**, bevor der Betreiber eine eng begrenzte Plattform-Admin-Ausnahme oder eine neue Owner-Architektur separat genehmigt. Details und Negativtests: [K2-A10-NEON-ADMIN-AUTO-GRANT.md](./K2-A10-NEON-ADMIN-AUTO-GRANT.md).
+
 # K2-A03 – Wiederherstellung der Zugriffsrechte (Entscheidungs- und Testentwurf)
 
 **Datum:** 15.11.2026 · **Status:** HARD NO-GO für App-Anbindung der K2-Quarantäne · Die zwei `PUBLIC EXECUTE`-REVOKEs wurden nach gesonderter Betreiberfreigabe bereits ausgeführt und erfolgreich geprüft. **Alle weiteren DB-Rechteänderungen sind nicht freigegeben.**
