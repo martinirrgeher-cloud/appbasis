@@ -24,6 +24,10 @@ Der erste Versuch zur Erstellung eines Kind-Branches mit geändertem Suspend-Tim
 
 Das ist ein **Neon Copy-on-write-Kind-Branch** (Point-in-time-Datenzweig im selben Projekt), **kein unabhängiges externes Backup** und auch keine bereits erprobte automatisierte Rücksetzung des ursprünglichen Branches.
 
+## Schonende Compute-Nachbereitung
+
+Neon legte zur Prüfung einen Read-write-Compute `ep-calm-mountain-b18rzgrx` mit minimal/maximal **0,25 CU** und `suspend_timeout_seconds=0` (keine automatische Abschaltung) an. Nach Abschluss sämtlicher Leseprüfungen wurde **ausschließlich dieser neue Compute** manuell suspendiert; `list_branch_computes` meldete danach `current_state=idle` sowie `suspended_at=2026-11-17T20:48:02Z`. Der Branch bleibt `ready` und seine drei Datenbanken bleiben erhalten. Ein erneuter Zugriff kann den Compute wieder aktivieren. **Storage- und spätere Compute-Kosten sind damit nicht ausgeschlossen**; keine bestehenden oder produktiven Endpunkte wurden angehalten.
+
 ## Tatsächliche Wiederanlaufprobe: drei Datenbanken ohne DML
 
 Mit separaten **SELECT**-Abfragen gegen den alten K2-Branch und die neue Kopie wurden die folgenden Objekte/ACL-Merkmale verglichen:
