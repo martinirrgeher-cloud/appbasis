@@ -60,7 +60,7 @@ if (!DATABASE_URL) {
       sql: SqlClient, organizationId: string, subjectId: string,
     ): Promise<void> {
       await sql.unsafe(
-        `INSERT INTO p03d_test_subject_fence (organization_id, athlete_id)
+        `INSERT INTO ulc_linz_p03e_candidate_subject_fence (organization_id, athlete_id)
          VALUES ($1, $2) ON CONFLICT DO NOTHING`,
         [organizationId, subjectId],
       );
@@ -148,43 +148,18 @@ if (!DATABASE_URL) {
         }
       }
 
-      // Ephemeral test-only objects: NEVER add these to appbasis.database.json.
-      await db().client.unsafe(
-        `CREATE TABLE p03d_test_subject_fence (
-           organization_id text NOT NULL,
-           athlete_id text NOT NULL,
-           PRIMARY KEY (organization_id, athlete_id)
-         )`,
+      // Load the same candidate SQL that future security reviewers will see.
+      // It is deliberately absent from the canonical migration manifest.
+      const proposalPath = "apps/ulc-linz/proposals/p03e-subject-write-fence.sql";
+      if (migrations.includes(proposalPath)) {
+        throw new Error("P03-E candidate SQL must never be an active migration.");
+      }
+      const proposalSql = await readFile(
+        new URL("../proposals/p03e-subject-write-fence.sql", import.meta.url),
+        "utf8",
       );
-      await db().client.unsafe(
-        `CREATE FUNCTION p03d_test_check_subject_fence() RETURNS trigger AS $$
-         BEGIN
-           PERFORM pg_advisory_xact_lock(
-             hashtextextended(
-               jsonb_build_array(NEW.organization_id, NEW.athlete_id)::text, 0
-             )
-           );
-           IF EXISTS (
-             SELECT 1 FROM p03d_test_subject_fence AS fence
-             WHERE fence.organization_id = NEW.organization_id
-               AND fence.athlete_id = NEW.athlete_id
-           ) THEN
-             RAISE EXCEPTION 'P03D_TEST_SUBJECT_WRITE_BLOCKED'
-               USING ERRCODE = 'P0001';
-           END IF;
-           RETURN NEW;
-         END
-         $$ LANGUAGE plpgsql`,
-      );
-      for (const table of [
-        "ulc_linz_training_attendance",
-        "ulc_linz_training_registration",
-        "ulc_linz_training_registration_change",
-      ]) {
-        await db().client.unsafe(
-          `CREATE TRIGGER p03d_test_subject_guard BEFORE INSERT OR UPDATE ON ${table}
-           FOR EACH ROW EXECUTE FUNCTION p03d_test_check_subject_fence()`,
-        );
+      for (const statement of proposalSql.split("--> statement-breakpoint")) {
+        if (statement.trim()) await db().client.unsafe(statement);
       }
     });
 
@@ -214,7 +189,7 @@ if (!DATABASE_URL) {
           { athleteId: NEIGHBOR, status: "present" },
         ],
         session.revision,
-      )).rejects.toThrow(/P03D_TEST_SUBJECT_WRITE_BLOCKED/);
+      )).rejects.toThrow(/ULC_P03E_SUBJECT_WRITE_BLOCKED/);
 
       expect(await counters(org, TARGET)).toEqual({
         attendance: 0, registration: 0, history: 0,
@@ -240,7 +215,7 @@ if (!DATABASE_URL) {
       await expect(sessions().saveRegistration(
         org, session.session.id, TARGET, "not_attending", null,
         "p03d-actor", undefined, "old personal note",
-      )).rejects.toThrow(/P03D_TEST_SUBJECT_WRITE_BLOCKED/);
+      )).rejects.toThrow(/ULC_P03E_SUBJECT_WRITE_BLOCKED/);
 
       const group = "p03d-new-group";
       await expect(sessions().withRegistrationTransaction(async (scoped) => {
@@ -251,7 +226,7 @@ if (!DATABASE_URL) {
           org, snapshot.session.id, TARGET, "attending", null,
           "p03d-actor",
         );
-      })).rejects.toThrow(/P03D_TEST_SUBJECT_WRITE_BLOCKED/);
+      })).rejects.toThrow(/ULC_P03E_SUBJECT_WRITE_BLOCKED/);
       const roots = await db().client.unsafe(
         `SELECT count(*)::int AS total FROM ulc_linz_training_session
          WHERE organization_id = $1 AND group_id = $2`,
@@ -273,20 +248,20 @@ if (!DATABASE_URL) {
           (organization_id, session_id, athlete_id, status)
          VALUES ($1, $2, $3, 'present')`,
         [org, session.session.id, TARGET],
-      )).rejects.toThrow(/P03D_TEST_SUBJECT_WRITE_BLOCKED/);
+      )).rejects.toThrow(/ULC_P03E_SUBJECT_WRITE_BLOCKED/);
       await expect(db().client.unsafe(
         `INSERT INTO ulc_linz_training_registration
           (organization_id, session_id, athlete_id, intention, updated_by_identity_id)
          VALUES ($1, $2, $3, 'attending', 'p03d-actor')`,
         [org, session.session.id, TARGET],
-      )).rejects.toThrow(/P03D_TEST_SUBJECT_WRITE_BLOCKED/);
+      )).rejects.toThrow(/ULC_P03E_SUBJECT_WRITE_BLOCKED/);
       await expect(db().client.unsafe(
         `INSERT INTO ulc_linz_training_registration_change
           (id, organization_id, session_id, athlete_id,
            intention, revision, actor_identity_id)
          VALUES ($1, $2, $3, $4, 'attending', 1, 'p03d-actor')`,
         [randomUUID(), org, session.session.id, TARGET],
-      )).rejects.toThrow(/P03D_TEST_SUBJECT_WRITE_BLOCKED/);
+      )).rejects.toThrow(/ULC_P03E_SUBJECT_WRITE_BLOCKED/);
 
       expect(await counters(org, TARGET)).toEqual({
         attendance: 0, registration: 0, history: 0,
@@ -325,10 +300,68 @@ if (!DATABASE_URL) {
       continueDeletion();
       await deletion;
       const outcome = await attempted;
-      expect(outcome).toMatch(/P03D_TEST_SUBJECT_WRITE_BLOCKED/);
+      expect(outcome).toMatch(/ULC_P03E_SUBJECT_WRITE_BLOCKED/);
       expect(await counters(org, TARGET)).toEqual({
         attendance: 0, registration: 0, history: 0,
       });
+      expect(await counters(org, NEIGHBOR)).toEqual({
+        attendance: 1, registration: 1, history: 1,
+      });
+    });
+
+    it("S5b candidate: refuses UPDATE of existing private rows when deletion was marked", async () => {
+      const org = "p03e-direct-update";
+      const { session } = await fixture(org);
+      await db().client.unsafe(
+        `INSERT INTO ulc_linz_p03e_candidate_subject_fence
+          (organization_id, athlete_id) VALUES ($1, $2)`,
+        [org, TARGET],
+      );
+      const changes = [
+        {
+          sql: `UPDATE ulc_linz_training_attendance SET status = 'absent'
+                WHERE organization_id = $1 AND athlete_id = $2`,
+        },
+        {
+          sql: `UPDATE ulc_linz_training_registration SET intention = 'maybe'
+                WHERE organization_id = $1 AND athlete_id = $2`,
+        },
+        {
+          sql: `UPDATE ulc_linz_training_registration_change SET intention = 'maybe'
+                WHERE organization_id = $1 AND athlete_id = $2`,
+        },
+      ];
+      for (const { sql } of changes) {
+        await expect(db().client.unsafe(sql, [org, TARGET]))
+          .rejects.toThrow(/ULC_P03E_SUBJECT_WRITE_BLOCKED/);
+      }
+      expect(await counters(org, TARGET)).toEqual({
+        attendance: 1, registration: 1, history: 1,
+      });
+      const neighbor = await sessions().saveRegistration(
+        org, session.session.id, NEIGHBOR, "maybe", 1, "p03d-actor",
+      );
+      expect(neighbor.revision).toBe(2);
+    });
+
+    it("S5c candidate: also refuses writes backed by an existing canonical athlete deletion marker", async () => {
+      const org = "p03e-source-marker";
+      const otherOrg = "p03e-source-other-org";
+      const { session } = await fixture(org);
+      const foreign = await fixture(otherOrg);
+      await db().client.unsafe(
+        `INSERT INTO appbasis_athletes_deletion
+           (entity_type, entity_id, organization_id, completed_at, purge_after)
+         VALUES ('athlete', $1, $2, now(), now() + interval '35 days')`,
+        [TARGET, org],
+      );
+      await expect(sessions().saveRegistration(
+        org, session.session.id, TARGET, "maybe", 1, "p03d-actor",
+      )).rejects.toThrow(/ULC_P03E_SUBJECT_WRITE_BLOCKED/);
+      const unrelated = await sessions().saveRegistration(
+        otherOrg, foreign.session.session.id, TARGET, "maybe", 1, "p03d-actor",
+      );
+      expect(unrelated.revision).toBe(2);
       expect(await counters(org, NEIGHBOR)).toEqual({
         attendance: 1, registration: 1, history: 1,
       });
