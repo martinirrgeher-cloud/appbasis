@@ -25,7 +25,7 @@ test("accepts only the exact separate Preview credentials and roles", () => {
   });
   assert.throws(() => assertUlcLifecyclePreviewScope({
     ...input, migrationDatabaseUrl: url("appbasis_ulc_linz_preview_migration", "prod"),
-  }), /same dedicated preview database|isolated Preview/);
+  }), /same dedicated preview database|isolated Preview|dedicated generated preview database/);
   assert.throws(() => assertUlcLifecyclePreviewScope({
     ...input, migrationDatabaseUrl: url("appbasis_ulc_linz_preview_application"),
   }), /roles must be distinct|isolated Preview/);
