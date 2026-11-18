@@ -129,13 +129,10 @@ jobs:
           APPBASIS_P04_APPROVAL_REF: ${{ inputs.approvalRef }}
         run: node tooling/ulc-linz-lifecycle-schema-preview.mjs migrate
 
-      - name: Reconcile existing Preview application/runtime database privileges
-        if: ${{ inputs.operation == 'migrate' }}
-        env:
-          APPBASIS_APPLY_DATABASE_ACCESS: "1"
-        run: node tooling/ulc-linz-d4-preview-database-access.mjs reconcile
-
-      - name: Verify full lifecycle DDL and runtime privileges
+      # Do not run the generic D4 GRANT-on-all-tables reconciler here.
+      # New deletion marker tables are privileged owner state. Granting the
+      # runtime role unrestricted INSERT/UPDATE/DELETE is not authorized.
+      - name: Verify full lifecycle schema without granting runtime write access
         if: ${{ inputs.operation == 'migrate' }}
         shell: bash
         run: |
@@ -143,7 +140,7 @@ jobs:
           RESULT="$(node tooling/ulc-linz-lifecycle-schema-preview.mjs inspect)"
           echo "$RESULT"
           jq -e '.state == "current" and .productionChanged == false' <<< "$RESULT"
-          node tooling/ulc-linz-d4-preview-database-access.mjs preflight-existing
+          # Retention / marker DML grants are NOT enabled in this workflow.
 
       # No Cloudflare deployment/flag, Production credentials, backup restore
       # operation, data erasure or retention timer is part of this workflow.
