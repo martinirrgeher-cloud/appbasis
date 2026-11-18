@@ -7,6 +7,7 @@ import {
   executeUlcLifecycleRepairTransaction,
   inspectUlcLifecyclePreview,
   migrateUlcLifecyclePreview,
+  verifyUlcLifecyclePreviewMarkerPrivileges,
 } from "./ulc-linz-lifecycle-schema-preview.mjs";
 
 const HOST = "ep-ulc-preview.eu-central-1.aws.neon.tech";
@@ -87,6 +88,67 @@ test("inspect only reads catalog metadata and returns a source-file plan", async
   assert.equal(closed, 1);
 });
 
+test("protected lifecycle DML is denied to both Preview runtime roles (read-only check)", async () => {
+  const roles = [
+    "appbasis_ulc_linz_preview_application",
+    "appbasis_ulc_linz_preview_security_log",
+  ];
+  const markerTables = [
+    "appbasis_training_block_favorite_deletion",
+    "appbasis_training_block_usage_subject",
+    "appbasis_training_block_usage_subject_deletion",
+    "appbasis_training_documentation_subject_deletion",
+  ];
+  const tableNames = [
+    "appbasis_athletes_deletion", "appbasis_training_block_favorite",
+    "appbasis_training_block_usage", "appbasis_training_documentation",
+    "appbasis_training_documentation_revision", ...markerTables,
+  ];
+  const funcNames = [
+    "appbasis_training_documentation_guard_subject",
+    "appbasis_training_documentation_guard_root_insert",
+    "appbasis_training_documentation_guard_revision_write",
+  ];
+  const triggerNames = [
+    "appbasis_training_documentation_guard_root",
+    "appbasis_training_documentation_guard_revision",
+  ];
+  let allowWrite = false;
+  let closed = 0;
+  const options = {
+    databaseFactory() {
+      return { client: {
+        async unsafe(sql) {
+          if (sql.startsWith("SELECT current_database()")) {
+            return [{ database_name: DATABASE, principal_name: "appbasis_ulc_linz_preview_migration" }];
+          }
+          if (sql.includes("pg_catalog.pg_tables")) return tableNames.map(name => ({ name }));
+          if (sql.includes("pg_catalog.pg_proc")) return funcNames.map(name => ({ name }));
+          if (sql.includes("pg_catalog.pg_trigger")) return triggerNames.map(name => ({ name }));
+          if (sql.includes("has_table_privilege")) {
+            return roles.flatMap(principal_name =>
+              markerTables.map(table_name => ({
+                principal_name, table_name, can_insert: allowWrite,
+                can_update: false, can_delete: false,
+              }))
+            );
+          }
+          throw new Error("privilege verifier tried unexpected SQL");
+        },
+        async end() { closed++; },
+      } };
+    },
+  };
+  const allowed = await verifyUlcLifecyclePreviewMarkerPrivileges(input, options);
+  assert.equal(allowed.runtimeMutationRightsDenied, true);
+  allowWrite = true;
+  await assert.rejects(
+    verifyUlcLifecyclePreviewMarkerPrivileges(input, options),
+    /unauthorized Preview runtime DML/,
+  );
+  assert.equal(closed, 2);
+});
+
 test("migration transaction refuses missing executor, invalid plan and nontransactional usage", async () => {
   await assert.rejects(executeUlcLifecycleRepairTransaction({}, []),
     /transaction client unavailable/);
@@ -109,4 +171,6 @@ test("separate Preview workflow is inspect-first and cannot mutate on push", asy
   assert.match(yaml, /generated-preview-ulc-linz/);
   assert.doesNotMatch(yaml, /\n\s*push:/);
   assert.doesNotMatch(yaml, /wrangler deploy|m6-ulc-production|PRODUCTION_DATABASE_URL/i);
+  assert.doesNotMatch(yaml, /d4-preview-database-access\\.mjs reconcile/);
+  assert.match(yaml, /verify-privileges/);
 });
