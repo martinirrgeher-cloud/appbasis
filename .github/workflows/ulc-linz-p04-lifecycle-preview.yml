@@ -1,0 +1,149 @@
+name: ULC Linz – Lifecycle-Tabellen in Preview abgleichen
+
+run-name: ULC P04 Lifecycle Preview ${{ inputs.operation }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Nur prüfen oder freigegeben nachmigrieren
+        required: true
+        type: choice
+        options: [inspect, migrate]
+        default: inspect
+      apply:
+        description: Nachmigration ausdrücklich freigeben (nur bei migrate)
+        required: true
+        type: boolean
+        default: false
+      backupConfirmed:
+        description: Abgesicherten Preview-Backup-/Recovery-Punkt geprüft
+        required: true
+        type: boolean
+        default: false
+      restoreConfirmed:
+        description: Wiederherstellungsbereitschaft für Preview geprüft
+        required: true
+        type: boolean
+        default: false
+      approvalRef:
+        description: Nur für migrate exakt ULC-P04-LIFECYCLE-PREVIEW
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-preview-ulc-linz
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    name: Drei bestehende Modul-Migrationen in isolierter Preview
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: generated-preview-ulc-linz
+    env:
+      APPBASIS_GENERATED_APP_ID: ulc-linz
+      APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+      APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+      APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+    steps:
+      - name: Require fresh operation approval, exact main and first attempt
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
+          APPLY: ${{ inputs.apply && '1' || '0' }}
+          BACKUP: ${{ inputs.backupConfirmed && '1' || '0' }}
+          RESTORE: ${{ inputs.restoreConfirmed && '1' || '0' }}
+          APPROVAL_REF: ${{ inputs.approvalRef }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$OPERATION" = inspect || test "$OPERATION" = migrate
+          if test "$OPERATION" = migrate; then
+            test "$APPLY" = 1
+            test "$BACKUP" = 1
+            test "$RESTORE" = 1
+            test "$APPROVAL_REF" = ULC-P04-LIFECYCLE-PREVIEW
+          fi
+
+      - name: Checkout exact approved main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies and verify repo
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run verify:repo
+
+      - name: Verify exact Preview credentials (never log secret contents)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { assertUlcLifecyclePreviewScope } from "./tooling/ulc-linz-lifecycle-schema-preview.mjs";
+          assertUlcLifecyclePreviewScope({
+            migrationDatabaseUrl: process.env.APPBASIS_MIGRATION_DATABASE_URL,
+            applicationDatabaseUrl: process.env.APPBASIS_DATABASE_URL,
+            securityLogDatabaseUrl: process.env.APPBASIS_SECURITY_LOG_DATABASE_URL,
+          });
+          NODE
+
+      - name: Inspect existing preview schema without data writes
+        id: inspect
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="$(node tooling/ulc-linz-lifecycle-schema-preview.mjs inspect)"
+          echo "$RESULT"
+          STATE="$(jq -er '.state' <<< "$RESULT")"
+          test "$STATE" = migration-required || test "$STATE" = current
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+
+      - name: Apply all original owner SQL atomically (independent operator authorization)
+        if: ${{ inputs.operation == 'migrate' && steps.inspect.outputs.state == 'migration-required' }}
+        env:
+          APPBASIS_APPLY_P04_LIFECYCLE_PREVIEW: ${{ inputs.apply && '1' || '0' }}
+          APPBASIS_P04_BACKUP_CONFIRMED: ${{ inputs.backupConfirmed && '1' || '0' }}
+          APPBASIS_P04_RESTORE_CONFIRMED: ${{ inputs.restoreConfirmed && '1' || '0' }}
+          APPBASIS_P04_APPROVAL_REF: ${{ inputs.approvalRef }}
+        run: node tooling/ulc-linz-lifecycle-schema-preview.mjs migrate
+
+      - name: Reconcile existing Preview application/runtime database privileges
+        if: ${{ inputs.operation == 'migrate' }}
+        env:
+          APPBASIS_APPLY_DATABASE_ACCESS: "1"
+        run: node tooling/ulc-linz-d4-preview-database-access.mjs reconcile
+
+      - name: Verify full lifecycle DDL and runtime privileges
+        if: ${{ inputs.operation == 'migrate' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT="$(node tooling/ulc-linz-lifecycle-schema-preview.mjs inspect)"
+          echo "$RESULT"
+          jq -e '.state == "current" and .productionChanged == false' <<< "$RESULT"
+          node tooling/ulc-linz-d4-preview-database-access.mjs preflight-existing
+
+      # No Cloudflare deployment/flag, Production credentials, backup restore
+      # operation, data erasure or retention timer is part of this workflow.
