@@ -1856,7 +1856,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
         new Request("https://ulc.example.test" + input.path, {
           method: input.method,
           headers,
-          body: "body" in input ? input.body : undefined,
+          ...("body" in input ? { body: input.body } : {}),
         }),
         validEnv,
       );
