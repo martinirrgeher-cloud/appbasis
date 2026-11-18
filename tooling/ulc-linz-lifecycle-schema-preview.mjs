@@ -124,6 +124,45 @@ export async function migrateUlcLifecyclePreview(input, options = {}) {
   });
 }
 
+/**
+ * No new deletion-marker table is writable by either Preview runtime login.
+ * Read-only verification; actual owner grants require a separate security PR.
+ */
+export async function verifyUlcLifecyclePreviewMarkerPrivileges(input, options = {}) {
+  return withPreviewConnection(input, options, async sql => {
+    const schema = await inspectUlcLifecycleSchema(sql);
+    if (schema.state !== "current") {
+      refuse("cannot inspect marker privileges before complete lifecycle schema");
+    }
+    const rows = await sql.unsafe(`
+      SELECT roles.name AS principal_name, markers.name AS table_name,
+        has_table_privilege(roles.name, 'public.' || markers.name, 'INSERT') AS can_insert,
+        has_table_privilege(roles.name, 'public.' || markers.name, 'UPDATE') AS can_update,
+        has_table_privilege(roles.name, 'public.' || markers.name, 'DELETE') AS can_delete
+      FROM (VALUES
+         ('appbasis_ulc_linz_preview_application'),
+         ('appbasis_ulc_linz_preview_security_log')
+      ) AS roles(name)
+      CROSS JOIN (VALUES
+         ('appbasis_training_block_favorite_deletion'),
+         ('appbasis_training_block_usage_subject'),
+         ('appbasis_training_block_usage_subject_deletion'),
+         ('appbasis_training_documentation_subject_deletion')
+      ) AS markers(name)
+    `);
+    if (rows.length !== 8 ||
+        rows.some(row => row.can_insert !== false ||
+          row.can_update !== false || row.can_delete !== false)) {
+      refuse("new lifecycle/marker tables expose unauthorized Preview runtime DML");
+    }
+    return Object.freeze({
+      state: "verified",
+      runtimeMutationRightsDenied: true,
+      productionChanged: false,
+    });
+  });
+}
+
 function isMainModule() {
   return typeof process.argv[1] === "string" &&
     import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
@@ -146,8 +185,10 @@ if (isMainModule()) {
       ? await inspectUlcLifecyclePreview(input)
       : cmd === "migrate"
         ? await migrateUlcLifecyclePreview(input)
-        : null;
-    if (result === null) refuse("expected inspect or migrate");
+        : cmd === "verify-privileges"
+          ? await verifyUlcLifecyclePreviewMarkerPrivileges(input)
+          : null;
+    if (result === null) refuse("expected inspect, migrate or verify-privileges");
     process.stdout.write(JSON.stringify(result) + "\n");
   } catch (error) {
     console.error(error instanceof Error
