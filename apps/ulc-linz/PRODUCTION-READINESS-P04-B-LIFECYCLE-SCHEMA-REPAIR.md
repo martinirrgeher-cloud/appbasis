@@ -30,6 +30,21 @@ Die SQL-Dateien enthalten neue personenbezogene Löschmarker und, für die Dokum
 
 **Freigabegrenze:** Kein Merge, Deploy, Preview-/Produktiv-Schema-Write, Rechtewechsel, Marker-/Retention-Aktivierung oder `production.json`-Statuswechsel durch dieses Paket. Die bestehende Preview und der bestätigte Handy-PASS bleiben unangetastet.
 
+## Kontrollierter Preview-Ausführungspfad (Ergänzung)
+
+Der bereits testgrüne Reconciliation-Plan ist jetzt auch **über einen separaten Workflow tatsächlich ausführbar**, allerdings **erst nach Freigabe** und ausschließlich für die bestehende synthetische Test-Preview. Es wird kein bestehender E6H-Deploy und kein produktiver M6-Workflow verändert.
+
+- **GitHub Actions:** `ULC Linz – Lifecycle-Tabellen in Preview abgleichen` (`.github/workflows/ulc-linz-p04-lifecycle-preview.yml`), Branch `main`, Standardaktion `inspect` (rein lesend).
+- **Migrationsaktion:** `migrate` nur bei gesonderter Betreiberfreigabe, `apply=true`, bestätigtem Preview-Backup und Wiederherstellungsbereitschaft sowie exakt `ULC-P04-LIFECYCLE-PREVIEW` als Freigabereferenz. Keine automatische Ausführung nach Merge. Kein Übernehmen einer Freigabe bei GitHub-Reruns.
+- **Schreibschutz der Operation:** `tooling/ulc-linz-lifecycle-schema-preview.mjs` verifiziert zunächst alle drei Neon-Origin-Credentials auf dieselbe Preview-DB mit unterschiedlichen kanonischen Rollen. Zusätzlich kontrolliert es tatsächliche `current_database()`/`current_user` der SQL-Verbindung **vor und innerhalb der Transaktion**. Der Workflow arbeitet nur auf `main` und benutzt dieselbe Preview-Concurrency wie bestehende Deploys.
+- **Atomare SQL-Aktion:** innerhalb einer DB-Transaktion Advisory Lock, Zustand erneut lesen, genau die drei **originalen kanonischen** SQL-Dateien ausführen, kompletten Zustand erneut prüfen; Fehler führt zu SQL-Rollback. Vollständig bestehender Stand ergibt `already-current` statt Wiederanwendung.
+- **Post-Apply:** bestehende Preview-Runtime-Berechtigungen mit dem bereits vorhandenen D4-Reconciler abgleichen und anschließend DB-Schema und Anwendung/Log-Rollen unabhängig nachprüfen. **Das erneute Setzen von DB-Rechten ist eine privilegierte Preview-Änderung und durch die Betreiberfreigabe mit umfasst.** Bei einem Rechte-/Postcheck-Fehler gilt der Lauf als FAIL; kein automatisches Deployment.
+- **Gleiches SQL im Test:** `tooling/ulc-linz-lifecycle-schema-reconcile.postgres.test.mjs` verwendet den exportierten tatsächlichen Transaktionspfad in einer **wegwerfbaren PostgreSQL-Datenbank**; zusätzlich No-op-Rerun. Die Quality-CI prüft falsche DB/Rolle, fehlende Freigabe und den rein lesenden Standardmodus.
+
+**Betriebsreihenfolge:** 1. PR-Review/CI und ausdrücklicher Merge; 2. Preview-Backup-/Recovery-Beleg überprüfen; 3. Workflow mit `inspect` auf `main`; 4. nach neuer expliziter Freigabe `migrate`; 5. Postchecks/bei Bedarf fokussierter synthetischer Handytest. **Kein** Datenbankschritt wurde in diesem Arbeitspaket ausgelöst.
+
+**Kein Produktions-Go-live:** Die vier Tabellen erlauben nicht automatisch das Live-Subject-Erasure/Restore für alle Datenowner. #656 bleibt ein weiterer Security-Entwurf, P01-Rechts-/Provider-/Backupnachweise und bestehende `blocked`-Production-Contracts sind separat offen.
+
 ## Abnahme
 
 - Exakte PR-HEAD-CI: Quality + PostgreSQL-E2E **PASS**, PostgreSQL-Test tatsächlich gelaufen.
