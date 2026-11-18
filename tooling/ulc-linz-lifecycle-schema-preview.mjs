@@ -52,7 +52,7 @@ async function checkActualDatabaseIdentity(sql) {
  * release lock, and either apply all original SQL or nothing. Deliberately
  * no new retention/cleanup policy, Worker flag, or production path.
  */
-export async function executeUlcLifecycleRepairTransaction(sql, plan) {
+export async function executeUlcLifecycleRepairTransaction(sql, plan, { assertIdentity } = {}) {
   if (!sql || typeof sql.unsafe !== "function" || typeof sql.begin !== "function") {
     refuse("PostgreSQL transaction client unavailable");
   }
@@ -60,6 +60,7 @@ export async function executeUlcLifecycleRepairTransaction(sql, plan) {
     refuse("canonical migration plan must contain exactly three entries");
   }
   return sql.begin(async tx => {
+    if (assertIdentity) await assertIdentity(tx);
     await tx.unsafe("SELECT pg_catalog.pg_advisory_xact_lock(1212, 404)");
     const before = await inspectUlcLifecycleSchema(tx);
     if (before.state === "current") return "already-current";
@@ -112,26 +113,8 @@ export async function migrateUlcLifecyclePreview(input, options = {}) {
     refuse("apply + backup + restore evidence + exact operator approval required");
   }
   return withPreviewConnection(input, options, async (sql, plan) => {
-    const outcome = await sql.begin(async tx => {
-      // Protect against wrong role even when an initially valid connection
-      // is replaced via connection pool / transaction routing.
-      await checkActualDatabaseIdentity(tx);
-      // Execute inside this same verified transaction without nesting.
-      await tx.unsafe("SELECT pg_catalog.pg_advisory_xact_lock(1212, 404)");
-      const before = await inspectUlcLifecycleSchema(tx);
-      if (before.state === "current") return "already-current";
-      if (before.state !== "migration-required") {
-        refuse("schema changed or is partially installed");
-      }
-      for (const migration of plan) {
-        for (const statement of migration.statements) {
-          await tx.unsafe(statement);
-        }
-      }
-      if ((await inspectUlcLifecycleSchema(tx)).state !== "current") {
-        refuse("post-migration schema check failed; rolling back");
-      }
-      return "applied";
+    const outcome = await executeUlcLifecycleRepairTransaction(sql, plan, {
+      assertIdentity: checkActualDatabaseIdentity,
     });
     return Object.freeze({
       state: outcome,
