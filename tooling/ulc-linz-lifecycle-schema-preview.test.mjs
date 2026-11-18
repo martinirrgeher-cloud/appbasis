@@ -171,6 +171,6 @@ test("separate Preview workflow is inspect-first and cannot mutate on push", asy
   assert.match(yaml, /generated-preview-ulc-linz/);
   assert.doesNotMatch(yaml, /\n\s*push:/);
   assert.doesNotMatch(yaml, /wrangler deploy|m6-ulc-production|PRODUCTION_DATABASE_URL/i);
-  assert.doesNotMatch(yaml, /d4-preview-database-access\\.mjs reconcile/);
+  assert.doesNotMatch(yaml, /d4-preview-database-access/);
   assert.match(yaml, /verify-privileges/);
 });
