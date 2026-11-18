@@ -140,7 +140,7 @@ jobs:
           RESULT="$(node tooling/ulc-linz-lifecycle-schema-preview.mjs inspect)"
           echo "$RESULT"
           jq -e '.state == "current" and .productionChanged == false' <<< "$RESULT"
-          # Retention / marker DML grants are NOT enabled in this workflow.
+          node tooling/ulc-linz-lifecycle-schema-preview.mjs verify-privileges
 
       # No Cloudflare deployment/flag, Production credentials, backup restore
       # operation, data erasure or retention timer is part of this workflow.
