@@ -1837,7 +1837,23 @@ describe("generated identity+permissions Worker entrypoint", () => {
         },
       };
     });
-    const item = JSON.stringify({ name: "Sprint", categoryKey: "acceleration" });
+    // This API intentionally requires a complete replacement payload on update.
+    const item = JSON.stringify({
+      name: "Sprint",
+      categoryKey: "acceleration",
+      subcategory: null,
+      difficultyKey: null,
+      goal: null,
+      description: null,
+      coachingCues: null,
+      commonMistakes: null,
+      equipment: [],
+      videoUrl: null,
+      videoUrls: [],
+      groupIds: [],
+      similarExerciseIds: [],
+      parameters: [],
+    });
     const requests = [
       { method: "GET", path: "/api/modules/exercise-catalog", status: 200 },
       { method: "GET", path: "/api/modules/exercise-catalog/exercise-1", status: 200 },
