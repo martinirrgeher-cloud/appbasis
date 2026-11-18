@@ -180,6 +180,9 @@ jobs:
       - name: Validate ULC lifecycle migration reconciliation planner
         run: node --test ./tooling/ulc-linz-lifecycle-schema-reconcile.test.mjs
 
+      - name: Validate ULC controlled Preview migration release and scope
+        run: node --test ./tooling/ulc-linz-lifecycle-schema-preview.test.mjs
+
       - name: Test U12 preview schema-v12 migration guard
         run: node --test ./tooling/ulc-linz-u12-preview.test.mjs
 
