@@ -160,11 +160,14 @@ async function dayResponse(
   url: URL,
 ): Promise<Response> {
   if (request.method !== "GET") return methodNotAllowed("GET");
-  const query = dayQuery(url);
-  const access = await authorize(request, runtime, url, "view");
-  if (access instanceof Response) return access;
 
   try {
+    // The date/subject query is untrusted HTTP input. Parse it under the
+    // existing validation-error mapper, otherwise malformed URLs become 500s.
+    const query = dayQuery(url);
+    const access = await authorize(request, runtime, url, "view");
+    if (access instanceof Response) return access;
+
     if (access.subjectId !== null && access.subjectId !== query.subjectId) {
       return scopeDenied();
     }

@@ -149,6 +149,46 @@ describe("ULC Linz training documentation access", () => {
     ).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
   });
 
+  it("requires an actual edit capability for documentation mutations", async () => {
+    const view = capabilityId("ulc-linz:module:training_documentation:view");
+    const edit = capabilityId("ulc-linz:module:training_documentation:edit");
+
+    // A read-only coach may read documents but must not save, complete or reopen.
+    await expect(
+      service({ grants: [view] }).assertEditAccess(currentIdentity()),
+    ).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+
+    await expect(
+      service({ grants: [view, edit] }).assertEditAccess(currentIdentity()),
+    ).resolves.toMatchObject({
+      organizationId: ORGANIZATION_ID,
+      actorPrincipalId: IDENTITY_ID,
+      subjectId: null,
+      canEdit: true,
+    });
+  });
+
+  it("requires the athlete's current own-subject relation even for edit", async () => {
+    const view = capabilityId("ulc-linz:module:training_documentation:view");
+    const edit = capabilityId("ulc-linz:module:training_documentation:edit");
+
+    await expect(
+      service({
+        sourceRole: "athlete",
+        grants: [view, edit],
+        related: false,
+      }).assertEditAccess(currentIdentity()),
+    ).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+
+    // Direct capabilities must not bypass the intentionally closed parent scope.
+    await expect(
+      service({
+        sourceRole: "parent",
+        grants: [view, edit],
+      }).assertEditAccess(currentIdentity()),
+    ).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+  });
+
   it("denies parent and inactive memberships", async () => {
     const view = capabilityId("ulc-linz:module:training_documentation:view");
 
