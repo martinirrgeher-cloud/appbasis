@@ -55,7 +55,7 @@ jobs:
           command -v tar
           command -v sha256sum
 
-      - name: Validate source, empty restore destination and EU-only storage access
+      - name: Validate isolated endpoints and EU-only storage access (read-only)
         id: settings
         shell: bash
         env:
@@ -79,13 +79,7 @@ jobs:
           aws s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" >/dev/null
           echo "endpoint=$ENDPOINT" >> "$GITHUB_OUTPUT"
 
-          # A restore must never share a live Neon endpoint and must be empty.
-          EMPTY="$(docker run --rm \
-            --env APPBASIS_ULC_RESTORE_DATABASE_URL \
-            --env "ULC_RESTORE_SQL=SELECT count(*) FROM pg_class AS c JOIN pg_namespace AS n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%'" \
-            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
-            sh -ceu 'psql --no-psqlrc --tuples-only --no-align --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" --command="$ULC_RESTORE_SQL"')"
-          test "$EMPTY" = "0" || { echo "ULC K2 quarantine target already has tables; stop without changes." >&2; exit 1; }
+
 
       - name: Create private workspace and download ciphertext with digest proof
         id: download
@@ -147,6 +141,23 @@ jobs:
             postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
             pg_restore --list /backup/database.pgdump >/dev/null
           echo "Encrypted ULC restore preflight PASS; no data has been restored unless apply=true." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check quarantine is empty immediately before approved restore
+        if: ${{ inputs.apply == true }}
+        shell: bash
+        env:
+          APPBASIS_ULC_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_RESTORE_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # The isolated target was validated above. A real restore still
+          # REQUIRES an empty DB; read-only apply=false must not require one.
+          # A restore must never share a live Neon endpoint and must be empty.
+          EMPTY="$(docker run --rm \
+            --env APPBASIS_ULC_RESTORE_DATABASE_URL \
+            --env "ULC_RESTORE_SQL=SELECT count(*) FROM pg_class AS c JOIN pg_namespace AS n ON n.oid=c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%'" \
+            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
+            sh -ceu 'psql --no-psqlrc --tuples-only --no-align --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" --command="$ULC_RESTORE_SQL"')"
+          test "$EMPTY" = "0" || { echo "ULC K2 quarantine target already has tables; stop without changes." >&2; exit 1; }
 
       - name: Restore only into the verified empty quarantine database
         if: inputs.apply == true
