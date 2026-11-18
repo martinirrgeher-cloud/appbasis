@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
+import { executeUlcLifecycleRepairTransaction } from "./ulc-linz-lifecycle-schema-preview.mjs";
 import {
   inspectUlcLifecycleSchema,
   loadUlcLifecycleRepairPlan,
@@ -73,13 +74,14 @@ test("P04: three canonical lifecycle migrations reconcile an existing partial Pr
       "migration-required");
 
     // Rehearse the 3 existing files exactly, without editing their SQL.
-    await database.client.begin(async transaction => {
-      for (const migration of plan) {
-        for (const statement of migration.statements) {
-          await transaction.unsafe(statement);
-        }
-      }
-    });
+    assert.equal(
+      await executeUlcLifecycleRepairTransaction(database.client, plan),
+      "applied",
+    );
+    assert.equal(
+      await executeUlcLifecycleRepairTransaction(database.client, plan),
+      "already-current",
+    );
     const after = await inspectUlcLifecycleSchema(database.client);
     assert.equal(after.state, "current");
     assert.deepEqual(after.requiredMigrations, []);
