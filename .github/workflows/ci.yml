@@ -72,6 +72,9 @@ jobs:
       - name: Run ULC lifecycle PostgreSQL E2E tests
         run: pnpm --filter @appbasis/app-ulc-linz test:postgres
 
+      - name: Rehearse missing ULC lifecycle migrations on disposable PostgreSQL
+        run: node --test ./tooling/ulc-linz-lifecycle-schema-reconcile.postgres.test.mjs
+
       - name: Verify proposed G-04 calendar in isolated PostgreSQL
         run: pnpm --filter @appbasis/app-ulc-linz exec vitest run --maxWorkers=1 ./test/registration-calendar.postgres.e2e.test.ts
 
@@ -173,6 +176,9 @@ jobs:
 
       - name: Test ULC central release assistant safety
         run: node --test ./tooling/ulc-linz-release-assistant.test.mjs
+
+      - name: Validate ULC lifecycle migration reconciliation planner
+        run: node --test ./tooling/ulc-linz-lifecycle-schema-reconcile.test.mjs
 
       - name: Test U12 preview schema-v12 migration guard
         run: node --test ./tooling/ulc-linz-u12-preview.test.mjs
