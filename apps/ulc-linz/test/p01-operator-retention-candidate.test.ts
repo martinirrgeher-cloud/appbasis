@@ -31,6 +31,10 @@ type Candidate = {
   readonly baseline: {
     readonly manifestMigrationCount: number;
     readonly tableCount: number;
+    readonly declaredManifestTableCount: number;
+    readonly previewVerifiedTableCount: number;
+    readonly additionalLiveTablesNotInV16Manifest: readonly string[];
+    readonly repositoryManifestStatus: string;
     readonly originalSourceMarkerRetentionDays: number;
     readonly postExpiryRetry: string;
     readonly noAutomaticRetentionPurge: boolean;
@@ -59,23 +63,43 @@ async function data<T>(path: string): Promise<T> {
 }
 
 describe("ULC P01 confirmed target guidance – no legal or runtime approval", () => {
-  it("covers each one of the 64 declared inventory tables exactly once", async () => {
+  it("covers all 66 current Preview tables without claiming unregistered v17 migrations are canonical", async () => {
     const candidate = await data<Candidate>(
       "../privacy/p01-operator-retention-candidate.json",
     );
-    const inventory = await data<Inventory>(
+    const manifestInventory = await data<Inventory>(
       "../privacy/m5-data-inventory.json",
     );
+    const previewInventory = await data<Inventory>(
+      "../privacy/m5-data-inventory.v17-proposed.json",
+    );
     const rows = candidate.tableGroups.flatMap((group) => group.tables);
-    const declared = inventory.persistentTables.map((table) => table.id);
+    const declared = manifestInventory.persistentTables.map((table) => table.id);
+    const preview = previewInventory.persistentTables.map((table) => table.id);
+    const extra = preview.filter((table) => !declared.includes(table)).sort();
+
     expect(declared).toHaveLength(64);
-    expect(rows).toHaveLength(64);
-    expect(new Set(rows).size).toBe(64);
-    expect([...rows].sort()).toEqual([...declared].sort());
-    expect(inventory.persistentOwners.flatMap((owner) =>
+    expect(manifestInventory.persistentOwners.flatMap((owner) =>
       owner.migrations)).toHaveLength(41);
-    expect(candidate.baseline.manifestMigrationCount).toBe(41);
-    expect(candidate.baseline.tableCount).toBe(64);
+    expect(extra).toEqual([
+      "ulc_linz_registration_calendar_exception",
+      "ulc_linz_registration_calendar_rule",
+    ]);
+    expect(preview).toHaveLength(66);
+    expect(rows).toHaveLength(66);
+    expect(new Set(rows).size).toBe(66);
+    expect([...rows].sort()).toEqual([...preview].sort());
+    expect(candidate.baseline).toMatchObject({
+      manifestMigrationCount: 41,
+      declaredManifestTableCount: 64,
+      previewVerifiedTableCount: 66,
+      tableCount: 66,
+      additionalLiveTablesNotInV16Manifest: extra,
+    });
+    expect(candidate.baseline.repositoryManifestStatus).toContain("v17-calendar-SQL-not-registered");
+    expect(candidate.tableGroups.find((group) =>
+      group.id === "general_configuration")?.tables)
+      .toEqual(expect.arrayContaining(extra));
   });
 
   it("records scoped operator target confirmation while keeping legal/provider/production gates unapproved", async () => {
