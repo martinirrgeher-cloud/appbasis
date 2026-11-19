@@ -39,6 +39,8 @@ function fakeSql({
   database_name = "appbasis_ulc_linz_preview",
   principal_name = "appbasis_ulc_linz_preview_migration",
   public_tables = 66,
+  catalog_favorite_guard_exists = false,
+  catalog_subject_guard_exists = false,
 } = {}) {
   const statements = [];
   let didBegin = false;
@@ -56,6 +58,7 @@ function fakeSql({
           }
           if (statements.length === 2) return [{
             database_name, principal_name, public_tables,
+            catalog_favorite_guard_exists, catalog_subject_guard_exists,
           }];
           if (statements.length === 3) return [evidence];
           throw new Error("Unexpected fourth SQL statement");
@@ -131,6 +134,24 @@ test("zero unattributed usage requires all usage rows to have owner links", () =
   assert.equal(report.status, "blocked");
 });
 
+test("guarded 68-table catalog transition is inspectable without allowing a release", async () => {
+  const ready = await inspectUlcP02PilotAdmission(fakeSql({
+    public_tables: 68,
+    catalog_favorite_guard_exists: true,
+    catalog_subject_guard_exists: true,
+  }));
+  assert.equal(ready.status, "blocked");
+  for (const missing of [
+    { catalog_favorite_guard_exists: false, catalog_subject_guard_exists: true },
+    { catalog_favorite_guard_exists: true, catalog_subject_guard_exists: false },
+  ]) {
+    await assert.rejects(inspectUlcP02PilotAdmission(fakeSql({
+      public_tables: 68,
+      ...missing,
+    })), /guarded 66\/68-table schema/);
+  }
+});
+
 test("mismatched Preview database, migration role or table shape fail before touching data", async () => {
   const cases = [
     { database_name: "ulc_linz_k2_restore_20261118" },
@@ -140,7 +161,7 @@ test("mismatched Preview database, migration role or table shape fail before tou
   ];
   for (const fixture of cases) {
     const sql = fakeSql(fixture);
-    await assert.rejects(inspectUlcP02PilotAdmission(sql), /wrong Preview database, role or expected 66-table schema/);
+    await assert.rejects(inspectUlcP02PilotAdmission(sql), /wrong Preview database, role or guarded 66\/68-table schema/);
     assert.equal(sql.statements.length, 2);
   }
   await assert.rejects(inspectUlcP02PilotAdmission(null), /transaction unavailable/);
