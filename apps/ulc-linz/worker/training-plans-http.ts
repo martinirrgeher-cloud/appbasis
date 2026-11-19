@@ -23,6 +23,8 @@ import {
   UlcTrainingBlockReferenceError,
 } from "./training-blocks-service";
 import {
+  UlcTrainingPlanUsageIncompleteError,
+  UlcTrainingPlanUsageReconciliationUnavailableError,
   UlcTrainingPlanReferenceError,
   UlcTrainingPlanTemplateSaveError,
 } from "./training-plans-service";
@@ -100,7 +102,8 @@ export async function trainingPlansHttpResponse(
   const route = url.pathname.slice(base.length);
   const update = /^([^/]+)\/update$/.exec(route);
   const copy = /^([^/]+)\/copy$/.exec(route);
-  if (update === null && copy === null) {
+  const finalize = /^([^/]+)\/finalize-usage$/.exec(route);
+  if (update === null && copy === null && finalize === null) {
     return trainingPlanNotFound();
   }
   if (request.method !== "POST") {
@@ -119,9 +122,28 @@ export async function trainingPlansHttpResponse(
   if (access instanceof Response) return access;
 
   try {
-    const encodedPlanId = update?.[1] ?? copy?.[1];
+    const encodedPlanId = update?.[1] ?? copy?.[1] ?? finalize?.[1];
     if (encodedPlanId === undefined) return trainingPlanNotFound();
     const planId = decodeIdentifier(encodedPlanId);
+
+    if (finalize !== null) {
+      const body = await trainingPlanJsonObject(
+        request,
+        ["expectedRevision"],
+        ["expectedRevision"],
+      );
+      const plan = await runtime.trainingPlans.finalizeVerifiedBlockUsage(
+        access.organizationId,
+        planId,
+        requiredRevision(body.expectedRevision),
+      );
+      return plan === undefined
+        ? trainingPlanNotFound()
+        : privateJson({
+            plan: trainingPlanClientSnapshot(plan),
+            usageReconciled: true,
+          });
+    }
 
     if (copy !== null) {
       const body = await trainingPlanJsonObject(
@@ -898,6 +920,23 @@ function trainingPlanClientSnapshot(
 }
 
 function trainingPlanErrorResponse(error: unknown): Response {
+  if (error instanceof UlcTrainingPlanUsageIncompleteError) {
+    return privateJson(
+      {
+        error: {
+          code: error.code,
+          message: "Plan saved; verified block usage is incomplete. Finalize this exact revision.",
+          planId: error.planId,
+          currentRevision: error.currentRevision,
+          failedBookings: error.failedBookings,
+        },
+      },
+      { status: 409 },
+    );
+  }
+  if (error instanceof UlcTrainingPlanUsageReconciliationUnavailableError) {
+    return trainingPlanNotFound();
+  }
   if (error instanceof TrainingPlanConflictError) {
     return Response.json(
       {
