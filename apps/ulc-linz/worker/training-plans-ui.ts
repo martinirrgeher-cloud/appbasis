@@ -3653,12 +3653,12 @@ async function requestTrainingPlanCopyWithUsageRecovery(
   subjectId,
   targetDate,
 ) {
-  const key = [
+  const key = JSON.stringify([
     sourcePlanId,
-    String(expectedSourceRevision),
+    expectedSourceRevision,
     subjectId,
     targetDate,
-  ].join("\\u0000");
+  ]);
   const previous = trainingPlanDistributionUsageRecovery.get(key);
   if (
     previous &&
