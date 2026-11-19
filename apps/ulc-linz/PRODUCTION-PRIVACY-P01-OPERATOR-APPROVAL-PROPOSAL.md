@@ -8,6 +8,16 @@ Zweck: Ein einziges, vollständig prüfbares Entscheidungsgespräch mit dem zust
 
 **Basis:** [P01-Bestandsentwurf](./PRODUCTION-PRIVACY-DECISIONS-P01-DRAFT.md), [P01-Entscheidungsblatt](./PRODUCTION-PRIVACY-P01-DECISION-PACK.md), [v16 Schema-Inventar](./PRODUCTION-READINESS-P01-SCHEMA-COVERAGE.md), [P04-A-Gates](./PRODUCTION-READINESS-P04-A-GATES.md). Ein Schema-genauer Entwurf der **13 Gruppen für alle 64 Tabellen** liegt unter `privacy/p01-operator-retention-candidate.json` und wird mit `test/p01-operator-retention-candidate.test.ts` überprüft. Die JSON-Datei wird von keiner Runtime importiert und setzt keine Frist in Kraft.
 
+## 0. Aktualisierung 19.11.2026 – aktuelles Preview-Schema nach P04
+
+**Laufzeitbefund (Neon, nur Katalog/Datensatzzähler):** Auf dem Preview-Hauptbranch in `appbasis_ulc_linz_preview` sind nach gesondert genehmigter P04-Nachmigration **66 öffentliche Tabellen** installiert. Die vier vormals fehlenden Lifecycle-Tabellen, drei Dokumentations-Guardfunktionen und zwei Trigger sind vorhanden; die vier neuen Tabellen sind leer und für die beiden Runtime-Rollen ohne INSERT/UPDATE/DELETE. Vorherige acht Stichproben-Zähler unverändert; Handytest Anwesenheit/Dokumentation PASS. Die Migration wurde **nicht in Produktion** ausgeführt.
+
+**Repository-Differenz bewusst nicht kaschiert:** Das kanonische `apps/ulc-linz/appbasis.database.json` deklariert weiterhin **41 SQL-Migrationen / 64 unterschiedliche Tabellen (v16)**. Die zwei `ulc_linz_registration_calendar_rule` und `ulc_linz_registration_calendar_exception` liegen bereits in Preview, sind jedoch nur in der nicht registrierten v17-SQL-Migrationsvorlage enthalten. Der aktuelle P01-Kandidat klassifiziert **alle 66 realen Preview-Tabellen** in 13 Fachgruppen; das ist **weder eine v17-Produktionsschemafreigabe noch ein Nachweis vollständiger Löschung**. Die Kalender-Regeln enthalten nach SQL-Vorlage keine freien Personennotizen, verweisen jedoch auf Organisation und Gruppe; Zugriff, Zweck und Aufbewahrung bleiben im Datenschutzbeschluss zu prüfen.
+
+**Betriebsevidenz:** verschlüsselter ULC-Preview-Dump in EU-R2 vom 19.11. [Backup #44606974536](https://github.com/martinirrgeher-cloud/appbasis/actions/runs/44606974536) tatsächlich hochgeladen und geprüft; [Restore #44602778793](https://github.com/martinirrgeher-cloud/appbasis/actions/runs/44602778793) des Vorgängerbackups vom 18.11. in separater leerer Neon-Datenbank technisch erfolgreich (62 Tabellen, 8 Owner). Das aktuelle Backup wurde **nicht** erneut wiederhergestellt, und der Datenbank-Restore umfasst **keine privaten R2-Mediendateien**. Die tägliche ULC-Backup-Automatik ist noch deaktiviert, die tatsächliche Backup-Retention und der vollständigere nachträgliche Löschbeleg bleiben P01-Betriebsblocker.
+
+**Stand der Vereinspolitik:** fachliche Zielrichtung aus der gesonderten Bestätigung vom 14.11. ist dokumentiert; `legalApproval=false`, `runtimeActive=false`, `privacy=blocked`. Kein produktiver Retention-/Erase-Timer und keine Freigabe von D2-Variante B aus dem gegenwärtigen Nachholschritt ableiten.
+
 ## 1. Empfehlung: Datennutzung und Aufbewahrung – ausdrücklich zweckabhängig
 
 | Kategorie | Vorgeschlagene Vereinsentscheidung | Prüfung und Vorbehalt |
@@ -42,7 +52,7 @@ Der fachliche Beschluss umfasst **64 im Repository deklarierte Tabellen**; diese
 - **Zwei in der Preview vorhanden, aber im statischen v16-Inventar nicht aufgeführt:** `ulc_linz_registration_calendar_rule`, `ulc_linz_registration_calendar_exception` (spätere Trainingskalenderfunktion).
 - **Kein Schreibzugriff, keine Migration, keine personenbezogenen Tabelleninhalte gelesen.** Die Differenz ist eine Bestands-/Versionsabweichung und noch **kein** Nachweis eines tatsächlichen Fehlers in den aktuell benutzten Modulen.
 
-**Konkretes Go-live-Gate:** Vor dem getrennten Produktionsaufbau das Manifest samt v17-Kalendertabellen auf die gewünschte App-Version abgleichen und die vier fehlenden Modul-/Lifecycle-Tabellen auf Migrationserfordernis und Nutzung prüfen. Erst dann die Fachfristen und Löschprüfungen auf das **wirklich installierte** Schema anwenden. Weder dieses Blatt noch ein grüner CI-Lauf dürfen die fehlenden Live-/Restore-Belege ersetzen.
+**Stand 19.11.2026:** Die fehlenden vier Lifecycle-Tabellen wurden in Preview erfolgreich ergänzt. Vor dem getrennten Produktionsaufbau weiterhin das Manifest samt v17-Kalendertabellen auf die gewünschte App-Version abgleichen und die vier fehlenden Modul-/Lifecycle-Tabellen auf Migrationserfordernis und Nutzung prüfen. Erst dann die Fachfristen und Löschprüfungen auf das **wirklich installierte** Schema anwenden. Weder dieses Blatt noch ein grüner CI-Lauf dürfen die fehlenden Live-/Restore-Belege ersetzen.
 
 ## 4. Ein einziger fachlicher Entscheid – aber keine fingierten Belege
 
