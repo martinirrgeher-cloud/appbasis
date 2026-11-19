@@ -43,6 +43,7 @@ import {
   createUlcExerciseCatalogRuntimeRepository,
   type UlcExerciseCatalogRuntimeMode,
 } from "./exercise-catalog-runtime";
+import { assertUlcProtectedCatalogPreviewReadiness } from "./exercise-catalog-protected-runtime-readiness";
 import { createUlcExerciseCatalogService } from "./exercise-catalog-service";
 import {
   createUlcLinzKindertrainingAccessService,
@@ -617,6 +618,11 @@ export async function createGeneratedPostgresApplicationRuntime(
     });
     const u14Statistics = new PostgresUlcU12StatisticsRepository(applicationSql, "u14");
     const kidsStatistics = new PostgresUlcU12StatisticsRepository(applicationSql, "kindertraining");
+    // Protected catalog mode is a deliberate isolated Preview opt-in; it
+    // must not run on a production/unknown DB role or without marker fences.
+    if (options.exerciseCatalogRuntimeMode === "standard-module-protected-preview") {
+      await assertUlcProtectedCatalogPreviewReadiness(applicationSql);
+    }
     const exerciseCatalog = createUlcExerciseCatalogService({
       repository: createUlcExerciseCatalogRuntimeRepository({
         mode: options.exerciseCatalogRuntimeMode ?? "legacy",
