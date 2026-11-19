@@ -97,7 +97,10 @@ export async function assertUlcProtectedCatalogPreviewReadiness(
         rows?.length !== 1 ||
         row?.database_name !== "appbasis_ulc_linz_preview" ||
         row?.principal_name !== "appbasis_ulc_linz_preview_application" ||
-        row?.public_tables !== 66 ||
+        // Two separately reviewed catalog guard relations are intentionally
+        // absent from the 66-table legacy Preview. Both candidates must be
+        // installed before this protected runtime can ever become available.
+        row?.public_tables !== 68 ||
         row?.item_exists !== true ||
         row?.favorite_exists !== true ||
         row?.marker_exists !== true ||
