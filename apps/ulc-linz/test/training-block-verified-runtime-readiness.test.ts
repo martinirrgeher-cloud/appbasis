@@ -11,6 +11,8 @@ interface ScopeRecord {
   readonly database_name: string;
   readonly principal_name: string;
   readonly public_tables: number;
+  readonly catalog_favorite_guard_exists: boolean;
+  readonly catalog_subject_guard_exists: boolean;
   readonly plan_table_exists: boolean;
   readonly plan_revision_exists: boolean;
   readonly plan_item_exists: boolean;
@@ -30,6 +32,8 @@ const BASE: ScopeRecord = {
   database_name: "appbasis_ulc_linz_preview",
   principal_name: "appbasis_ulc_linz_preview_application",
   public_tables: 66,
+  catalog_favorite_guard_exists: false,
+  catalog_subject_guard_exists: false,
   plan_table_exists: true,
   plan_revision_exists: true,
   plan_item_exists: true,
@@ -92,7 +96,26 @@ describe("P02-C verified plan/block runtime preflight", () => {
     expect(sql.queries[1]).toContain("appbasis_training_block_usage_subject");
     expect(sql.queries[1]).toContain("appbasis_training_plan_revision_item");
     expect(sql.queries[1]).toContain("appbasis_training_block_usage_subject_deletion");
+    expect(sql.queries[1]).toContain("appbasis_exercise_catalog_favorite_deletion");
+    expect(sql.queries[1]).toContain("appbasis_exercise_catalog_usage_subject");
     expect(sql.queries[1]).not.toMatch(/\b(DELETE\s+FROM|UPDATE\s+public|INSERT\s+INTO|TRUNCATE|GRANT|DROP)\b/i);
+  });
+
+  it("accepts only the complete 68-table catalog transition, never a partial guard", async () => {
+    await expect(assertUlcVerifiedBlockUsagePreviewReadiness(fakeSql({
+      ...BASE,
+      public_tables: 68,
+      catalog_favorite_guard_exists: true,
+      catalog_subject_guard_exists: true,
+    }).client)).resolves.toBeUndefined();
+    for (const change of [
+      { catalog_favorite_guard_exists: false, catalog_subject_guard_exists: true },
+      { catalog_favorite_guard_exists: true, catalog_subject_guard_exists: false },
+    ]) {
+      await expect(assertUlcVerifiedBlockUsagePreviewReadiness(fakeSql({
+        ...BASE, public_tables: 68, ...change,
+      }).client)).rejects.toBeInstanceOf(UlcVerifiedBlockUsageUnavailableError);
+    }
   });
 
   it("rejects wrong database or role, incomplete migrations and missing writer rights", async () => {
