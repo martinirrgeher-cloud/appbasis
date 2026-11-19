@@ -17,8 +17,8 @@
     "previewVerifiedTableCount": 66,
     "liveSchemaCheck": "2026-11-19-readonly-Neon-catalog-after-P04-Preview-migration",
     "additionalLiveTablesNotInV16Manifest": [
-      "ulc_linz_registration_calendar_rule",
-      "ulc_linz_registration_calendar_exception"
+      "ulc_linz_registration_calendar_exception",
+      "ulc_linz_registration_calendar_rule"
     ],
     "repositoryManifestStatus": "v16-41-migrations-64-tables; v17-calendar-SQL-not-registered; Preview-has-66"
   },
