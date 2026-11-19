@@ -6703,6 +6703,96 @@ describe("U12 runtime API", () => {
     });
   });
 
+  it("finalizes usage only for a server-authorized plan editor and exact revision", async () => {
+    const base = runtime();
+    const calls: unknown[] = [];
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlans: {
+        ...base.trainingPlans,
+        async finalizeVerifiedBlockUsage(organizationId, planId, expectedRevision) {
+          calls.push({ organizationId, planId, expectedRevision });
+          return {
+            id: "saved-plan",
+            organizationId,
+            subjectId: "athlete-1",
+            planDate: "2026-11-19",
+            currentRevision: 3,
+            createdAt: "2026-11-19T10:00:00.000Z",
+            updatedAt: "2026-11-19T11:00:00.000Z",
+            revision: {
+              organizationId,
+              planId: "saved-plan",
+              revision: 3,
+              note: null,
+              items: [],
+              createdAt: "2026-11-19T11:00:00.000Z",
+            },
+          };
+        },
+      },
+    }));
+    const request = (body: unknown) => new Request(
+      "https://ulc.example.test/api/modules/training-plans/saved-plan/finalize-usage",
+      {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      },
+    );
+    const response = await worker.fetch(request({ expectedRevision: 3 }), validEnv);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(calls).toEqual([{
+      organizationId: "verein-1",
+      planId: "saved-plan",
+      expectedRevision: 3,
+    }]);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      usageReconciled: true,
+      plan: {
+        id: "saved-plan",
+        subjectId: "athlete-1",
+        currentRevision: 3,
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain("organizationId");
+    const invalid = await worker.fetch(
+      request({ expectedRevision: 3, organizationId: "forged" }),
+      validEnv,
+    );
+    expect(invalid.status).toBe(400);
+    expect(calls).toHaveLength(1);
+
+    let unauthorizedCalls = 0;
+    const denied = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          throw new UlcLinzAuthorizationDeniedError();
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async finalizeVerifiedBlockUsage() {
+          unauthorizedCalls += 1;
+          throw new Error("Unauthorized finalization reached service");
+        },
+      },
+    }));
+    const forbidden = await denied.fetch(
+      request({ expectedRevision: 3 }),
+      validEnv,
+    );
+    expect(forbidden.status).toBe(403);
+    expect(unauthorizedCalls).toBe(0);
+  });
+
   it("returns a conflict instead of silently overwriting a stale E7B4 plan revision", async () => {
     const base = runtime();
     const worker = createGeneratedWorker(() => ({
