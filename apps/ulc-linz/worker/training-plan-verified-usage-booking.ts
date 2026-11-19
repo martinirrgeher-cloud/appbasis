@@ -3,6 +3,7 @@ import type {
   TrainingBlockUsageEvent,
 } from "@appbasis/training-blocks";
 import type {
+  TrainingPlanItemRevision,
   TrainingPlanRepository,
   TrainingPlanSnapshot,
 } from "@appbasis/training-plans";
@@ -128,7 +129,7 @@ export function createUlcTrainingPlanVerifiedUsageBooking(
         }
         seenRevisions.add(revision.revision);
         const occurrences = revision.items.filter(
-          (candidate) => candidate.kind === "block" && candidate.itemId === blockItemId,
+          (candidate: TrainingPlanItemRevision) => candidate.kind === "block" && candidate.itemId === blockItemId,
         );
         if (occurrences.length > 1 ||
             (occurrences.length === 1 &&
