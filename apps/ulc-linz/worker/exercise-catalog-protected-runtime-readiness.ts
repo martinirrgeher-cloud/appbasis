@@ -47,11 +47,15 @@ export async function assertUlcProtectedCatalogPreviewReadiness(
           to_regclass('public.appbasis_exercise_catalog_usage_subject') IS NOT NULL AS usage_subject_exists,
           CASE WHEN to_regclass('public.appbasis_exercise_catalog_item') IS NULL
             THEN false ELSE
-              has_table_privilege(current_user, 'public.appbasis_exercise_catalog_item', 'SELECT,INSERT,UPDATE')
+              has_table_privilege(current_user, 'public.appbasis_exercise_catalog_item', 'SELECT')
+              AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_item', 'INSERT')
+              AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_item', 'UPDATE')
             END AS may_write_item,
           CASE WHEN to_regclass('public.appbasis_exercise_catalog_favorite') IS NULL
             THEN false ELSE
-              has_table_privilege(current_user, 'public.appbasis_exercise_catalog_favorite', 'SELECT,INSERT,DELETE')
+              has_table_privilege(current_user, 'public.appbasis_exercise_catalog_favorite', 'SELECT')
+              AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_favorite', 'INSERT')
+              AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_favorite', 'DELETE')
             END AS may_write_favorite,
           CASE WHEN to_regclass('public.appbasis_exercise_catalog_favorite_deletion') IS NULL
             THEN false ELSE
