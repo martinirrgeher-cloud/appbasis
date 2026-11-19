@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -131,5 +133,24 @@ describe("P02-C verified plan/block runtime preflight", () => {
       .rejects.toMatchObject({
         message: "ULC verified training block usage is not authorized in this Preview database.",
       });
+  });
+});
+
+describe("P02-C runtime composition remains explicitly opt-in", () => {
+  it("wires the canonical plan owner and attributed block writer together without legacy fallback", async () => {
+    const code = await readFile(new URL("../worker/postgres.ts", import.meta.url), "utf8");
+    expect(code).toContain(
+      'options.trainingBlockUsageMode === "isolated-preview-verified-subject"',
+    );
+    expect(code).toContain("await assertUlcVerifiedBlockUsagePreviewReadiness(applicationSql)");
+    expect(code).toContain("const blockRepository = new PostgresTrainingBlockRepository(applicationSql)");
+    expect(code).toContain("const planRepository = new PostgresTrainingPlanRepository(applicationSql)");
+    expect(code).toContain("verifiedUsageBooking: createUlcTrainingPlanVerifiedUsageBooking({");
+    expect(code).toContain("plans: planRepository,");
+    expect(code).toContain("usage: blockRepository,");
+    expect(code).toContain('usageWriteMode: "verified-subject-only"');
+    // A deployed Worker never reads the Preview-only activation from env.
+    expect(code).not.toContain("process.env.APPBASIS_ULC_BLOCK_VERIFIED");
+    expect(code).not.toContain("options.trainingBlockUsageMode ??");
   });
 });
