@@ -1001,6 +1001,9 @@ let trainingPlanSaveInFlight = null;
 // In-memory, current-session only. A 409 means the PLAN is already committed;
 // retrying the original POST could create a duplicate or stale CAS conflict.
 let trainingPlanUsageRecovery = null;
+// A copied plan may also be committed before its verified usage write fails.
+// Remember only exact plan revisions for the current browser session.
+let trainingPlanDistributionUsageRecovery = new Map();
 let trainingPlanAutoSaveTimer = null;
 let trainingPlanAutoSavePaused = false;
 let trainingPlanRecoveredConflict = false;
@@ -3611,7 +3614,7 @@ function sameTrainingPlanUsageRecovery(pending, subjectId, planDate) {
     pending.identityId === trainingPlanSessionIdentityId;
 }
 
-async function finalizeTrainingPlanUsageRecovery(pending) {
+async function completeVerifiedTrainingPlanUsage(pending) {
   const result = await requestJson(
     "/api/modules/training-plans/" +
       encodeURIComponent(pending.planId) +
@@ -3632,8 +3635,80 @@ async function finalizeTrainingPlanUsageRecovery(pending) {
   ) {
     throw new Error("INVALID_TRAINING_PLAN_USAGE_RECOVERY");
   }
-  trainingPlanUsageRecovery = null;
   return result;
+}
+
+async function finalizeTrainingPlanUsageRecovery(pending) {
+  const result = await completeVerifiedTrainingPlanUsage(pending);
+  if (trainingPlanUsageRecovery === pending) trainingPlanUsageRecovery = null;
+  return result;
+}
+
+// The multi-athlete distribution flow also persists the target plan before
+// booking its sourced blocks. On a partial 409 the same recipient must be
+// finalized; repeating /copy instead would only cause a target-occupied 409.
+async function requestTrainingPlanCopyWithUsageRecovery(
+  sourcePlanId,
+  expectedSourceRevision,
+  subjectId,
+  targetDate,
+) {
+  const key = [
+    sourcePlanId,
+    String(expectedSourceRevision),
+    subjectId,
+    targetDate,
+  ].join("\\u0000");
+  const previous = trainingPlanDistributionUsageRecovery.get(key);
+  if (
+    previous &&
+    previous.sessionGeneration === trainingPlanSessionGeneration &&
+    previous.identityId === trainingPlanSessionIdentityId
+  ) {
+    const result = await completeVerifiedTrainingPlanUsage(previous);
+    trainingPlanDistributionUsageRecovery.delete(key);
+    return result;
+  }
+  trainingPlanDistributionUsageRecovery.delete(key);
+  try {
+    return await requestJson(
+      "/api/modules/training-plans/" +
+        encodeURIComponent(sourcePlanId) +
+        "/copy",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          expectedSourceRevision,
+          targetSubjectId: subjectId,
+          targetDate,
+        }),
+      },
+    );
+  } catch (error) {
+    if (
+      error?.status !== 409 ||
+      error?.code !== "ULC_TRAINING_PLAN_USAGE_INCOMPLETE" ||
+      typeof error?.planId !== "string" ||
+      error.planId.trim() !== error.planId ||
+      error.planId.length === 0 ||
+      !Number.isSafeInteger(error?.currentRevision) ||
+      error.currentRevision < 1
+    ) {
+      throw error;
+    }
+    const pending = {
+      planId: error.planId,
+      currentRevision: error.currentRevision,
+      subjectId,
+      planDate: targetDate,
+      sessionGeneration: trainingPlanSessionGeneration,
+      identityId: trainingPlanSessionIdentityId,
+    };
+    trainingPlanDistributionUsageRecovery.set(key, pending);
+    const result = await completeVerifiedTrainingPlanUsage(pending);
+    trainingPlanDistributionUsageRecovery.delete(key);
+    return result;
+  }
 }
 
 async function requestTrainingPlanSaveWithUsageRecovery(
@@ -4151,18 +4226,11 @@ async function distributeTrainingPlan() {
   try {
     for (const subjectId of selected) {
       try {
-        const payload = await requestJson(
-          "/api/modules/training-plans/" +
-            encodeURIComponent(sourcePlanId) +
-            "/copy",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              expectedSourceRevision,
-              targetSubjectId: subjectId,
-              targetDate,
-            }),
-          },
+        const payload = await requestTrainingPlanCopyWithUsageRecovery(
+          sourcePlanId,
+          expectedSourceRevision,
+          subjectId,
+          targetDate,
         );
         const plan = payload?.plan;
         if (!isTrainingPlanSnapshot(plan)) {
@@ -4283,6 +4351,7 @@ function resetTrainingPlanSessionState() {
   trainingPlanSessionGeneration += 1;
   // Never carry a private, owner-bound retry into a different login.
   trainingPlanUsageRecovery = null;
+  trainingPlanDistributionUsageRecovery.clear();
   trainingPlanWeekRequestId += 1;
   trainingPlanDayRequestId += 1;
   trainingPlanSaveBackOperation += 1;
