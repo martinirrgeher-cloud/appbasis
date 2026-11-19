@@ -7,12 +7,20 @@
   "legalApproval": false,
   "baseline": {
     "manifestMigrationCount": 41,
-    "tableCount": 64,
+    "tableCount": 66,
     "originalSourceMarkerRetentionDays": 35,
     "postExpiryRetry": "deny",
     "noAutomaticRetentionPurge": true,
     "productionPrivacyGate": "blocked",
-    "note": "Policy choices are recommendations only; current technical lifecycle and retention code remains unchanged."
+    "note": "66 actual Preview tables after P04 SQL; only 64 declared by the 41-migration v16 manifest. The two unregistered Preview v17 calendar tables are included for data/privacy review, NOT production schema adoption or privacy approval.",
+    "declaredManifestTableCount": 64,
+    "previewVerifiedTableCount": 66,
+    "liveSchemaCheck": "2026-11-19-readonly-Neon-catalog-after-P04-Preview-migration",
+    "additionalLiveTablesNotInV16Manifest": [
+      "ulc_linz_registration_calendar_rule",
+      "ulc_linz_registration_calendar_exception"
+    ],
+    "repositoryManifestStatus": "v16-41-migrations-64-tables; v17-calendar-SQL-not-registered; Preview-has-66"
   },
   "recommendedDecisions": {
     "D1": "Treat ambiguous historic usage and free text as potentially personal; no guessed subject attribution; limit access and inspect; prevent new freely identifying usage notes.",
@@ -193,19 +201,21 @@
     {
       "id": "general_configuration",
       "tables": [
+        "appbasis_exercise_catalog_audience",
+        "appbasis_exercise_catalog_item",
+        "appbasis_exercise_catalog_parameter",
+        "appbasis_exercise_catalog_similarity",
+        "appbasis_exercise_catalog_video",
         "appbasis_permission_capability",
         "appbasis_permission_role",
         "appbasis_permission_role_capability",
         "appbasis_training_group",
-        "ulc_linz_training_module_group",
         "ulc_linz_exercise_catalog_item",
-        "ulc_linz_exercise_parameter",
         "ulc_linz_exercise_group",
-        "appbasis_exercise_catalog_item",
-        "appbasis_exercise_catalog_parameter",
-        "appbasis_exercise_catalog_audience",
-        "appbasis_exercise_catalog_video",
-        "appbasis_exercise_catalog_similarity",
+        "ulc_linz_exercise_parameter",
+        "ulc_linz_registration_calendar_exception",
+        "ulc_linz_registration_calendar_rule",
+        "ulc_linz_training_module_group",
         "ulc_linz_youth_content_category",
         "ulc_linz_youth_group_category"
       ],
