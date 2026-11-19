@@ -9,7 +9,7 @@ import {
 const READY = Object.freeze({
   database_name: "appbasis_ulc_linz_preview",
   principal_name: "appbasis_ulc_linz_preview_application",
-  public_tables: 66,
+  public_tables: 68,
   item_exists: true,
   favorite_exists: true,
   marker_exists: true,
@@ -56,6 +56,9 @@ describe("P2-D isolated protected catalog Preview readiness", () => {
       { ...READY, database_name: "prod" },
       { ...READY, principal_name: "appbasis_ulc_linz_preview_migration" },
       { ...READY, public_tables: 65 },
+      { ...READY, public_tables: 66 }, // Legacy Preview lacks two catalog guard tables
+      { ...READY, public_tables: 67 }, // Partially migrated schema is never ready
+      { ...READY, public_tables: 69 },
       { ...READY, usage_subject_exists: false },
       { ...READY, may_read_marker: false },
       { ...READY, may_write_favorite: false },
