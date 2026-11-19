@@ -1,0 +1,74 @@
+# P01 – Konkreter Entscheidungsvorschlag für die Vereinsfreigabe
+
+**Datum:** 14.11.2026 · **Status: FACHLICHE ZIELVORGABE BESTÄTIGT / RECHTLICHE NACHWEISE & RUNTIME GESPERRT.**
+
+**Vereinsentscheidung:** Der in der Unterhaltung als zuständig bestätigte Betreiber hat auf die ausdrückliche Frage, ob er die aufgelisteten Regeln als **fachliche Zielvorgabe des Vereins** freigibt, mit **„Ja“** geantwortet. Die vorher einzeln dargestellten Vorschläge (12 Monate bedarfsabhängig nach Austritt, 24 Monate Trainingshistorie, 90-Tage-Freitext-Review, bis 12 Monate personenbezogene Usage, bestehender 35-Tage-/deny-Marker, Sperre neuer erkennbarer Minderjährigenmedien und D1–D4-Sicherheitsgrundsätze) gelten damit als **fachlicher Umsetzungsscope**. Das ersetzt **nicht** die nachfolgenden Zweck-/Rechtsgrundlagenprüfungen, Betreiber-/Providerbelege und produktiven Freigabeschritte. Voller Name/Funktion wurden nicht überprüft.
+
+Zweck: Ein einziges, vollständig prüfbares Entscheidungsgespräch mit dem zuständigen Vereinsverantwortlichen, bevor produktive Aufbewahrungs-, Lösch-, Rollen- oder Wiederherstellungsfunktionen aktiviert werden.
+
+**Basis:** [P01-Bestandsentwurf](./PRODUCTION-PRIVACY-DECISIONS-P01-DRAFT.md), [P01-Entscheidungsblatt](./PRODUCTION-PRIVACY-P01-DECISION-PACK.md), [v16 Schema-Inventar](./PRODUCTION-READINESS-P01-SCHEMA-COVERAGE.md), [P04-A-Gates](./PRODUCTION-READINESS-P04-A-GATES.md). Ein Schema-genauer Entwurf der **13 Gruppen für alle 64 Tabellen** liegt unter `privacy/p01-operator-retention-candidate.json` und wird mit `test/p01-operator-retention-candidate.test.ts` überprüft. Die JSON-Datei wird von keiner Runtime importiert und setzt keine Frist in Kraft.
+
+## 0. Aktualisierung 19.11.2026 – aktuelles Preview-Schema nach P04
+
+**Laufzeitbefund (Neon, nur Katalog/Datensatzzähler):** Auf dem Preview-Hauptbranch in `appbasis_ulc_linz_preview` sind nach gesondert genehmigter P04-Nachmigration **66 öffentliche Tabellen** installiert. Die vier vormals fehlenden Lifecycle-Tabellen, drei Dokumentations-Guardfunktionen und zwei Trigger sind vorhanden; die vier neuen Tabellen sind leer und für die beiden Runtime-Rollen ohne INSERT/UPDATE/DELETE. Vorherige acht Stichproben-Zähler unverändert; Handytest Anwesenheit/Dokumentation PASS. Die Migration wurde **nicht in Produktion** ausgeführt.
+
+**Repository-Differenz bewusst nicht kaschiert:** Das kanonische `apps/ulc-linz/appbasis.database.json` deklariert weiterhin **41 SQL-Migrationen / 64 unterschiedliche Tabellen (v16)**. Die zwei `ulc_linz_registration_calendar_rule` und `ulc_linz_registration_calendar_exception` liegen bereits in Preview, sind jedoch nur in der nicht registrierten v17-SQL-Migrationsvorlage enthalten. Der aktuelle P01-Kandidat klassifiziert **alle 66 realen Preview-Tabellen** in 13 Fachgruppen; das ist **weder eine v17-Produktionsschemafreigabe noch ein Nachweis vollständiger Löschung**. Die Kalender-Regeln enthalten nach SQL-Vorlage keine freien Personennotizen, verweisen jedoch auf Organisation und Gruppe; Zugriff, Zweck und Aufbewahrung bleiben im Datenschutzbeschluss zu prüfen.
+
+**Betriebsevidenz:** verschlüsselter ULC-Preview-Dump in EU-R2 vom 19.11. [Backup #44606974536](https://github.com/martinirrgeher-cloud/appbasis/actions/runs/44606974536) tatsächlich hochgeladen und geprüft; [Restore #44602778793](https://github.com/martinirrgeher-cloud/appbasis/actions/runs/44602778793) des Vorgängerbackups vom 18.11. in separater leerer Neon-Datenbank technisch erfolgreich (62 Tabellen, 8 Owner). Das aktuelle Backup wurde **nicht** erneut wiederhergestellt, und der Datenbank-Restore umfasst **keine privaten R2-Mediendateien**. Die tägliche ULC-Backup-Automatik ist noch deaktiviert, die tatsächliche Backup-Retention und der vollständigere nachträgliche Löschbeleg bleiben P01-Betriebsblocker.
+
+**Stand der Vereinspolitik:** fachliche Zielrichtung aus der gesonderten Bestätigung vom 14.11. ist dokumentiert; `legalApproval=false`, `runtimeActive=false`, `privacy=blocked`. Kein produktiver Retention-/Erase-Timer und keine Freigabe von D2-Variante B aus dem gegenwärtigen Nachholschritt ableiten.
+
+## 1. Empfehlung: Datennutzung und Aufbewahrung – ausdrücklich zweckabhängig
+
+| Kategorie | Vorgeschlagene Vereinsentscheidung | Prüfung und Vorbehalt |
+| --- | --- | --- |
+| Athleten, Elternkontakte, Trainer, Mitgliedschaft, Login und Rechte | Nur während der tatsächlichen Vereins-/Organisationsnutzung; **bis zu 12 Monate nach Austritt/Deaktivierung** nur, soweit ein dokumentierter weiterer Verwaltungszweck besteht. Aktive Sitzungen deutlich kürzer entsprechend Sicherheitsbedarf. | Keine pauschale zwölfmonatige Nachspeicherung. Bei Ende jedes Zwecks und ohne besondere Pflicht früher löschen; bereits bestehende Technik ist kein Rechtsgrund. |
+| Anwesenheit, persönliche Anmeldungen, Änderungsverläufe, Trainerpräsenz | **Vorschlag bis zu 24 Monate ab Trainingstag**, um zwei Saisonen Vereinsorganisation und Vergleichsstatistik zu ermöglichen. Danach identifizierbare Zeilen entfernen, echte anonymisierte Zusammenfassungen können bei gültigem Zweck bleiben. | Der Verein muss den Zwei-Saisonen-Bedarf ausdrücklich bestätigen. Kein automatisches Ausschließen eines berechtigten früheren Löschbegehrens. Trainervergütung, Fördermittel oder Buchhaltung bei Bedarf **gesondert** dokumentieren. |
+| Persönliche Trainingstermin-/Anmeldenotizen | **Nach 90 Tagen eine Lösch-/Review-Regel**, falls nicht mehr notwendig; ausdrücklich auch die historischen, append-only Änderungsnotizen und JSON-/Trainingsinhaltstitel. Keine Gesundheits-/Diagnoseangaben oder sensiblen persönlichen Details ohne eigenen geprüften Zweck. | Physisch sichere Redaktion auch aller älteren Revisionen nötig, bloßes Leeren aktueller Felder genügt nicht. Freitext darf andere Personen nicht unbemerkt enthalten. |
+| Persönliche Plan-/Block-/Dokudaten und Revisionsketten | Personenbezüge **vorgeschlagen bis 24 Monate ab zugeordnetem Trainingsdatum**; fachliche nicht-personenbezogene Vorlagen nach ihrem eigenständigen Zweck, ohne künstliche Personenzuordnung. | Historische Fremdteilnehmer und Trainer-/Actor-Verweise müssen geprüft/redigiert werden, ohne Daten unbeteiligter Athleten blind zu löschen. |
+| Übungs-/Blockfavoriten und persönliche Usage | Favoriten entfernen, wenn Konto/Zweck endet oder berechtigtes Löschbegehren vorliegt. Usage **vorgeschlagen höchstens 12 Monate** für konkret begründeten Statistikzweck. | Uneindeutige historische `source_ref`/`note`-Texte als potentiell persönlich einstufen, beschränkt zugänglich halten; kein nachträgliches Owner-Raten. |
+| Sicherheits-, Rechte- und Trainer-Audit | Bestehenden technischen **12-Monats-Rahmen nur bei dokumentierter Notwendigkeit** übernehmen; Rechte zur Einsicht auf zuständige Funktion beschränken. | Auditdaten nicht als pauschal unbegrenzte Trainingshistorie weiterführen. |
+| Allgemeine Gruppen-/Übungs-/Katalogkategorien | Keine pauschale personenbezogene Löschfrist, soweit nachweislich personenneutrale Fachvorlagen. | Labels, Videolinks, JSON-/Freitext und Ändereridentitäten können trotzdem persönlich sein; prüfen. |
+| Private Medien, besonders Minderjährige | **Bis Provider-/AVV-/Rechtsgrundlage-/Zugriffs-/Löschbeleg vorliegt: keine neuen erkennbar personenbezogenen privaten Medien im Echtbetrieb.** | Alle tatsächlich vorhandenen Dateien physisch beim Storageanbieter löschen; erst nach Providerbestätigung SQL-Status abschließen. |
+| Löschentscheidungs-/Reconciliation-Marker | **Unverändert 35 Tage, danach kein Retry**; keine automatische Verlängerung oder neue dauerhafte personenbezogene Tabelle. | Variante A nur mit belegter rechtzeitiger vollständiger Owner-Bearbeitung und maximalem Backup-/Export-Horizont; ansonsten Variante B **nur** als eigener minimierter, genehmigter neuer Entwurf. |
+| Backups/Restores | Quarantäne und Write-Freeze, vollständigerer neuerer Löschbeleg aller **8 Owner**, Re-Deletion, Restdatenkontrolle und ausdrückliche Betreiberfreigabe vor Wiederanbindung. | Neon-6h-History ist **kein** Gesamt-Backup-Nachweis; tatsächliche Snapshots, externe Exporte und Verarbeiter prüfen. |
+
+**Keine rechtlich vorgeschriebenen Pauschalfristen:** Die österreichische Datenschutzbehörde erläutert, dass ein Verein – sofern keine spezifische Aufbewahrungspflicht gilt – die notwendige Speicherfrist zweckbezogen selbst bestimmt. Auch bereits vorliegende zwölfmonatige Implementierungen sind daher zu begründen. Für Rechnungs-, Steuer-, Förder- und konkrete Rechtsnachweise können separate Aufbewahrungsregeln gelten; **nicht** alle Trainingsdaten deswegen länger speichern.
+
+Rechts-/Praxisquellen: [Österreichische Datenschutzbehörde – DSGVO-Leitfaden](https://dsb.gv.at/sites/site0344/media/downloads/dsgvo_leitfaden_2022.pdf), [EU-Kommission – Speicherbegrenzung](https://commission.europa.eu/law/law-topic/data-protection/information-business-and-organisations/principles-gdpr_en), [DSGVO Art. 5, 6, 13, 17, 30](https://eur-lex.europa.eu/eli/reg/2016/679/oj). **Kein Ersatz für die Vereins-Datenschutzprüfung.**
+
+## 2. D1–D4 – konkrete empfohlene Betreiberoption
+
+- **D1 – Historische Usage-/Freitextdaten:** **Ja** zu beschränktem Zugriff, manueller Prüfung und Löschung nach nachgewiesener Berechtigung. **Nein** zu ungeprüfter Anonymitätsbehauptung oder automatischer Zuordnung anhand von Textheuristiken. Neue unnötige Personenidentifikatoren in Usage-Notizen vermeiden.
+- **D2 – Backup-/Löschbeleg:** Vorläufig **35 Tage / danach deny** beibehalten. Die bestehende Variante A darf nur dann für Live-Erasure/Restore gewählt werden, wenn wirkliche maximale Backup-/Export-Horizonte und sämtliche Owner-Abschlüsse innerhalb der Quellenfrist vollständig nachgewiesen sind. Falls das nicht realistisch ist, **B bevorzugen**, aber nur nach gesonderter Abnahme des minimalen Datenumfangs, Zwecks, der neuen Frist und atomaren Herkunft. **Keine Entscheidung über B-Frist ohne Fakten.**
+- **D3 – Private Medien:** **Ja** zum echten Provider-Delete vor Metadatenabschluss; neue erkennbare Medien von Minderjährigen vor Provider-/Rechts- und Löschbeleg **gesperrt**.
+- **D4 – Wiederherstellung:** **Ja** zu isoliertem Restore, neueren vollständigen Löschbelegen, Re-Deletion aller Owner und expliziter Betreiber-/Sicherheitsfreigabe; sonst **kein Restore-Promotion**.
+
+## 3. Praktischer Schema-Abgleich der laufenden Test-App (read-only, 15.11.2026)
+
+Der fachliche Beschluss umfasst **64 im Repository deklarierte Tabellen**; diese Zahl ist **kein Beleg für 64 tatsächlich installierte Preview-Tabellen**. Eine direkte, rein lesende Neon-Tabelleninventur der laufenden Testdatenbank `appbasis_ulc_linz_preview` (Preview-Hauptbranch) zählt **62 Anwendungstabellen**. Der exakte Mengenvergleich mit `privacy/m5-data-inventory.json` ergibt:
+
+- **Vier im fachlichen Inventar, aber nicht in der Preview vorhanden:** `appbasis_training_block_usage_subject`, `appbasis_training_block_usage_subject_deletion`, `appbasis_training_block_favorite_deletion`, `appbasis_training_documentation_subject_deletion`.
+- **Zwei in der Preview vorhanden, aber im statischen v16-Inventar nicht aufgeführt:** `ulc_linz_registration_calendar_rule`, `ulc_linz_registration_calendar_exception` (spätere Trainingskalenderfunktion).
+- **Kein Schreibzugriff, keine Migration, keine personenbezogenen Tabelleninhalte gelesen.** Die Differenz ist eine Bestands-/Versionsabweichung und noch **kein** Nachweis eines tatsächlichen Fehlers in den aktuell benutzten Modulen.
+
+**Stand 19.11.2026:** Die fehlenden vier Lifecycle-Tabellen wurden in Preview erfolgreich ergänzt. Vor dem getrennten Produktionsaufbau weiterhin das Manifest samt v17-Kalendertabellen auf die gewünschte App-Version abgleichen und die vier fehlenden Modul-/Lifecycle-Tabellen auf Migrationserfordernis und Nutzung prüfen. Erst dann die Fachfristen und Löschprüfungen auf das **wirklich installierte** Schema anwenden. Weder dieses Blatt noch ein grüner CI-Lauf dürfen die fehlenden Live-/Restore-Belege ersetzen.
+
+## 4. Ein einziger fachlicher Entscheid – aber keine fingierten Belege
+
+**Bestätigte Verantwortung und Umfang:** Der Betreiber hat am 14.11.2026 erklärt, er könne den Vereinsbeschluss selbst freigeben, und hat danach die konkret vorgelegte Fristenzusammenfassung als **fachliche Zielvorgabe** ausdrücklich bejaht. Das gilt für den Zweck-/Fristenentwurf und die genannten D1–D4-Sicherheitsgrundsätze, **nicht** als Nachweis einer DSGVO-Rechtsgrundlagenprüfung, unterschriebenen Funktionärserklärung, AVV, vollständigen Backuphorizonts oder Freigabe einer neuen personenbezogenen Post-Expiry-Autorität. Eine Unterschrift, Name oder Funktion wird nicht erfunden.
+
+Die nachfolgenden Daten bleiben bis zur tatsächlich dokumentierten Prüfung **offen**:
+
+- [x] **Fachliche Zielregeln** aus Tabelle 1 und D1–D4 wie zusammengefasst am 14.11.2026 im Chat bestätigt; D2 **keine** Variante-B-Retention oder Backuphorizont-Frist genehmigt.
+- [ ] Konkrete Vereinsfunktion/zeichnungsberechtigte Person und separat dokumentierter vollständiger Beschluss;
+- [ ] konkrete rechtliche Grundlagen/Zwecke je Datenart (Mitgliedschaft, Nichtmitglieder/Eltern, Kinder, Trainer, Statistik, Audit, Fotos), Betroffeneninformation, Auskunfts-/Löschkontakt;
+- [ ] wirtschaftlicher/organisatorischer Bedarf für zwei personenbezogene Trainingsjahre und getrennte rechtlich nötige Förder-/Buchhaltungsbelege;
+- [ ] tatsächlich identifizierter Cloudflare-Worker↔Neon-Zugang sowie Cloudflare-/Neon-AVV, Speicherregion, verschlüsselte Backups, Subprozessoren, Zugriffsrechte;
+- [ ] maximale Wiederherstellung älterer Snapshots und extern exportierter Kopien; D2 A/B und gegebenenfalls getrennt genehmigte Nachweis-Retention;
+- [ ] echte private Medienspeicherung und Objekt-Delete, Kinderbilder, Rollen, getrennte Pilotgruppe und Wiederherstellungs-Verantwortlicher;
+- [ ] eigenständige Freigaben später für produktive Guard-Migration, Rechte, Retention, M6-Workflow/Deployment und echten Pilot.
+
+**Zulässiges nächstes Technikpaket ohne diese Inputs:** Aus dieser Matrix einen isolierten, testgetriebenen *Security-Implementierungs-Draft* entwickeln und die Vollständigkeit der Owner-/Freitext-/Restore-Prüfung weiter beweisen; **nicht** auf Live-Worker oder produktive DB/Policies übertragen.
+
+**Status:** `FACHLICHE_ZIELVORGABE_BESTAETIGT`, `legalApproval=false`, `runtimeActive=false`, `privacy=blocked`, `applicationLifecycle=blocked`. Keine Datenbearbeitung, kein produktiver Fristen-Timer, keine Sicherheits- oder Go-live-Freigabe. Ein Merge des Dokuments bewirkt keinerlei zusätzliche Autorisierung.
