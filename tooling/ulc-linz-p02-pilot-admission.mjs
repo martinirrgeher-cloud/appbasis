@@ -14,7 +14,8 @@ import { assertUlcLifecyclePreviewScope } from "./ulc-linz-lifecycle-schema-prev
  */
 const DATABASE = "appbasis_ulc_linz_preview";
 const PRINCIPAL = "appbasis_ulc_linz_preview_migration";
-const EXPECTED_PREVIEW_TABLES = 66;
+const LEGACY_PREVIEW_TABLES = 66;
+const PROTECTED_PREVIEW_TABLES = 68;
 
 export class UlcP02PilotAdmissionError extends Error {
   constructor(message) {
@@ -93,7 +94,11 @@ const COUNTS_SQL = `
 const IDENTITY_SQL = `
   SELECT current_database() AS database_name, current_user AS principal_name,
     (SELECT COUNT(*)::int FROM pg_catalog.pg_tables
-      WHERE schemaname = 'public') AS public_tables
+      WHERE schemaname = 'public') AS public_tables,
+    to_regclass('public.appbasis_exercise_catalog_favorite_deletion') IS NOT NULL
+      AS catalog_favorite_guard_exists,
+    to_regclass('public.appbasis_exercise_catalog_usage_subject') IS NOT NULL
+      AS catalog_subject_guard_exists
 `;
 
 export function evaluateUlcP02PilotAdmission(raw) {
@@ -188,9 +193,14 @@ export async function inspectUlcP02PilotAdmission(sql) {
       !Array.isArray(identity) || identity.length !== 1 ||
       identity[0]?.database_name !== DATABASE ||
       identity[0]?.principal_name !== PRINCIPAL ||
-      count(identity[0]?.public_tables, "public_tables") !== EXPECTED_PREVIEW_TABLES
+      !(
+        count(identity[0]?.public_tables, "public_tables") === LEGACY_PREVIEW_TABLES ||
+        (count(identity[0]?.public_tables, "public_tables") === PROTECTED_PREVIEW_TABLES &&
+          identity[0]?.catalog_favorite_guard_exists === true &&
+          identity[0]?.catalog_subject_guard_exists === true)
+      )
     ) {
-      fail("wrong Preview database, role or expected 66-table schema");
+      fail("wrong Preview database, role or guarded 66/68-table schema");
     }
     const records = await tx.unsafe(COUNTS_SQL);
     if (!Array.isArray(records) || records.length !== 1) {
