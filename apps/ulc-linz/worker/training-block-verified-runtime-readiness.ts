@@ -11,7 +11,7 @@ export interface UlcVerifiedBlockUsagePreviewReadinessClient {
     callback: (transaction: {
       unsafe(
         query: string,
-        parameters?: readonly (string | number | boolean | null)[],
+        parameters?: Array<string | number | boolean | null>,
       ): PromiseLike<readonly Record<string, unknown>[]>;
     }) => Promise<T>,
   ): Promise<T>;
