@@ -3,6 +3,12 @@
 **Stand:** 14.11.2026 · **Status: FACHLICHE ZIELREGELN BESTÄTIGT; RECHTS-/PROVIDER-/TECHNIK-FREIGABEN OFFEN.**
 Quelle: [P01-Bestand](./PRODUCTION-PRIVACY-DECISIONS-P01-DRAFT.md), [P00](./PRODUCTION-READINESS-P00.md), [P02](./PRODUCTION-READINESS-P02.md), [P03](./PRODUCTION-READINESS-P03.md), [P03-B](./PRODUCTION-READINESS-P03-B-WRITER-AUDIT.md). Dieser Text ist keine neue Retention-Policy und keine Produktionsfreigabe.
 
+## 19.11.2026 – P1/P2-Konsolidierung vor Pilot
+
+Die vorherige **64-Tabellen-Angabe gilt ausdrücklich nur für das kanonische Repository-v16-Manifest (41 Migrationen)**. Das **aktuelle installierte Preview-Schema umfasst nach der freigegebenen P04-Transaktion 66 Tabellen**: die v16-Tabellen zuzüglich zwei bereits laufender Kalender-Regel-/Ausnahmetabellen aus einer noch unregistrierten v17-SQL-Vorlage. Die fachlich bestätigte, **nicht aktivierte** Retention-Zielmatrix in `privacy/p01-operator-retention-candidate.json` klassifiziert jetzt **alle 66 Preview-Tabellen**. Die beiden Kalender-Tabellen werden als gruppenbezogene Konfiguration ohne beliebige Personennotizen eingeordnet, nicht als produktionsfreigegebene v17-Migration.
+
+Der technische Komplettscope und die echten P2-Nachweise/Blocker stehen in [P1/P2-Implementierungspaket](./PRODUCTION-READINESS-P01-P02-IMPLEMENTATION-BUNDLE.md). **Erfolgreiches Preview-Backup, isolierter PostgreSQL-Restore und die P04-Schema-Nachmigration ersetzen weder ein signiertes Datenschutz-/AVV-Verfahren noch die getrennte Medienabsicherung, Eigentümer-/Writer- und Erasure-/Restore-Freigabe.** Produktionsvertrag `blocked` und D2 35 Tage / danach deny gelten unverändert.
+
 ## Vier Entscheidungen in einem Beschluss
 
 | Code | Fachliche Empfehlung | Vor Freigabe zu klären |
