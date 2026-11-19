@@ -171,6 +171,9 @@ jobs:
       - name: Test M5 restore authority regressions
         run: node --test ./tooling/ulc-linz-m5-restore-authority-regression.test.mjs
 
+      - name: Test ULC P02 pilot data admission is read-only and fail-closed
+        run: node --test ./tooling/ulc-linz-p02-pilot-admission.test.mjs
+
       - name: Test ULC K2 isolated backup and restore policy (no provider access)
         run: node --test ./tooling/ulc-linz-k2-backup-plan.test.mjs
 
