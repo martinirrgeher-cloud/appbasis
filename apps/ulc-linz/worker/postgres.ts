@@ -89,6 +89,8 @@ import {
   type UlcTrainingPlanOverviewReader,
   type UlcTrainingPlanService,
 } from "./training-plans-service";
+import { createUlcTrainingPlanVerifiedUsageBooking } from "./training-plan-verified-usage-booking";
+import { assertUlcVerifiedBlockUsagePreviewReadiness } from "./training-block-verified-runtime-readiness";
 import { PostgresUlcLinzScopePersistence } from "./scope-persistence";
 import { PostgresUlcTrainingSessionRepository } from "./training-session-postgres";
 import { PostgresUlcLinzTrainingModuleGroupReader } from "./training-module-group-postgres";
@@ -216,6 +218,11 @@ export interface GeneratedPostgresApplicationRuntimeOptions {
   baseURL: string;
   secret: string;
   exerciseCatalogRuntimeMode?: UlcExerciseCatalogRuntimeMode;
+  /**
+   * Opt-in P02-C preview rehearsal only. Not mapped from a deployed Worker
+   * environment variable; default remains the existing legacy writer.
+   */
+  trainingBlockUsageMode?: "isolated-preview-verified-subject";
   exerciseCatalogMediaStore?: UlcExerciseCatalogObjectStore | null;
 }
 
@@ -617,22 +624,47 @@ export async function createGeneratedPostgresApplicationRuntime(
       }),
       masterdata: athleteMasterdata,
     });
+    // P02-C is deliberately opt-in and Preview-only. A missing migration,
+    // owner permission or wrong SQL role prevents startup rather than quietly
+    // falling back to an unverified personal-data writer.
+    const verifiedBlockUsageMode =
+      options.trainingBlockUsageMode === "isolated-preview-verified-subject";
+    if (options.trainingBlockUsageMode !== undefined &&
+        !verifiedBlockUsageMode) {
+      throw new Error("Unsupported training block usage mode.");
+    }
+    if (verifiedBlockUsageMode) {
+      await assertUlcVerifiedBlockUsagePreviewReadiness(applicationSql);
+    }
+    const blockRepository = new PostgresTrainingBlockRepository(applicationSql);
+    const planRepository = new PostgresTrainingPlanRepository(applicationSql);
     const trainingBlocks = createUlcTrainingBlockService({
       blocks: new TrainingBlockService({
-        repository: new PostgresTrainingBlockRepository(applicationSql),
+        repository: blockRepository,
       }),
       masterdata: athleteMasterdata,
       exerciseCatalog: new PostgresExerciseCatalogRepository(applicationSql),
+      ...(verifiedBlockUsageMode
+        ? { usageWriteMode: "verified-subject-only" as const }
+        : {}),
     });
     const trainingPlans = createUlcTrainingPlanService({
       plans: new TrainingPlanService({
-        repository: new PostgresTrainingPlanRepository(applicationSql),
+        repository: planRepository,
       }),
       masterdata: athleteMasterdata,
       exerciseCatalog: new PostgresExerciseCatalogRepository(applicationSql),
       attendance: trainingSessions,
       blocks: trainingBlocks,
       overview: createTrainingPlanOverviewReader(applicationSql),
+      ...(verifiedBlockUsageMode
+        ? {
+            verifiedUsageBooking: createUlcTrainingPlanVerifiedUsageBooking({
+              plans: planRepository,
+              usage: blockRepository,
+            }),
+          }
+        : {}),
     });
     const trainingDocumentation = new TrainingDocumentationService({
       repository: new PostgresTrainingDocumentationRepository(applicationSql),
