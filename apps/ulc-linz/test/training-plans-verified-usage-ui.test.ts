@@ -15,6 +15,13 @@ type RecoveryHarness = {
     subjectId?: string,
     planDate?: string,
   ) => Promise<unknown>;
+  copy: (
+    sourcePlanId: string,
+    expectedSourceRevision: number,
+    subjectId: string,
+    targetDate: string,
+  ) => Promise<unknown>;
+  copyPending: () => number;
   pending: () => UsageRecovery | null;
   changeIdentity: () => void;
   request: ReturnType<typeof vi.fn>;
@@ -69,9 +76,12 @@ function harness(handler: (path: string, init: { method: string; body: string })
     "let trainingPlanSessionGeneration = 1;",
     "let trainingPlanSessionIdentityId = 'user-one';",
     "let trainingPlanUsageRecovery = null;",
+    "let trainingPlanDistributionUsageRecovery = new Map();",
     source,
     "return {",
     "  save: requestTrainingPlanSaveWithUsageRecovery,",
+    "  copy: requestTrainingPlanCopyWithUsageRecovery,",
+    "  copyPending: () => trainingPlanDistributionUsageRecovery.size,",
     "  pending: () => trainingPlanUsageRecovery,",
     "  changeIdentity: () => { trainingPlanSessionGeneration += 1; trainingPlanSessionIdentityId = 'user-two'; },",
     "};",
@@ -142,6 +152,39 @@ describe("P2-D verified training-plan browser recovery", () => {
     expect(secondWrite).toHaveBeenCalledTimes(1);
     expect(h.request).toHaveBeenCalledTimes(1);
     expect(h.pending()).toBeNull();
+  });
+
+  it("finishes a partially copied plan without copying the same recipient again", async () => {
+    const received: string[] = [];
+    const h = harness(async (path) => {
+      received.push(path);
+      if (path.endsWith("/copy")) throw recoveryError("target-plan", 1);
+      if (path.endsWith("/finalize-usage") && received.length === 2) {
+        throw new Error("Temporary booking error");
+      }
+      return planResponse({
+        planId: "target-plan",
+        currentRevision: 1,
+        subjectId: SUBJECT,
+        planDate: DATE,
+      });
+    });
+    await expect(h.copy("source-plan", 3, SUBJECT, DATE))
+      .rejects.toThrow("Temporary booking error");
+    expect(h.copyPending()).toBe(1);
+    const result = await h.copy("source-plan", 3, SUBJECT, DATE);
+    expect(result).toEqual(planResponse({
+      planId: "target-plan",
+      currentRevision: 1,
+      subjectId: SUBJECT,
+      planDate: DATE,
+    }));
+    expect(received).toEqual([
+      "/api/modules/training-plans/source-plan/copy",
+      "/api/modules/training-plans/target-plan/finalize-usage",
+      "/api/modules/training-plans/target-plan/finalize-usage",
+    ]);
+    expect(h.copyPending()).toBe(0);
   });
 
   it("exposes only the required recovery metadata from the common fetch helper", () => {
