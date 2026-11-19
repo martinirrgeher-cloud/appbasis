@@ -231,7 +231,7 @@ describe("ULC explicit verified training-plan usage adapter", () => {
 
   it("rejects missing protected dependencies rather than allowing unauthenticated fallback", () => {
     expect(() => createUlcTrainingPlanVerifiedUsageBooking({
-      plans: { findCurrent: undefined as never },
+      plans: { findCurrent: undefined as never, listRevisions: async () => [] },
       usage: { recordVerifiedSubjectUsageOnce: async () => undefined },
     })).toThrow(/dependencies/);
   });
