@@ -50,6 +50,13 @@ export async function assertUlcVerifiedBlockUsagePreviewReadiness(
           current_user AS principal_name,
           (SELECT count(*)::int FROM pg_catalog.pg_tables
             WHERE schemaname = 'public') AS public_tables,
+          -- 66 legacy tables are valid for the independent protected block
+          -- writer; a future 68-table schema is valid ONLY with both separately
+          -- reviewed protected catalog relations present.
+          to_regclass('public.appbasis_exercise_catalog_favorite_deletion') IS NOT NULL
+            AS catalog_favorite_guard_exists,
+          to_regclass('public.appbasis_exercise_catalog_usage_subject') IS NOT NULL
+            AS catalog_subject_guard_exists,
           to_regclass('public.appbasis_training_plan') IS NOT NULL
             AS plan_table_exists,
           to_regclass('public.appbasis_training_plan_revision') IS NOT NULL
@@ -103,7 +110,10 @@ export async function assertUlcVerifiedBlockUsagePreviewReadiness(
         rows.length !== 1 ||
         row?.database_name !== "appbasis_ulc_linz_preview" ||
         row?.principal_name !== "appbasis_ulc_linz_preview_application" ||
-        row?.public_tables !== 66 ||
+        (row?.public_tables !== 66 &&
+          (row?.public_tables !== 68 ||
+            row?.catalog_favorite_guard_exists !== true ||
+            row?.catalog_subject_guard_exists !== true)) ||
         row.plan_table_exists !== true ||
         row.plan_revision_exists !== true ||
         row.plan_item_exists !== true ||
