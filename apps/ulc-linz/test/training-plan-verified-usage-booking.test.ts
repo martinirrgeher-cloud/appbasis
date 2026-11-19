@@ -52,7 +52,15 @@ function snapshot(changes: Partial<TrainingPlanSnapshot> = {}): TrainingPlanSnap
 
 function harness(
   plan: TrainingPlanSnapshot | null = snapshot(),
-  history: readonly TrainingPlanRevision[] = plan === null ? [] : [plan.revision],
+  history: readonly TrainingPlanRevision[] = plan === null ? [] : [
+    ...Array.from({ length: Math.max(0, plan.currentRevision - 1) }, (_, index) => ({
+      ...plan.revision,
+      revision: index + 1,
+      createdAt: plan.createdAt,
+      items: [],
+    })),
+    plan.revision,
+  ],
 ) {
   const findCurrent = vi.fn(async (_org: string, _planId: string) => plan ?? undefined);
   const listRevisions = vi.fn(async () => history);
@@ -104,6 +112,19 @@ describe("ULC explicit verified training-plan usage adapter", () => {
     expect(again).toEqual(first);
     expect(h.listRevisions).toHaveBeenCalledWith(ORG, PLAN);
     expect(h.write).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed on incomplete or duplicate plan-revision history before writing", async () => {
+    const current = snapshot();
+    for (const history of [
+      [current.revision],
+      [current.revision, current.revision],
+    ]) {
+      const h = harness(current, history);
+      await expect(h.service.book(ORG, current, ITEM))
+        .rejects.toThrow(/history is (incomplete|inconsistent)/);
+      expect(h.write).not.toHaveBeenCalled();
+    }
   });
 
   it("refuses a reused block item id with changed historical source", async () => {
