@@ -52,6 +52,10 @@ export async function assertUlcVerifiedBlockUsagePreviewReadiness(
             WHERE schemaname = 'public') AS public_tables,
           to_regclass('public.appbasis_training_plan') IS NOT NULL
             AS plan_table_exists,
+          to_regclass('public.appbasis_training_plan_revision') IS NOT NULL
+            AS plan_revision_exists,
+          to_regclass('public.appbasis_training_plan_revision_item') IS NOT NULL
+            AS plan_item_exists,
           to_regclass('public.appbasis_training_block_usage') IS NOT NULL
             AS usage_table_exists,
           to_regclass('public.appbasis_training_block_usage_subject') IS NOT NULL
@@ -82,7 +86,17 @@ export async function assertUlcVerifiedBlockUsagePreviewReadiness(
             THEN false ELSE
               has_table_privilege(current_user,
                 'public.appbasis_training_plan', 'SELECT')
-            END AS may_read_plan
+            END AS may_read_plan,
+          CASE WHEN to_regclass('public.appbasis_training_plan_revision') IS NULL
+            THEN false ELSE
+              has_table_privilege(current_user,
+                'public.appbasis_training_plan_revision', 'SELECT')
+            END AS may_read_plan_revision,
+          CASE WHEN to_regclass('public.appbasis_training_plan_revision_item') IS NULL
+            THEN false ELSE
+              has_table_privilege(current_user,
+                'public.appbasis_training_plan_revision_item', 'SELECT')
+            END AS may_read_plan_item
       `);
       const row = rows?.[0];
       if (
@@ -91,6 +105,8 @@ export async function assertUlcVerifiedBlockUsagePreviewReadiness(
         row?.principal_name !== "appbasis_ulc_linz_preview_application" ||
         row?.public_tables !== 66 ||
         row.plan_table_exists !== true ||
+        row.plan_revision_exists !== true ||
+        row.plan_item_exists !== true ||
         row.usage_table_exists !== true ||
         row.subject_table_exists !== true ||
         row.deletion_table_exists !== true ||
@@ -98,7 +114,9 @@ export async function assertUlcVerifiedBlockUsagePreviewReadiness(
         row.may_read_subject !== true ||
         row.may_read_deletion !== true ||
         row.may_insert_usage !== true ||
-        row.may_read_plan !== true
+        row.may_read_plan !== true ||
+        row.may_read_plan_revision !== true ||
+        row.may_read_plan_item !== true
       ) {
         throw new UlcVerifiedBlockUsageUnavailableError();
       }
