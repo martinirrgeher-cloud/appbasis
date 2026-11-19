@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { IdentityHttpService } from "@appbasis/identity/http";
 import { InMemoryPermissionStore } from "@appbasis/permissions";
 import { createAthletesWorkbook } from "@appbasis/athletes";
+import {
+  ExerciseCatalogUsageSubjectRequiredError,
+  ExerciseCatalogFavoriteDeletedError,
+} from "@appbasis/exercise-catalog";
 import type { AthleteMasterdataSnapshot } from "@appbasis/athletes";
 
 
@@ -1819,6 +1823,51 @@ describe("generated identity+permissions Worker entrypoint", () => {
       },
       access: { view: true, edit: true },
       catalog: { items: [], trainingGroups: [] },
+    });
+  });
+
+  it("returns controlled private HTTP conflicts for protected catalog owner denials", async () => {
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      exerciseCatalog: {
+        ...base.exerciseCatalog,
+        async recordUsage() {
+          throw new ExerciseCatalogUsageSubjectRequiredError();
+        },
+        async setFavorite() {
+          throw new ExerciseCatalogFavoriteDeletedError();
+        },
+      },
+    }));
+    const usage = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/exercise-catalog/exercise-1/usage", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ sourceKind: "training" }),
+      }),
+      validEnv,
+    );
+    expect(usage.status).toBe(409);
+    expect(usage.headers.get("cache-control")).toBe("private, no-store");
+    await expect(usage.json()).resolves.toMatchObject({
+      error: { code: "EXERCISE_CATALOG_SUBJECT_REQUIRED" },
+    });
+
+    const favorite = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/exercise-catalog/exercise-1/favorite", {
+        method: "PUT",
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+    expect(favorite.status).toBe(409);
+    expect(favorite.headers.get("cache-control")).toBe("private, no-store");
+    await expect(favorite.json()).resolves.toMatchObject({
+      error: { code: "EXERCISE_CATALOG_SUBJECT_DELETED" },
     });
   });
 
