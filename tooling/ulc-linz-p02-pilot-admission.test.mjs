@@ -85,7 +85,7 @@ test("P02 current Preview data is classified, not interpreted as production appr
     assert.match(query, /^SELECT\b/);
     assert.doesNotMatch(query, /\b(?:INSERT|DELETE|UPDATE|DROP|ALTER|CREATE|GRANT|TRUNCATE)\b/i);
   }
-  assert.doesNotMatch(JSON.stringify(result), /p02-person|source_ref.*:/);
+  assert.doesNotMatch(JSON.stringify(result), /p02-person|private-video-storage-key|actual-notes-content/);
 });
 
 test("a completely empty dataset is still blocked without P1/owner/restore evidence", () => {
