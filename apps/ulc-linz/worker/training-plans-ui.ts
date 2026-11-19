@@ -3880,7 +3880,7 @@ async function performTrainingPlanSave() {
       showMessage(
         trainingPlanElements.editorMessage,
         bookingPending
-          ? "Der Trainingsplan wurde bereits gespeichert. Nur die Nutzungsbuchung ist noch offen. Mit \"Erneut speichern\" wird ausschließlich diese Buchung abgeschlossen."
+          ? 'Der Trainingsplan wurde bereits gespeichert. Nur die Nutzungsbuchung ist noch offen. Mit "Erneut speichern" wird ausschließlich diese Buchung abgeschlossen.'
           : error?.status === 400
             ? "Bitte Eingaben prüfen. Der Plan wurde nicht gespeichert."
             : "Speicherergebnis unklar. Bitte Verbindung und aktuellen Plan prüfen, bevor du erneut speicherst.",
