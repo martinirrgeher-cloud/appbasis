@@ -110,6 +110,7 @@ export function createUlcTrainingPlanVerifiedUsageBooking(
       }
       let firstRevision: number | null = null;
       let firstOccurredAt: string | null = null;
+      const seenRevisions = new Set<number>();
       for (const revision of revisions) {
         if (
           revision.organizationId !== organizationId ||
@@ -117,11 +118,15 @@ export function createUlcTrainingPlanVerifiedUsageBooking(
           !Number.isSafeInteger(revision.revision) ||
           revision.revision < 1 ||
           revision.revision > current.currentRevision ||
+          seenRevisions.has(revision.revision) ||
           !Array.isArray(revision.items) ||
-          typeof revision.createdAt !== "string"
+          typeof revision.createdAt !== "string" ||
+          !Number.isFinite(Date.parse(revision.createdAt)) ||
+          new Date(revision.createdAt).toISOString() !== revision.createdAt
         ) {
           throw new Error("Verified training-plan usage revision history is inconsistent.");
         }
+        seenRevisions.add(revision.revision);
         const occurrences = revision.items.filter(
           (candidate) => candidate.kind === "block" && candidate.itemId === blockItemId,
         );
@@ -136,6 +141,13 @@ export function createUlcTrainingPlanVerifiedUsageBooking(
           firstRevision = revision.revision;
           firstOccurredAt = revision.createdAt;
         }
+      }
+      if (
+        !Number.isSafeInteger(current.currentRevision) ||
+        current.currentRevision < 1 ||
+        seenRevisions.size !== current.currentRevision
+      ) {
+        throw new Error("Verified training-plan usage revision history is incomplete.");
       }
       if (firstRevision === null || firstOccurredAt === null) {
         throw new Error("Verified training-plan usage source history is missing.");
