@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type {
   AthleteMasterdataSnapshot,
@@ -18,6 +18,7 @@ import {
   createUlcTrainingBlockService,
   UlcTrainingBlockParameterError,
   UlcTrainingBlockReferenceError,
+  UlcUnverifiedTrainingBlockUsageError,
 } from "../worker/training-blocks-service";
 
 const ACTIVE_GROUP: TrainingGroup = Object.freeze({
@@ -86,6 +87,7 @@ function catalogItem(
 function createService(input: {
   groups?: readonly TrainingGroup[];
   exercises?: readonly ExerciseCatalogItem[];
+  usageWriteMode?: "legacy" | "verified-subject-only";
 } = {}) {
   const repository = new InMemoryTrainingBlockRepository();
   let idIndex = 0;
@@ -110,6 +112,9 @@ function createService(input: {
     getCatalogReadCount: () => catalogReadCount,
     service: createUlcTrainingBlockService({
       blocks,
+      ...(input.usageWriteMode === undefined
+        ? {}
+        : { usageWriteMode: input.usageWriteMode }),
       masterdata: {
         async readOrganizationSnapshot() {
           return snapshot;
@@ -444,5 +449,75 @@ describe("ULC training block adapter", () => {
       currentRevision: 1,
       revision: { name: "Valid" },
     });
+  });
+});
+
+
+describe("P02-C optional block usage legacy-writer cutoff", () => {
+  const legacyEvent = Object.freeze({
+    occurredAt: "2026-10-10T12:00:00.000Z",
+    sourceKind: "training_plan",
+    sourceRef: "old-plan:item",
+    note: null,
+  });
+
+  it("rejects ALL old usage entrypoints in verified mode before any DB/service write", async () => {
+    const { blocks, service } = createService({
+      usageWriteMode: "verified-subject-only",
+    });
+    const write = vi.spyOn(blocks, "recordUsageOnce");
+    expect(() =>
+      service.recordUsageOnce("org-1", "block-1", "legacy-event", legacyEvent)
+    ).toThrow(UlcUnverifiedTrainingBlockUsageError);
+    expect(() =>
+      service.recordUsageOnce(
+        "org-other", "block-other", "apparently-canonical-event",
+        { ...legacyEvent, sourceRef: "plan-real:item-real" },
+      )
+    ).toThrow(UlcUnverifiedTrainingBlockUsageError);
+    expect(write).not.toHaveBeenCalled();
+
+    // All existing, ordinary training-block operations remain available.
+    await expect(service.list("org-1")).resolves.toEqual([]);
+    await expect(service.create("org-1", {
+      name: "Protected template remains editable",
+      audienceId: "group-active",
+      exercises: [{ exerciseId: "exercise-1" }],
+    })).resolves.toMatchObject({
+      organizationId: "org-1",
+      revision: { name: "Protected template remains editable" },
+    });
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("preserves existing legacy plan booking when opt-in is absent", async () => {
+    const { blocks, service } = createService();
+    const created = await service.create("org-1", {
+      name: "Old preview compatibility",
+      audienceId: "group-active",
+      exercises: [],
+    });
+    const write = vi.spyOn(blocks, "recordUsageOnce");
+    await service.recordUsageOnce(
+      "org-1", created.id, "legacy-event", legacyEvent,
+    );
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledWith(
+      "org-1", created.id, "legacy-event", legacyEvent,
+    );
+  });
+
+  it("fails closed on unrecognized mode instead of selecting legacy", () => {
+    const { blocks } = createService();
+    expect(() => createUlcTrainingBlockService({
+      blocks,
+      masterdata: {
+        async readOrganizationSnapshot() {
+          return { trainingGroups: [ACTIVE_GROUP] };
+        },
+      },
+      exerciseCatalog: { async listItems() { return []; } },
+      usageWriteMode: "unknown" as never,
+    })).toThrow(UlcUnverifiedTrainingBlockUsageError);
   });
 });
