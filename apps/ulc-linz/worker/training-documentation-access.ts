@@ -110,6 +110,22 @@ export function createUlcLinzTrainingDocumentationAccessService({
       );
     }
 
+    // This SQL row and the permission/role resolver must describe the same
+    // active membership. A drift must never turn an athlete scope into a
+    // trainer-wide documentation writer or vice versa.
+    const resolvedMembership = await memberships.resolveMembership({
+      identityId,
+      organizationId,
+    });
+    if (
+      resolvedMembership === null ||
+      resolvedMembership.active !== true ||
+      resolvedMembership.organizationId !== organizationId ||
+      resolvedMembership.sourceRole !== row.source_role
+    ) {
+      deny(securityEvents, identityId, organizationId, action, "membership-denied");
+    }
+
     const sourceRole = row.source_role;
     const subjectId =
       sourceRole === "athlete"
