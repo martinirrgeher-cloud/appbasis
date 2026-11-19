@@ -16,6 +16,7 @@ const READY = Object.freeze({
   usage_subject_exists: true,
   may_write_item: true,
   may_write_favorite: true,
+  may_write_children: true,
   may_read_marker: true,
   may_mutate_marker: false,
 });
@@ -43,6 +44,8 @@ describe("P2-D isolated protected catalog Preview readiness", () => {
     expect(h.statements[0]).toMatch(/REPEATABLE READ, READ ONLY/);
     expect(h.statements[1]).toContain("current_user");
     expect(h.statements[1]).toContain("appbasis_exercise_catalog_usage_subject");
+    expect(h.statements[1]).toContain("appbasis_exercise_catalog_parameter");
+    expect(h.statements[1]).toContain("appbasis_exercise_catalog_similarity");
     expect(h.statements[1]).toContain("has_table_privilege");
     expect(h.statements).toHaveLength(2);
     expect(h.statements.every((statement) => !/\b(GRANT|INSERT INTO|DELETE FROM|UPDATE\s+appbasis_)\b/i.test(statement))).toBe(true);
@@ -56,6 +59,7 @@ describe("P2-D isolated protected catalog Preview readiness", () => {
       { ...READY, usage_subject_exists: false },
       { ...READY, may_read_marker: false },
       { ...READY, may_write_favorite: false },
+      { ...READY, may_write_children: false },
       { ...READY, may_mutate_marker: true },
       { ...READY, may_write_item: "true" },
     ];
