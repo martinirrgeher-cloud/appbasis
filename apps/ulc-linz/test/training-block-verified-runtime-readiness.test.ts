@@ -12,6 +12,8 @@ interface ScopeRecord {
   readonly principal_name: string;
   readonly public_tables: number;
   readonly plan_table_exists: boolean;
+  readonly plan_revision_exists: boolean;
+  readonly plan_item_exists: boolean;
   readonly usage_table_exists: boolean;
   readonly subject_table_exists: boolean;
   readonly deletion_table_exists: boolean;
@@ -20,6 +22,8 @@ interface ScopeRecord {
   readonly may_read_deletion: boolean;
   readonly may_insert_usage: boolean;
   readonly may_read_plan: boolean;
+  readonly may_read_plan_revision: boolean;
+  readonly may_read_plan_item: boolean;
 }
 
 const BASE: ScopeRecord = {
@@ -27,6 +31,8 @@ const BASE: ScopeRecord = {
   principal_name: "appbasis_ulc_linz_preview_application",
   public_tables: 66,
   plan_table_exists: true,
+  plan_revision_exists: true,
+  plan_item_exists: true,
   usage_table_exists: true,
   subject_table_exists: true,
   deletion_table_exists: true,
@@ -35,6 +41,8 @@ const BASE: ScopeRecord = {
   may_read_deletion: true,
   may_insert_usage: true,
   may_read_plan: true,
+  may_read_plan_revision: true,
+  may_read_plan_item: true,
 };
 
 function fakeSql(row: ScopeRecord = BASE) {
@@ -82,6 +90,7 @@ describe("P02-C verified plan/block runtime preflight", () => {
     expect(sql.queries[1]).toContain("current_user");
     expect(sql.queries[1]).toContain("has_table_privilege(current_user");
     expect(sql.queries[1]).toContain("appbasis_training_block_usage_subject");
+    expect(sql.queries[1]).toContain("appbasis_training_plan_revision_item");
     expect(sql.queries[1]).toContain("appbasis_training_block_usage_subject_deletion");
     expect(sql.queries[1]).not.toMatch(/\b(DELETE\s+FROM|UPDATE\s+public|INSERT\s+INTO|TRUNCATE|GRANT|DROP)\b/i);
   });
@@ -95,6 +104,8 @@ describe("P02-C verified plan/block runtime preflight", () => {
       { public_tables: 62 },
       { public_tables: 67 },
       { plan_table_exists: false },
+      { plan_revision_exists: false },
+      { plan_item_exists: false },
       { usage_table_exists: false },
       { subject_table_exists: false },
       { deletion_table_exists: false },
@@ -103,6 +114,8 @@ describe("P02-C verified plan/block runtime preflight", () => {
       { may_read_deletion: false },
       { may_insert_usage: false },
       { may_read_plan: false },
+      { may_read_plan_revision: false },
+      { may_read_plan_item: false },
     ];
     for (const change of invalid) {
       const sql = fakeSql({ ...BASE, ...change });
