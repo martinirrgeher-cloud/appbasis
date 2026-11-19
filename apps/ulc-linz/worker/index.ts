@@ -94,7 +94,7 @@ import {
 } from "./youth-category-postgres";
 import { UlcTrainingSessionConflictError } from "./training-session-postgres";
 import { trainingWriteGuardHttpResponse } from "./training-write-http-error";
-import { pilotTrainingWriteGuardActivation } from "./pilot-training-write-guard";
+import { pilotTrainingGuardPreflightCode, pilotTrainingWriteGuardActivation } from "./pilot-training-write-guard";
 import { validateU12StatisticsDateRange } from "./u12-statistics-postgres";
 import {
   UlcLinzTrainerIdentityConflictError,
@@ -148,6 +148,34 @@ export function createGeneratedWorker(
       }
       if (url.pathname === "/api/health") {
         return Response.json({ status: "ok", appId: "ulc-linz" });
+      }
+      if (url.pathname === "/api/health/b3-guard-preflight") {
+        // This deliberately has no mutation, database connection or secret
+        // disclosure. It is available only in our isolated preview when
+        // the real write guard is OFF; production returns 404.
+        if (!isRecord(env) ||
+            env.APPBASIS_RUNTIME_ENVIRONMENT !== "generated-preview-ulc-linz" ||
+            env.APPBASIS_GENERATED_APP_ID !== "ulc-linz" ||
+            env.APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD !== "disabled") {
+          return new Response(null, { status: 404 });
+        }
+        if (request.method !== "GET") {
+          return new Response(null, { status: 405 });
+        }
+        const app = isRecord(env.HYPERDRIVE)
+          ? env.HYPERDRIVE.connectionString : null;
+        const securityLog = isRecord(env.SECURITY_LOG_HYPERDRIVE)
+          ? env.SECURITY_LOG_HYPERDRIVE.connectionString : null;
+        const reasonCode = pilotTrainingGuardPreflightCode(env, app, securityLog);
+        return Response.json({
+          status: reasonCode === "READY" ? "ready" : "blocked",
+          reasonCode,
+        }, {
+          headers: {
+            "cache-control": "no-store",
+            "x-content-type-options": "nosniff",
+          },
+        });
       }
 
       const runtimeOptions = runtimeConfiguration(env);
@@ -3388,7 +3416,7 @@ async function exerciseCatalogModuleResponse(
         },
         access: { view: true, edit: access.canEdit },
         catalog,
-      });
+      }, { headers: { "cache-control": "private, no-store" } });
     }
 
     const body = await exerciseCatalogJsonBody(
@@ -3401,7 +3429,7 @@ async function exerciseCatalogModuleResponse(
       access.actorPrincipalId,
       body as unknown as CreateUlcExerciseCatalogItemInput,
     );
-    return Response.json({ item }, { status: 201 });
+    return Response.json({ item }, { status: 201, headers: { "cache-control": "private, no-store" } });
   } catch (error) {
     return exerciseCatalogErrorResponse(error);
   }
@@ -3871,7 +3899,7 @@ async function exerciseCatalogItemResponse(
         id,
       );
       if (item === null) return exerciseCatalogNotFound();
-      return Response.json({ item });
+      return Response.json({ item }, { headers: { "cache-control": "private, no-store" } });
     }
 
     if (update !== null) {
@@ -3887,19 +3915,19 @@ async function exerciseCatalogItemResponse(
         id,
         body as unknown as CreateUlcExerciseCatalogItemInput,
       );
-      return Response.json({ item });
+      return Response.json({ item }, { headers: { "cache-control": "private, no-store" } });
     }
 
     if (deactivate !== null) {
       const id = decodeExerciseCatalogPathIdentifier(deactivate[1]);
       await runtime.exerciseCatalog.deactivate(access.organizationId, id);
-      return Response.json({ deactivated: true });
+      return Response.json({ deactivated: true }, { headers: { "cache-control": "private, no-store" } });
     }
 
     if (reactivate !== null) {
       const id = decodeExerciseCatalogPathIdentifier(reactivate[1]);
       await runtime.exerciseCatalog.reactivate(access.organizationId, id);
-      return Response.json({ reactivated: true });
+      return Response.json({ reactivated: true }, { headers: { "cache-control": "private, no-store" } });
     }
 
     if (favorite !== null) {
@@ -3910,7 +3938,7 @@ async function exerciseCatalogItemResponse(
         id,
         request.method === "PUT",
       );
-      return Response.json({ item });
+      return Response.json({ item }, { headers: { "cache-control": "private, no-store" } });
     }
 
     if (usage !== null) {
@@ -3946,7 +3974,7 @@ async function exerciseCatalogItemResponse(
         },
       );
       if (event === undefined) return exerciseCatalogNotFound();
-      return Response.json({ event }, { status: 201 });
+      return Response.json({ event }, { status: 201, headers: { "cache-control": "private, no-store" } });
     }
 
     if (privateMedia !== null) {
@@ -4085,7 +4113,7 @@ async function uploadExerciseCatalogPrivateMedia(
       await store.delete(storageKey);
       return exerciseCatalogNotFound();
     }
-    return Response.json({ media }, { status: 201 });
+    return Response.json({ media }, { status: 201, headers: { "cache-control": "private, no-store" } });
   } catch (error) {
     try {
       await store.delete(storageKey);

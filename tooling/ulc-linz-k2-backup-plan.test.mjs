@@ -121,3 +121,34 @@ test("K2 owner-schema SQL is exported into both PostgreSQL Docker containers", (
     );
   }
 });
+
+test("K2 restore apply=false verifies the ciphertext without requiring an empty quarantine database", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/ulc-linz-k2-isolated-restore.yml", import.meta.url),
+    "utf8",
+  );
+
+  const preflight = workflow.split("      - name: Create private workspace and download ciphertext")[0];
+  assert.match(preflight, /node \.\/tooling\/ulc-linz-k2-backup-plan\.mjs targets/);
+  assert.match(preflight, /node \.\/tooling\/ulc-linz-k2-backup-plan\.mjs bucket/);
+  assert.match(preflight, /aws s3api head-bucket/);
+  assert.doesNotMatch(preflight, /ULC_RESTORE_SQL|ULC K2 quarantine target already has tables/);
+
+  const archiveIndex = workflow.indexOf("      - name: Authenticate archive and validate isolated manifest");
+  const dumpIndex = workflow.indexOf("      - name: Verify dump is readable by PostgreSQL 18");
+  const guardIndex = workflow.indexOf("      - name: Check quarantine is empty immediately before approved restore");
+  const restoreIndex = workflow.indexOf("      - name: Restore only into the verified empty quarantine database");
+  assert.ok(archiveIndex > 0 && dumpIndex > archiveIndex && guardIndex > dumpIndex &&
+    restoreIndex > guardIndex, "archive verification precedes the actual restore-only guard");
+
+  const guarded = workflow.slice(guardIndex, restoreIndex);
+  assert.match(guarded, /if: \$\{\{ inputs\.apply == true \}\}/);
+  assert.match(guarded, /ULC_RESTORE_SQL=SELECT count\(\*\) FROM pg_class/);
+  assert.match(guarded, /test "\$EMPTY" = "0" \|\|/);
+  assert.match(guarded, /quarantine target already has tables; stop without changes/);
+
+  const writer = workflow.slice(restoreIndex);
+  assert.match(writer, /if: inputs\.apply == true/);
+  assert.match(writer, /pg_restore --single-transaction --no-owner --no-acl --exit-on-error/);
+  assert.doesNotMatch(preflight, /pg_restore --single-transaction/);
+});

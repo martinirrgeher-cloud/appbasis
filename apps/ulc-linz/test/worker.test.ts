@@ -1819,6 +1819,70 @@ describe("generated identity+permissions Worker entrypoint", () => {
     });
   });
 
+  it("never caches private exercise catalog reads or successful writes", async () => {
+    const worker = createGeneratedWorker(() => {
+      const base = runtime();
+      return {
+        ...base,
+        exerciseCatalog: {
+          ...base.exerciseCatalog,
+          async read(organizationId, identityId, exerciseId) {
+            return base.exerciseCatalog.setFavorite(
+              organizationId,
+              identityId,
+              exerciseId,
+              false,
+            );
+          },
+        },
+      };
+    });
+    // This API intentionally requires a complete replacement payload on update.
+    const item = JSON.stringify({
+      name: "Sprint",
+      categoryKey: "acceleration",
+      subcategory: null,
+      difficultyKey: null,
+      goal: null,
+      description: null,
+      coachingCues: null,
+      commonMistakes: null,
+      equipment: [],
+      videoUrl: null,
+      videoUrls: [],
+      groupIds: [],
+      similarExerciseIds: [],
+      parameters: [],
+    });
+    const requests = [
+      { method: "GET", path: "/api/modules/exercise-catalog", status: 200 },
+      { method: "GET", path: "/api/modules/exercise-catalog/exercise-1", status: 200 },
+      { method: "POST", path: "/api/modules/exercise-catalog", status: 201, body: item },
+      { method: "POST", path: "/api/modules/exercise-catalog/exercise-1/update", status: 200, body: item },
+      { method: "POST", path: "/api/modules/exercise-catalog/exercise-1/deactivate", status: 200 },
+      { method: "POST", path: "/api/modules/exercise-catalog/exercise-1/reactivate", status: 200 },
+      { method: "PUT", path: "/api/modules/exercise-catalog/exercise-1/favorite", status: 200 },
+      { method: "DELETE", path: "/api/modules/exercise-catalog/exercise-1/favorite", status: 200 },
+    ] as const;
+
+    for (const input of requests) {
+      const headers = new Headers({ cookie: currentIdentity.sessionToken });
+      if ("body" in input) headers.set("content-type", "application/json");
+      const response = await worker.fetch(
+        new Request("https://ulc.example.test" + input.path, {
+          method: input.method,
+          headers,
+          ...("body" in input ? { body: input.body } : {}),
+        }),
+        validEnv,
+      );
+      expect(response.status, input.path).toBe(input.status);
+      expect(response.headers.get("cache-control"), input.path).toBe(
+        "private, no-store",
+      );
+    }
+  });
+
   it("retries private-media deletion after an object-store failure without losing metadata", async () => {
     let requestCalls = 0;
     let objectDeleteCalls = 0;
@@ -3904,6 +3968,8 @@ describe("generated identity+permissions Worker entrypoint", () => {
       SECURITY_LOG_HYPERDRIVE: { connectionString: logConnection },
       APPBASIS_RUNTIME_ENVIRONMENT: "generated-preview-ulc-linz",
       APPBASIS_GENERATED_APP_ID: "ulc-linz",
+      APPBASIS_BUILD_SHA: "a".repeat(40),
+      APPBASIS_ULC_P03I_ORIGIN_ATTESTATION: "e6h-origin-checked:" + "a".repeat(40),
     };
     const request = () => new Request(
       "https://ulc.example.test/api/auth/session",
@@ -3929,6 +3995,35 @@ describe("generated identity+permissions Worker entrypoint", () => {
       securityLogConnectionString: logConnection,
     });
     optionsSeen = null;
+    const separateProxyConnection = logConnection.replace(
+      "preview-db.example.test", "security-log-proxy.example.test",
+    );
+    const separateProxyResponse = await worker.fetch(request(), {
+      ...preview,
+      SECURITY_LOG_HYPERDRIVE: { connectionString: separateProxyConnection },
+      APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "p03i-preview",
+    });
+    expect(separateProxyResponse.status).toBe(200);
+    expect(optionsSeen).toMatchObject({
+      trainingSessionWriteGuardMode: "require-live-training-actor-transaction",
+      securityLogConnectionString: separateProxyConnection,
+    });
+    optionsSeen = null;
+    const opaqueProxyResponse = await worker.fetch(request(), {
+      ...preview,
+      HYPERDRIVE: {
+        connectionString: "postgresql://worker-proxy-user:test@application-proxy.test:5432/hyperdrive",
+      },
+      SECURITY_LOG_HYPERDRIVE: {
+        connectionString: "postgresql://worker-log-proxy:test@log-proxy.test:5432/hyperdrive",
+      },
+      APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "p03i-preview",
+    });
+    expect(opaqueProxyResponse.status).toBe(200);
+    expect(optionsSeen).toMatchObject({
+      trainingSessionWriteGuardMode: "require-live-training-actor-transaction",
+    });
+    optionsSeen = null;
     const disabledResponse = await worker.fetch(request(), {
       ...preview,
       APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "disabled",
@@ -3937,7 +4032,7 @@ describe("generated identity+permissions Worker entrypoint", () => {
     expect(optionsSeen).not.toHaveProperty("trainingSessionWriteGuardMode");
   });
 
-  it("blocks requested P03-I activation on any non-Preview role, route or database", async () => {
+  it("blocks requested P03-I activation on wrong Preview scope, unattested build or invalid proxy", async () => {
     const appConnection = "postgresql://appbasis_ulc_linz_preview_application:example@preview-db.example.test/appbasis_ulc_linz_preview";
     const logConnection = "postgresql://appbasis_ulc_linz_preview_security_log:example@preview-db.example.test/appbasis_ulc_linz_preview";
     const base = {
@@ -3946,6 +4041,8 @@ describe("generated identity+permissions Worker entrypoint", () => {
       SECURITY_LOG_HYPERDRIVE: { connectionString: logConnection },
       APPBASIS_RUNTIME_ENVIRONMENT: "generated-preview-ulc-linz",
       APPBASIS_GENERATED_APP_ID: "ulc-linz",
+      APPBASIS_BUILD_SHA: "a".repeat(40),
+      APPBASIS_ULC_P03I_ORIGIN_ATTESTATION: "e6h-origin-checked:" + "a".repeat(40),
       APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "p03i-preview",
     };
     let created = 0;
@@ -3958,9 +4055,12 @@ describe("generated identity+permissions Worker entrypoint", () => {
       { ...base, APPBASIS_RUNTIME_ENVIRONMENT: "production" },
       { ...base, APPBASIS_GENERATED_APP_ID: "different-app" },
       { ...base, APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "enabled" },
-      { ...base, HYPERDRIVE: { connectionString: appConnection.replace("/appbasis_ulc_linz_preview", "/ulc_linz_k2_restore_quarantine") } },
-      { ...base, SECURITY_LOG_HYPERDRIVE: { connectionString: logConnection.replace("preview-db", "quarantine-db") } },
-      { ...base, HYPERDRIVE: { connectionString: appConnection.replace("appbasis_ulc_linz_preview_application", "ulc_linz_k2_restore_owner") } },
+      { ...base, APPBASIS_ULC_P03I_ORIGIN_ATTESTATION: "e6h-origin-checked:" + "b".repeat(40) },
+      { ...base, APPBASIS_ULC_P03I_ORIGIN_ATTESTATION: undefined },
+      { ...base, APPBASIS_BUILD_SHA: "b".repeat(40) },
+      { ...base, HYPERDRIVE: { connectionString: "not-a-connection-string" } },
+      { ...base, SECURITY_LOG_HYPERDRIVE: { connectionString: "not-a-connection-string" } },
+      { ...base, SECURITY_LOG_HYPERDRIVE: { connectionString: appConnection } },
     ];
     for (const env of invalid) {
       const response = await worker.fetch(request(), env);
@@ -3970,6 +4070,61 @@ describe("generated identity+permissions Worker entrypoint", () => {
       });
     }
     expect(created).toBe(0);
+  });
+
+  it("exposes only redacted B3 preflight codes when Preview guard is disabled", async () => {
+    let runtimeCreated = false;
+    const worker = createGeneratedWorker(() => {
+      runtimeCreated = true;
+      throw new Error("B3 diagnostics must never create a database runtime");
+    });
+    const origin = "https://ulc.example.test/api/health/b3-guard-preflight";
+    const preview = {
+      ...validEnv,
+      HYPERDRIVE: {
+        connectionString: "postgresql://appbasis_ulc_linz_preview_application:privatePassword@app-proxy.example.test/appbasis_ulc_linz_preview",
+      },
+      SECURITY_LOG_HYPERDRIVE: {
+        connectionString: "postgresql://appbasis_ulc_linz_preview_security_log:otherPassword@log-proxy.example.test/appbasis_ulc_linz_preview",
+      },
+      APPBASIS_RUNTIME_ENVIRONMENT: "generated-preview-ulc-linz",
+      APPBASIS_GENERATED_APP_ID: "ulc-linz",
+      APPBASIS_BUILD_SHA: "a".repeat(40),
+      APPBASIS_ULC_P03I_ORIGIN_ATTESTATION: "e6h-origin-checked:" + "a".repeat(40),
+      APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "disabled",
+    };
+    const response = await worker.fetch(new Request(origin), preview);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = await response.text();
+    expect(JSON.parse(body)).toEqual({ status: "ready", reasonCode: "READY" });
+    expect(body).not.toContain("privatePassword");
+    expect(body).not.toContain("otherPassword");
+    expect(body).not.toContain("appbasis_ulc_linz_preview_application");
+    expect(body).not.toContain("app-proxy.example.test");
+    const staleProof = await worker.fetch(new Request(origin), {
+      ...preview,
+      APPBASIS_ULC_P03I_ORIGIN_ATTESTATION: "e6h-origin-checked:" + "b".repeat(40),
+    });
+    expect(await staleProof.json()).toEqual({
+      status: "blocked", reasonCode: "ORIGIN_NOT_ATTESTED",
+    });
+
+    const blocked = await worker.fetch(new Request(origin), {
+      ...preview, SECURITY_LOG_HYPERDRIVE: {
+        connectionString: "not-a-connection-string",
+      },
+    });
+    expect(blocked.status).toBe(200);
+    expect(await blocked.json()).toEqual({ status: "blocked", reasonCode: "SECURITY_PROXY_FORMAT" });
+    expect((await worker.fetch(new Request(origin), {
+      ...preview, APPBASIS_ULC_PILOT_TRAINING_WRITE_GUARD: "p03i-preview",
+    })).status).toBe(404);
+    expect((await worker.fetch(new Request(origin), {
+      ...preview, APPBASIS_RUNTIME_ENVIRONMENT: "production",
+    })).status).toBe(404);
+    expect((await worker.fetch(new Request(origin, { method: "POST" }), preview)).status).toBe(405);
+    expect(runtimeCreated).toBe(false);
   });
 
   it("returns a generic runtime failure without leaking provider error details", async () => {
