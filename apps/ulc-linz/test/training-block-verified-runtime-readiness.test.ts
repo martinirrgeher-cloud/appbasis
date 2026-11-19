@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   assertUlcVerifiedBlockUsagePreviewReadiness,
@@ -14,6 +14,7 @@ interface ScopeRecord {
   readonly subject_table_exists: boolean;
   readonly deletion_table_exists: boolean;
   readonly may_insert_subject: boolean;
+  readonly may_read_subject: boolean;
   readonly may_read_deletion: boolean;
   readonly may_insert_usage: boolean;
   readonly may_read_plan: boolean;
@@ -28,6 +29,7 @@ const BASE: ScopeRecord = {
   subject_table_exists: true,
   deletion_table_exists: true,
   may_insert_subject: true,
+  may_read_subject: true,
   may_read_deletion: true,
   may_insert_usage: true,
   may_read_plan: true,
@@ -35,11 +37,17 @@ const BASE: ScopeRecord = {
 
 function fakeSql(row: ScopeRecord = BASE) {
   const queries: string[] = [];
-  const begin = vi.fn(async <T>(
+  let beginCount = 0;
+  async function begin<T>(
     fn: (transaction: {
-      unsafe(query: string): Promise<readonly Record<string, unknown>[]>;
+      unsafe(
+        query: string,
+        parameters?: Array<string | number | boolean | null>,
+      ): PromiseLike<readonly Record<string, unknown>[]>;
     }) => Promise<T>,
-  ): Promise<T> => fn({
+  ): Promise<T> {
+    beginCount += 1;
+    return fn({
     async unsafe(query: string) {
       queries.push(query.trim());
       if (queries.length === 1) {
@@ -56,8 +64,9 @@ function fakeSql(row: ScopeRecord = BASE) {
       }
       throw new Error("Unexpected SQL or extra query.");
     },
-  }));
-  return { client: { begin }, queries, begin };
+    });
+  }
+  return { client: { begin }, queries, getBeginCount: () => beginCount };
 }
 
 describe("P02-C verified plan/block runtime preflight", () => {
@@ -65,7 +74,7 @@ describe("P02-C verified plan/block runtime preflight", () => {
     const sql = fakeSql();
     await expect(assertUlcVerifiedBlockUsagePreviewReadiness(sql.client))
       .resolves.toBeUndefined();
-    expect(sql.begin).toHaveBeenCalledTimes(1);
+    expect(sql.getBeginCount()).toBe(1);
     expect(sql.queries).toHaveLength(2);
     expect(sql.queries[1]).toContain("current_database()");
     expect(sql.queries[1]).toContain("current_user");
@@ -88,6 +97,7 @@ describe("P02-C verified plan/block runtime preflight", () => {
       { subject_table_exists: false },
       { deletion_table_exists: false },
       { may_insert_subject: false },
+      { may_read_subject: false },
       { may_read_deletion: false },
       { may_insert_usage: false },
       { may_read_plan: false },
