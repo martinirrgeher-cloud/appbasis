@@ -198,7 +198,10 @@ describe("P2-D verified training-plan browser recovery", () => {
       "requestTrainingPlanSaveWithUsageRecovery(",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "trainingPlanSetSaveState(\"error\",",
+      '"Nutzungsbuchung offen"',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "trainingPlanDistributionUsageRecovery.clear();",
     );
   });
 });
