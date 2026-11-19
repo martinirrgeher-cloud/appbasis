@@ -63,6 +63,11 @@ export async function assertUlcVerifiedBlockUsagePreviewReadiness(
               has_table_privilege(current_user,
                 'public.appbasis_training_block_usage_subject', 'INSERT')
             END AS may_insert_subject,
+          CASE WHEN to_regclass('public.appbasis_training_block_usage_subject') IS NULL
+            THEN false ELSE
+              has_table_privilege(current_user,
+                'public.appbasis_training_block_usage_subject', 'SELECT')
+            END AS may_read_subject,
           CASE WHEN to_regclass('public.appbasis_training_block_usage_subject_deletion') IS NULL
             THEN false ELSE
               has_table_privilege(current_user,
@@ -90,6 +95,7 @@ export async function assertUlcVerifiedBlockUsagePreviewReadiness(
         row.subject_table_exists !== true ||
         row.deletion_table_exists !== true ||
         row.may_insert_subject !== true ||
+        row.may_read_subject !== true ||
         row.may_read_deletion !== true ||
         row.may_insert_usage !== true ||
         row.may_read_plan !== true
