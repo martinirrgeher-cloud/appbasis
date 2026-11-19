@@ -1,0 +1,67 @@
+name: ULC Linz P02 – Pilot-Datenrisiken lesen
+
+run-name: ULC P02 read-only Pilot admission
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generated-preview-ulc-linz
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Read-only P02 data owner and legacy risk inventory
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: generated-preview-ulc-linz
+    env:
+      APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+      APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+      APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+    steps:
+      - name: Require exact main and first attempt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_RUN_ATTEMPT" = 1
+
+      - name: Checkout exact main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install exact dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test fail-closed P02 pilot admission before connecting
+        run: node --test ./tooling/ulc-linz-p02-pilot-admission.test.mjs
+
+      - name: Read counts on isolated Preview in a read-only transaction
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tooling/ulc-linz-p02-pilot-admission.mjs inspect
+
+      # No script path or environment can enable apply/migrate, purge, GRANT,
+      # deployment, personal row export, storage delete or production promotion.
+      # Its expected status is BLOCKED until P01/P02/P03 gates are closed.
