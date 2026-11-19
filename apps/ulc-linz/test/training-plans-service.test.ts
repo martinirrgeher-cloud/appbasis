@@ -1049,35 +1049,72 @@ describe("ULC training plan block usage booking", () => {
     expect(base.getUsageAttempts()).toEqual([]);
   });
 
-  it("a failed verified booking never silently falls back to unattributed legacy usage", async () => {
-    const book = vi.fn(async () => {
-      throw new Error("subject deletion marker blocks writes");
+  it("reports a committed plan with failed verified usage as incomplete, then safely finalizes", async () => {
+    let failures = 2;
+    const book = vi.fn(async (
+      organizationId: string,
+      saved: import("@appbasis/training-plans").TrainingPlanSnapshot,
+      itemId: string,
+    ) => {
+      if (failures-- > 0) throw new Error("temporary verified owner failure");
+      const item = saved.revision.items.find(
+        (entry) => entry.kind === "block" && entry.itemId === itemId,
+      );
+      if (item?.kind !== "block" || item.sourceBlockId === null) {
+        throw new Error("Invalid block fixture");
+      }
+      return {
+        id: await trainingPlanUsageEventId(organizationId, saved.id, itemId),
+        organizationId,
+        blockId: item.sourceBlockId,
+        occurredAt: saved.updatedAt,
+        sourceKind: "training_plan",
+        sourceRef: saved.id + ":" + itemId,
+        note: null,
+      };
     });
     const base = createService({
       blocks: [blockSnapshot()],
       verifiedUsageBooking: { book },
       ids: ["denied-plan", "denied-item"],
     });
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const saved = await base.service.create("org-1", {
-        subjectId: ACTIVE_ATHLETE.id,
-        planDate: "2026-10-12",
-        items: [{
-          kind: "block", sourceBlockId: "block-1",
-          sourceBlockRevision: 3, name: "Sprintblock",
-          durationMinutes: 25, note: "Blocknotiz", exercises: [],
-        }],
-      });
-      expect(saved.id).toBe("denied-plan");
-      expect(book).toHaveBeenCalledTimes(2);
-      expect(base.getUsageAttempts()).toEqual([]);
-      expect(log).toHaveBeenCalledWith(
-        "[ulc-linz] one or more training block usage bookings failed",
-      );
-    } finally {
-      log.mockRestore();
-    }
+    await expect(base.service.create("org-1", {
+      subjectId: ACTIVE_ATHLETE.id,
+      planDate: "2026-10-12",
+      items: [{
+        kind: "block", sourceBlockId: "block-1",
+        sourceBlockRevision: 3, name: "Sprintblock",
+        durationMinutes: 25, note: "Blocknotiz", exercises: [],
+      }],
+    })).rejects.toMatchObject({
+      code: "ULC_TRAINING_PLAN_USAGE_INCOMPLETE",
+      planId: "denied-plan",
+      currentRevision: 1,
+      failedBookings: 1,
+    });
+    // A failure is not an undo. Finish the actual saved plan, not a second create.
+    const persisted = await base.service.findCurrent("org-1", "denied-plan");
+    expect(persisted).toMatchObject({ currentRevision: 1 });
+    await expect(base.service.finalizeVerifiedBlockUsage(
+      "org-1", "denied-plan", 1,
+    )).resolves.toMatchObject({ id: "denied-plan" });
+    await expect(base.service.finalizeVerifiedBlockUsage(
+      "org-1", "denied-plan", 1,
+    )).resolves.toMatchObject({ id: "denied-plan" });
+    expect(book).toHaveBeenCalledTimes(4);
+    expect(base.getUsageAttempts()).toEqual([]);
+    await expect(base.service.finalizeVerifiedBlockUsage(
+      "org-1", "denied-plan", 2,
+    )).rejects.toBeInstanceOf(TrainingPlanConflictError);
+  });
+
+  it("denies manual verified finalization when the legacy writer is active", async () => {
+    const base = createService({ blocks: [blockSnapshot()] });
+    await expect(base.service.finalizeVerifiedBlockUsage(
+      "org-1", "unavailable", 1,
+    )).rejects.toMatchObject({
+      code: "ULC_TRAINING_PLAN_USAGE_RECONCILIATION_UNAVAILABLE",
+    });
   });
 
   it("books every newly persisted sourced block exactly once with server-derived metadata", async () => {
