@@ -42,6 +42,7 @@ function currentIdentity(): UlcLinzCurrentIdentity {
 
 function service(input: {
   sourceRole?: "admin" | "trainer" | "athlete" | "parent";
+  resolvedSourceRole?: "admin" | "trainer" | "athlete" | "parent";
   grants?: Array<ReturnType<typeof capabilityId>>;
   roleCapabilities?: Array<ReturnType<typeof capabilityId>>;
   active?: boolean;
@@ -87,7 +88,7 @@ function service(input: {
       async resolveMembership({ organizationId }) {
         return {
           organizationId,
-          sourceRole,
+          sourceRole: input.resolvedSourceRole ?? sourceRole,
           active: input.active ?? true,
         };
       },
@@ -187,6 +188,24 @@ describe("ULC Linz training documentation access", () => {
         grants: [view, edit],
       }).assertEditAccess(currentIdentity()),
     ).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+  });
+
+  it("rejects an SQL membership role that disagrees with the canonical resolver", async () => {
+    const edit = capabilityId("ulc-linz:module:training_documentation:edit");
+    await expect(service({
+      sourceRole: "trainer",
+      resolvedSourceRole: "admin",
+      grants: [edit],
+    }).assertEditAccess(currentIdentity())).rejects.toBeInstanceOf(
+      UlcLinzAuthorizationDeniedError,
+    );
+    await expect(service({
+      sourceRole: "athlete",
+      resolvedSourceRole: "trainer",
+      grants: [edit],
+    }).assertEditAccess(currentIdentity())).rejects.toBeInstanceOf(
+      UlcLinzAuthorizationDeniedError,
+    );
   });
 
   it("denies parent and inactive memberships", async () => {
