@@ -782,6 +782,9 @@ function runtime(
       async copyCurrentTo() {
         return undefined;
       },
+      async finalizeVerifiedBlockUsage() {
+        throw new Error("training-plan mock verified usage is not enabled");
+      },
       async listRevisions() {
         return [];
       },
