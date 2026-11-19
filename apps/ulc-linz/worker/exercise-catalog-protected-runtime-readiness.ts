@@ -57,6 +57,32 @@ export async function assertUlcProtectedCatalogPreviewReadiness(
               AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_favorite', 'INSERT')
               AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_favorite', 'DELETE')
             END AS may_write_favorite,
+          -- Creation/update also replace these module-owned child rows.
+          -- Treat a missing child table/privilege as a hard startup blocker.
+          (          CASE WHEN to_regclass('public.appbasis_exercise_catalog_parameter') IS NULL
+            THEN false ELSE
+              has_table_privilege(current_user, 'public.appbasis_exercise_catalog_parameter', 'SELECT')
+              AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_parameter', 'INSERT')
+              AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_parameter', 'DELETE')
+            END AND
+          CASE WHEN to_regclass('public.appbasis_exercise_catalog_audience') IS NULL
+            THEN false ELSE
+              has_table_privilege(current_user, 'public.appbasis_exercise_catalog_audience', 'SELECT')
+              AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_audience', 'INSERT')
+              AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_audience', 'DELETE')
+            END AND
+          CASE WHEN to_regclass('public.appbasis_exercise_catalog_video') IS NULL
+            THEN false ELSE
+              has_table_privilege(current_user, 'public.appbasis_exercise_catalog_video', 'SELECT')
+              AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_video', 'INSERT')
+              AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_video', 'DELETE')
+            END AND
+          CASE WHEN to_regclass('public.appbasis_exercise_catalog_similarity') IS NULL
+            THEN false ELSE
+              has_table_privilege(current_user, 'public.appbasis_exercise_catalog_similarity', 'SELECT')
+              AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_similarity', 'INSERT')
+              AND has_table_privilege(current_user, 'public.appbasis_exercise_catalog_similarity', 'DELETE')
+            END) AS may_write_children,
           CASE WHEN to_regclass('public.appbasis_exercise_catalog_favorite_deletion') IS NULL
             THEN false ELSE
               has_table_privilege(current_user, 'public.appbasis_exercise_catalog_favorite_deletion', 'SELECT')
@@ -78,6 +104,7 @@ export async function assertUlcProtectedCatalogPreviewReadiness(
         row?.usage_subject_exists !== true ||
         row?.may_write_item !== true ||
         row?.may_write_favorite !== true ||
+        row?.may_write_children !== true ||
         row?.may_read_marker !== true ||
         row?.may_mutate_marker !== false
       ) {
