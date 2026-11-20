@@ -81,6 +81,9 @@ jobs:
       - name: Prove candidate P2-F exercise-catalog v5 migration on isolated PostgreSQL 18
         run: node --test ./tooling/ulc-linz-p02-catalog-owner-v5.postgres.test.mjs
 
+      - name: Rehearse P03-D stale training-subject write fence on disposable PostgreSQL 18
+        run: node --test ./tooling/ulc-linz-p03-d-subject-fence.postgres.test.mjs
+
       - name: Verify proposed G-04 calendar in isolated PostgreSQL
         run: pnpm --filter @appbasis/app-ulc-linz exec vitest run --maxWorkers=1 ./test/registration-calendar.postgres.e2e.test.ts
 
@@ -185,6 +188,9 @@ jobs:
 
       - name: Pin unregistered P2-F exercise-catalog v5 owner SQL to verified fixtures
         run: node --test ./tooling/ulc-linz-p02-catalog-owner-v5.test.mjs
+
+      - name: Validate unpublished P03-D training subject write-fence contract
+        run: node --test ./tooling/ulc-linz-p03-d-subject-fence.test.mjs
 
       - name: Test ULC K2 isolated backup and restore policy (no provider access)
         run: node --test ./tooling/ulc-linz-k2-backup-plan.test.mjs
