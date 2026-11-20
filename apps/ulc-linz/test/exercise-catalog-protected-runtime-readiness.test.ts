@@ -49,6 +49,9 @@ describe("P2-D isolated protected catalog Preview readiness", () => {
     expect(h.statements[1]).toContain("appbasis_exercise_catalog_usage_subject");
     expect(h.statements[1]).toContain("ulc_linz_training_subject_deletion");
     expect(h.statements[1]).toContain("ulc_linz_training_registration_change_subject_fence");
+    expect(h.statements[1]).toContain("trigger.tgenabled IN ('O', 'A')");
+    expect(h.statements[1]).toContain("(trigger.tgtype::integer & 23) = 23");
+    expect(h.statements[1]).toContain("ulc_linz_training_subject_write_fence()");
     expect(h.statements[1]).toContain("appbasis_exercise_catalog_parameter");
     expect(h.statements[1]).toContain("appbasis_exercise_catalog_similarity");
     expect(h.statements[1]).toContain("has_table_privilege");
