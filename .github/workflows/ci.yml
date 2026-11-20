@@ -215,6 +215,12 @@ jobs:
           node --check ./tooling/ulc-linz-m6-application-hyperdrive-role-reconcile.mjs
           node --test ./tooling/ulc-linz-m6-application-hyperdrive-role-reconcile.test.mjs
 
+      - name: Verify ULC P3-D private pilot and current privacy evidence (read-only)
+        run: |
+          node --check ./tooling/ulc-linz-p3-release-inventory.mjs
+          node --test ./tooling/ulc-linz-p3-release-inventory.test.mjs
+          node ./tooling/ulc-linz-p3-release-inventory.mjs > /dev/null
+
       - name: Verify P1 published manifest Preview-only reconciliation is fail-closed
         run: node --test ./tooling/ulc-linz-p1-preview-69-reconcile.test.mjs
 
