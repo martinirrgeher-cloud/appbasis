@@ -136,7 +136,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
 
     expect(inventory.schemaVersion).toBe(2);
     expect(inventory.application).toBe("ulc-linz");
-    expect(inventory.scope).toBe("repository-declared-schema-v16-review-not-runtime-evidence");
+    expect(inventory.scope).toBe("repository-declared-schema-v18-review-not-runtime-evidence");
     expect(databaseManifest.application).toBe(inventory.application);
     expect(appManifest.appId).toBe(inventory.application);
     expect(appManifest.modules).toEqual([
@@ -169,8 +169,8 @@ describe("ULC Linz M5 C/D data inventory", () => {
       owner.id === "ulc-linz-lifecycle"
     );
     expect(ulcOwner).toBeDefined();
-    expect(ulcOwner?.schemaVersion).toBe(16);
-    expect(ulcOwner?.migrations).toHaveLength(16);
+    expect(ulcOwner?.schemaVersion).toBe(18);
+    expect(ulcOwner?.migrations).toHaveLength(18);
     expect(ulcOwner?.migrations.slice(9)).toEqual([
       "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
       "apps/ulc-linz/migrations/0010_ulc_linz_registration_notes.sql",
@@ -179,6 +179,8 @@ describe("ULC Linz M5 C/D data inventory", () => {
       "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
       "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
       "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
+      "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
+      "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
     ]);
     expect(databaseManifest.owners.map((owner) => owner.id)).toEqual([
       "identity",
@@ -209,7 +211,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "ulc-linz-lifecycle",
       ),
     ).toMatchObject({
-      schemaVersion: 16,
+      schemaVersion: 18,
       lifecycleStatus: "training-and-catalog-data-lifecycle-pending",
       notes: expect.arrayContaining([
         "app-owned-training-session-and-attendance-lifecycle-pending",
@@ -282,7 +284,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "exercise-catalog",
       ),
     ).toMatchObject({
-      schemaVersion: 4,
+      schemaVersion: 5,
       lifecycleStatus: "repository-schema-v4-published-preview-upgrade-pending",
       notes: expect.arrayContaining([
         "standard-module-target-schema-v4-published-in-repository",
@@ -319,7 +321,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(sortedTableKeys(inventory.persistentTables)).toEqual(
       sortedTableKeys(migrationTables),
     );
-    expect(inventory.persistentTables).toHaveLength(64);
+    expect(inventory.persistentTables).toHaveLength(69);
     for (const table of inventory.persistentTables) {
       expect(table.privacyClass.length).toBeGreaterThan(0);
       expect(table.retentionPolicy.length).toBeGreaterThan(0);
