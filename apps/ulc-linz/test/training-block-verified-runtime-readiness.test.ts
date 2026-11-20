@@ -109,7 +109,13 @@ describe("P02-C verified plan/block runtime preflight", () => {
     expect(sql.queries[1]).toContain("trigger.tgenabled IN ('O', 'A')");
     expect(sql.queries[1]).toContain("(trigger.tgtype::integer & 23) = 23");
     expect(sql.queries[1]).toContain("ulc_linz_training_subject_write_fence()");
-    expect(sql.queries[1]).not.toMatch(/\b(DELETE\s+FROM|UPDATE\s+public|INSERT\s+INTO|TRUNCATE|GRANT|DROP)\b/i);
+    // The read-only metadata query must check the absence of TRUNCATE
+    // privileges, so the literal string '...TRUNCATE' is expected. Strip
+    // quoted SQL values and comments before checking actual SQL operators.
+    const structureOnly = sql.queries[1]
+      .replace(/'(?:''|[^'])*'/g, "''")
+      .replace(/--[^\n]*/g, "");
+    expect(structureOnly).not.toMatch(/\b(DELETE\s+FROM|UPDATE\s+public|INSERT\s+INTO|TRUNCATE|GRANT|DROP)\b/i);
   });
 
   it("accepts only the complete 68-table catalog transition, never a partial guard", async () => {
