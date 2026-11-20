@@ -224,7 +224,7 @@ async function applyUlcLifecycleMigrations(
   expect(owner).toEqual({
     id: "ulc-linz-lifecycle",
     root: "apps/ulc-linz",
-    schemaVersion: 16,
+    schemaVersion: 18,
     migrations: [
       "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
       "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -242,6 +242,8 @@ async function applyUlcLifecycleMigrations(
       "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
       "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
       "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
+      "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
+      "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
     ],
   });
   if (owner === undefined) throw new Error("Expected ULC lifecycle database owner.");
@@ -260,7 +262,9 @@ async function applyUlcLifecycleMigrations(
     ],
   });
   if (permissions === undefined) throw new Error("Expected ULC permissions database owner.");
-  for (const migration of [...permissions.migrations, ...owner.migrations]) {
+  // This test isolates the historical retention-claim owner, not the later
+  // calendar and athlete-linked write-fence modules.
+  for (const migration of [...permissions.migrations, ...owner.migrations.slice(0, 16)]) {
     const sql = await readFile(new URL(`../../../${migration}`, import.meta.url), "utf8");
     for (const statement of sql.split("--> statement-breakpoint")) {
       if (statement.trim() !== "") await client.unsafe(statement);
