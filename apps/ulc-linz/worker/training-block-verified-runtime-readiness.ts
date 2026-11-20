@@ -1,6 +1,8 @@
 /**
  * P02-C: fail-closed preflight for the optional, authenticated training
- * plan -> training block subject writer. Preview-only until application
+ * plan -> training block subject writer. Only the explicit 69-table Preview
+ * transition accepts app-owned training fences; no marker privileges.
+ * Preview-only until application
  * lifecycle, actual owner GRANTs and full restore evidence are approved.
  *
  * This checks ONLY catalog metadata and effective SQL privileges, never
@@ -57,6 +59,25 @@ export async function assertUlcVerifiedBlockUsagePreviewReadiness(
             AS catalog_favorite_guard_exists,
           to_regclass('public.appbasis_exercise_catalog_usage_subject') IS NOT NULL
             AS catalog_subject_guard_exists,
+          to_regclass('public.ulc_linz_training_subject_deletion') IS NOT NULL
+            AS training_subject_marker_exists,
+          (SELECT count(*)::int
+             FROM pg_catalog.pg_trigger AS trigger
+             JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger.tgrelid
+             JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = 'public' AND NOT trigger.tgisinternal
+              AND (relation.relname, trigger.tgname) IN (
+                ('ulc_linz_training_attendance','ulc_linz_training_attendance_subject_fence'),
+                ('ulc_linz_training_registration','ulc_linz_training_registration_subject_fence'),
+                ('ulc_linz_training_registration_change','ulc_linz_training_registration_change_subject_fence')
+              )
+          ) AS training_subject_fence_triggers,
+          CASE WHEN to_regclass('public.ulc_linz_training_subject_deletion') IS NULL
+            THEN false ELSE
+              has_table_privilege(current_user,
+                'public.ulc_linz_training_subject_deletion',
+                'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+            END AS may_access_training_subject_marker,
           to_regclass('public.appbasis_training_plan') IS NOT NULL
             AS plan_table_exists,
           to_regclass('public.appbasis_training_plan_revision') IS NOT NULL
@@ -110,10 +131,24 @@ export async function assertUlcVerifiedBlockUsagePreviewReadiness(
         rows.length !== 1 ||
         row?.database_name !== "appbasis_ulc_linz_preview" ||
         row?.principal_name !== "appbasis_ulc_linz_preview_application" ||
-        (row?.public_tables !== 66 &&
-          (row?.public_tables !== 68 ||
-            row?.catalog_favorite_guard_exists !== true ||
-            row?.catalog_subject_guard_exists !== true)) ||
+        !(
+          (row?.public_tables === 66 &&
+            row?.training_subject_marker_exists === false &&
+            row?.training_subject_fence_triggers === 0 &&
+            row?.may_access_training_subject_marker === false) ||
+          (row?.public_tables === 68 &&
+            row?.catalog_favorite_guard_exists === true &&
+            row?.catalog_subject_guard_exists === true &&
+            row?.training_subject_marker_exists === false &&
+            row?.training_subject_fence_triggers === 0 &&
+            row?.may_access_training_subject_marker === false) ||
+          (row?.public_tables === 69 &&
+            row?.catalog_favorite_guard_exists === true &&
+            row?.catalog_subject_guard_exists === true &&
+            row?.training_subject_marker_exists === true &&
+            row?.training_subject_fence_triggers === 3 &&
+            row?.may_access_training_subject_marker === false)
+        ) ||
         row.plan_table_exists !== true ||
         row.plan_revision_exists !== true ||
         row.plan_item_exists !== true ||
