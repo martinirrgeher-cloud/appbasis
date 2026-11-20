@@ -117,7 +117,7 @@ export async function loadUlcP02ParityRehearsalPlan() {
   const creator = new Map();
   const files = [];
   for (const path of [...migrations, CALENDAR_MIGRATION, ...CATALOG_CANDIDATES]) {
-    if (!/^(?:packages|modules|apps)\/[a-z0-9-]+\/(?:drizzle|migrations|test\/fixtures)\/[a-z0-9-]+(?:\.candidate)?\.sql$/.test(path)) {
+    if (!/^(?:packages|modules|apps)\/[a-z0-9-]+\/(?:drizzle|migrations|test\/fixtures)\/[a-z0-9_-]+(?:\.candidate)?\.sql$/.test(path)) {
       block("unexpected migration path");
     }
     const sql = await readFile(new URL("../" + path, import.meta.url), "utf8");
