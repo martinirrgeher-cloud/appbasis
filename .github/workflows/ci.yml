@@ -75,6 +75,9 @@ jobs:
       - name: Rehearse missing ULC lifecycle migrations on disposable PostgreSQL
         run: node --test ./tooling/ulc-linz-lifecycle-schema-reconcile.postgres.test.mjs
 
+      - name: Prove P2-E 64→66→68 catalog guards and stale restore quarantine on local PostgreSQL 18
+        run: node --test ./tooling/ulc-linz-p02-parity-rehearsal.postgres.test.mjs
+
       - name: Verify proposed G-04 calendar in isolated PostgreSQL
         run: pnpm --filter @appbasis/app-ulc-linz exec vitest run --maxWorkers=1 ./test/registration-calendar.postgres.e2e.test.ts
 
@@ -173,6 +176,9 @@ jobs:
 
       - name: Test ULC P02 pilot data admission is read-only and fail-closed
         run: node --test ./tooling/ulc-linz-p02-pilot-admission.test.mjs
+
+      - name: Validate P2-E exact schema/migration ownership and restore markers
+        run: node --test ./tooling/ulc-linz-p02-parity-rehearsal.test.mjs
 
       - name: Test ULC K2 isolated backup and restore policy (no provider access)
         run: node --test ./tooling/ulc-linz-k2-backup-plan.test.mjs
