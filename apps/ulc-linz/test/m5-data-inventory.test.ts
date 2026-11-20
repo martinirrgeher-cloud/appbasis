@@ -59,6 +59,11 @@ type DataInventory = {
     futureIntroduction: string;
   };
   m5: Record<string, string>;
+  staging: {
+    activation: string;
+    controllerApproval: string;
+    productionReady: boolean;
+  };
 };
 
 const inventoryUrl = new URL("../privacy/m5-data-inventory.json", import.meta.url);
