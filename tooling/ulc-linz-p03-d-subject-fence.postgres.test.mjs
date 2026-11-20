@@ -112,6 +112,14 @@ test("P03-D: app-owned subject fence rejects stale writes and preserves neighbor
     await database.client.begin(async tx => {
       for (const statement of candidate) await tx.unsafe(statement);
     });
+    // An attacker or stale direct writer must not spoof an unrelated
+    // organization to avoid its subject marker.
+    await assert.rejects(database.client.unsafe(
+      "INSERT INTO ulc_linz_training_attendance " +
+      "(organization_id,session_id,athlete_id,status) " +
+      "VALUES ('p03-d-other-org','session-owned','p03-d-mismatched','present')"
+    ), /session ownership scope invalid/i);
+
     const installed = await database.client.unsafe(
       "SELECT count(*)::int AS triggers FROM pg_catalog.pg_trigger " +
       "WHERE tgname LIKE 'ulc_linz_training_%_subject_fence' AND NOT tgisinternal"
