@@ -28,6 +28,12 @@ Die 15 in Production fehlenden, in Preview vorhandenen Tabellen liegen bei den O
 - **Restore-Negativfall:** Eine synthetische ältere PostgreSQL-Datenbankkopie wird *vor* einer Eigentümer-Löschentscheidung angefertigt, danach wird ein exakt organisations- und principalgebundener Löschmarker gesetzt und ein Favorit entfernt. Die alte Kopie enthält den Favoriten wieder und den neueren Marker nicht. `assessUlcP02CatalogRestoreMarkers` verweigert darum die Wiederfreigabe. Nur nach synthetischer markergebundener, transaktionaler Wiederholung sind die beiden Markerbestände identisch und der Favorit erneut entfernt. Dennoch `promotionAuthorized=false`, auch bei 0 Markern.
 - Tests mit fehlerhaften/duplizierten, abgelaufenen, umdatieren und organisationsfremden Markern schlagen geschlossen fehl, ohne Personenschlüssel in Fehlermeldungen aufzunehmen. Die gesamte Rehearsal läuft in CI mit eigenem Quality- und PostgreSQL-Schritt.
 
+## Reproduzierbare Prüfung ohne Providerzugriff
+
+- Statische Quell-/Owner-Prüfung: `node --test tooling/ulc-linz-p02-parity-rehearsal.test.mjs`.
+- Isolierter SQL-Nachweis: `node --test tooling/ulc-linz-p02-parity-rehearsal.postgres.test.mjs` **nur** mit `DATABASE_URL` des lokalen PostgreSQL-18-Testdienstes (`postgres://postgres:postgres@localhost:5432/appbasis_identity_e2e`). Ohne `DATABASE_URL` wird dieser Test **übersprungen**; ein solcher Lauf ist ausdrücklich **kein** PostgreSQL-PASS.
+- Die PR-Pflicht-CI `Identity PostgreSQL E2E` setzt die lokale URL im PostgreSQL-18-Service. Provider-/Preview-/Production-URLs werden vom Test abgewiesen. Reale SQL-Migrationen und Rollenanpassungen bleiben gesondert gesperrt.
+
 ## Kritische Restgrenzen (nicht als PASS verkaufen)
 
 1. **51→64** ist als *exakte Datei-Zuordnung* geplant, nicht als Migration echter Produktionsdaten ausgeführt. Alte/teilweise angewandte Migrationen, Fremdschlüssel, Triggers, vorhandene Daten und Rollengrenzen benötigen eine **echte, isolierte Kopie/Backup** der zu migrierenden Production-DB vor Apply. Ein Neuaufbau einer leeren PostgreSQL-DB beweist keinen in-place Upgrade mit Echtdaten.
