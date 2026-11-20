@@ -107,7 +107,7 @@ async function requireClosedExistingWorker(fetchImpl,accountUrl,token) {
 }
 
 export async function reconcileUlcLinzApplicationHyperdriveRole({
-  accountId, apiToken, databaseUrl, confirmation, branchRef, apply=false,
+  accountId, apiToken, readToken, databaseUrl, confirmation, branchRef, apply=false,
   fetchImpl=globalThis.fetch,
 }={}){
   // No provider request at all without positive operator approval.
@@ -115,14 +115,15 @@ export async function reconcileUlcLinzApplicationHyperdriveRole({
     branchRef!=="refs/heads/main" ||
     typeof accountId!=="string" || !ACCOUNT_ID.test(accountId) ||
     typeof apiToken!=="string" || !apiToken || /\s/.test(apiToken) ||
+    typeof readToken!=="string" || !readToken || /\s/.test(readToken) ||
     typeof fetchImpl!=="function") reject();
   let expected;
   try { expected=parseUlcLinzProductionDatabaseUrl(databaseUrl); }
   catch { reject(); }
   if(expected.user!=="ulc_linz_application" || expected.database!=="neondb") reject();
   const accountUrl="https://api.cloudflare.com/client/v4/accounts/"+accountId;
-  await requireClosedExistingWorker(fetchImpl,accountUrl,apiToken);
-  let config=target(await listConfigs(fetchImpl,accountUrl,apiToken));
+  await requireClosedExistingWorker(fetchImpl,accountUrl,readToken);
+  let config=target(await listConfigs(fetchImpl,accountUrl,readToken));
   if(!sameOriginExceptRole(config,expected)) reject();
 
   if(config.origin.user===expected.user){
@@ -130,7 +131,7 @@ export async function reconcileUlcLinzApplicationHyperdriveRole({
   }
 
   // Re-read immediately before the ONLY permitted write, denying unexpected drift.
-  const latest=target(await listConfigs(fetchImpl,accountUrl,apiToken));
+  const latest=target(await listConfigs(fetchImpl,accountUrl,readToken));
   if(!sameOriginExceptRole(latest,expected) ||
     latest.id!==config.id ||
     latest.origin.user!==config.origin.user) reject();
@@ -153,7 +154,7 @@ export async function reconcileUlcLinzApplicationHyperdriveRole({
   if(updated.id!==config.id || !sameOriginExceptRole(updated,expected) ||
     updated.origin.user!==expected.user) reject();
 
-  const readBack=target(await listConfigs(fetchImpl,accountUrl,apiToken));
+  const readBack=target(await listConfigs(fetchImpl,accountUrl,readToken));
   if(readBack.id!==config.id ||
     !sameOriginExceptRole(readBack,expected) ||
     readBack.origin.user!==expected.user) reject();
@@ -168,6 +169,7 @@ if(main()){
     const result=await reconcileUlcLinzApplicationHyperdriveRole({
       accountId:process.env.CLOUDFLARE_ACCOUNT_ID,
       apiToken:process.env.CLOUDFLARE_API_WRITE_TOKEN,
+      readToken:process.env.ULC_LINZ_PRODUCTION_CLOUDFLARE_API_TOKEN,
       databaseUrl:process.env.ULC_LINZ_PRODUCTION_DATABASE_URL,
       confirmation:process.env.ULC_HYPERDRIVE_ROLE_CONFIRMATION,
       branchRef:process.env.GITHUB_REF,
