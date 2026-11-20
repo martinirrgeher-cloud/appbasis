@@ -147,7 +147,8 @@ test("runtime configuration requires exact main-only operator approval and provi
 test("runtime configuration consumes only dedicated production inputs", async () => {
   const workflow = await source();
   assert.match(workflow, /secrets\.CLOUDFLARE_ACCOUNT_ID/);
-  assert.match(workflow, /secrets\.CLOUDFLARE_API_TOKEN/);
+  assert.match(workflow, /secrets\\.ULC_LINZ_PRODUCTION_CLOUDFLARE_API_TOKEN/);
+  assert.doesNotMatch(workflow, /secrets\\.CLOUDFLARE_API_TOKEN/);
   assert.match(workflow, /secrets\.ULC_LINZ_PRODUCTION_DATABASE_URL/);
   assert.match(workflow, /secrets\.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL/);
   assert.match(workflow, /secrets\.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET/);
