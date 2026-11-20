@@ -212,6 +212,8 @@ jobs:
           node --check ./tooling/ulc-linz-m6-aggregate-readiness.mjs
           node --test ./tooling/ulc-linz-m6-aggregate-readiness.test.mjs
           node --test ./tooling/ulc-linz-m6-reconciliation-audit.test.mjs
+          node --check ./tooling/ulc-linz-m6-application-hyperdrive-role-reconcile.mjs
+          node --test ./tooling/ulc-linz-m6-application-hyperdrive-role-reconcile.test.mjs
 
       - name: Verify P1 published manifest Preview-only reconciliation is fail-closed
         run: node --test ./tooling/ulc-linz-p1-preview-69-reconcile.test.mjs
