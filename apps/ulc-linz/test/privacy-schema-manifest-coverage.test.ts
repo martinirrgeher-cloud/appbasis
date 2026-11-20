@@ -42,6 +42,7 @@ interface PrivacyInventory {
     readonly previousRecordedMigrations: number;
     readonly newlyRecordedMigrations: readonly string[];
     readonly migrationChanges: readonly MigrationRisk[];
+    readonly historyV16MigrationChanges: readonly MigrationRisk[];
     readonly readiness: string;
   };
   readonly m5: {
