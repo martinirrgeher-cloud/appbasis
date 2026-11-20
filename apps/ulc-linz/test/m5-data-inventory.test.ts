@@ -159,12 +159,27 @@ describe("ULC Linz M5 C/D data inventory", () => {
     expect(inventory.m5.unknownRuntimeModule).toBe("fail-closed");
 
     // The inventory now tracks the published repository manifest exactly.
-    // All seven former v9→v16 differences were reviewed, and any FUTURE
+    // The prior seven v9→v16 changes remain historical; the three v18 additions are now registered.
+    // Any FUTURE
     // migration must update the inventory rather than silently pass CI.
     // This says nothing about what schema has actually been deployed.
     const inventoryOwners = sortedOwnerContracts(inventory.persistentOwners);
     const publishedOwners = sortedOwnerContracts(databaseManifest.owners);
     expect(publishedOwners).toEqual(inventoryOwners);
+    // The v18 inventory must retain lifecycle status and evidence notes
+    // for every owner; copying only the migration manifest silently drops
+    // the privacy contract even when the table count is correct.
+    expect(inventory.persistentOwners).toHaveLength(8);
+    for (const owner of inventory.persistentOwners) {
+      expect(owner.lifecycleStatus).toBeTruthy();
+      expect(owner.notes.length).toBeGreaterThan(0);
+    }
+    expect(inventory.staging).toMatchObject({
+      activation: "blocked",
+      controllerApproval: "pending",
+      productionReady: false,
+    });
+
     const ulcOwner = inventoryOwners.find((owner) =>
       owner.id === "ulc-linz-lifecycle"
     );
@@ -285,10 +300,10 @@ describe("ULC Linz M5 C/D data inventory", () => {
       ),
     ).toMatchObject({
       schemaVersion: 5,
-      lifecycleStatus: "repository-schema-v4-published-preview-upgrade-pending",
+      lifecycleStatus: "repository-schema-v5-published-preview-69-privacy-activation-pending",
       notes: expect.arrayContaining([
-        "standard-module-target-schema-v4-published-in-repository",
-        "ulc-preview-v3-live-v4-upgrade-pending",
+        "standard-module-target-schema-v5-published-in-repository",
+        "ulc-preview-v5-schema-69-installed-runtime-abnahme-pending",
         "production-runtime-cutover-not-authorized",
         "exercise-catalog-configuration-not-personal",
         "exercise-favorite-lifecycle-pending",
