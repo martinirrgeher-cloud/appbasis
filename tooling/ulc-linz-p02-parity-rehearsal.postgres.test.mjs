@@ -11,6 +11,17 @@ import {
 } from "./ulc-linz-p02-parity-rehearsal.mjs";
 
 const DATABASE_URL = process.env.DATABASE_URL;
+// Refuse provider connections even if somebody launches this CI-only test
+// manually with Neon or a production URL in their shell.
+if (DATABASE_URL) {
+  const target = new URL(DATABASE_URL);
+  if (
+    !["localhost", "127.0.0.1", "::1"].includes(target.hostname) ||
+    target.username !== "postgres" ||
+    target.port !== "5432" ||
+    target.pathname !== "/appbasis_identity_e2e"
+  ) throw new Error("P2-E disposable database test requires local CI PostgreSQL only.");
+}
 const ORG = "synthetic-p02-e-org";
 const PRINCIPAL = "synthetic-p02-e-person";
 const WHEN = "2026-11-20T07:00:00.000Z";
@@ -77,6 +88,10 @@ test("P2-E: exact 64→66→68 migration stages, scoped ACL, rollback and stale-
   let oldBackupCreated = false;
   let roleCreated = false;
   try {
+    const server = await admin.client.unsafe("SHOW server_version_num");
+    if (Number(server[0]?.server_version_num) < 180000) {
+      throw new Error("P2-E test requires PostgreSQL 18 or later.");
+    }
     const plan = await loadUlcP02ParityRehearsalPlan();
     assert.equal(plan.registeredFiles.length, 41);
     assert.equal(plan.isolatedCalendarFile.path, CALENDAR_MIGRATION);
