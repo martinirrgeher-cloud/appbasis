@@ -132,7 +132,7 @@ jobs:
       - name: Run ULC exercise-catalog adoption PostgreSQL proof
         run: pnpm run test:adoption:postgres
 
-      - name: Run ULC-E2B Stammdaten installation PostgreSQL E2E
+      - name: Verify ULC-E2B historical v16 refusal and current v18 module no-op on PostgreSQL
         run: node --test ./tooling/ulc-linz-e2b-masterdata.postgres.test.mjs
 
       - name: Run Unterrichtsverwaltung PostgreSQL E2E tests
