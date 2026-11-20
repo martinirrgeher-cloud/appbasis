@@ -4,7 +4,7 @@
 
 ## What changes
 
-A single module-owned **v5 proposal** `modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql` now contains the exact two tested P02-G and P02-H guard relations:
+A single module-owned **v5 proposal** `modules/exercise-catalog/test/fixtures/0004_appbasis_exercise_catalog_subject_lifecycle.candidate.sql` now contains the exact two tested P02-G and P02-H guard relations:
 
 1. `appbasis_exercise_catalog_favorite_deletion`: organization/principal-bound 35-day source marker. The marker is not automatically expired or purged; ordinary application sessions must not mutate it.
 2. `appbasis_exercise_catalog_usage_subject`: explicit organization-bound attribution to usage event, principal and `verified_by` from trusted identity/athletes context; no inference from `source_ref`, notes or old usage events.
