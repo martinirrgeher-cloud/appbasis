@@ -34,7 +34,8 @@ export type UlcExerciseCatalogRuntimeMode =
   | "legacy"
   | "legacy-read-writes-blocked"
   | "standard-module"
-  | "standard-module-protected-preview";
+  | "standard-module-protected-preview"
+  | "standard-module-protected-production";
 
 export class UlcExerciseCatalogWriteQuiescedError extends Error {
   readonly code = "EXERCISE_CATALOG_WRITE_QUIESCED";
@@ -65,8 +66,9 @@ export function createUlcExerciseCatalogRuntimeRepository({
       new PostgresExerciseCatalogRepository(sql),
     );
   }
-  if (mode === "standard-module-protected-preview") {
-    // P2-A isolated opt-in: allow fenced personal favorites, but no legacy
+  if (mode === "standard-module-protected-preview" ||
+      mode === "standard-module-protected-production") {
+    // P2-A / P3-B opt-in: allow fenced personal favorites, but no legacy
     // unattributed usage. Verified subject usage has no HTTP writer yet.
     return new StandardModuleUlcExerciseCatalogRepository(
       new PostgresExerciseCatalogRepository(sql, {

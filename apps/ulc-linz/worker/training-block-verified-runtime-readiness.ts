@@ -38,6 +38,20 @@ export class UlcVerifiedBlockUsageUnavailableError extends Error {
 export async function assertUlcVerifiedBlockUsagePreviewReadiness(
   applicationSql: UlcVerifiedBlockUsagePreviewReadinessClient,
 ): Promise<void> {
+  return assertVerifiedBlockUsageReadiness(applicationSql, "preview");
+}
+
+/** P3-B: optional, read-only production admission. Not a lifecycle or Go-live approval. */
+export async function assertUlcVerifiedBlockUsageProductionReadiness(
+  applicationSql: UlcVerifiedBlockUsagePreviewReadinessClient,
+): Promise<void> {
+  return assertVerifiedBlockUsageReadiness(applicationSql, "production");
+}
+
+async function assertVerifiedBlockUsageReadiness(
+  applicationSql: UlcVerifiedBlockUsagePreviewReadinessClient,
+  environment: "preview" | "production",
+): Promise<void> {
   if (!applicationSql || typeof applicationSql.begin !== "function") {
     throw new UlcVerifiedBlockUsageUnavailableError();
   }
@@ -132,14 +146,16 @@ export async function assertUlcVerifiedBlockUsagePreviewReadiness(
       const row = rows?.[0];
       if (
         rows.length !== 1 ||
-        row?.database_name !== "appbasis_ulc_linz_preview" ||
-        row?.principal_name !== "appbasis_ulc_linz_preview_application" ||
+        row?.database_name !== (environment === "production" ? "neondb" : "appbasis_ulc_linz_preview") ||
+        row?.principal_name !== (environment === "production" ? "ulc_linz_application" : "appbasis_ulc_linz_preview_application") ||
         !(
-          (row?.public_tables === 66 &&
+          (environment === "preview" &&
+            row?.public_tables === 66 &&
             row?.training_subject_marker_exists === false &&
             row?.training_subject_fence_triggers === 0 &&
             row?.may_access_training_subject_marker === false) ||
-          (row?.public_tables === 68 &&
+          (environment === "preview" &&
+            row?.public_tables === 68 &&
             row?.catalog_favorite_guard_exists === true &&
             row?.catalog_subject_guard_exists === true &&
             row?.training_subject_marker_exists === false &&
