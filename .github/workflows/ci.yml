@@ -207,6 +207,9 @@ jobs:
       - name: Validate P02-J release candidate manifests and 66/69 readonly reconciliation
         run: node --test ./tooling/ulc-linz-p02-j-manifest-reconciliation.test.mjs
 
+      - name: Prove P02-J staged 69-table privacy and export classifications stay fail-closed
+        run: node --test ./tooling/ulc-linz-p02-j-privacy-inventory.test.mjs
+
       - name: Test ULC K2 isolated backup and restore policy (no provider access)
         run: node --test ./tooling/ulc-linz-k2-backup-plan.test.mjs
 
