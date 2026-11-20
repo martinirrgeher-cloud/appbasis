@@ -38,7 +38,7 @@ test("P2-E pins all 15 production gaps to their exact module/app owner files", a
     assert.match(file.digest, /^sha256:[0-9a-f]{64}$/);
     assert.ok(file.statements.length > 0);
   }
-  assert.deepEqual(plan.isolatedCalendarFile.creates.sort(), [
+  assert.deepEqual([...plan.isolatedCalendarFile.creates].sort(), [
     "ulc_linz_registration_calendar_exception",
     "ulc_linz_registration_calendar_rule",
   ]);
