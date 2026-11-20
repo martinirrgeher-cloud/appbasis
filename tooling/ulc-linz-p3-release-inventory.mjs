@@ -76,8 +76,17 @@ export function evaluateUlcP3ReleaseInventory({
 
   required(provider.application==="ulc-linz" &&
     Array.isArray(provider.providerScope)&&provider.providerScope.length===2 &&
-    provider.providerScope.every(x=>x.appSpecificProductionEvidence==="open"),
-    "provider account/privacy evidence must not be inferred");
+    new Set(provider.providerScope.map(x=>x.id)).size===2 &&
+    provider.providerScope.every(x=>
+      ["cloudflare","neon-postgresql"].includes(x.id) &&
+      ["open","verified"].includes(x.appSpecificProductionEvidence)),
+    "exact provider account/privacy evidence inventory");
+  // A provider status must change with its own verified M5 source; a bare
+  // one-field edit must never turn this repository summary into legal approval.
+  const providerAccountEvidence=provider.providerScope.every(x=>
+    x.appSpecificProductionEvidence==="verified") &&
+    ["dpa","dataRegion","encryption","subprocessors"].every(key=>
+      provider.m5?.[key]==="verified") ? "verified" : "open";
   required(recovery.application==="ulc-linz" &&
     recovery.currentSourceAuthority?.markerRetentionDays===35 &&
     recovery.currentSourceAuthority?.postExpiryRetry==="deny",
@@ -97,7 +106,7 @@ export function evaluateUlcP3ReleaseInventory({
     byOwner:Object.freeze(byOwner),
     blockedModules:Object.freeze(blockedModules),
     blockedCrossCutting:Object.freeze(blockedCrossCutting),
-    providerAccountEvidence:"open",
+    providerAccountEvidence,
     sourceAuthorityDays:35,
     sourceExpiry:"deny",
     objectStorageConfigured:false,
