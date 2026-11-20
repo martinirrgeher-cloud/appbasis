@@ -4,6 +4,10 @@ import { test } from "node:test";
 
 import { createPostgresDatabase } from "../packages/database/src/node-runtime.mjs";
 import { loadUlcP02ParityRehearsalPlan } from "./ulc-linz-p02-parity-rehearsal.mjs";
+import {
+  ULC69_CATALOG_SQL,
+  classifyUlc69ManifestState,
+} from "./ulc-linz-p02-j-manifest-reconciliation.mjs";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (DATABASE_URL) {
@@ -216,6 +220,11 @@ test("P02-G: actual in-place synthetic 51→64→66→68→69 upgrade retains ex
     });
     assert.equal((await tableNames(db)).length, 66);
     assert.deepEqual(await preserved(db), original);
+    const staged66 = await db.client.unsafe(ULC69_CATALOG_SQL);
+    assert.equal(
+      classifyUlc69ManifestState(staged66[0]).state,
+      "preview-66-requires-reviewed-upgrade",
+    );
 
     await db.client.begin(async tx => {
       for (const candidate of plan.isolatedCandidateFiles) {
@@ -370,6 +379,8 @@ test("P02-G: actual in-place synthetic 51→64→66→68→69 upgrade retains ex
       for (const sql of probes) {
         const rows = await readAsApp(sql);
         assert.equal(rows[0]?.training_subject_fence_triggers, 2);
+        const drift=await readAsApp(ULC69_CATALOG_SQL);
+        assert.throws(()=>classifyUlc69ManifestState(drift[0]),/BLOCKED/);
       }
     } finally {
       await db.client.unsafe(
@@ -382,6 +393,21 @@ test("P02-G: actual in-place synthetic 51→64→66→68→69 upgrade retains ex
       assert.equal(rows[0]?.training_subject_fence_triggers, 3);
     }
 
+
+    // P02-J: the 69er SQL was installed in earlier phases, so the normal
+    // generator's empty-schema installer must NOT blindly apply it again.
+    // The exact same SELECT is safe for the separately upgraded Preview.
+    const installed69 = await db.client.begin(async tx => {
+      await tx.unsafe("SET LOCAL ROLE " + testRole);
+      return tx.unsafe(ULC69_CATALOG_SQL);
+    });
+    assert.equal(installed69.length, 1);
+    assert.deepEqual(classifyUlc69ManifestState(installed69[0]), {
+      state: "preview-69-already-installed",
+      alreadyInstalled: true,
+      automaticSqlReplayAllowed: false,
+      productionReady: false,
+    });
     // No actual migration ledger was found in read-only production metadata;
     // this proves an isolated synthetic DDL transition, not a production apply.
     assert.equal(plan.migrationExecutionAuthorized, false);
