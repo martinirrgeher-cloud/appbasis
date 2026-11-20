@@ -191,7 +191,7 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
       await sourceTimezoneDb.client.end();
       await restoreTimezoneDb.client.end();
     }
-    const plan = await loadRepositoryMigrationPlan({
+    const publishedPlan = await loadRepositoryMigrationPlan({
       repositoryRoot,
       manifestPath: join(repositoryRoot, "apps", "ulc-linz", "appbasis.database.json"),
       expectedApplication: "ulc-linz",
@@ -209,9 +209,30 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     const manifest = JSON.parse(await readFile(join(repositoryRoot,
       "apps/ulc-linz/appbasis.database.json"), "utf8"));
     const owner = manifest.owners.find((entry) => entry.id === "ulc-linz-lifecycle");
-    assert.equal(owner.schemaVersion, 16);
-    assert.equal(owner.migrations.length, 16);
-    assert.equal(owner.migrations.some((migration) => migration.includes("0016_")), false);
+    const catalog = manifest.owners.find((entry) => entry.id === "exercise-catalog");
+    assert.equal(owner.schemaVersion, 18);
+    assert.equal(owner.migrations.length, 18);
+    assert.equal(catalog.schemaVersion, 5);
+    assert.equal(catalog.migrations.length, 5);
+    const additions = [
+      "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql",
+      "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
+      "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
+    ];
+    assert.equal(publishedPlan.length, 44);
+    assert.equal(catalog.migrations.at(-1), additions[0]);
+    assert.deepEqual(owner.migrations.slice(-2), additions.slice(1));
+    assert.deepEqual(
+      publishedPlan.filter((p) => additions.includes(p.relativePath))
+        .map((p) => p.relativePath),
+      additions,
+    );
+    // Synthetic historical v16 dump: run only the original 41 migration
+    // sources. The live v18/v5 manifest is never rewritten or downgraded.
+    const plan = publishedPlan.filter((p) => !additions.includes(p.relativePath));
+    assert.equal(plan.length, 41);
+    assert.equal(plan.filter((p) => p.ownerId === "ulc-linz-lifecycle").length, 16);
+    assert.equal(plan.filter((p) => p.ownerId === "exercise-catalog").length, 4);
     await applyRepositoryMigrationPlan({
       connectionString: sourceUrl,
       expectedDatabase: sourceName,
