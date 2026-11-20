@@ -161,6 +161,7 @@ export function assessUlcP3CrossOwnerRestoreQuarantine(
           !validDate(context?.source?.completedAt) ||
           !validDate(context?.now) ||
           inspection.inspectedAt.getTime() < context.source.completedAt.getTime() ||
+          inspection.inspectedAt.getTime() < context.now.getTime() - MAX_CLOCK_SKEW_MS ||
           inspection.inspectedAt.getTime() > context.now.getTime() + MAX_CLOCK_SKEW_MS) {
         flag(owner,"OWNER_PROOF_STALE");
       }
