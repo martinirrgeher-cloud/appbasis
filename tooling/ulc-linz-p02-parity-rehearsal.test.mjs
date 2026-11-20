@@ -9,6 +9,7 @@ import {
   P02_SCHEMA_COUNTS,
   evaluateUlcP02ParityInventory,
   loadUlcP02ParityRehearsalPlan,
+  assessUlcP02CatalogRestoreMarkers,
 } from "./ulc-linz-p02-parity-rehearsal.mjs";
 
 test("P2-E pins all 15 production gaps to their exact module/app owner files", async () => {
@@ -71,4 +72,38 @@ test("P2-E evaluates only exact, private-data-free table inventories", () => {
   ]) {
     assert.throws(() => evaluateUlcP02ParityInventory(input), /schema rehearsal blocked:/);
   }
+});
+
+test("P2-E excludes stale erasure-marker restores, including expired markers", () => {
+  const marker = {
+    organization_id: "synthetic-org",
+    principal_id: "synthetic-person",
+    completed_at: "2026-01-01T12:00:00.000Z",
+    purge_after: "2026-02-05T12:00:00.000Z",
+  };
+  const same = assessUlcP02CatalogRestoreMarkers([marker], [{ ...marker }]);
+  assert.deepEqual(same, {
+    markersMatch: true,
+    markerCount: 1,
+    promotionAuthorized: false,
+    providerWritesAllowed: false,
+  });
+  assert.equal(assessUlcP02CatalogRestoreMarkers([], []).promotionAuthorized, false);
+  for (const candidate of [
+    [],
+    [{ ...marker, completed_at: "2026-01-02T12:00:00.000Z",
+      purge_after: "2026-02-06T12:00:00.000Z" }],
+    [{ ...marker, principal_id: "other" }],
+    [{ ...marker }, { ...marker }],
+    [{ ...marker, purge_after: "2026-02-04T12:00:00.000Z" }],
+    [{ ...marker, completed_at: "invalid" }],
+  ]) {
+    assert.throws(() => assessUlcP02CatalogRestoreMarkers([marker], candidate),
+      /schema rehearsal blocked:/);
+  }
+  assert.throws(() => assessUlcP02CatalogRestoreMarkers([], [marker]),
+    /restored marker authority differs/);
+  // Never reflect a personal identifier in an error message.
+  assert.throws(() => assessUlcP02CatalogRestoreMarkers([marker], []),
+    error => !error.message.includes(marker.principal_id));
 });
