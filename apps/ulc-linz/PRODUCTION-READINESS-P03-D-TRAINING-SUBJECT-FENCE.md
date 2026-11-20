@@ -17,7 +17,7 @@ Eine fachliche Datenlöschung darf daher aktuell **nicht** als im produktiven UL
 Ein unregistriertes SQL-Entwurfsfile `apps/ulc-linz/test/fixtures/p03-d-training-subject-write-fence.candidate.sql` beschreibt:
 
 1. Eine app-eigene, organisations- und athletengebundene Löschmarkertabelle `ulc_linz_training_subject_deletion` mit 35-Tage-Quellfenster, **ohne** automatisches Auslaufen/Purge.
-2. Eine `SECURITY DEFINER`-Triggerfunktion mit festem `pg_catalog`-Suchpfad und pro Organisations-/Athletenpaar identischem Transaktions-Advisory-Lock; sie prüft den Löschmarker unmittelbar vor alten und neuen Writes.
+2. Eine `SECURITY DEFINER`-Triggerfunktion mit festem `pg_catalog`-Suchpfad und pro Organisations-/Athletenpaar identischem Transaktions-Advisory-Lock; sie prüft den Löschmarker unmittelbar vor alten und neuen Writes. Zusätzlich muss die zugehörige Trainingseinheit mit **genau derselben Organisation** vorhanden sein; eine fremde `organization_id` darf keinen Löschmarker umgehen.
 3. Drei INSERT-/UPDATE-Trigger auf `ulc_linz_training_attendance`, `ulc_linz_training_registration`, `ulc_linz_training_registration_change`; alle verweigern nach Erasure-Markierung neue Inserts und Ownership-Wechsel, lassen Nachbarathleten/andere Organisationen unverändert.
 4. `REVOKE ALL` auf die private Triggerfunktion; keine GRANTs/Runtime-Freischaltung.
 
