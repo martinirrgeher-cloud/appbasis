@@ -31,6 +31,38 @@ function owner(manifest,id,version,count) {
 }
 
 export function buildUlc69ManifestProposal(appManifest,catalogModule) {
+  // P1 publication: preserve the older 41→44 proposal interface for
+  // historical tests, but classify the now-registered 44-path v18/v5 owner
+  // set explicitly. NO existing populated schema may replay these SQL files.
+  if (appManifest?.application==="ulc-linz" &&
+      appManifest.manifestVersion===1 &&
+      appManifest.dialect==="postgresql" &&
+      JSON.stringify(appManifest.owners?.map(x=>x.id))===JSON.stringify(OWNERS) &&
+      appManifest.owners.flatMap(x=>x.migrations??[]).length===44 &&
+      catalogModule?.moduleId==="exercise-catalog" &&
+      catalogModule.database?.schemaVersion===5) {
+    const catalog=owner(appManifest,"exercise-catalog",5,5);
+    const lifecycle=owner(appManifest,"ulc-linz-lifecycle",18,18);
+    const all=appManifest.owners.flatMap(x=>x.migrations);
+    if (all.length!==44 || new Set(all).size!==44 ||
+        catalog.migrations.at(-1)!==NEW_MIGRATIONS.catalog ||
+        lifecycle.migrations.at(-2)!==NEW_MIGRATIONS.calendar ||
+        lifecycle.migrations.at(-1)!==NEW_MIGRATIONS.fence ||
+        JSON.stringify(catalog.migrations)!==
+          JSON.stringify(catalogModule.database.migrations) ||
+        appManifest.owners.some(x=>
+          x.migrations.some(path=>!path.startsWith(x.root+"/")))) {
+      block("published v18/v5 manifest owner paths drifted");
+    }
+    return Object.freeze({
+      app:Object.freeze(structuredClone(appManifest)),
+      module:Object.freeze(structuredClone(catalogModule)),
+      expectedTables:69,proposedMigrations:44,
+      candidateOnly:false,published:true,
+      mayApplyToExistingPreview:false,productionReady:false,
+      providerWritesAllowed:false,
+    });
+  }
   if(appManifest?.application!=="ulc-linz"||
     appManifest.manifestVersion!==1||appManifest.dialect!=="postgresql"||
     JSON.stringify(appManifest.owners?.map(x=>x.id))!==JSON.stringify(OWNERS)||
