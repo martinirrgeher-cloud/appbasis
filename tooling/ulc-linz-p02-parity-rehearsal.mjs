@@ -176,3 +176,51 @@ export async function loadUlcP02ParityRehearsalPlan() {
     ]),
   });
 }
+
+/**
+ * Compare the FULL, authoritative catalog deletion-marker snapshot with an
+ * isolated restored candidate, including expired markers. Empty inventories
+ * do not authorize restore. IDs never appear in error messages or the result.
+ * Source authenticity and cross-owner authority remain separate release gates.
+ */
+export function assessUlcP02CatalogRestoreMarkers(authoritativeRows, candidateRows) {
+  function indexed(rows, source) {
+    if (!Array.isArray(rows) || rows.length > 100000) {
+      block(source + " marker inventory unavailable");
+    }
+    const result = new Map();
+    for (const row of rows) {
+      const org = row?.organization_id;
+      const principal = row?.principal_id;
+      const completed = row?.completed_at;
+      const purgeAfter = row?.purge_after;
+      if (
+        typeof org !== "string" || !/^[^\\u0000]{1,200}$/.test(org) || org.trim() !== org ||
+        typeof principal !== "string" || !/^[^\\u0000]{1,200}$/.test(principal) ||
+        principal.trim() !== principal ||
+        typeof completed !== "string" || typeof purgeAfter !== "string" ||
+        !Number.isFinite(Date.parse(completed)) ||
+        !Number.isFinite(Date.parse(purgeAfter)) ||
+        new Date(completed).toISOString() !== completed ||
+        new Date(purgeAfter).toISOString() !== purgeAfter ||
+        Date.parse(purgeAfter) - Date.parse(completed) !== 840 * 60 * 60 * 1000
+      ) block(source + " invalid marker contract");
+      const key = JSON.stringify([org, principal]);
+      if (result.has(key)) block(source + " duplicate marker");
+      result.set(key, completed);
+    }
+    return result;
+  }
+  const source = indexed(authoritativeRows, "authoritative");
+  const restored = indexed(candidateRows, "restored");
+  if (
+    source.size !== restored.size ||
+    [...source].some(([key, when]) => restored.get(key) !== when)
+  ) block("restored marker authority differs; candidate quarantined");
+  return Object.freeze({
+    markersMatch: true,
+    markerCount: source.size,
+    promotionAuthorized: false,
+    providerWritesAllowed: false,
+  });
+}
