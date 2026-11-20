@@ -136,7 +136,7 @@ if (!DATABASE_URL) {
       )) as Manifest;
       const migrations = manifest.owners.flatMap((owner) => owner.migrations);
       if (
-        migrations.length !== 41 ||
+        migrations.length !== 44 ||
         new Set(migrations).size !== migrations.length ||
         !migrations.some((path) => path.endsWith("0001_appbasis_athletes_deletion_markers.sql")) ||
         !migrations.some((path) => path.endsWith("0008_ulc_linz_session_registration.sql"))

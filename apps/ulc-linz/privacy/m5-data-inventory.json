@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "application": "ulc-linz",
-  "scope": "repository-declared-schema-v16-review-not-runtime-evidence",
+  "scope": "repository-declared-schema-v18-review-not-runtime-evidence",
   "basis": {
     "databaseManifest": "apps/ulc-linz/appbasis.database.json",
     "appManifest": "apps/ulc-linz/appbasis.app.json",
@@ -13,6 +13,7 @@
   "persistentOwners": [
     {
       "id": "identity",
+      "root": "packages/identity",
       "schemaVersion": 3,
       "migrations": [
         "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
@@ -28,6 +29,7 @@
     },
     {
       "id": "permissions",
+      "root": "packages/permissions",
       "schemaVersion": 4,
       "migrations": [
         "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
@@ -44,6 +46,7 @@
     },
     {
       "id": "athletes",
+      "root": "modules/athletes",
       "schemaVersion": 4,
       "migrations": [
         "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
@@ -64,24 +67,28 @@
     },
     {
       "id": "exercise-catalog",
-      "schemaVersion": 4,
+      "root": "modules/exercise-catalog",
+      "schemaVersion": 5,
       "migrations": [
         "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
         "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql",
         "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql",
-        "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql"
+        "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql",
+        "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql"
       ],
-      "lifecycleStatus": "repository-schema-v4-published-preview-upgrade-pending",
+      "lifecycleStatus": "repository-schema-v5-published-preview-69-privacy-activation-pending",
       "notes": [
-        "standard-module-target-schema-v4-published-in-repository",
-        "ulc-preview-v3-live-v4-upgrade-pending",
         "production-runtime-cutover-not-authorized",
         "exercise-catalog-configuration-not-personal",
-        "exercise-favorite-lifecycle-pending"
+        "exercise-favorite-lifecycle-pending",
+        "standard-module-target-schema-v5-published-in-repository",
+        "ulc-preview-v5-schema-69-installed-runtime-abnahme-pending",
+        "exercise-catalog-usage-subject-attribution-retention-pending"
       ]
     },
     {
       "id": "training-blocks",
+      "root": "modules/training-blocks",
       "schemaVersion": 6,
       "migrations": [
         "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql",
@@ -101,6 +108,7 @@
     },
     {
       "id": "training-documentation",
+      "root": "modules/training-documentation",
       "schemaVersion": 2,
       "migrations": [
         "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
@@ -117,6 +125,7 @@
     },
     {
       "id": "training-plans",
+      "root": "modules/training-plans",
       "schemaVersion": 2,
       "migrations": [
         "modules/training-plans/migrations/0000_appbasis_training_plans_foundation.sql",
@@ -133,7 +142,8 @@
     },
     {
       "id": "ulc-linz-lifecycle",
-      "schemaVersion": 16,
+      "root": "apps/ulc-linz",
+      "schemaVersion": 18,
       "migrations": [
         "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
         "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -150,7 +160,9 @@
         "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql",
         "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
         "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
-        "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql"
+        "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
+        "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
+        "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql"
       ],
       "lifecycleStatus": "training-and-catalog-data-lifecycle-pending",
       "notes": [
@@ -177,7 +189,9 @@
         "training-registration-current-and-change-history-optional-note-fields-require-explicit-retention-and-erasure",
         "session-content-array-and-json-metadata-can-include-personal-free-text",
         "historical-trainer-attendance-reference-requires-separate-trainer-subject-lifecycle",
-        "functionary-role-added-to-existing-membership-and-deletion-marker-constraints"
+        "functionary-role-added-to-existing-membership-and-deletion-marker-constraints",
+        "repository-manifest-v18-schema-published-privacy-and-restore-approval-pending",
+        "training-subject-write-fences-installed-preview-privacy-retention-and-no-resurrection-unapproved"
       ]
     }
   ],
@@ -693,6 +707,46 @@
       "retentionPolicy": "configuration-lifecycle-not-personal",
       "deletionEvidence": "not-personal",
       "retentionEvidence": "not-personal"
+    },
+    {
+      "id": "ulc_linz_registration_calendar_rule",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "training-calendar-configuration",
+      "retentionPolicy": "pending-group-calendar-retention-controller-decision",
+      "deletionEvidence": "fail-closed-pending-controller-group-lifecycle-decision",
+      "retentionEvidence": "fail-closed-pending-preview-retention-implementation"
+    },
+    {
+      "id": "ulc_linz_registration_calendar_exception",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "training-calendar-configuration",
+      "retentionPolicy": "pending-group-calendar-retention-controller-decision",
+      "deletionEvidence": "fail-closed-pending-controller-group-lifecycle-decision",
+      "retentionEvidence": "fail-closed-pending-preview-retention-implementation"
+    },
+    {
+      "id": "appbasis_exercise_catalog_favorite_deletion",
+      "owner": "exercise-catalog",
+      "privacyClass": "minimal-delete-reconciliation-state",
+      "retentionPolicy": "35-days-source-marker-decision-pending",
+      "deletionEvidence": "fail-closed-pending-operator-and-controller-approval",
+      "retentionEvidence": "fail-closed-backup-restore-reconciliation-pending"
+    },
+    {
+      "id": "appbasis_exercise_catalog_usage_subject",
+      "owner": "exercise-catalog",
+      "privacyClass": "training-usage-subject-attribution",
+      "retentionPolicy": "pending-controller-usage-retention-decision",
+      "deletionEvidence": "fail-closed-cross-owner-usage-deletion-pending",
+      "retentionEvidence": "fail-closed-reconciliation-and-expiry-pending"
+    },
+    {
+      "id": "ulc_linz_training_subject_deletion",
+      "owner": "ulc-linz-lifecycle",
+      "privacyClass": "minimal-delete-reconciliation-state",
+      "retentionPolicy": "35-days-source-marker-decision-pending",
+      "deletionEvidence": "fail-closed-authorized-training-subject-erasure-pending",
+      "retentionEvidence": "fail-closed-restore-no-resurrection-pending"
     }
   ],
   "runtimeModules": [
@@ -731,27 +785,69 @@
     "unknownBackingStore": "fail-closed",
     "futureObjectStorage": "fail-closed"
   },
+  "staging": {
+    "status": "canonical-v18-schema-listed-privacy-approval-pending",
+    "sourceSchemaVersion": 16,
+    "targetSchemaVersion": 18,
+    "manifestProposal": "apps/ulc-linz/release/p02-j-appbasis.database.v18.candidate.json",
+    "controllerApproval": "pending",
+    "allOwnerRestoreApproval": "pending",
+    "activation": "blocked",
+    "productionReady": false
+  },
   "repositorySchemaReview": {
-    "reviewedAt": "2026-11-14",
-    "reviewKind": "repository-schema-inventory-no-runtime-migration-or-deployment-attestation",
+    "reviewedAt": "2026-11-20",
+    "reviewKind": "repository-schema-v18-inventory-no-live-deletion-or-production-approval",
     "sourceManifest": "apps/ulc-linz/appbasis.database.json",
-    "sourceManifestBlobSha": "74f956c48a98b834f2ef581b9ffc8e7fa126ac87",
-    "declaredMigrationCount": 41,
-    "declaredTableCount": 64,
-    "persistentTableInventoryCount": 64,
-    "expectedLifecycleSchemaVersion": 16,
+    "sourceManifestBlobSha": "a3400438df88eef877710dbcb8aaeeb2c352f0f8",
+    "declaredMigrationCount": 44,
+    "declaredTableCount": 69,
+    "persistentTableInventoryCount": 69,
+    "expectedLifecycleSchemaVersion": 18,
     "previousInventoryScope": "current-materialized-v0.5",
-    "previousRecordedMigrations": 34,
+    "previousRecordedMigrations": 41,
     "newlyRecordedMigrations": [
-      "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
-      "apps/ulc-linz/migrations/0010_ulc_linz_registration_notes.sql",
-      "apps/ulc-linz/migrations/0011_ulc_linz_youth_training_content.sql",
-      "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql",
-      "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
-      "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
-      "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql"
+      "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
+      "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
+      "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql"
     ],
     "migrationChanges": [
+      {
+        "migration": "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
+        "tables": [
+          "ulc_linz_registration_calendar_rule",
+          "ulc_linz_registration_calendar_exception"
+        ],
+        "columns": [
+          "group_id"
+        ],
+        "dataRisk": "group-linked-training-calendar-and-schedule-restriction"
+      },
+      {
+        "migration": "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
+        "tables": [
+          "ulc_linz_training_subject_deletion"
+        ],
+        "columns": [
+          "athlete_id"
+        ],
+        "dataRisk": "personal-training-erase-marker-retention-and-restore-decision-pending"
+      },
+      {
+        "migration": "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql",
+        "tables": [
+          "appbasis_exercise_catalog_favorite_deletion",
+          "appbasis_exercise_catalog_usage_subject"
+        ],
+        "columns": [
+          "principal_id"
+        ],
+        "dataRisk": "catalog-user-subject-attribution-and-deletion-policy-pending"
+      }
+    ],
+    "stillOpen": "privacy-and-retention-approval-cross-owner-lifecycle-freetext-revisions-live-no-resurrection-backup-restore",
+    "readiness": "blocked-do-not-interpret-as-operator-approval",
+    "historyV16MigrationChanges": [
       {
         "migration": "0009_ulc_linz_functionary_role.sql",
         "tables": [
@@ -829,8 +925,6 @@
         ],
         "dataRisk": "historical-trainer-identity-link-survives-group-exit"
       }
-    ],
-    "stillOpen": "privacy-and-retention-approval-cross-owner-lifecycle-freetext-revisions-live-no-resurrection-backup-restore",
-    "readiness": "blocked-do-not-interpret-as-operator-approval"
+    ]
   }
 }

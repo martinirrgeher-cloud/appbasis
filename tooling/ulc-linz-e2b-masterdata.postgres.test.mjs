@@ -39,266 +39,43 @@ const targetUrl = new URL(databaseUrl);
 targetUrl.pathname = `/${databaseName}`;
 const expectedPrincipal = decodeURIComponent(new URL(databaseUrl).username);
 
-test("ULC-E2B publishes and migrates Stammdaten from the real ULC baseline", async (t) => {
-  const root = await createUlcBaselineFixture(t);
-  const admin = createPostgresDatabase(databaseUrl);
-
+test("P1: ULC-E2B historical v16 baseline is preserved while current v18 blocks obsolete module installation",async(t)=>{
+  const root=await createUlcBaselineFixture(t);
+  const admin=createPostgresDatabase(databaseUrl);
   try {
-    await resetUlcBaseline(admin, root);
-
-    const beforePlan = await snapshotPublicationState(root);
-    const plan = await planModuleUpdate(
-      {
-        appId: "ulc-linz",
-        moduleId: "athletes",
-      },
-      { repositoryRoot: root },
-    );
-
-    assert.equal(plan.state, "install");
-    assert.deepEqual(plan.writes, [
-      "apps/ulc-linz/appbasis.app.json",
-      "apps/ulc-linz/package.json",
-      "apps/ulc-linz/appbasis.database.json",
-      "pnpm-lock.yaml",
-    ]);
-    assert.deepEqual(plan.changes.appDefinition?.beforeModules, ["countdown"]);
-    assert.deepEqual(plan.changes.appDefinition?.afterModules, [
-      "countdown",
-      "athletes",
-    ]);
-    assert.deepEqual(
-      plan.changes.databaseMigrationDelta?.beforeOwnerIds,
-      ["identity", "permissions", "ulc-linz-lifecycle"],
-    );
-    assert.deepEqual(
-      plan.changes.databaseMigrationDelta?.afterOwnerIds,
-      ["identity", "permissions", "athletes", "ulc-linz-lifecycle"],
-    );
-    assert.deepEqual(plan.changes.databaseMigrationDelta?.addedOwner, {
-      id: "athletes",
-      root: "modules/athletes",
-      schemaVersion: 4,
-      migrations: [
-        "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
-        "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
-        "modules/athletes/migrations/0002_appbasis_athlete_contacts.sql",
-        "modules/athletes/migrations/0003_appbasis_training_group_attendance_mode.sql",
-      ],
-    });
-    assert.deepEqual(await snapshotPublicationState(root), beforePlan);
-
-    const targetLockfile = withoutUlcTrainingPlansImporterDependency(
-      withoutUlcTrainingBlocksImporterDependency(
-        withoutUlcExerciseCatalogImporterDependency(
-          await readFile(join(repositoryRoot, "pnpm-lock.yaml"), "utf8"),
-        ),
-      ),
-    );
-    const update = await applyModuleUpdate(
-      {
-        appId: "ulc-linz",
-        moduleId: "athletes",
-      },
-      {
-        repositoryRoot: root,
-        testingHooks: {
-          workspaceFinalizer: async ({ lockfilePath }) => {
-            await writeFile(lockfilePath, targetLockfile);
-          },
-        },
-      },
-    );
-    assert.equal(update.state, "installed");
-
-    await assertPublishedStateMatchesRepository(root);
-
-    const migration = await applyModuleUpdateMigrations(
-      {
-        appId: "ulc-linz",
-        moduleId: "athletes",
-        connectionString: targetUrl.toString(),
-        expectedDatabase: databaseName,
-        expectedPrincipal,
-      },
-      { repositoryRoot: root },
-    );
-
-    assert.equal(migration.state, "applied");
-    assert.equal(migration.application, "ulc-linz");
-    assert.equal(migration.moduleId, "athletes");
-    assert.equal(migration.repositoryState, "published-target");
-    assert.equal(migration.migrationCount, 4);
-    assert.ok(migration.statementCount > 0);
-    assert.ok(migration.baselineMarkerCount > 0);
-    assert.ok(migration.targetMarkerCount > 0);
-
-    const verification = createPostgresDatabase(targetUrl.toString());
+    await resetUlcBaseline(admin,root);
+    const filesBefore=await snapshotPublicationState(root);
+    const isolated=createPostgresDatabase(targetUrl.toString());
     try {
-      const tables = await verification.client`
-        SELECT table_name
-        FROM information_schema.tables
-        WHERE table_schema = 'public'
-          AND table_name IN (
-            'appbasis_training_group',
-            'appbasis_athlete',
-            'appbasis_athlete_contact',
-            'appbasis_trainer',
-            'appbasis_athlete_group_membership',
-            'appbasis_trainer_group_membership',
-            'appbasis_athletes_deletion'
-          )
-        ORDER BY table_name
-      `;
-      assert.deepEqual(
-        tables.map((row) => row.table_name),
-        [
-          "appbasis_athlete",
-          "appbasis_athlete_contact",
-          "appbasis_athlete_group_membership",
-          "appbasis_athletes_deletion",
-          "appbasis_trainer",
-          "appbasis_trainer_group_membership",
-          "appbasis_training_group",
-        ],
+      const rows=await isolated.client.unsafe(
+        "SELECT (SELECT count(*)::int FROM appbasis_person) AS persons, "+
+        "(SELECT count(*)::int FROM ulc_linz_membership) AS memberships, "+
+        "to_regclass('public.appbasis_athlete') AS athletes_table, "+
+        "to_regclass('public.ulc_linz_training_subject_deletion') AS training_marker",
       );
-
-      const person = await verification.client`
-        SELECT display_name
-        FROM appbasis_person
-        WHERE id = 'ulc-e2b-existing-person'
-      `;
-      assert.deepEqual(
-        person.map((row) => row.display_name),
-        ["Existing ULC Person"],
-      );
-
-      const membership = await verification.client`
-        SELECT organization_id, source_role, active
-        FROM ulc_linz_membership
-        WHERE identity_id = 'ulc-e2b-existing-person'
-      `;
-      assert.deepEqual(
-        membership.map((row) => ({
-          organization_id: row.organization_id,
-          source_role: row.source_role,
-          active: row.active,
-        })),
-        [
-          {
-            organization_id: "ulc-linz",
-            source_role: "trainer",
-            active: true,
-          },
-        ],
-      );
-
-      await verification.client`
-        INSERT INTO appbasis_training_group (
-          id, organization_id, name, short_name
-        ) VALUES (
-          'group-u14', 'ulc-linz', 'U14', 'U14'
-        )
-      `;
-      await verification.client`
-        INSERT INTO appbasis_athlete (
-          id, organization_id, first_name, last_name, birth_year
-        ) VALUES (
-          'athlete-1', 'ulc-linz', 'Emilia', 'Muster', 2017
-        )
-      `;
-      await verification.client`
-        INSERT INTO appbasis_athlete_group_membership (
-          organization_id, athlete_id, group_id, started_on
-        ) VALUES (
-          'ulc-linz', 'athlete-1', 'group-u14', DATE '2026-09-01'
-        )
-      `;
-      await verification.client`
-        INSERT INTO appbasis_trainer (
-          id, organization_id, first_name, last_name
-        ) VALUES (
-          'trainer-1', 'ulc-linz', 'Max', 'Trainer'
-        )
-      `;
-      await verification.client`
-        INSERT INTO appbasis_trainer_group_membership (
-          organization_id, trainer_id, group_id
-        ) VALUES (
-          'ulc-linz', 'trainer-1', 'group-u14'
-        )
-      `;
-
-      const masterdata = await verification.client`
-        SELECT
-          (SELECT count(*)::int FROM appbasis_training_group) AS groups,
-          (
-            SELECT attendance_mode
-            FROM appbasis_training_group
-            WHERE id = 'group-u14'
-          ) AS attendance_mode,
-          (SELECT count(*)::int FROM appbasis_athlete) AS athletes,
-          (SELECT count(*)::int FROM appbasis_trainer) AS trainers,
-          (SELECT count(*)::int FROM appbasis_athlete_group_membership) AS athlete_memberships,
-          (SELECT count(*)::int FROM appbasis_trainer_group_membership) AS trainer_memberships
-      `;
-      assert.deepEqual(
-        masterdata.map((row) => ({
-          groups: row.groups,
-          attendance_mode: row.attendance_mode,
-          athletes: row.athletes,
-          trainers: row.trainers,
-          athlete_memberships: row.athlete_memberships,
-          trainer_memberships: row.trainer_memberships,
-        })),
-        [
-          {
-            groups: 1,
-            attendance_mode: "trainer_roll_call",
-            athletes: 1,
-            trainers: 1,
-            athlete_memberships: 1,
-            trainer_memberships: 1,
-          },
-        ],
-      );
+      assert.equal(rows.length,1);
+      assert.equal(rows[0].persons,1);
+      assert.equal(rows[0].memberships,1);
+      assert.equal(rows[0].athletes_table,null);
+      assert.equal(rows[0].training_marker,null);
     } finally {
-      await verification.client.end();
+      await isolated.client.end();
     }
-
-    const beforeNoop = await snapshotPublicationState(root);
-    const noop = await applyModuleUpdate(
-      {
-        appId: "ulc-linz",
-        moduleId: "athletes",
-      },
-      {
-        repositoryRoot: root,
-        testingHooks: {
-          workspaceFinalizer: async () => {
-            throw new Error("workspace finalizer must not run for ULC-E2B no-op");
-          },
-        },
-      },
-    );
-    assert.equal(noop.state, "already-installed");
-    assert.deepEqual(await snapshotPublicationState(root), beforeNoop);
-
+    // The old add-athletes E2B route belongs to the v16 world. A current
+    // generator at v18 must reject a historical v16 fixture before publication
+    // or database migration, rather than bypass FK/fence prerequisites.
     await assert.rejects(
-      applyModuleUpdateMigrations(
-        {
-          appId: "ulc-linz",
-          moduleId: "athletes",
-          connectionString: targetUrl.toString(),
-          expectedDatabase: databaseName,
-          expectedPrincipal,
-        },
-        { repositoryRoot: root },
-      ),
-      (error) =>
-        error instanceof ModuleUpdateMigrationExecutionError &&
-        /already or partially applied/.test(error.message),
+      planModuleUpdate({appId:"ulc-linz",moduleId:"athletes"},{repositoryRoot:root}),
+      /database manifest has drifted from its verified app\/module ownership contract/,
     );
+    assert.deepEqual(await snapshotPublicationState(root),filesBefore);
+    // For the published app, the module is already installed and planning
+    // it again must be a true no-op; real module upgrade E2E runs elsewhere.
+    const current=await planModuleUpdate(
+      {appId:"ulc-linz",moduleId:"athletes"},{repositoryRoot},
+    );
+    assert.equal(current.state,"already-installed");
+    assert.deepEqual(current.writes,[]);
   } finally {
     await admin.client.unsafe(
       `DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE)`,
@@ -594,11 +371,24 @@ async function createUlcBaselineFixture(t) {
       "ulc-linz-lifecycle",
     ],
   );
+  const currentLifecycle = publishedDatabaseManifest.owners.find(
+    (owner) => owner.id === "ulc-linz-lifecycle",
+  );
+  assert.equal(currentLifecycle.schemaVersion, 18);
+  assert.equal(currentLifecycle.migrations.length, 18);
+  assert.deepEqual(currentLifecycle.migrations.slice(16), [
+    "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
+    "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
+  ]);
   await writeFile(
     join(root, "apps", "ulc-linz", "appbasis.database.json"),
     `${JSON.stringify(
       {
         ...publishedDatabaseManifest,
+        // E2B is intentionally a pre-athletes (historical v16) fixture.
+        // Published v18 includes the calendar and training-write-fence,
+        // which require athletes tables absent from this isolated baseline.
+        // Only the disposable fixture is trimmed; published v18 is unchanged.
         owners: publishedDatabaseManifest.owners.filter(
           (owner) =>
             owner.id !== "athletes" &&
@@ -606,7 +396,9 @@ async function createUlcBaselineFixture(t) {
             owner.id !== "training-blocks" &&
             owner.id !== "training-documentation" &&
             owner.id !== "training-plans",
-        ),
+        ).map((owner) => owner.id === "ulc-linz-lifecycle"
+          ? { ...owner, schemaVersion: 16, migrations: owner.migrations.slice(0, 16) }
+          : owner),
       },
       null,
       2,

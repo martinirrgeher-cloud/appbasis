@@ -129,8 +129,8 @@ if (!DATABASE_URL) {
         new URL("../appbasis.database.json", import.meta.url), "utf8",
       )) as Manifest;
       const migrations = manifest.owners.flatMap(owner => owner.migrations);
-      if (migrations.length !== 41 || new Set(migrations).size !== 41) {
-        throw new Error("P03-I requires the frozen canonical 41 migrations");
+      if (migrations.length !== 44 || new Set(migrations).size !== 44) {
+        throw new Error("P03-I requires the canonical 44 migrations");
       }
       for (const file of migrations) {
         const sql = await readFile(new URL("../../../" + file, import.meta.url), "utf8");

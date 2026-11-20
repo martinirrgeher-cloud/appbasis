@@ -22,7 +22,7 @@ if (!databaseUrl) {
     it("requires DATABASE_URL", () => {});
   });
 } else {
-  describe("G-04 proposed non-personal calendar on isolated PostgreSQL 18", () => {
+  describe("G-04 registered non-personal calendar on isolated PostgreSQL 18", () => {
     const admin = createPostgresDatabase(databaseUrl);
     const dbName = "appbasis_ulc_g04_" + randomUUID().replaceAll("-", "").slice(0, 12);
     const url = new URL(databaseUrl);
@@ -42,10 +42,15 @@ if (!databaseUrl) {
       )) as { owners: readonly { migrations: readonly string[] }[] };
       const installed = manifest.owners.flatMap((owner) => owner.migrations);
       const candidate = "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql";
-      if (installed.includes(candidate)) {
-        throw new Error("G-04 migration unexpectedly activated in manifest.");
+      // P1: calendar v17 is now registered with lifecycle v18. Install
+      // each canonical file ONCE on the disposable database, never replay
+      // the candidate on the existing Preview.
+      if (!installed.includes(candidate) || installed.length !== 44 ||
+          installed.indexOf(candidate) !==
+            installed.indexOf("apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql")-1) {
+        throw new Error("G-04 published v17 calendar release manifest is incomplete.");
       }
-      for (const path of [...installed, candidate]) {
+      for (const path of installed) {
         const sql = await readFile(new URL("../../../" + path, import.meta.url), "utf8");
         for (const statement of sql.split("--> statement-breakpoint")) {
           if (statement.trim()) await connection().client.unsafe(statement);

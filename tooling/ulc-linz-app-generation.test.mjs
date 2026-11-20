@@ -167,7 +167,7 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
       {
         id: "ulc-linz-lifecycle",
         root: "apps/ulc-linz",
-        schemaVersion: 16,
+        schemaVersion: 18,
         migrations: [
           "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
           "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -185,6 +185,8 @@ test("generates the first ULC Linz AppBasis target through createAppSkeleton", a
       "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
            "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
           "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
+              "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
+              "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
         ],
       },
     ],

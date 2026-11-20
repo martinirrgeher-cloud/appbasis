@@ -258,7 +258,7 @@ async function applyManifestMigrations(
     await readFile(new URL("../appbasis.database.json", import.meta.url), "utf8"),
   ) as DatabaseManifest;
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
-  if (migrations.length !== 41 || new Set(migrations).size !== migrations.length) {
+  if (migrations.length !== 44 || new Set(migrations).size !== migrations.length) {
     throw new Error("ULC lifecycle E2E requires the exact manifest-owned migration set.");
   }
   for (const migration of migrations) {
@@ -273,6 +273,7 @@ async function applyManifestMigrations(
       migration !== "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql" &&
       migration !== "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql" &&
       migration !== "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql" &&
+      migration !== "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql" &&
       migration !== "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql" &&
       migration !== "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql" &&
       migration !== "modules/training-blocks/migrations/0002_appbasis_training_block_multi_audience.sql" &&
@@ -298,7 +299,9 @@ async function applyManifestMigrations(
       migration !== "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql" &&
       migration !== "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql" &&
       migration !== "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql" &&
-      migration !== "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql"
+      migration !== "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql" &&
+      migration !== "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql" &&
+      migration !== "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql"
     ) {
       throw new Error("ULC lifecycle E2E encountered an unexpected migration owner.");
     }

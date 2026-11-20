@@ -64,7 +64,7 @@ test("P02-H production application ACL candidate has no wildcard, no marker DML 
 
 test("P02-H cannot accidentally activate candidate SQL or a privileged erasure coordinator", async () => {
   const manifest = JSON.parse(await readFile(new URL("../apps/ulc-linz/appbasis.database.json", import.meta.url), "utf8"));
-  assert.equal(manifest.owners.find(o => o.id === "ulc-linz-lifecycle")?.schemaVersion, 16);
+  assert.equal(manifest.owners.find(o => o.id === "ulc-linz-lifecycle")?.schemaVersion, 18);
   assert.ok(manifest.owners.every(owner => owner.migrations.every(path => !path.includes("p02-h-application-privileges"))));
   const entry = await readFile(new URL("../apps/ulc-linz/worker/index.ts", import.meta.url), "utf8");
   assert.doesNotMatch(entry, /training-subject-marked-history-rehearsal/);

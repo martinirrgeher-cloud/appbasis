@@ -39,28 +39,30 @@ const ready=Object.freeze({
   active_fence_triggers:3,
 });
 
-test("P02-J stages 44 migration owner contracts as review files, never publishes them",async()=>{
+test("P1 publishes 44 owner migrations while retaining original review candidates",async()=>{
   const manifest=await json("apps/ulc-linz/appbasis.database.json");
   const module=await json("modules/exercise-catalog/appbasis.module.json");
   const appCandidate=await json("apps/ulc-linz/release/p02-j-appbasis.database.v18.candidate.json");
   const modCandidate=await json("apps/ulc-linz/release/p02-j-exercise-catalog.v5.candidate.json");
   const planned=await loadUlc69ManifestProposal();
-  assert.equal(manifest.owners.flatMap(owner=>owner.migrations).length,41);
-  assert.equal(manifest.owners.find(owner=>owner.id==="ulc-linz-lifecycle").schemaVersion,16);
-  assert.equal(manifest.owners.find(owner=>owner.id==="exercise-catalog").schemaVersion,4);
-  assert.equal(module.database.schemaVersion,4);
+  assert.equal(manifest.owners.flatMap(owner=>owner.migrations).length,44);
+  assert.equal(manifest.owners.find(owner=>owner.id==="ulc-linz-lifecycle").schemaVersion,18);
+  assert.equal(manifest.owners.find(owner=>owner.id==="exercise-catalog").schemaVersion,5);
+  assert.equal(module.database.schemaVersion,5);
   assert.deepEqual(appCandidate,planned.app);
   assert.deepEqual(modCandidate,planned.module);
   assert.equal(planned.expectedTables,69);
   assert.equal(planned.proposedMigrations,44);
-  assert.equal(planned.candidateOnly,true);
+  assert.equal(planned.candidateOnly,false);
+  assert.equal(planned.published,true);
   assert.equal(planned.mayApplyToExistingPreview,false);
   assert.equal(planned.providerWritesAllowed,false);
 
   const originalFiles=manifest.owners.flatMap(owner=>owner.migrations);
   const targetFiles=appCandidate.owners.flatMap(owner=>owner.migrations);
   assert.deepEqual(targetFiles.filter(path=>originalFiles.includes(path)),originalFiles);
-  assert.deepEqual(targetFiles.filter(path=>!originalFiles.includes(path)).sort(),
+  assert.deepEqual(targetFiles,originalFiles);
+  assert.deepEqual(targetFiles.filter(path=>Object.values(NEW_MIGRATIONS).includes(path)).sort(),
     Object.values(NEW_MIGRATIONS).sort());
   assert.equal(appCandidate.owners.find(o=>o.id==="ulc-linz-lifecycle").schemaVersion,18);
   assert.equal(appCandidate.owners.find(o=>o.id==="exercise-catalog").schemaVersion,5);
@@ -72,7 +74,7 @@ test("P02-J stages 44 migration owner contracts as review files, never publishes
     if(kind!=="calendar")assert.match(sql,/CANDIDATE|REVIEW ONLY/i);
   }
   for(const [kind,path] of Object.entries(NEW_MIGRATIONS)){
-    assert.equal(originalFiles.includes(path),false,kind+" must remain unregistered");
+    assert.equal(originalFiles.includes(path),true,kind+" must be registered");
   }
 });
 
@@ -86,7 +88,7 @@ test("P02-J rejects unexpected upstream manifest edits instead of guessing a ver
     {...app,owners:app.owners.map(o=>o.id==="exercise-catalog"?{...o,migrations:[...o.migrations,NEW_MIGRATIONS.catalog]}:o)},
   ])assert.throws(()=>buildUlc69ManifestProposal(altered,module),/BLOCKED/);
   assert.throws(()=>buildUlc69ManifestProposal(app,{
-    ...module,database:{...module.database,schemaVersion:5},
+    ...module,database:{...module.database,schemaVersion:4},
   }),/BLOCKED/);
 });
 

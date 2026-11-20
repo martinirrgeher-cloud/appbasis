@@ -40,26 +40,11 @@ const trainingBlockTables = [
   "appbasis_training_block_usage",
 ];
 
-test("E7B9 plan pins the published training-plans-v2 owner on the training-blocks-v3 baseline", async () => {
-  const plan = await loadUlcTrainingPlansPreviewPlan({
-    repositoryRoot,
-  });
-
-  assert.equal(plan.application, "ulc-linz");
-  assert.equal(plan.moduleId, "training-plans");
-  assert.equal(plan.preview.environment, "generated-preview-ulc-linz");
-  assert.equal(plan.preview.database, DATABASE);
-  assert.equal(plan.target.schemaVersion, 2);
-  assert.deepEqual(plan.target.migrations, [
-    "modules/training-plans/migrations/0000_appbasis_training_plans_foundation.sql",
-    "modules/training-plans/migrations/0001_appbasis_training_plan_subject_deletion.sql",
-  ]);
-  assert.deepEqual(plan.target.tables, targetTables);
-  assert.deepEqual(
-    plan.requiredTrainingBlocksTables,
-    trainingBlockTables,
+test("P1: obsolete E7B9 plan installation refuses catalog-v5 base rather than reapply SQL", async () => {
+  await assert.rejects(
+    loadUlcTrainingPlansPreviewPlan({ repositoryRoot }),
+    /FC6-B baseline migration contains a statement without a verifiable catalog marker/,
   );
-  assert.equal(plan.productionChanged, false);
 });
 
 test("E7B9 preview shape distinguishes absent, current and partial training-plans schemas", () => {

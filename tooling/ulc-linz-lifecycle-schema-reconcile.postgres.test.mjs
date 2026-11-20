@@ -33,7 +33,7 @@ test("P04: three canonical lifecycle migrations reconcile an existing partial Pr
       "utf8",
     ));
     const migrations = manifest.owners.flatMap(owner => owner.migrations);
-    assert.equal(migrations.length, 41);
+    assert.equal(migrations.length, 44);
     const omitted = new Set(ULC_LIFECYCLE_REPAIR_PATHS);
     assert.equal(omitted.size, 3);
 

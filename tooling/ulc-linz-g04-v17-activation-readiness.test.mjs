@@ -14,7 +14,8 @@ import { ULC_LINZ_LIFECYCLE_DATABASE_OWNER } from "./ulc-linz-database-contract.
 
 const root = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const files = [
-  "m5-data-inventory.json", "m5-export-contract.json",
+  "../test/fixtures/g04-m5-data-inventory.v16.historical.json",
+  "../test/fixtures/g04-m5-export-contract.v16.historical.json",
   "m5-data-inventory.v17-proposed.json", "m5-export-contract.v17-proposed.json",
   "g04-v17-calendar-inventory-proposal.json", "g04-v17-preview-activation-evidence.json",
 ].map((name) => resolve(root, "apps/ulc-linz/privacy", name));
@@ -23,14 +24,20 @@ const load = async () => {
   const [v16Inventory,v16Export,v17Inventory,v17Export,proposal,evidence] =
     records.map((raw) => JSON.parse(raw));
   return { v16Inventory,v16Export,v17Inventory,v17Export,proposal,evidence,
-    canonicalOwner: ULC_LINZ_LIFECYCLE_DATABASE_OWNER };
+    canonicalOwner: v16Inventory.persistentOwners.find(o=>o.id==="ulc-linz-lifecycle") };
 };
 const copy = (x) => structuredClone(x);
 
-test("G-04.2d v17 proposals classify exactly 66 tables while canonical v16 stays 64", async () => {
+test("G-04.2d historical v16 fixture has 64 tables; v17 proposal has 66; live owner remains v18", async () => {
   const input = await load();
   assert.equal(input.v16Inventory.persistentTables.length,64);
   assert.equal(input.v16Export.excludedTables.length,62);
+  assert.equal(ULC_LINZ_LIFECYCLE_DATABASE_OWNER.schemaVersion,18);
+  assert.equal(ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.length,18);
+  assert.deepEqual(ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.slice(0,16),
+    input.canonicalOwner.migrations);
+  assert.equal(ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations[16],
+    "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql");
   assert.equal(input.canonicalOwner.schemaVersion,16);
   assert.equal(input.canonicalOwner.migrations.length,16);
   const v = validateG04V17StagedPrivacyContracts(input);

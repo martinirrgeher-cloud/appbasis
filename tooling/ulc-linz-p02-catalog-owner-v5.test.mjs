@@ -39,11 +39,15 @@ test("P2-F stages both original protected catalog guards under the correct modul
     new URL("../apps/ulc-linz/appbasis.database.json", import.meta.url), "utf8"
   ));
   const path = MODULE_CANDIDATE.slice(3);
-  assert.equal(moduleManifest.database.schemaVersion, 4,
-    "v5 is not implicitly published");
+  assert.equal(moduleManifest.database.schemaVersion, 5,
+    "v5 is explicitly published after the isolated Preview proof");
   assert.equal(moduleManifest.database.migrations.includes(path), false);
+  const canonical = "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql";
+  assert.equal(moduleManifest.database.migrations.includes(canonical), true);
+  assert.deepEqual(sqlStatements(await readFile(new URL("../" + canonical,import.meta.url),"utf8")),actual);
   const appOwner = appManifest.owners.find(owner => owner.id === "exercise-catalog");
-  assert.equal(appOwner?.schemaVersion, 4);
+  assert.equal(appOwner?.schemaVersion, 5);
+  assert.equal(appOwner.migrations.includes(canonical), true);
   assert.equal(appOwner.migrations.includes(path), false);
   for (const fixture of FIXTURES) {
     assert.equal(appOwner.migrations.includes(fixture.slice(3)), false);

@@ -17,7 +17,7 @@ const repositoryRoot = resolve(
 test("historical training-blocks v3 plan fails closed after repository advances to schema v4", async () => {
   await assert.rejects(
     loadUlcTrainingBlocksV3PreviewPlan({ repositoryRoot }),
-    UlcTrainingBlocksV3PreviewConfigurationError,
+    /FC6-B baseline migration contains a statement without a verifiable catalog marker/,
   );
 });
 

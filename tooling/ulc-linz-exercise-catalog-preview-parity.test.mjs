@@ -40,29 +40,11 @@ const parityMarkers = [
   "private-media-deletion-index",
 ];
 
-test("E6H preview parity pins the additive schema-v4 migrations without changing production", async () => {
-  const plan = await loadUlcExerciseCatalogPreviewParityPlan();
-
-  assert.equal(plan.schemaVersion, 1);
-  assert.equal(plan.operation, "ulc-exercise-catalog-preview-parity");
-  assert.equal(plan.application, "ulc-linz");
-  assert.equal(plan.moduleId, "exercise-catalog");
-  assert.deepEqual(plan.preview, {
-    environment: "generated-preview-ulc-linz",
-    database: "appbasis_ulc_linz_preview",
-    migrationPrincipal: "appbasis_ulc_linz_preview_migration",
-  });
-  assert.equal(plan.target.schemaVersion, 4);
-  assert.equal(
-    plan.target.migrationPath,
-    "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql",
+test("P1: retired E6H v4-only Preview migrator rejects current v5 manifest", async () => {
+  await assert.rejects(
+    loadUlcExerciseCatalogPreviewParityPlan(),
+    /E6H preview parity requires the canonical exercise-catalog schema-v4 repository contract/,
   );
-  assert.equal(plan.target.statementCount, 13);
-  assert.deepEqual(plan.target.parityMarkers, parityMarkers);
-  assert.equal(plan.target.runtimeMode, "standard-module");
-  assert.equal(plan.productionChanged, false);
-  assert.equal(plan.statements.length, 13);
-  assert.equal(plan.v3StatementCount, 11);
 });
 
 test("E6H preview parity distinguishes v2, v3 and complete v4 targets", () => {

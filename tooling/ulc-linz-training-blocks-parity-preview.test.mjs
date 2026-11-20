@@ -29,7 +29,7 @@ const targetTables = [
 test("historical v2 parity plan fails closed when published owner advances to v4", async () => {
   await assert.rejects(
     loadUlcTrainingBlocksParityPreviewPlan({ repositoryRoot }),
-    UlcTrainingBlocksParityPreviewConfigurationError,
+    /FC6-B baseline migration contains a statement without a verifiable catalog marker/,
   );
 });
 

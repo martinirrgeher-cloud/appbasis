@@ -60,13 +60,14 @@ const current = {
   }],
 };
 
-test("G-04.2c plan is based on canonical v16 and an isolated additive v17 candidate", async () => {
+test("G-04.2c plan retains exact v17 DDL for canonical published v18", async () => {
   const plan = await loadG04CalendarPreviewPlan({ repositoryRoot: root });
   assert.equal(plan.schemaVersion, 17);
   assert.equal(plan.environment, "generated-preview-ulc-linz");
   assert.equal(plan.database, "appbasis_ulc_linz_preview");
   assert.equal(plan.migrationRole, "appbasis_ulc_linz_preview_migration");
   assert.equal(plan.productionChanged, false);
+  assert.equal(plan.canonicalPublished, true);
   assert.equal(plan.statements.length, 5);
   assert.match(plan.statements[0], /CREATE TABLE ulc_linz_registration_calendar_rule/);
   assert.match(plan.statements[1], /CREATE TABLE ulc_linz_registration_calendar_exception/);
@@ -77,9 +78,9 @@ test("G-04.2c plan is based on canonical v16 and an isolated additive v17 candid
     root, "apps/ulc-linz/appbasis.database.json",
   ), "utf8"));
   const owner = manifest.owners.find((item) => item.id === "ulc-linz-lifecycle");
-  assert.equal(owner.schemaVersion, 16);
-  assert.equal(owner.migrations.length, 16);
-  assert.ok(!owner.migrations.includes(plan.migrationPath));
+  assert.equal(owner.schemaVersion, 18);
+  assert.equal(owner.migrations.length, 18);
+  assert.equal(owner.migrations[16], plan.migrationPath);
   for (const statement of plan.statements) {
     assert.doesNotMatch(statement, /\b(?:DROP|TRUNCATE|DELETE\s+FROM|ALTER\s+TABLE)\b/i);
   }
@@ -176,6 +177,18 @@ test("G-04.2d refuses even explicitly requested apply until privacy and restore 
     databaseFactory() { factoryCalls++; throw Error("must never open DB"); },
   }), /migration evidence|pending|Preview/i);
   assert.equal(factoryCalls, 0);
+});
+
+test("G-04.2d published v18 refuses old one-off migrate, even with apply=true",async()=> {
+  let connections=0;
+  await assert.rejects(
+    migrateG04CalendarPreview({apply:true}, {
+      repositoryRoot:root,
+      databaseFactory() { connections++; throw Error("no DB allowed"); },
+    }),
+    /already registered|no SQL replay/i,
+  );
+  assert.equal(connections,0);
 });
 
 test("G-04.2c Preview workflow is manual, environment locked and requires explicit independent gates", async () => {

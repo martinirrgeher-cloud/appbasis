@@ -36,14 +36,12 @@ test("P02-J 44-migration candidate installs clean 69-table SQL from empty PG18; 
     const v=await admin.client.unsafe("SHOW server_version_num");
     assert.ok(Number(v[0]?.server_version_num)>=180000);
     const proposed=await loadUlc69ManifestProposal();
-    assert.equal(proposed.releaseCandidateOnly??proposed.candidateOnly,true);
+    assert.equal(proposed.published,true);
+    assert.equal(proposed.candidateOnly,false);
     assert.equal(proposed.proposedMigrations,44);
     const paths=proposed.app.owners.flatMap(o=>o.migrations);
     assert.equal(paths.length,44);
-    const future={
-      [NEW_MIGRATIONS.catalog]:SOURCE_CANDIDATES.catalog,
-      [NEW_MIGRATIONS.fence]:SOURCE_CANDIDATES.fence,
-    };
+    const future={}; // Canonical SQL published: no test-fixture substitution.
     const files=[];
     for(const target of paths){
       const source=future[target]??target;
@@ -57,8 +55,8 @@ test("P02-J 44-migration candidate installs clean 69-table SQL from empty PG18; 
       files.push({source,parsed});
     }
     assert.equal(new Set(paths).size,44);
-    assert.equal(files.filter(x=>x.source===SOURCE_CANDIDATES.catalog).length,1);
-    assert.equal(files.filter(x=>x.source===SOURCE_CANDIDATES.fence).length,1);
+    assert.equal(files.filter(x=>x.source===NEW_MIGRATIONS.catalog).length,1);
+    assert.equal(files.filter(x=>x.source===NEW_MIGRATIONS.fence).length,1);
     await admin.client.unsafe("CREATE DATABASE "+dbName);
     created=true;
     isolated=createPostgresDatabase(u.toString());

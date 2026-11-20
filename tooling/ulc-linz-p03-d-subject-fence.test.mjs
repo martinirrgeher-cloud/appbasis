@@ -10,14 +10,17 @@ const GUARDED_TABLES = [
   "ulc_linz_training_registration_change",
 ];
 
-test("P03-D pins unregistered app-owned subject deletion fence and no-resurrection writers", async () => {
+test("P03-D pins app-owned published subject deletion fence and no-resurrection writers", async () => {
   const sql = await readFile(new URL(CANDIDATE, import.meta.url), "utf8");
   const appManifest = JSON.parse(await readFile(
     new URL("../apps/ulc-linz/appbasis.database.json", import.meta.url), "utf8"
   ));
   const lifecycle = appManifest.owners.find(owner => owner.id === "ulc-linz-lifecycle");
-  assert.equal(lifecycle?.schemaVersion, 16);
-  assert.equal(lifecycle?.migrations.length, 16);
+  assert.equal(lifecycle?.schemaVersion, 18);
+  assert.equal(lifecycle?.migrations.length, 18);
+  const canonical = "../apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql";
+  assert.equal(lifecycle.migrations.includes(canonical.slice(3)), true);
+  assert.equal((await readFile(new URL(canonical,import.meta.url),"utf8")).split("--> statement-breakpoint").length,6);
   assert.equal(lifecycle?.migrations.includes(CANDIDATE.slice(3)), false);
   assert.match(sql, /CANDIDATE ONLY/);
   assert.match(sql, /UNREGISTERED/);
