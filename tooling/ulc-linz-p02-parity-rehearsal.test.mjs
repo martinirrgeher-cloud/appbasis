@@ -95,7 +95,7 @@ test("P2-E excludes stale erasure-marker restores, including expired markers", (
     [validId], [validId],
   ).markerCount, 1);
   assert.throws(() => assessUlcP02CatalogRestoreMarkers(
-    [{ ...marker, principal_id: "bad\\u0000id" }], [],
+    [{ ...marker, principal_id: "bad\u0000id" }], [],
   ), /invalid marker contract/);
   for (const candidate of [
     [],
