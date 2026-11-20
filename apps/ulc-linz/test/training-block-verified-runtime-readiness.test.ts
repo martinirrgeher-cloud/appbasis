@@ -106,6 +106,9 @@ describe("P02-C verified plan/block runtime preflight", () => {
     expect(sql.queries[1]).toContain("appbasis_exercise_catalog_usage_subject");
     expect(sql.queries[1]).toContain("ulc_linz_training_subject_deletion");
     expect(sql.queries[1]).toContain("ulc_linz_training_registration_change_subject_fence");
+    expect(sql.queries[1]).toContain("trigger.tgenabled IN ('O', 'A')");
+    expect(sql.queries[1]).toContain("(trigger.tgtype::integer & 23) = 23");
+    expect(sql.queries[1]).toContain("ulc_linz_training_subject_write_fence()");
     expect(sql.queries[1]).not.toMatch(/\b(DELETE\s+FROM|UPDATE\s+public|INSERT\s+INTO|TRUNCATE|GRANT|DROP)\b/i);
   });
 
