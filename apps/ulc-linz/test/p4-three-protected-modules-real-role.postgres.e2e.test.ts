@@ -198,7 +198,7 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
     )).rejects.toThrow(/permission denied/i);
     await expect(ordinaryApp().client.unsafe(
       "INSERT INTO public.ulc_linz_training_subject_deletion " +
-      "(organization_id, subject_id, completed_at, purge_after) " +
+      "(organization_id, athlete_id, completed_at, purge_after) " +
       "VALUES ('synthetic-p4','subject-p4',now(),now()+interval '35 days')",
     )).rejects.toThrow(/permission denied/i);
   });
