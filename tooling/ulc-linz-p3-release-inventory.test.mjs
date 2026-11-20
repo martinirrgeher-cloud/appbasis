@@ -76,7 +76,10 @@ test("no silent reinterpretation of the old 66-table operator proposal as curren
 test("missing provider scope, shortened source authority and introduced object storage never pass",async()=>{
   const a=await fixtures();
   a.provider.providerScope[0].appSpecificProductionEvidence="verified";
-  assert.throws(()=>evaluateUlcP3ReleaseInventory(a),/provider account/);
+  assert.equal(evaluateUlcP3ReleaseInventory(a).providerAccountEvidence,"open");
+  const bad=await fixtures();
+  bad.provider.providerScope.pop();
+  assert.throws(()=>evaluateUlcP3ReleaseInventory(bad),/provider account/);
   const b=await fixtures();
   b.recovery.currentSourceAuthority.markerRetentionDays=70;
   assert.throws(()=>evaluateUlcP3ReleaseInventory(b),/35-day/);
