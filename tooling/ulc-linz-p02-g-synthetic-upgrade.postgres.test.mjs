@@ -113,6 +113,8 @@ test("P02-G: actual in-place synthetic 51→64→66→68→69 upgrade retains ex
   const admin = createPostgresDatabase(DATABASE_URL);
   let db = null;
   let created = false;
+  let roleCreated = false;
+  const testRole = "ulc_p02_h_application_" + suffix;
   try {
     const version = await admin.client.unsafe("SHOW server_version_num");
     assert.ok(Number(version[0]?.server_version_num) >= 180000);
@@ -246,12 +248,95 @@ test("P02-G: actual in-place synthetic 51→64→66→68→69 upgrade retains ex
     assert.equal(updated[0]?.status, "excused");
     assert.deepEqual(updated[0]?.training_content_slots, []);
 
+    // P02-H: apply ONLY the reviewed candidate GRANTs in the disposable
+    // database, to a unique NOLOGIN role. Production/Preview are unaffected.
+    await admin.client.unsafe("CREATE ROLE " + testRole + " NOLOGIN");
+    roleCreated = true;
+    await db.client.unsafe("GRANT USAGE ON SCHEMA public TO " + testRole);
+    const candidateAclSql = await (await import("node:fs/promises")).readFile(
+      new URL("../apps/ulc-linz/test/fixtures/p02-h-application-privileges.candidate.sql",
+        import.meta.url), "utf8"
+    );
+    const grants = candidateAclSql.split("--> statement-breakpoint")
+      .map(section => section.trim()).filter(Boolean);
+    assert.equal(grants.length, 17);
+    for (const statement of grants) {
+      assert.match(statement, /GRANT (?:SELECT|INSERT|UPDATE|DELETE|,|\s)+ ON TABLE public\./);
+      await db.client.unsafe(
+        statement.replace("TO ulc_linz_application;", "TO " + testRole + ";")
+      );
+    }
+
+    // An independent, explicit 18-table privilege expectation:
+    // the normal role has ZERO privileges on the P03 subject deletion marker.
+    const grantMatrix = {
+      appbasis_athlete_contact: "SELECT,INSERT,UPDATE,DELETE",
+      appbasis_exercise_catalog_favorite_deletion: "SELECT",
+      appbasis_exercise_catalog_usage_subject: "SELECT,INSERT",
+      appbasis_training_block_favorite_deletion: "SELECT",
+      appbasis_training_block_usage_subject: "SELECT,INSERT",
+      appbasis_training_block_usage_subject_deletion: "SELECT",
+      appbasis_training_documentation: "SELECT,INSERT,UPDATE",
+      appbasis_training_documentation_revision: "SELECT,INSERT",
+      appbasis_training_documentation_subject_deletion: "SELECT",
+      appbasis_training_plan_subject_deletion: "SELECT",
+      ulc_linz_registration_calendar_exception: "SELECT,INSERT,UPDATE",
+      ulc_linz_registration_calendar_rule: "SELECT,INSERT,UPDATE",
+      ulc_linz_training_registration: "SELECT,INSERT,UPDATE",
+      ulc_linz_training_registration_change: "SELECT,INSERT",
+      ulc_linz_training_subject_deletion: "",
+      ulc_linz_training_trainer_attendance: "SELECT,INSERT,UPDATE,DELETE",
+      ulc_linz_youth_content_category: "SELECT,INSERT,UPDATE",
+      ulc_linz_youth_group_category: "SELECT,INSERT,UPDATE",
+    };
+    const names = Object.keys(grantMatrix);
+    assert.equal(names.length, 18);
+    const values = names.map(n => "('" + n + "')").join(",");
+    const checked = await db.client.unsafe(
+      "SELECT t.table_name, " +
+      "has_table_privilege($1, 'public.' || t.table_name, 'SELECT') AS r, " +
+      "has_table_privilege($1, 'public.' || t.table_name, 'INSERT') AS i, " +
+      "has_table_privilege($1, 'public.' || t.table_name, 'UPDATE') AS u, " +
+      "has_table_privilege($1, 'public.' || t.table_name, 'DELETE') AS d, " +
+      "has_table_privilege($1, 'public.' || t.table_name, 'TRUNCATE') AS t " +
+      "FROM (VALUES " + values + ") AS t(table_name) ORDER BY t.table_name",
+      [testRole],
+    );
+    assert.equal(checked.length, 18);
+    for (const row of checked) {
+      const expected = new Set(grantMatrix[row.table_name].split(",").filter(Boolean));
+      for (const [col, permission] of [
+        ["r", "SELECT"], ["i", "INSERT"], ["u", "UPDATE"],
+        ["d", "DELETE"], ["t", "TRUNCATE"],
+      ]) {
+        assert.equal(row[col], expected.has(permission),
+          row.table_name + " " + permission + " must be least-privilege exact");
+      }
+    }
+
+    // An explicit SQL denial is stronger evidence than a boolean privilege
+    // query. An unchanged marker is still protected even for a no-op DELETE.
+    for (const table of [
+      "ulc_linz_training_subject_deletion",
+      "appbasis_exercise_catalog_favorite_deletion",
+      "appbasis_training_block_favorite_deletion",
+      "appbasis_training_block_usage_subject_deletion",
+      "appbasis_training_documentation_subject_deletion",
+      "appbasis_training_plan_subject_deletion",
+    ]) {
+      await assert.rejects(db.client.begin(async tx => {
+        await tx.unsafe("SET LOCAL ROLE " + testRole);
+        await tx.unsafe("DELETE FROM public." + table + " WHERE false");
+      }), /permission denied/i);
+    }
+
     // No actual migration ledger was found in read-only production metadata;
     // this proves an isolated synthetic DDL transition, not a production apply.
     assert.equal(plan.migrationExecutionAuthorized, false);
   } finally {
     if (db) await db.client.end().catch(() => {});
     if (created) await admin.client.unsafe("DROP DATABASE " + dbName + " WITH (FORCE)");
+    if (roleCreated) await admin.client.unsafe("DROP ROLE " + testRole);
     await admin.client.end().catch(() => {});
   }
 });
