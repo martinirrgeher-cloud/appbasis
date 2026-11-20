@@ -151,7 +151,7 @@ if (!DATABASE_URL) {
       await required().client.unsafe(
         `INSERT INTO appbasis_athletes_deletion
           (entity_type,entity_id,organization_id,completed_at,purge_after)
-         VALUES ('athlete',$1,$2,$3,$4)`,[TARGET,ORG,completedAt,purgeAfter]);
+         VALUES ('athlete',$1,$2,$3,$4)`,[TARGET,ORG,completedAt.toISOString(),purgeAfter.toISOString()]);
       await expect(documentation.removeSubjectDataAfterVerifiedDeletion(
         ORG,TARGET,completedAt,
       )).resolves.toMatchObject({
