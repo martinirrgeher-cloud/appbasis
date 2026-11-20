@@ -87,6 +87,9 @@ jobs:
       - name: Rehearse P02-G actual in-place synthetic 51-to-69 schema upgrade on PostgreSQL 18
         run: node --test ./tooling/ulc-linz-p02-g-synthetic-upgrade.postgres.test.mjs
 
+      - name: Validate P02-H exact new-table application SQL privileges
+        run: node --test ./tooling/ulc-linz-p02-h-application-acl.test.mjs
+
       - name: Verify proposed G-04 calendar in isolated PostgreSQL
         run: pnpm --filter @appbasis/app-ulc-linz exec vitest run --maxWorkers=1 ./test/registration-calendar.postgres.e2e.test.ts
 
