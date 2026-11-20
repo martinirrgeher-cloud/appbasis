@@ -3,6 +3,7 @@ import type {
   TrainingBlockUsageEvent,
 } from "@appbasis/training-blocks";
 import type {
+  TrainingPlanItemRevision,
   TrainingPlanRepository,
   TrainingPlanSnapshot,
 } from "@appbasis/training-plans";
@@ -25,7 +26,7 @@ export interface UlcTrainingPlanVerifiedUsageBooking {
 }
 
 export interface UlcVerifiedUsageBookingDependencies {
-  readonly plans: Pick<TrainingPlanRepository, "findCurrent">;
+  readonly plans: Pick<TrainingPlanRepository, "findCurrent" | "listRevisions">;
   readonly usage: Pick<
     TrainingBlockSubjectUsageLifecycleRepository,
     "recordVerifiedSubjectUsageOnce"
@@ -37,6 +38,7 @@ export function createUlcTrainingPlanVerifiedUsageBooking(
 ): UlcTrainingPlanVerifiedUsageBooking {
   if (
     !plans || typeof plans.findCurrent !== "function" ||
+    typeof plans.listRevisions !== "function" ||
     !usage || typeof usage.recordVerifiedSubjectUsageOnce !== "function"
   ) {
     throw new Error("Verified training-plan usage booking dependencies are invalid.");
@@ -99,11 +101,64 @@ export function createUlcTrainingPlanVerifiedUsageBooking(
         throw new Error("Verified training-plan usage block source is invalid.");
       }
 
+      // The idempotency key is the stable plan/item identity. The event
+      // timestamp must also remain stable across later autosaves, otherwise
+      // a safe retry of a previously successful booking would conflict.
+      // Derive first appearance exclusively from the canonical plan owner.
+      const revisions = await plans.listRevisions(organizationId, current.id);
+      if (!Array.isArray(revisions) || revisions.length === 0) {
+        throw new Error("Verified training-plan usage revision history is unavailable.");
+      }
+      let firstRevision: number | null = null;
+      let firstOccurredAt: string | null = null;
+      const seenRevisions = new Set<number>();
+      for (const revision of revisions) {
+        if (
+          revision.organizationId !== organizationId ||
+          revision.planId !== current.id ||
+          !Number.isSafeInteger(revision.revision) ||
+          revision.revision < 1 ||
+          revision.revision > current.currentRevision ||
+          seenRevisions.has(revision.revision) ||
+          !Array.isArray(revision.items) ||
+          typeof revision.createdAt !== "string" ||
+          !Number.isFinite(Date.parse(revision.createdAt)) ||
+          new Date(revision.createdAt).toISOString() !== revision.createdAt
+        ) {
+          throw new Error("Verified training-plan usage revision history is inconsistent.");
+        }
+        seenRevisions.add(revision.revision);
+        const occurrences = revision.items.filter(
+          (candidate: TrainingPlanItemRevision) => candidate.kind === "block" && candidate.itemId === blockItemId,
+        );
+        if (occurrences.length > 1 ||
+            (occurrences.length === 1 &&
+              (occurrences[0]?.kind !== "block" ||
+               occurrences[0].sourceBlockId !== item.sourceBlockId))) {
+          throw new Error("Verified training-plan usage source history changed.");
+        }
+        if (occurrences.length === 1 &&
+            (firstRevision === null || revision.revision < firstRevision)) {
+          firstRevision = revision.revision;
+          firstOccurredAt = revision.createdAt;
+        }
+      }
+      if (
+        !Number.isSafeInteger(current.currentRevision) ||
+        current.currentRevision < 1 ||
+        seenRevisions.size !== current.currentRevision
+      ) {
+        throw new Error("Verified training-plan usage revision history is incomplete.");
+      }
+      if (firstRevision === null || firstOccurredAt === null) {
+        throw new Error("Verified training-plan usage source history is missing.");
+      }
+
       const event: TrainingBlockUsageEvent = Object.freeze({
         id: await trainingPlanUsageEventId(organizationId, current.id, blockItemId),
         organizationId,
         blockId: item.sourceBlockId,
-        occurredAt: current.updatedAt,
+        occurredAt: firstOccurredAt,
         sourceKind: "training_plan",
         sourceRef: current.id + ":" + blockItemId,
         note: null,

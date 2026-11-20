@@ -233,6 +233,32 @@ export class UlcTrainingPlanReferenceError extends Error {
   }
 }
 
+/**
+ * A plan was committed but one or more protected owner-bookings were not.
+ * Callers must not show this response as a fully successful save.
+ */
+export class UlcTrainingPlanUsageIncompleteError extends Error {
+  readonly code = "ULC_TRAINING_PLAN_USAGE_INCOMPLETE";
+
+  constructor(
+    readonly planId: string,
+    readonly currentRevision: number,
+    readonly failedBookings: number,
+  ) {
+    super("The training plan was saved but verified block usage is incomplete.");
+    this.name = "UlcTrainingPlanUsageIncompleteError";
+  }
+}
+
+export class UlcTrainingPlanUsageReconciliationUnavailableError extends Error {
+  readonly code = "ULC_TRAINING_PLAN_USAGE_RECONCILIATION_UNAVAILABLE";
+
+  constructor() {
+    super("Verified block usage reconciliation is not enabled.");
+    this.name = "UlcTrainingPlanUsageReconciliationUnavailableError";
+  }
+}
+
 export interface UlcTrainingPlanService {
   listSubjects(
     organizationId: string,
@@ -303,6 +329,11 @@ export interface UlcTrainingPlanService {
     expectedSourceRevision: number,
     targetSubjectId: string,
     targetDate: string,
+  ): Promise<TrainingPlanSnapshot | undefined>;
+  finalizeVerifiedBlockUsage(
+    organizationId: string,
+    planId: string,
+    expectedRevision: number,
   ): Promise<TrainingPlanSnapshot | undefined>;
   listRevisions(
     organizationId: string,
@@ -892,6 +923,14 @@ export function createUlcTrainingPlanService({
       Array.from({ length: workerCount }, () => bookNext()),
     );
     if (failedBookings > 0) {
+      if (verifiedUsageBooking !== undefined) {
+        // The plan already exists. Expose a recoverable partial result rather
+        // than silently reporting success or making a legacy fallback write.
+        throw new UlcTrainingPlanUsageIncompleteError(
+          saved.id, saved.currentRevision, failedBookings,
+        );
+      }
+      // Preserve the existing live/legacy behavior until a separate cutover.
       console.error(
         "[ulc-linz] one or more training block usage bookings failed",
       );
@@ -1082,6 +1121,28 @@ export function createUlcTrainingPlanService({
         );
       }
       return saved;
+    },
+    async finalizeVerifiedBlockUsage(
+      organizationId: string,
+      planId: string,
+      expectedRevision: number,
+    ): Promise<TrainingPlanSnapshot | undefined> {
+      if (verifiedUsageBooking === undefined) {
+        throw new UlcTrainingPlanUsageReconciliationUnavailableError();
+      }
+      const expected = requiredRevision(expectedRevision);
+      const current = await plans.findCurrent(organizationId, planId);
+      if (current === undefined) return undefined;
+      if (current.currentRevision !== expected) {
+        throw new TrainingPlanConflictError(expected, current.currentRevision);
+      }
+      await assertActiveSubject(organizationId, current.subjectId);
+      // The same deterministic event IDs, canonical owner proof, stable first
+      // appearance timestamps and module idempotency gate are used again.
+      // No new plan revision is created. Every sourced block is considered,
+      // so previous partial booking failures can be completed.
+      await bookNewBlockTemplateUsage(organizationId, null, current);
+      return current;
     },
     listRevisions(organizationId: string, planId: string) {
       return plans.listRevisions(organizationId, planId);

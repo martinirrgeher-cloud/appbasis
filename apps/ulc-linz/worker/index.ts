@@ -13,6 +13,8 @@ import {
 } from "@appbasis/athletes";
 import {
   ExerciseCatalogValidationError as StandardExerciseCatalogValidationError,
+  ExerciseCatalogUsageSubjectRequiredError,
+  ExerciseCatalogFavoriteDeletedError,
 } from "@appbasis/exercise-catalog";
 import {
   COUNTDOWN_CAPABILITIES,
@@ -4438,6 +4440,23 @@ async function authorizeExerciseCatalogRequest(
 }
 
 function exerciseCatalogErrorResponse(error: unknown): Response {
+  if (error instanceof ExerciseCatalogUsageSubjectRequiredError) {
+    // No anonymous/direct usage recovery is available in the protected mode.
+    return Response.json({
+      error: {
+        code: "EXERCISE_CATALOG_SUBJECT_REQUIRED",
+        message: "Verified subject ownership is required for usage writes.",
+      },
+    }, { status: 409, headers: { "cache-control": "private, no-store" } });
+  }
+  if (error instanceof ExerciseCatalogFavoriteDeletedError) {
+    return Response.json({
+      error: {
+        code: "EXERCISE_CATALOG_SUBJECT_DELETED",
+        message: "Personal catalog changes are blocked by a deletion marker.",
+      },
+    }, { status: 409, headers: { "cache-control": "private, no-store" } });
+  }
   if (error instanceof UlcExerciseCatalogWriteQuiescedError) {
     return Response.json(
       {

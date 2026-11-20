@@ -8941,6 +8941,13 @@ async function requestJson(path, init = {}) {
     const error = new Error(payload?.error?.message || "HTTP_ERROR");
     error.status = response.status;
     error.code = payload?.error?.code || "HTTP_ERROR";
+    // A verified plan writer can save the plan and only fail the subsequent
+    // attributable usage booking. Preserve its exact revision for recovery;
+    // never turn this 409 into a second create/update attempt.
+    if (error.code === "ULC_TRAINING_PLAN_USAGE_INCOMPLETE") {
+      error.planId = payload?.error?.planId;
+      error.currentRevision = payload?.error?.currentRevision;
+    }
     throw error;
   }
   return payload;

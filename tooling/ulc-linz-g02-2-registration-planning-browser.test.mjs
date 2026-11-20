@@ -31,6 +31,14 @@ const production = [
   productionFunction(planSource, "function requestTrainingPlanLeaveDecision() {"),
   productionFunction(planSource, "function resolveTrainingPlanLeaveDecision(decision) {"),
   productionFunction(planSource, "function saveTrainingPlan() {"),
+  // The real autosave now routes partially persisted plans through the
+  // verified owner-finalization helper. Exercise the production helpers, not
+  // a smoke-only stub that can silently mask missing browser dependencies.
+  productionFunction(planSource, "function sameTrainingPlanUsageRecovery(pending, subjectId, planDate) {"),
+  productionFunction(planSource, "async function completeVerifiedTrainingPlanUsage(pending) {"),
+  productionFunction(planSource, "async function finalizeTrainingPlanUsageRecovery(pending) {"),
+  productionFunction(planSource, "async function requestTrainingPlanCopyWithUsageRecovery("),
+  productionFunction(planSource, "async function requestTrainingPlanSaveWithUsageRecovery("),
   productionFunction(planSource, "async function performTrainingPlanSave() {"),
   productionListener(planSource, 'window.addEventListener("beforeunload", (event) => {'),
 ].join("\n");
@@ -78,6 +86,7 @@ const setup = [
   "let trainingPlanSaveBusy = false, trainingPlanTemplateBusy = false, trainingPlanSaveBackBusy = false, trainingPlanDistributeBusy = false;",
   "let trainingPlanSessionGeneration = 1, trainingPlanSessionIdentityId = 'trainer-a';",
   "let trainingPlanSaveInFlight = null, trainingPlanAutoSavePaused = false;",
+  "let trainingPlanUsageRecovery = null, trainingPlanDistributionUsageRecovery = new Map();",
   "let scheduledPlanSaves = 0;",
   // Production reads navigator.onLine; the browser fixture runs on file:// and is online.
   "function trainingPlanIsOffline() { return !navigator.onLine; }",

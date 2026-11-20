@@ -157,6 +157,12 @@ describe("ULC E7B6 training plan block template UI", () => {
       '"TRAINING_PLAN_TARGET_OCCUPIED"',
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      "requestTrainingPlanCopyWithUsageRecovery(",
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
+      '"ULC_TRAINING_PLAN_USAGE_INCOMPLETE"',
+    );
+    expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "if (trainingPlanDistributeBusy) return false;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
@@ -166,7 +172,7 @@ describe("ULC E7B6 training plan block template UI", () => {
       "const expectedSourceRevision = trainingPlanSelected.currentRevision;",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
-      "expectedSourceRevision,\n              targetSubjectId: subjectId,",
+      "expectedSourceRevision,\n          targetSubjectId: subjectId,",
     );
     expect(ULC_TRAINING_PLANS_SCRIPT).toContain(
       "if (completed) {",

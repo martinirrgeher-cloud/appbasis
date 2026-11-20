@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { IdentityHttpService } from "@appbasis/identity/http";
 import { InMemoryPermissionStore } from "@appbasis/permissions";
 import { createAthletesWorkbook } from "@appbasis/athletes";
+import {
+  ExerciseCatalogUsageSubjectRequiredError,
+  ExerciseCatalogFavoriteDeletedError,
+} from "@appbasis/exercise-catalog";
 import type { AthleteMasterdataSnapshot } from "@appbasis/athletes";
 
 
@@ -781,6 +785,9 @@ function runtime(
       },
       async copyCurrentTo() {
         return undefined;
+      },
+      async finalizeVerifiedBlockUsage() {
+        throw new Error("training-plan mock verified usage is not enabled");
       },
       async listRevisions() {
         return [];
@@ -1816,6 +1823,51 @@ describe("generated identity+permissions Worker entrypoint", () => {
       },
       access: { view: true, edit: true },
       catalog: { items: [], trainingGroups: [] },
+    });
+  });
+
+  it("returns controlled private HTTP conflicts for protected catalog owner denials", async () => {
+    const base = runtime();
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      exerciseCatalog: {
+        ...base.exerciseCatalog,
+        async recordUsage() {
+          throw new ExerciseCatalogUsageSubjectRequiredError();
+        },
+        async setFavorite() {
+          throw new ExerciseCatalogFavoriteDeletedError();
+        },
+      },
+    }));
+    const usage = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/exercise-catalog/exercise-1/usage", {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ sourceKind: "training" }),
+      }),
+      validEnv,
+    );
+    expect(usage.status).toBe(409);
+    expect(usage.headers.get("cache-control")).toBe("private, no-store");
+    await expect(usage.json()).resolves.toMatchObject({
+      error: { code: "EXERCISE_CATALOG_SUBJECT_REQUIRED" },
+    });
+
+    const favorite = await worker.fetch(
+      new Request("https://ulc.example.test/api/modules/exercise-catalog/exercise-1/favorite", {
+        method: "PUT",
+        headers: { cookie: currentIdentity.sessionToken },
+      }),
+      validEnv,
+    );
+    expect(favorite.status).toBe(409);
+    expect(favorite.headers.get("cache-control")).toBe("private, no-store");
+    await expect(favorite.json()).resolves.toMatchObject({
+      error: { code: "EXERCISE_CATALOG_SUBJECT_DELETED" },
     });
   });
 
@@ -6649,6 +6701,96 @@ describe("U12 runtime API", () => {
         currentRevision: 1,
       },
     });
+  });
+
+  it("finalizes usage only for a server-authorized plan editor and exact revision", async () => {
+    const base = runtime();
+    const calls: unknown[] = [];
+    const worker = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlans: {
+        ...base.trainingPlans,
+        async finalizeVerifiedBlockUsage(organizationId, planId, expectedRevision) {
+          calls.push({ organizationId, planId, expectedRevision });
+          return {
+            id: "saved-plan",
+            organizationId,
+            subjectId: "athlete-1",
+            planDate: "2026-11-19",
+            currentRevision: 3,
+            createdAt: "2026-11-19T10:00:00.000Z",
+            updatedAt: "2026-11-19T11:00:00.000Z",
+            revision: {
+              organizationId,
+              planId: "saved-plan",
+              revision: 3,
+              note: null,
+              items: [],
+              createdAt: "2026-11-19T11:00:00.000Z",
+            },
+          };
+        },
+      },
+    }));
+    const request = (body: unknown) => new Request(
+      "https://ulc.example.test/api/modules/training-plans/saved-plan/finalize-usage",
+      {
+        method: "POST",
+        headers: {
+          cookie: currentIdentity.sessionToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      },
+    );
+    const response = await worker.fetch(request({ expectedRevision: 3 }), validEnv);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(calls).toEqual([{
+      organizationId: "verein-1",
+      planId: "saved-plan",
+      expectedRevision: 3,
+    }]);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      usageReconciled: true,
+      plan: {
+        id: "saved-plan",
+        subjectId: "athlete-1",
+        currentRevision: 3,
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain("organizationId");
+    const invalid = await worker.fetch(
+      request({ expectedRevision: 3, organizationId: "forged" }),
+      validEnv,
+    );
+    expect(invalid.status).toBe(400);
+    expect(calls).toHaveLength(1);
+
+    let unauthorizedCalls = 0;
+    const denied = createGeneratedWorker(() => ({
+      ...base,
+      trainingPlansAccess: {
+        ...base.trainingPlansAccess,
+        async assertEditAccess() {
+          throw new UlcLinzAuthorizationDeniedError();
+        },
+      },
+      trainingPlans: {
+        ...base.trainingPlans,
+        async finalizeVerifiedBlockUsage() {
+          unauthorizedCalls += 1;
+          throw new Error("Unauthorized finalization reached service");
+        },
+      },
+    }));
+    const forbidden = await denied.fetch(
+      request({ expectedRevision: 3 }),
+      validEnv,
+    );
+    expect(forbidden.status).toBe(403);
+    expect(unauthorizedCalls).toBe(0);
   });
 
   it("returns a conflict instead of silently overwriting a stale E7B4 plan revision", async () => {

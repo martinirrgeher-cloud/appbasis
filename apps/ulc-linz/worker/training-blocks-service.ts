@@ -162,15 +162,33 @@ export interface UlcTrainingBlockService {
   ): Promise<TrainingBlockRevisionComparison | undefined>;
 }
 
+export class UlcUnverifiedTrainingBlockUsageError extends Error {
+  readonly code = "ULC_BLOCK_UNVERIFIED_USAGE_DENIED";
+
+  constructor() {
+    super("ULC training block usage must have a verified plan subject.");
+    this.name = "UlcUnverifiedTrainingBlockUsageError";
+  }
+}
+
 export function createUlcTrainingBlockService({
   blocks,
   masterdata,
   exerciseCatalog,
+  usageWriteMode = "legacy",
 }: {
   blocks: TrainingBlockService;
   masterdata: UlcTrainingBlockMasterdataReader;
   exerciseCatalog: UlcTrainingBlockExerciseReader;
+  /**
+   * Opt-in P02-C: refuse every legacy/unattributed usage write.
+   * Only the separate, owner-verified plan booking boundary can write.
+   */
+  usageWriteMode?: "legacy" | "verified-subject-only";
 }): UlcTrainingBlockService {
+  if (usageWriteMode !== "legacy" && usageWriteMode !== "verified-subject-only") {
+    throw new UlcUnverifiedTrainingBlockUsageError();
+  }
   async function listAudiences(
     organizationId: string,
   ): Promise<readonly UlcTrainingBlockAudience[]> {
@@ -299,6 +317,11 @@ export function createUlcTrainingBlockService({
       eventId: string,
       input: RecordTrainingBlockUsageInput,
     ) {
+      if (usageWriteMode === "verified-subject-only") {
+        // Fail before delegating to the old plan->blocks writer, even if the
+        // request looks like a canonical training-plan event.
+        throw new UlcUnverifiedTrainingBlockUsageError();
+      }
       return blocks.recordUsageOnce(
         organizationId,
         blockId,

@@ -998,6 +998,12 @@ let trainingPlanDirty = false;
 let trainingPlanConflict = false;
 let trainingPlanSaveBusy = false;
 let trainingPlanSaveInFlight = null;
+// In-memory, current-session only. A 409 means the PLAN is already committed;
+// retrying the original POST could create a duplicate or stale CAS conflict.
+let trainingPlanUsageRecovery = null;
+// A copied plan may also be committed before its verified usage write fails.
+// Remember only exact plan revisions for the current browser session.
+let trainingPlanDistributionUsageRecovery = new Map();
 let trainingPlanAutoSaveTimer = null;
 let trainingPlanAutoSavePaused = false;
 let trainingPlanRecoveredConflict = false;
@@ -3600,6 +3606,151 @@ function saveTrainingPlan() {
   });
 }
 
+function sameTrainingPlanUsageRecovery(pending, subjectId, planDate) {
+  return pending !== null &&
+    pending.subjectId === subjectId &&
+    pending.planDate === planDate &&
+    pending.sessionGeneration === trainingPlanSessionGeneration &&
+    pending.identityId === trainingPlanSessionIdentityId;
+}
+
+async function completeVerifiedTrainingPlanUsage(pending) {
+  const result = await requestJson(
+    "/api/modules/training-plans/" +
+      encodeURIComponent(pending.planId) +
+      "/finalize-usage",
+    {
+      method: "POST",
+      body: JSON.stringify({ expectedRevision: pending.currentRevision }),
+    },
+  );
+  const plan = result?.plan;
+  if (
+    result?.usageReconciled !== true ||
+    !isTrainingPlanSnapshot(plan) ||
+    plan.id !== pending.planId ||
+    plan.currentRevision !== pending.currentRevision ||
+    plan.subjectId !== pending.subjectId ||
+    plan.planDate !== pending.planDate
+  ) {
+    throw new Error("INVALID_TRAINING_PLAN_USAGE_RECOVERY");
+  }
+  return result;
+}
+
+async function finalizeTrainingPlanUsageRecovery(pending) {
+  const result = await completeVerifiedTrainingPlanUsage(pending);
+  if (trainingPlanUsageRecovery === pending) trainingPlanUsageRecovery = null;
+  return result;
+}
+
+// The multi-athlete distribution flow also persists the target plan before
+// booking its sourced blocks. On a partial 409 the same recipient must be
+// finalized; repeating /copy instead would only cause a target-occupied 409.
+async function requestTrainingPlanCopyWithUsageRecovery(
+  sourcePlanId,
+  expectedSourceRevision,
+  subjectId,
+  targetDate,
+) {
+  const key = JSON.stringify([
+    sourcePlanId,
+    expectedSourceRevision,
+    subjectId,
+    targetDate,
+  ]);
+  const previous = trainingPlanDistributionUsageRecovery.get(key);
+  if (
+    previous &&
+    previous.sessionGeneration === trainingPlanSessionGeneration &&
+    previous.identityId === trainingPlanSessionIdentityId
+  ) {
+    const result = await completeVerifiedTrainingPlanUsage(previous);
+    trainingPlanDistributionUsageRecovery.delete(key);
+    return result;
+  }
+  trainingPlanDistributionUsageRecovery.delete(key);
+  try {
+    return await requestJson(
+      "/api/modules/training-plans/" +
+        encodeURIComponent(sourcePlanId) +
+        "/copy",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          expectedSourceRevision,
+          targetSubjectId: subjectId,
+          targetDate,
+        }),
+      },
+    );
+  } catch (error) {
+    if (
+      error?.status !== 409 ||
+      error?.code !== "ULC_TRAINING_PLAN_USAGE_INCOMPLETE" ||
+      typeof error?.planId !== "string" ||
+      error.planId.trim() !== error.planId ||
+      error.planId.length === 0 ||
+      !Number.isSafeInteger(error?.currentRevision) ||
+      error.currentRevision < 1
+    ) {
+      throw error;
+    }
+    const pending = {
+      planId: error.planId,
+      currentRevision: error.currentRevision,
+      subjectId,
+      planDate: targetDate,
+      sessionGeneration: trainingPlanSessionGeneration,
+      identityId: trainingPlanSessionIdentityId,
+    };
+    trainingPlanDistributionUsageRecovery.set(key, pending);
+    const result = await completeVerifiedTrainingPlanUsage(pending);
+    trainingPlanDistributionUsageRecovery.delete(key);
+    return result;
+  }
+}
+
+async function requestTrainingPlanSaveWithUsageRecovery(
+  writePlan,
+  subjectId,
+  planDate,
+) {
+  if (sameTrainingPlanUsageRecovery(trainingPlanUsageRecovery, subjectId, planDate)) {
+    // A previous POST has *already* saved the plan. Only complete its usage
+    // booking, even if the user clicked the normal retry/save control.
+    return finalizeTrainingPlanUsageRecovery(trainingPlanUsageRecovery);
+  }
+  trainingPlanUsageRecovery = null;
+  try {
+    return await writePlan();
+  } catch (error) {
+    if (
+      error?.status !== 409 ||
+      error?.code !== "ULC_TRAINING_PLAN_USAGE_INCOMPLETE" ||
+      typeof error?.planId !== "string" ||
+      error.planId.trim() !== error.planId ||
+      error.planId.length === 0 ||
+      !Number.isSafeInteger(error?.currentRevision) ||
+      error.currentRevision < 1
+    ) {
+      throw error;
+    }
+    // The same authenticated response supplies the persisted plan identity,
+    // never guessed from the draft or a client-created ID.
+    const pending = {
+      planId: error.planId,
+      currentRevision: error.currentRevision,
+      subjectId,
+      planDate,
+      sessionGeneration: trainingPlanSessionGeneration,
+      identityId: trainingPlanSessionIdentityId,
+    };
+    trainingPlanUsageRecovery = pending;
+    return finalizeTrainingPlanUsageRecovery(pending);
+  }
+}
+
 async function performTrainingPlanSave() {
   if (
     !trainingPlanDraft ||
@@ -3642,27 +3793,31 @@ async function performTrainingPlanSave() {
 
   try {
     const draftPayload = trainingPlanDraftPayload(trainingPlanDraft, existing !== null);
-    const payload = existing
-      ? await requestJson(
-          "/api/modules/training-plans/" +
-            encodeURIComponent(existing.id) +
-            "/update",
-          {
+    const payload = await requestTrainingPlanSaveWithUsageRecovery(
+      () => existing
+        ? requestJson(
+            "/api/modules/training-plans/" +
+              encodeURIComponent(existing.id) +
+              "/update",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                expectedRevision: existing.currentRevision,
+                ...draftPayload,
+              }),
+            },
+          )
+        : requestJson("/api/modules/training-plans", {
             method: "POST",
             body: JSON.stringify({
-              expectedRevision: existing.currentRevision,
+              subjectId,
+              planDate,
               ...draftPayload,
             }),
-          },
-        )
-      : await requestJson("/api/modules/training-plans", {
-          method: "POST",
-          body: JSON.stringify({
-            subjectId,
-            planDate,
-            ...draftPayload,
           }),
-        });
+      subjectId,
+      planDate,
+    );
 
     const saved = payload?.plan;
     if (
@@ -3713,12 +3868,22 @@ async function performTrainingPlanSave() {
       if (trainingPlanElements.reload) trainingPlanElements.reload.hidden = false;
     } else {
       trainingPlanDirty = true;
-      trainingPlanSetSaveState("error", "Speichern fehlgeschlagen");
+      const bookingPending = sameTrainingPlanUsageRecovery(
+        trainingPlanUsageRecovery,
+        subjectId,
+        planDate,
+      );
+      trainingPlanSetSaveState(
+        "error",
+        bookingPending ? "Nutzungsbuchung offen" : "Speichern fehlgeschlagen",
+      );
       showMessage(
         trainingPlanElements.editorMessage,
-        error?.status === 400
-          ? "Bitte Eingaben prüfen. Der Plan wurde nicht gespeichert."
-          : "Speicherergebnis unklar. Bitte Verbindung und aktuellen Plan prüfen, bevor du erneut speicherst.",
+        bookingPending
+          ? 'Der Trainingsplan wurde bereits gespeichert. Nur die Nutzungsbuchung ist noch offen. Mit "Erneut speichern" wird ausschließlich diese Buchung abgeschlossen.'
+          : error?.status === 400
+            ? "Bitte Eingaben prüfen. Der Plan wurde nicht gespeichert."
+            : "Speicherergebnis unklar. Bitte Verbindung und aktuellen Plan prüfen, bevor du erneut speicherst.",
       );
       if (trainingPlanElements.retry) trainingPlanElements.retry.hidden = false;
     }
@@ -4061,18 +4226,11 @@ async function distributeTrainingPlan() {
   try {
     for (const subjectId of selected) {
       try {
-        const payload = await requestJson(
-          "/api/modules/training-plans/" +
-            encodeURIComponent(sourcePlanId) +
-            "/copy",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              expectedSourceRevision,
-              targetSubjectId: subjectId,
-              targetDate,
-            }),
-          },
+        const payload = await requestTrainingPlanCopyWithUsageRecovery(
+          sourcePlanId,
+          expectedSourceRevision,
+          subjectId,
+          targetDate,
         );
         const plan = payload?.plan;
         if (!isTrainingPlanSnapshot(plan)) {
@@ -4191,6 +4349,9 @@ function resetTrainingPlanSessionState() {
   // in-flight response to mutate the next user's editor state.
   cancelTrainingPlanAutoSave();
   trainingPlanSessionGeneration += 1;
+  // Never carry a private, owner-bound retry into a different login.
+  trainingPlanUsageRecovery = null;
+  trainingPlanDistributionUsageRecovery.clear();
   trainingPlanWeekRequestId += 1;
   trainingPlanDayRequestId += 1;
   trainingPlanSaveBackOperation += 1;

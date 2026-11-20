@@ -75,6 +75,24 @@ jobs:
       - name: Rehearse missing ULC lifecycle migrations on disposable PostgreSQL
         run: node --test ./tooling/ulc-linz-lifecycle-schema-reconcile.postgres.test.mjs
 
+      - name: Prove P2-E 64→66→68 catalog guards and stale restore quarantine on local PostgreSQL 18
+        run: node --test ./tooling/ulc-linz-p02-parity-rehearsal.postgres.test.mjs
+
+      - name: Prove candidate P2-F exercise-catalog v5 migration on isolated PostgreSQL 18
+        run: node --test ./tooling/ulc-linz-p02-catalog-owner-v5.postgres.test.mjs
+
+      - name: Rehearse P03-D stale training-subject write fence on disposable PostgreSQL 18
+        run: node --test ./tooling/ulc-linz-p03-d-subject-fence.postgres.test.mjs
+
+      - name: Rehearse P02-G actual in-place synthetic 51-to-69 schema upgrade on PostgreSQL 18
+        run: node --test ./tooling/ulc-linz-p02-g-synthetic-upgrade.postgres.test.mjs
+
+      - name: Rehearse P02-J candidate 44-migration fresh 69-table PostgreSQL 18 install
+        run: node --test ./tooling/ulc-linz-p02-j-fresh-install.postgres.test.mjs
+
+      - name: Validate P02-H exact new-table application SQL privileges
+        run: node --test ./tooling/ulc-linz-p02-h-application-acl.test.mjs
+
       - name: Verify proposed G-04 calendar in isolated PostgreSQL
         run: pnpm --filter @appbasis/app-ulc-linz exec vitest run --maxWorkers=1 ./test/registration-calendar.postgres.e2e.test.ts
 
@@ -170,6 +188,27 @@ jobs:
 
       - name: Test M5 restore authority regressions
         run: node --test ./tooling/ulc-linz-m5-restore-authority-regression.test.mjs
+
+      - name: Test ULC P02 pilot data admission is read-only and fail-closed
+        run: node --test ./tooling/ulc-linz-p02-pilot-admission.test.mjs
+
+      - name: Validate P2-E exact schema/migration ownership and restore markers
+        run: node --test ./tooling/ulc-linz-p02-parity-rehearsal.test.mjs
+
+      - name: Pin unregistered P2-F exercise-catalog v5 owner SQL to verified fixtures
+        run: node --test ./tooling/ulc-linz-p02-catalog-owner-v5.test.mjs
+
+      - name: Validate unpublished P03-D training subject write-fence contract
+        run: node --test ./tooling/ulc-linz-p03-d-subject-fence.test.mjs
+
+      - name: Pin P03-E canonical erasure rehearsal outside live runtime
+        run: node --test ./tooling/ulc-linz-p03-e-marked-erasure.test.mjs
+
+      - name: Validate P02-J release candidate manifests and 66/69 readonly reconciliation
+        run: node --test ./tooling/ulc-linz-p02-j-manifest-reconciliation.test.mjs
+
+      - name: Prove P02-J staged 69-table privacy and export classifications stay fail-closed
+        run: node --test ./tooling/ulc-linz-p02-j-privacy-inventory.test.mjs
 
       - name: Test ULC K2 isolated backup and restore policy (no provider access)
         run: node --test ./tooling/ulc-linz-k2-backup-plan.test.mjs

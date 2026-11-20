@@ -6,6 +6,7 @@ import type {
 } from "@appbasis/training-blocks";
 import type {
   TrainingPlanRepository,
+  TrainingPlanRevision,
   TrainingPlanSnapshot,
 } from "@appbasis/training-plans";
 
@@ -49,15 +50,27 @@ function snapshot(changes: Partial<TrainingPlanSnapshot> = {}): TrainingPlanSnap
   };
 }
 
-function harness(plan: TrainingPlanSnapshot | null = snapshot()) {
+function harness(
+  plan: TrainingPlanSnapshot | null = snapshot(),
+  history: readonly TrainingPlanRevision[] = plan === null ? [] : [
+    ...Array.from({ length: Math.max(0, plan.currentRevision - 1) }, (_, index) => ({
+      ...plan.revision,
+      revision: index + 1,
+      createdAt: plan.createdAt,
+      items: [],
+    })),
+    plan.revision,
+  ],
+) {
   const findCurrent = vi.fn(async (_org: string, _planId: string) => plan ?? undefined);
+  const listRevisions = vi.fn(async () => history);
   const write = vi.fn(async (input: TrainingBlockVerifiedSubjectUsage):
     Promise<TrainingBlockUsageEvent | undefined> => input.event);
   const service = createUlcTrainingPlanVerifiedUsageBooking({
-    plans: { findCurrent } satisfies Pick<TrainingPlanRepository, "findCurrent">,
+    plans: { findCurrent, listRevisions } satisfies Pick<TrainingPlanRepository, "findCurrent" | "listRevisions">,
     usage: { recordVerifiedSubjectUsageOnce: write },
   });
-  return { service, findCurrent, write };
+  return { service, findCurrent, listRevisions, write };
 }
 
 describe("ULC explicit verified training-plan usage adapter", () => {
@@ -83,6 +96,48 @@ describe("ULC explicit verified training-plan usage adapter", () => {
       sourceItemId: ITEM,
     });
     await expect(h.service.book(ORG, snapshot(), ITEM)).resolves.toEqual(persisted);
+  });
+
+  it("replays the same event and first-booking timestamp after later plan revisions", async () => {
+    const current = snapshot({ updatedAt: "2026-10-12T14:00:00.000Z", revision: {
+      ...snapshot().revision, createdAt: "2026-10-12T14:00:00.000Z",
+    } });
+    const initial: TrainingPlanRevision = {
+      ...current.revision, revision: 1, createdAt: "2026-10-12T10:00:00.000Z",
+    };
+    const h = harness(current, [current.revision, initial]);
+    const first = await h.service.book(ORG, current, ITEM);
+    const again = await h.service.book(ORG, current, ITEM);
+    expect(first.occurredAt).toBe(initial.createdAt);
+    expect(again).toEqual(first);
+    expect(h.listRevisions).toHaveBeenCalledWith(ORG, PLAN);
+    expect(h.write).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed on incomplete or duplicate plan-revision history before writing", async () => {
+    const current = snapshot();
+    for (const history of [
+      [current.revision],
+      [current.revision, current.revision],
+    ]) {
+      const h = harness(current, history);
+      await expect(h.service.book(ORG, current, ITEM))
+        .rejects.toThrow(/history is (incomplete|inconsistent)/);
+      expect(h.write).not.toHaveBeenCalled();
+    }
+  });
+
+  it("refuses a reused block item id with changed historical source", async () => {
+    const current = snapshot();
+    const prior: TrainingPlanRevision = {
+      ...current.revision, revision: 1,
+      items: current.revision.items.map((item) =>
+        item.kind === "block" ? { ...item, sourceBlockId: "other-block" } : item
+      ),
+    };
+    const h = harness(current, [prior, current.revision]);
+    await expect(h.service.book(ORG, current, ITEM)).rejects.toThrow(/history changed/);
+    expect(h.write).not.toHaveBeenCalled();
   });
 
   it("fails closed before reading another organization or malformed refs", async () => {
@@ -176,7 +231,7 @@ describe("ULC explicit verified training-plan usage adapter", () => {
 
   it("rejects missing protected dependencies rather than allowing unauthenticated fallback", () => {
     expect(() => createUlcTrainingPlanVerifiedUsageBooking({
-      plans: { findCurrent: undefined as never },
+      plans: { findCurrent: undefined as never, listRevisions: async () => [] },
       usage: { recordVerifiedSubjectUsageOnce: async () => undefined },
     })).toThrow(/dependencies/);
   });
