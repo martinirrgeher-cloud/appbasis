@@ -330,6 +330,58 @@ test("P02-G: actual in-place synthetic 51→64→66→68→69 upgrade retains ex
       }), /permission denied/i);
     }
 
+    // P02-I: execute EXACT startup metadata SQL under a synthetic app role
+    // in the disposable 69-table PG18 test. The runtime remains Preview-only.
+    const preflightPaths = [
+      "../apps/ulc-linz/worker/exercise-catalog-protected-runtime-readiness.ts",
+      "../apps/ulc-linz/worker/training-block-verified-runtime-readiness.ts",
+    ];
+    const sourceRead = (await import("node:fs/promises")).readFile;
+    const probes = [];
+    for (const path of preflightPaths) {
+      const source = await sourceRead(new URL(path, import.meta.url), "utf8");
+      const tick = String.fromCharCode(96);
+      const prefix = "const rows = await transaction.unsafe(" + tick;
+      const start = source.indexOf(prefix);
+      const end = source.indexOf(tick + ");", start + prefix.length);
+      assert.ok(start >= 0 && end > start, "P02-I startup SQL is required");
+      probes.push(source.slice(start + prefix.length, end));
+    }
+    const readAsApp = sql => db.client.begin(async tx => {
+      await tx.unsafe("SET LOCAL ROLE " + testRole);
+      return tx.unsafe(sql);
+    });
+    for (const sql of probes) {
+      const rows = await readAsApp(sql);
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].public_tables, 69);
+      assert.equal(rows[0].principal_name, testRole);
+      assert.equal(rows[0].training_subject_marker_exists, true);
+      assert.equal(rows[0].training_subject_fence_triggers, 3);
+      assert.equal(rows[0].may_access_training_subject_marker, false);
+    }
+    // An installed but disabled INSERT/UPDATE trigger must not count as
+    // active no-resurrection protection during a future Preview cutover.
+    await db.client.unsafe(
+      "ALTER TABLE ulc_linz_training_attendance " +
+      "DISABLE TRIGGER ulc_linz_training_attendance_subject_fence"
+    );
+    try {
+      for (const sql of probes) {
+        const rows = await readAsApp(sql);
+        assert.equal(rows[0]?.training_subject_fence_triggers, 2);
+      }
+    } finally {
+      await db.client.unsafe(
+        "ALTER TABLE ulc_linz_training_attendance " +
+        "ENABLE TRIGGER ulc_linz_training_attendance_subject_fence"
+      );
+    }
+    for (const sql of probes) {
+      const rows = await readAsApp(sql);
+      assert.equal(rows[0]?.training_subject_fence_triggers, 3);
+    }
+
     // No actual migration ledger was found in read-only production metadata;
     // this proves an isolated synthetic DDL transition, not a production apply.
     assert.equal(plan.migrationExecutionAuthorized, false);
