@@ -19,6 +19,12 @@
         "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
         "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
         "packages/identity/drizzle/0002_appbasis_identity_provisioning_audit.sql"
+      ],
+      "lifecycleStatus": "verified-current-scope",
+      "notes": [
+        "contains-personal-or-authentication-data",
+        "physical-delete-owner-is-postgres-identity-deletion",
+        "completed-delete-marker-retained-35-days-for-retry-and-restore-reconciliation"
       ]
     },
     {
@@ -30,6 +36,12 @@
         "packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql",
         "packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
         "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql"
+      ],
+      "lifecycleStatus": "verified-current-scope",
+      "notes": [
+        "contains-principal-access-data",
+        "principal-state-deleted-with-identity-lifecycle",
+        "administration-audit-has-separate-12-month-retention"
       ]
     },
     {
@@ -41,6 +53,16 @@
         "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
         "modules/athletes/migrations/0002_appbasis_athlete_contacts.sql",
         "modules/athletes/migrations/0003_appbasis_training_group_attendance_mode.sql"
+      ],
+      "lifecycleStatus": "deletion-retention-restore-repository-verified-production-activation-pending",
+      "notes": [
+        "contains-athlete-and-trainer-master-data",
+        "server-runtime-enforces-same-organization-view-and-edit-boundaries",
+        "deactivation-sets-server-side-lifecycle-timestamp",
+        "repository-retention-deletes-personal-masterdata-and-group-memberships-after-12-calendar-months",
+        "production-retention-activation-pending-athletes-schema-deploy",
+        "restore-reconciliation-repository-verified-production-activation-pending",
+        "athlete-contact-data-deletes-with-athlete-retention-lifecycle"
       ]
     },
     {
@@ -53,6 +75,15 @@
         "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql",
         "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql",
         "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql"
+      ],
+      "lifecycleStatus": "repository-schema-v5-published-preview-69-privacy-activation-pending",
+      "notes": [
+        "production-runtime-cutover-not-authorized",
+        "exercise-catalog-configuration-not-personal",
+        "exercise-favorite-lifecycle-pending",
+        "standard-module-target-schema-v5-published-in-repository",
+        "ulc-preview-v5-schema-69-installed-runtime-abnahme-pending",
+        "exercise-catalog-usage-subject-attribution-retention-pending"
       ]
     },
     {
@@ -66,6 +97,13 @@
         "modules/training-blocks/migrations/0003_appbasis_training_block_category.sql",
         "modules/training-blocks/migrations/0004_appbasis_training_block_favorite_deletion.sql",
         "modules/training-blocks/migrations/0005_appbasis_training_block_usage_subject.sql"
+      ],
+      "lifecycleStatus": "training-block-data-lifecycle-pending",
+      "notes": [
+        "training-block-template-revision-favorite-usage-lifecycle-pending",
+        "training-block-notes-may-contain-user-entered-content",
+        "ulc-preview-schema-v6-migration-and-verification-pending",
+        "production-lifecycle-activation-not-authorized"
       ]
     },
     {
@@ -75,6 +113,14 @@
       "migrations": [
         "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
         "modules/training-documentation/migrations/0001_appbasis_training_documentation_subject_deletion.sql"
+      ],
+      "lifecycleStatus": "training-documentation-data-lifecycle-pending",
+      "notes": [
+        "training-documentation-revision-and-attendance-lifecycle-pending",
+        "training-documentation-notes-may-contain-user-entered-content",
+        "preview-and-production-lifecycle-activation-not-authorized",
+        "subject-deletion-atomic-redaction-writer-guard-repository-only-not-runtime-activated",
+        "historical-cross-subject-attendance-json-redaction-is-privacy-exception-to-immutable-revisions"
       ]
     },
     {
@@ -84,6 +130,14 @@
       "migrations": [
         "modules/training-plans/migrations/0000_appbasis_training_plans_foundation.sql",
         "modules/training-plans/migrations/0001_appbasis_training_plan_subject_deletion.sql"
+      ],
+      "lifecycleStatus": "subject-deletion-marker-repository-verified-app-activation-pending",
+      "notes": [
+        "training-plan-subject-revision-and-item-purge-repository-verified",
+        "training-plan-deletion-marker-retention-35-days",
+        "training-plan-restore-reconciliation-repository-verified",
+        "training-plan-notes-and-comments-may-contain-user-entered-content",
+        "preview-and-production-lifecycle-activation-not-authorized"
       ]
     },
     {
@@ -109,6 +163,35 @@
         "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
         "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
         "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql"
+      ],
+      "lifecycleStatus": "training-and-catalog-data-lifecycle-pending",
+      "notes": [
+        "app-owned-membership-subject-scope-lifecycle-audit-and-security-event-persistence",
+        "member-contact-retention-12-calendar-months",
+        "retention-exceptions-require-authenticated-active-same-org-admin-with-actor-reason-created-at-future-review",
+        "retention-exception-state-and-audit-event-are-atomic",
+        "retention-deletion-claim-atomically-excludes-late-retention-exceptions",
+        "completed-app-delete-and-audit-event-are-atomic",
+        "app-lifecycle-audit-retention-12-months",
+        "security-event-retention-exactly-12-months-from-occurred-at",
+        "security-events-use-normalized-fields-without-free-payload-storage",
+        "admin-membership-must-be-demoted-before-inactivation-or-deletion-db-enforced",
+        "delete-marker-retention-35-days",
+        "restore-reconciliation-requires-authoritative-newer-database-or-recovery-point-before-promotion",
+        "app-owned-training-session-and-attendance-lifecycle-pending",
+        "app-owned-training-registration-and-change-history-lifecycle-pending",
+        "registration-note-free-text-in-current-manifest-needs-data-protection-review-before-production-activation",
+        "trainer-identity-link-audit-is-append-only-and-atomically-written-with-membership-subject-changes",
+        "trainer-identity-audit-12-month-purge-activation-pending-schema-deploy",
+        "app-owned-exercise-catalog-configuration-not-personal",
+        "exercise-favorite-lifecycle-pending",
+        "repository-manifest-v16-inventory-reviewed-no-runtime-deployment-attestation",
+        "training-registration-current-and-change-history-optional-note-fields-require-explicit-retention-and-erasure",
+        "session-content-array-and-json-metadata-can-include-personal-free-text",
+        "historical-trainer-attendance-reference-requires-separate-trainer-subject-lifecycle",
+        "functionary-role-added-to-existing-membership-and-deletion-marker-constraints",
+        "repository-manifest-v18-schema-published-privacy-and-restore-approval-pending",
+        "training-subject-write-fences-installed-preview-privacy-retention-and-no-resurrection-unapproved"
       ]
     }
   ],
