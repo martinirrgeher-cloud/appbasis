@@ -33,7 +33,10 @@ test("P03-E canonical-erasure rehearsal stays completely disconnected from live 
   assert.match(script, /p03-e-marked-training-history\.postgres\.e2e\.test\.ts/);
   assert.match(guard, /UNREGISTERED/);
   const db = JSON.parse(manifest);
-  assert.equal(db.owners.find(owner => owner.id === "ulc-linz-lifecycle").schemaVersion, 16);
+  const lifecycle = db.owners.find(owner => owner.id === "ulc-linz-lifecycle");
+  assert.equal(lifecycle.schemaVersion, 18);
+  assert.equal(lifecycle.migrations.at(-1),
+    "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql");
   assert.ok(db.owners.every(owner =>
     owner.migrations.every(path => !path.includes("p03-d-training-subject-write-fence"))
   ));
