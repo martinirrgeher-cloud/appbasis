@@ -17,7 +17,7 @@ const BASE_FILES = [
   "../modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql",
 ];
 const CANDIDATE =
-  "../modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql";
+  "../modules/exercise-catalog/test/fixtures/0004_appbasis_exercise_catalog_subject_lifecycle.candidate.sql";
 
 if (DATABASE_URL) {
   const target = new URL(DATABASE_URL);
