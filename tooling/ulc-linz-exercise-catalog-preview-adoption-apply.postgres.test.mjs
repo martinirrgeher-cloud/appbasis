@@ -8,7 +8,7 @@ import { createPostgresDatabase } from "../packages/database/src/node-runtime.mj
 import { migrationStatements } from "./database-migration-executor.mjs";
 import {
   applyUlcExerciseCatalogPreviewAdoption,
-  UlcExerciseCatalogPreviewAdoptionExecutionError,
+  UlcExerciseCatalogPreviewAdoptionConfigurationError,
 } from "./ulc-linz-exercise-catalog-preview-adoption-apply.mjs";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -30,191 +30,72 @@ const fakePreviewUrl =
   "?sslmode=require";
 
 test(
-  "E6G-C3B atomically migrates, copies and verifies the preview adoption without touching source rows",
-  { concurrency: false },
+  "P1 blocks obsolete catalog-v2 schema/copy before touching the local database or invoking its writer",
+  { concurrency:false },
   async () => {
-    await withPreviewDatabase(async ({ admin, localMigrationUrl }) => {
+    await withPreviewDatabase(async ({admin,localMigrationUrl}) => {
       await seedCanonicalSource(admin.client);
-      const sourceBefore = await snapshotSource(admin.client);
-
-      const result = await applyUlcExerciseCatalogPreviewAdoption(
-        {
-          connectionString: fakePreviewUrl,
-          executionScope: "preview-schema-copy",
-        },
-        {
+      const before = await snapshotSource(admin.client);
+      let connected = false;
+      await assert.rejects(
+        applyUlcExerciseCatalogPreviewAdoption({
+          connectionString:fakePreviewUrl,
+          executionScope:"preview-schema-copy",
+        },{
           repositoryRoot,
-          databaseFactory: () =>
-            createPostgresDatabase(localMigrationUrl),
-        },
-      );
-
-      assert.equal(result.state, "preview-schema-copied-and-verified");
-      assert.equal(result.application, "ulc-linz");
-      assert.equal(result.moduleId, "exercise-catalog");
-      assert.equal(result.executionScope, "preview-schema-copy");
-      assert.equal(result.transactionIsolation, "repeatable-read");
-      assert.equal(result.atomicSchemaAndCopy, true);
-      assert.equal(result.migrationCount, 2);
-      assert.ok(result.statementCount > 0);
-      assert.equal(result.tables.length, 4);
-      assert.equal(result.sourceWriteQuiescenceApplied, false);
-      assert.equal(
-        result.finalEqualityUnderSourceWriteQuiescence,
-        false,
-      );
-      assert.equal(result.cutoverGuardSatisfied, false);
-      assert.equal(result.runtimeCutoverEligible, false);
-
-      assert.deepEqual(await snapshotSource(admin.client), sourceBefore);
-
-      const targets = await admin.client.unsafe(
-        "SELECT tablename FROM pg_catalog.pg_tables " +
-          "WHERE schemaname = 'public' " +
-          "AND tablename LIKE 'appbasis_exercise_catalog_%' " +
-          "ORDER BY tablename",
-      );
-      assert.deepEqual(
-        targets.map((row) => row.tablename),
-        [
-          "appbasis_exercise_catalog_audience",
-          "appbasis_exercise_catalog_favorite",
-          "appbasis_exercise_catalog_item",
-          "appbasis_exercise_catalog_parameter",
-        ],
-      );
-
-      const items = await admin.client.unsafe(
-        "SELECT organization_id, id, name, category_key, is_active " +
-          "FROM appbasis_exercise_catalog_item " +
-          "ORDER BY organization_id, id",
-      );
-      assert.deepEqual(
-        items.map((row) => ({ ...row })),
-        [
-          {
-            organization_id: "org-a",
-            id: "exercise-a",
-            name: "Acceleration drill",
-            category_key: "acceleration",
-            is_active: true,
+          databaseFactory:() => {
+            connected = true;
+            return createPostgresDatabase(localMigrationUrl);
           },
-          {
-            organization_id: "org-b",
-            id: "exercise-b",
-            name: "Mobility flow",
-            category_key: "regeneration",
-            is_active: false,
-          },
-        ],
+        }),
+        (err)=>err instanceof UlcExerciseCatalogPreviewAdoptionConfigurationError &&
+          /FC6-B baseline migration contains a statement without a verifiable catalog marker/.test(err.message),
       );
-
-      const audiences = await admin.client.unsafe(
-        "SELECT organization_id, exercise_id, audience_id " +
-          "FROM appbasis_exercise_catalog_audience " +
-          "ORDER BY organization_id, exercise_id, audience_id",
+      assert.equal(connected,false,"published v5 must block old installer before SQL");
+      assert.deepEqual(await snapshotSource(admin.client),before);
+      const tables = await admin.client.unsafe(
+        "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' " +
+        "AND tablename LIKE 'appbasis_exercise_catalog_%' ORDER BY tablename",
       );
-      assert.deepEqual(
-        audiences.map((row) => ({ ...row })),
-        [
-          {
-            organization_id: "org-a",
-            exercise_id: "exercise-a",
-            audience_id: "group-sprint",
-          },
-          {
-            organization_id: "org-b",
-            exercise_id: "exercise-b",
-            audience_id: "group-general",
-          },
-        ],
-      );
-
-      const favorites = await admin.client.unsafe(
-        "SELECT organization_id, principal_id, exercise_id " +
-          "FROM appbasis_exercise_catalog_favorite " +
-          "ORDER BY organization_id, principal_id, exercise_id",
-      );
-      assert.deepEqual(
-        favorites.map((row) => ({ ...row })),
-        [
-          {
-            organization_id: "org-a",
-            principal_id: "identity-a",
-            exercise_id: "exercise-a",
-          },
-          {
-            organization_id: "org-b",
-            principal_id: "identity-b",
-            exercise_id: "exercise-b",
-          },
-        ],
-      );
+      assert.deepEqual(tables,[],"no target table may be created by obsolete installer");
     });
   },
 );
 
 test(
-  "E6G-C3B rolls target schema and copied rows back together when post-migration verification fails",
-  { concurrency: false },
+  "P1 blocks obsolete preview copy before any DDL or post-migration hook, retaining all source rows",
+  { concurrency:false },
   async () => {
-    await withPreviewDatabase(async ({ admin, localMigrationUrl }) => {
+    await withPreviewDatabase(async ({admin,localMigrationUrl}) => {
       await seedCanonicalSource(admin.client);
-      const sourceBefore = await snapshotSource(admin.client);
-
+      const before = await snapshotSource(admin.client);
+      let connections = 0;
+      let hooks = 0;
       await assert.rejects(
-        applyUlcExerciseCatalogPreviewAdoption(
-          {
-            connectionString: fakePreviewUrl,
-            executionScope: "preview-schema-copy",
+        applyUlcExerciseCatalogPreviewAdoption({
+          connectionString:fakePreviewUrl,
+          executionScope:"preview-schema-copy",
+        },{
+          repositoryRoot,
+          databaseFactory:() => {
+            connections++;
+            return createPostgresDatabase(localMigrationUrl);
           },
-          {
-            repositoryRoot,
-            databaseFactory: () =>
-              createPostgresDatabase(localMigrationUrl),
-            testingHooks: {
-              afterTargetSchemaMigration: async (transaction) => {
-                await transaction.unsafe(
-                  "CREATE FUNCTION e6g_c3b_mutate_target_item() " +
-                    "RETURNS trigger LANGUAGE plpgsql AS $$ " +
-                    "BEGIN NEW.name := NEW.name || ' drift'; " +
-                    "RETURN NEW; END; $$",
-                );
-                await transaction.unsafe(
-                  "CREATE TRIGGER e6g_c3b_mutate_target_item " +
-                    "BEFORE INSERT ON appbasis_exercise_catalog_item " +
-                    "FOR EACH ROW EXECUTE FUNCTION " +
-                    "e6g_c3b_mutate_target_item()",
-                );
-              },
-            },
+          testingHooks:{
+            afterTargetSchemaMigration:async () => {hooks++;},
           },
-        ),
-        (error) =>
-          error instanceof
-            UlcExerciseCatalogPreviewAdoptionExecutionError &&
-          /mapped content mismatch/.test(error.message),
+        }),
+        (err)=>err instanceof UlcExerciseCatalogPreviewAdoptionConfigurationError &&
+          /FC6-B baseline migration contains a statement without a verifiable catalog marker/.test(err.message),
       );
-
-      assert.deepEqual(await snapshotSource(admin.client), sourceBefore);
-
-      const targets = await admin.client.unsafe(
-        "SELECT tablename FROM pg_catalog.pg_tables " +
-          "WHERE schemaname = 'public' " +
-          "AND tablename LIKE 'appbasis_exercise_catalog_%' " +
-          "ORDER BY tablename",
+      assert.equal(connections,0);
+      assert.equal(hooks,0);
+      assert.deepEqual(await snapshotSource(admin.client),before);
+      const tables = await admin.client.unsafe(
+        "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' " +
+        "AND tablename LIKE 'appbasis_exercise_catalog_%' ORDER BY tablename",
       );
-      assert.deepEqual(
-        targets.map((row) => row.tablename),
-        [],
-      );
-
-      const triggerFunction = await admin.client.unsafe(
-        "SELECT to_regprocedure(" +
-          "'e6g_c3b_mutate_target_item()'" +
-          ")::text AS routine",
-      );
-      assert.equal(triggerFunction[0]?.routine, null);
+      assert.deepEqual(tables,[]);
     });
   },
 );
