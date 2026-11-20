@@ -41,6 +41,7 @@ CREATE TABLE appbasis_exercise_catalog_usage_subject (
   CONSTRAINT appbasis_exercise_catalog_usage_subject_verified_check
     CHECK (verified_by IN ('identity', 'athletes'))
 );
+--> statement-breakpoint
 CREATE INDEX appbasis_exercise_catalog_usage_subject_principal_idx
   ON appbasis_exercise_catalog_usage_subject
     (organization_id, principal_id, usage_id);
