@@ -78,6 +78,9 @@ jobs:
       - name: Prove P2-E 64→66→68 catalog guards and stale restore quarantine on local PostgreSQL 18
         run: node --test ./tooling/ulc-linz-p02-parity-rehearsal.postgres.test.mjs
 
+      - name: Prove candidate P2-F exercise-catalog v5 migration on isolated PostgreSQL 18
+        run: node --test ./tooling/ulc-linz-p02-catalog-owner-v5.postgres.test.mjs
+
       - name: Verify proposed G-04 calendar in isolated PostgreSQL
         run: pnpm --filter @appbasis/app-ulc-linz exec vitest run --maxWorkers=1 ./test/registration-calendar.postgres.e2e.test.ts
 
@@ -179,6 +182,9 @@ jobs:
 
       - name: Validate P2-E exact schema/migration ownership and restore markers
         run: node --test ./tooling/ulc-linz-p02-parity-rehearsal.test.mjs
+
+      - name: Pin unregistered P2-F exercise-catalog v5 owner SQL to verified fixtures
+        run: node --test ./tooling/ulc-linz-p02-catalog-owner-v5.test.mjs
 
       - name: Test ULC K2 isolated backup and restore policy (no provider access)
         run: node --test ./tooling/ulc-linz-k2-backup-plan.test.mjs
