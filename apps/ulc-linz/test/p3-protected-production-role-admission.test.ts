@@ -11,6 +11,19 @@ import {
   assertUlcVerifiedBlockUsagePreviewReadiness,
   UlcVerifiedBlockUsageUnavailableError,
 } from "../worker/training-block-verified-runtime-readiness";
+import {
+  assertUlcTrainingDocumentationProductionReadiness,
+  UlcTrainingDocumentationProductionUnavailableError,
+} from "../worker/training-documentation-production-readiness";
+
+
+const documentation = Object.freeze({
+  database_name:"neondb",principal_name:"ulc_linz_application",public_tables:69,
+  documentation_exists:true,revision_exists:true,marker_exists:true,
+  enabled_documentation_guards:2,documentation_guard_function_count:2,exposed_guard_functions:0,
+  application_documentation_permissions:true,application_revision_permissions:true,
+  deletion_marker_permissions:true,app_can_access_training_subject_deletion:false,
+});
 
 const catalog = Object.freeze({
   database_name: "neondb",
@@ -74,6 +87,35 @@ const blockCheck = (row:Record<string,unknown>|null,fail=false)=>
   assertUlcVerifiedBlockUsageProductionReadiness(harness(row,fail).sql);
 
 describe("P3 production protected-writing admission is opt-in and fail-closed",()=>{
+  it("verifies documentation owner triggers, role, grants and marker isolation read-only",async()=>{
+    const h=harness(documentation);
+    await expect(assertUlcTrainingDocumentationProductionReadiness(h.sql)).resolves.toBeUndefined();
+    expect(h.statements).toHaveLength(2);
+    expect(h.statements[0]).toContain("REPEATABLE READ, READ ONLY");
+    expect(h.statements[1]).toContain("appbasis_training_documentation_guard_root");
+    expect(h.statements[1]).toContain("appbasis_training_documentation_guard_revision");
+    expect(h.statements[1]).toContain("has_function_privilege");
+    expect(h.statements.every(x=>!/(?:GRANT|INSERT INTO|DELETE FROM|UPDATE public|TRUNCATE TABLE)/i.test(x))).toBe(true);
+  });
+  it("fails closed for undocumented production SQL/trigger or public/app EXECUTE drift",async()=>{
+    for(const drift of [
+      {database_name:"appbasis_ulc_linz_preview"},
+      {principal_name:"ulc_linz_security_log_ingest"},
+      {public_tables:68},
+      {enabled_documentation_guards:1},
+      {documentation_guard_function_count:1},
+      {exposed_guard_functions:1},
+      {application_documentation_permissions:false},
+      {application_revision_permissions:false},
+      {deletion_marker_permissions:false},
+      {app_can_access_training_subject_deletion:true},
+    ])await expect(assertUlcTrainingDocumentationProductionReadiness(harness({...documentation,...drift}).sql))
+       .rejects.toBeInstanceOf(UlcTrainingDocumentationProductionUnavailableError);
+    await expect(assertUlcTrainingDocumentationProductionReadiness(harness(null).sql))
+      .rejects.toBeInstanceOf(UlcTrainingDocumentationProductionUnavailableError);
+    await expect(assertUlcTrainingDocumentationProductionReadiness(harness(documentation,true).sql))
+      .rejects.toBeInstanceOf(UlcTrainingDocumentationProductionUnavailableError);
+  });
   it("accepts only actual 69-table application-role privileges, using a read-only metadata transaction",async()=>{
     for(const [candidate,check] of [
       [catalog,assertUlcProtectedCatalogProductionReadiness],
@@ -140,6 +182,8 @@ describe("P3 production protected-writing admission is opt-in and fail-closed",(
     expect(runtime).toContain('options.trainingBlockUsageMode === "protected-production-verified-subject"');
     expect(runtime).toContain("await assertUlcVerifiedBlockUsageProductionReadiness(applicationSql)");
     expect(runtime).toContain('options.exerciseCatalogRuntimeMode ?? "legacy"');
+    expect(runtime).toContain('options.trainingDocumentationRuntimeMode === "protected-production"');
+    expect(runtime).toContain("await assertUlcTrainingDocumentationProductionReadiness(applicationSql)");
     expect(catalogMode).toContain('mode === "standard-module-protected-production"');
     expect(deployedOptions).toContain('exerciseCatalogRuntimeMode: "standard-module"');
     expect(JSON.parse(productionContract).status).toBe("blocked");
