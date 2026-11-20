@@ -6,7 +6,7 @@
  * 66-table P01 operator target and unresolved production contract conditions.
  * No provider access, SQL writes, credentials or personal records.
  */
-import { readFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -172,7 +172,11 @@ export async function evaluateUlcP3ReleaseFromRepository(root){
 if(process.argv[1] && import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
   try{
     const result=await evaluateUlcP3ReleaseFromRepository(process.cwd());
-    console.log(formatUlcP3ReleaseInventory(result));
+    const report=formatUlcP3ReleaseInventory(result);
+    console.log(report);
+    if(process.env.GITHUB_STEP_SUMMARY){
+      await appendFile(process.env.GITHUB_STEP_SUMMARY,report+"\n\n");
+    }
   }catch(error){
     console.error(error instanceof Error?error.message:"P3 release evidence is incomplete.");
     process.exitCode=1;
