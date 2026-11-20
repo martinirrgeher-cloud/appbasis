@@ -43,7 +43,10 @@ import {
   createUlcExerciseCatalogRuntimeRepository,
   type UlcExerciseCatalogRuntimeMode,
 } from "./exercise-catalog-runtime";
-import { assertUlcProtectedCatalogPreviewReadiness } from "./exercise-catalog-protected-runtime-readiness";
+import {
+  assertUlcProtectedCatalogPreviewReadiness,
+  assertUlcProtectedCatalogProductionReadiness,
+} from "./exercise-catalog-protected-runtime-readiness";
 import { createUlcExerciseCatalogService } from "./exercise-catalog-service";
 import {
   createUlcLinzKindertrainingAccessService,
@@ -91,7 +94,10 @@ import {
   type UlcTrainingPlanService,
 } from "./training-plans-service";
 import { createUlcTrainingPlanVerifiedUsageBooking } from "./training-plan-verified-usage-booking";
-import { assertUlcVerifiedBlockUsagePreviewReadiness } from "./training-block-verified-runtime-readiness";
+import {
+  assertUlcVerifiedBlockUsagePreviewReadiness,
+  assertUlcVerifiedBlockUsageProductionReadiness,
+} from "./training-block-verified-runtime-readiness";
 import { PostgresUlcLinzScopePersistence } from "./scope-persistence";
 import { PostgresUlcTrainingSessionRepository } from "./training-session-postgres";
 import { PostgresUlcLinzTrainingModuleGroupReader } from "./training-module-group-postgres";
@@ -220,10 +226,12 @@ export interface GeneratedPostgresApplicationRuntimeOptions {
   secret: string;
   exerciseCatalogRuntimeMode?: UlcExerciseCatalogRuntimeMode;
   /**
-   * Opt-in P02-C preview rehearsal only. Not mapped from a deployed Worker
-   * environment variable; default remains the existing legacy writer.
+   * Explicit protected-writing admission. Preview and production paths are
+   * separate, not mapped from a Worker environment variable, and OFF by default.
    */
-  trainingBlockUsageMode?: "isolated-preview-verified-subject";
+  trainingBlockUsageMode?:
+    | "isolated-preview-verified-subject"
+    | "protected-production-verified-subject";
   exerciseCatalogMediaStore?: UlcExerciseCatalogObjectStore | null;
 }
 
@@ -618,10 +626,13 @@ export async function createGeneratedPostgresApplicationRuntime(
     });
     const u14Statistics = new PostgresUlcU12StatisticsRepository(applicationSql, "u14");
     const kidsStatistics = new PostgresUlcU12StatisticsRepository(applicationSql, "kindertraining");
-    // Protected catalog mode is a deliberate isolated Preview opt-in; it
-    // must not run on a production/unknown DB role or without marker fences.
+    // Both opt-in protected writers require a read-only, exact-role and
+    // versioned-schema admission. Existing Preview and production defaults
+    // remain unchanged until a separate operator/lifecycle approval.
     if (options.exerciseCatalogRuntimeMode === "standard-module-protected-preview") {
       await assertUlcProtectedCatalogPreviewReadiness(applicationSql);
+    } else if (options.exerciseCatalogRuntimeMode === "standard-module-protected-production") {
+      await assertUlcProtectedCatalogProductionReadiness(applicationSql);
     }
     const exerciseCatalog = createUlcExerciseCatalogService({
       repository: createUlcExerciseCatalogRuntimeRepository({
@@ -630,17 +641,19 @@ export async function createGeneratedPostgresApplicationRuntime(
       }),
       masterdata: athleteMasterdata,
     });
-    // P02-C is deliberately opt-in and Preview-only. A missing migration,
-    // owner permission or wrong SQL role prevents startup rather than quietly
-    // falling back to an unverified personal-data writer.
+    // The experimental block usage writer is not deployed by default.
+    // Both opt-in paths fail closed on wrong SQL role, schema or privileges.
     const verifiedBlockUsageMode =
-      options.trainingBlockUsageMode === "isolated-preview-verified-subject";
+      options.trainingBlockUsageMode === "isolated-preview-verified-subject" ||
+      options.trainingBlockUsageMode === "protected-production-verified-subject";
     if (options.trainingBlockUsageMode !== undefined &&
         !verifiedBlockUsageMode) {
       throw new Error("Unsupported training block usage mode.");
     }
-    if (verifiedBlockUsageMode) {
+    if (options.trainingBlockUsageMode === "isolated-preview-verified-subject") {
       await assertUlcVerifiedBlockUsagePreviewReadiness(applicationSql);
+    } else if (options.trainingBlockUsageMode === "protected-production-verified-subject") {
+      await assertUlcVerifiedBlockUsageProductionReadiness(applicationSql);
     }
     const blockRepository = new PostgresTrainingBlockRepository(applicationSql);
     const planRepository = new PostgresTrainingPlanRepository(applicationSql);
