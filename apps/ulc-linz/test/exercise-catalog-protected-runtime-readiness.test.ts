@@ -14,6 +14,9 @@ const READY = Object.freeze({
   favorite_exists: true,
   marker_exists: true,
   usage_subject_exists: true,
+  training_subject_marker_exists: false,
+  training_subject_fence_triggers: 0,
+  may_access_training_subject_marker: false,
   may_write_item: true,
   may_write_favorite: true,
   may_write_children: true,
@@ -44,11 +47,38 @@ describe("P2-D isolated protected catalog Preview readiness", () => {
     expect(h.statements[0]).toMatch(/REPEATABLE READ, READ ONLY/);
     expect(h.statements[1]).toContain("current_user");
     expect(h.statements[1]).toContain("appbasis_exercise_catalog_usage_subject");
+    expect(h.statements[1]).toContain("ulc_linz_training_subject_deletion");
+    expect(h.statements[1]).toContain("ulc_linz_training_registration_change_subject_fence");
     expect(h.statements[1]).toContain("appbasis_exercise_catalog_parameter");
     expect(h.statements[1]).toContain("appbasis_exercise_catalog_similarity");
     expect(h.statements[1]).toContain("has_table_privilege");
     expect(h.statements).toHaveLength(2);
     expect(h.statements.every((statement) => !/\b(GRANT|INSERT INTO|DELETE FROM|UPDATE\s+appbasis_)\b/i.test(statement))).toBe(true);
+  });
+
+  it("accepts 69-table Preview only when all three training fences exist and ordinary marker access is denied", async () => {
+    const ready69 = {
+      ...READY,
+      public_tables: 69,
+      training_subject_marker_exists: true,
+      training_subject_fence_triggers: 3,
+      may_access_training_subject_marker: false,
+    };
+    await expect(assertUlcProtectedCatalogPreviewReadiness(harness(ready69).sql))
+      .resolves.toBeUndefined();
+    for (const change of [
+      { training_subject_marker_exists: false },
+      { training_subject_fence_triggers: 0 },
+      { training_subject_fence_triggers: 2 },
+      { training_subject_fence_triggers: 4 },
+      { may_access_training_subject_marker: true },
+      { database_name: "neondb" },
+      { principal_name: "ulc_linz_application" },
+    ]) {
+      await expect(assertUlcProtectedCatalogPreviewReadiness(harness({
+        ...ready69, ...change,
+      }).sql)).rejects.toBeInstanceOf(UlcProtectedCatalogUnavailableError);
+    }
   });
 
   it("fails closed for missing catalog, wrong role/db/schema or unexpected marker write powers", async () => {
