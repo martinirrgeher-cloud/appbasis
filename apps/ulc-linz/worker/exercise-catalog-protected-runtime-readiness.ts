@@ -1,6 +1,8 @@
 /**
  * P2-A: exclusively read-only readiness check for the isolated Preview
- * exercise-catalog protected writer. Does not grant SQL rights, read personal
+ * exercise-catalog protected writer. The 69-table Preview case additionally
+ * demands all three app-owned training write fences and no access to its
+ * deletion marker. Does not grant SQL rights, read personal
  * values, or activate a deployed Worker. In particular, deletion markers must
  * not be writable by the ordinary application role.
  */
@@ -45,6 +47,25 @@ export async function assertUlcProtectedCatalogPreviewReadiness(
           to_regclass('public.appbasis_exercise_catalog_favorite') IS NOT NULL AS favorite_exists,
           to_regclass('public.appbasis_exercise_catalog_favorite_deletion') IS NOT NULL AS marker_exists,
           to_regclass('public.appbasis_exercise_catalog_usage_subject') IS NOT NULL AS usage_subject_exists,
+          to_regclass('public.ulc_linz_training_subject_deletion') IS NOT NULL
+            AS training_subject_marker_exists,
+          (SELECT count(*)::int
+             FROM pg_catalog.pg_trigger AS trigger
+             JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger.tgrelid
+             JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+            WHERE namespace.nspname = 'public' AND NOT trigger.tgisinternal
+              AND (relation.relname, trigger.tgname) IN (
+                ('ulc_linz_training_attendance','ulc_linz_training_attendance_subject_fence'),
+                ('ulc_linz_training_registration','ulc_linz_training_registration_subject_fence'),
+                ('ulc_linz_training_registration_change','ulc_linz_training_registration_change_subject_fence')
+              )
+          ) AS training_subject_fence_triggers,
+          CASE WHEN to_regclass('public.ulc_linz_training_subject_deletion') IS NULL
+            THEN false ELSE
+              has_table_privilege(current_user,
+                'public.ulc_linz_training_subject_deletion',
+                'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+            END AS may_access_training_subject_marker,
           CASE WHEN to_regclass('public.appbasis_exercise_catalog_item') IS NULL
             THEN false ELSE
               has_table_privilege(current_user, 'public.appbasis_exercise_catalog_item', 'SELECT')
@@ -100,7 +121,16 @@ export async function assertUlcProtectedCatalogPreviewReadiness(
         // Two separately reviewed catalog guard relations are intentionally
         // absent from the 66-table legacy Preview. Both candidates must be
         // installed before this protected runtime can ever become available.
-        row?.public_tables !== 68 ||
+        !(
+          (row?.public_tables === 68 &&
+            row?.training_subject_marker_exists === false &&
+            row?.training_subject_fence_triggers === 0 &&
+            row?.may_access_training_subject_marker === false) ||
+          (row?.public_tables === 69 &&
+            row?.training_subject_marker_exists === true &&
+            row?.training_subject_fence_triggers === 3 &&
+            row?.may_access_training_subject_marker === false)
+        ) ||
         row?.item_exists !== true ||
         row?.favorite_exists !== true ||
         row?.marker_exists !== true ||
