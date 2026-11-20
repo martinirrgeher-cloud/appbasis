@@ -29,6 +29,24 @@ export class UlcProtectedCatalogUnavailableError extends Error {
 export async function assertUlcProtectedCatalogPreviewReadiness(
   applicationSql: UlcProtectedCatalogPreviewReadinessClient,
 ): Promise<void> {
+  return assertProtectedCatalogReadiness(applicationSql, "preview");
+}
+
+/**
+ * P3-B CANDIDATE ONLY: a production-role metadata check for the optional
+ * protected catalog writer. Does not make the module production-ready, grant
+ * any SQL privileges, or activate a Worker.
+ */
+export async function assertUlcProtectedCatalogProductionReadiness(
+  applicationSql: UlcProtectedCatalogPreviewReadinessClient,
+): Promise<void> {
+  return assertProtectedCatalogReadiness(applicationSql, "production");
+}
+
+async function assertProtectedCatalogReadiness(
+  applicationSql: UlcProtectedCatalogPreviewReadinessClient,
+  environment: "preview" | "production",
+): Promise<void> {
   if (!applicationSql || typeof applicationSql.begin !== "function") {
     throw new UlcProtectedCatalogUnavailableError();
   }
@@ -119,13 +137,13 @@ export async function assertUlcProtectedCatalogPreviewReadiness(
       const row = rows?.[0];
       if (
         rows?.length !== 1 ||
-        row?.database_name !== "appbasis_ulc_linz_preview" ||
-        row?.principal_name !== "appbasis_ulc_linz_preview_application" ||
-        // Two separately reviewed catalog guard relations are intentionally
-        // absent from the 66-table legacy Preview. Both candidates must be
-        // installed before this protected runtime can ever become available.
+        row?.database_name !== (environment === "production" ? "neondb" : "appbasis_ulc_linz_preview") ||
+        row?.principal_name !== (environment === "production" ? "ulc_linz_application" : "appbasis_ulc_linz_preview_application") ||
         !(
-          (row?.public_tables === 68 &&
+          // Production is 69-table only. Preview keeps its existing 68/69
+          // acceptance with no change to the previously tested behavior.
+          (environment === "preview" &&
+            row?.public_tables === 68 &&
             row?.training_subject_marker_exists === false &&
             row?.training_subject_fence_triggers === 0 &&
             row?.may_access_training_subject_marker === false) ||
