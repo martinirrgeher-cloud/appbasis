@@ -87,6 +87,9 @@ jobs:
       - name: Rehearse P02-G actual in-place synthetic 51-to-69 schema upgrade on PostgreSQL 18
         run: node --test ./tooling/ulc-linz-p02-g-synthetic-upgrade.postgres.test.mjs
 
+      - name: Rehearse P02-J candidate 44-migration fresh 69-table PostgreSQL 18 install
+        run: node --test ./tooling/ulc-linz-p02-j-fresh-install.postgres.test.mjs
+
       - name: Validate P02-H exact new-table application SQL privileges
         run: node --test ./tooling/ulc-linz-p02-h-application-acl.test.mjs
 
@@ -200,6 +203,9 @@ jobs:
 
       - name: Pin P03-E canonical erasure rehearsal outside live runtime
         run: node --test ./tooling/ulc-linz-p03-e-marked-erasure.test.mjs
+
+      - name: Validate P02-J release candidate manifests and 66/69 readonly reconciliation
+        run: node --test ./tooling/ulc-linz-p02-j-manifest-reconciliation.test.mjs
 
       - name: Test ULC K2 isolated backup and restore policy (no provider access)
         run: node --test ./tooling/ulc-linz-k2-backup-plan.test.mjs
