@@ -13,6 +13,9 @@ interface ScopeRecord {
   readonly public_tables: number;
   readonly catalog_favorite_guard_exists: boolean;
   readonly catalog_subject_guard_exists: boolean;
+  readonly training_subject_marker_exists: boolean;
+  readonly training_subject_fence_triggers: number;
+  readonly may_access_training_subject_marker: boolean;
   readonly plan_table_exists: boolean;
   readonly plan_revision_exists: boolean;
   readonly plan_item_exists: boolean;
@@ -34,6 +37,9 @@ const BASE: ScopeRecord = {
   public_tables: 66,
   catalog_favorite_guard_exists: false,
   catalog_subject_guard_exists: false,
+  training_subject_marker_exists: false,
+  training_subject_fence_triggers: 0,
+  may_access_training_subject_marker: false,
   plan_table_exists: true,
   plan_revision_exists: true,
   plan_item_exists: true,
@@ -98,6 +104,8 @@ describe("P02-C verified plan/block runtime preflight", () => {
     expect(sql.queries[1]).toContain("appbasis_training_block_usage_subject_deletion");
     expect(sql.queries[1]).toContain("appbasis_exercise_catalog_favorite_deletion");
     expect(sql.queries[1]).toContain("appbasis_exercise_catalog_usage_subject");
+    expect(sql.queries[1]).toContain("ulc_linz_training_subject_deletion");
+    expect(sql.queries[1]).toContain("ulc_linz_training_registration_change_subject_fence");
     expect(sql.queries[1]).not.toMatch(/\b(DELETE\s+FROM|UPDATE\s+public|INSERT\s+INTO|TRUNCATE|GRANT|DROP)\b/i);
   });
 
@@ -114,6 +122,33 @@ describe("P02-C verified plan/block runtime preflight", () => {
     ]) {
       await expect(assertUlcVerifiedBlockUsagePreviewReadiness(fakeSql({
         ...BASE, public_tables: 68, ...change,
+      }).client)).rejects.toBeInstanceOf(UlcVerifiedBlockUsageUnavailableError);
+    }
+  });
+
+  it("accepts 69 Preview tables only with all three app-owned write fences and no ordinary marker access", async () => {
+    const secure = { ...BASE, public_tables: 69,
+      catalog_favorite_guard_exists: true,
+      catalog_subject_guard_exists: true,
+      training_subject_marker_exists: true,
+      training_subject_fence_triggers: 3,
+      may_access_training_subject_marker: false,
+    };
+    await expect(assertUlcVerifiedBlockUsagePreviewReadiness(fakeSql(secure).client))
+      .resolves.toBeUndefined();
+    for (const change of [
+      { training_subject_marker_exists: false },
+      { training_subject_fence_triggers: 2 },
+      { training_subject_fence_triggers: 0 },
+      { training_subject_fence_triggers: 4 },
+      { may_access_training_subject_marker: true },
+      { catalog_favorite_guard_exists: false },
+      { catalog_subject_guard_exists: false },
+      { principal_name: "ulc_linz_application" },
+      { database_name: "neondb" },
+    ]) {
+      await expect(assertUlcVerifiedBlockUsagePreviewReadiness(fakeSql({
+        ...secure, ...change,
       }).client)).rejects.toBeInstanceOf(UlcVerifiedBlockUsageUnavailableError);
     }
   });
