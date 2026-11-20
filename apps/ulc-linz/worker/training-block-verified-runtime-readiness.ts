@@ -66,6 +66,9 @@ export async function assertUlcVerifiedBlockUsagePreviewReadiness(
              JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger.tgrelid
              JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
             WHERE namespace.nspname = 'public' AND NOT trigger.tgisinternal
+              AND trigger.tgenabled IN ('O', 'A')
+              AND (trigger.tgtype::integer & 23) = 23
+              AND trigger.tgfoid = to_regprocedure('public.ulc_linz_training_subject_write_fence()')
               AND (relation.relname, trigger.tgname) IN (
                 ('ulc_linz_training_attendance','ulc_linz_training_attendance_subject_fence'),
                 ('ulc_linz_training_registration','ulc_linz_training_registration_subject_fence'),
