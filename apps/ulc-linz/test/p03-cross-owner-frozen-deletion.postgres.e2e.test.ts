@@ -14,6 +14,10 @@ import {
   type UlcTrainingSubjectHistoryTransactionClient,
 } from "../worker/training-subject-history-deletion-postgres";
 import { PostgresUlcTrainingSubjectPrivacyInspector } from "../worker/training-subject-privacy-postgres";
+import {
+  assessUlcP3CrossOwnerRestoreQuarantine,
+  type UlcP3OwnerInspection,
+} from "../worker/p3-cross-owner-restore-admission";
 
 /**
  * P03: cross-owner, FROZEN/ISOLATED database rehearsal only.
@@ -246,6 +250,58 @@ if (!url) {
           ownedDocuments: 0, ownedRevisions: 0,
         });
 
+      // The first module has committed but attendance still exists: this
+      // real PostgreSQL point-in-time inspection must block cross-owner
+      // restoration/admission. It cannot invent the other six owner reports.
+      const partialDocs = await documentation.inspectSubjectPrivacy(ORG, SUBJECT);
+      const partialTraining = await history.inspectSubjectPrivacy(ORG, SUBJECT);
+      const auditNow = new Date(completedAt.getTime() + 2_000);
+      const p3Audit = (
+        documentationResiduals: number,
+        trainingResiduals: number,
+        freeText: "reviewed-clear" | "unverified",
+      ) => {
+        const base = {
+          organizationId: ORG, subjectId: SUBJECT,
+          sourceCompletedAt: completedAt,
+          inspectedAt: auditNow,
+          subjectDeletionReplayed: true,
+          historicalUnstructuredData: freeText,
+          staleWriterFence: "verified" as const,
+          privateMedia: "not-applicable" as const,
+        };
+        const reports: UlcP3OwnerInspection[] = [
+          { ...base, owner: "training-documentation", structuredResidualRows: documentationResiduals },
+          { ...base, owner: "ulc-linz-lifecycle", structuredResidualRows: trainingResiduals },
+        ];
+        return assessUlcP3CrossOwnerRestoreQuarantine({
+          kind: "isolated-restore-review",
+          now: auditNow,
+          writesFrozenAndIsolated: true,
+          source: {
+            organizationId: ORG, subjectId: SUBJECT,
+            completedAt, purgeAfter: new Date(completedAt.getTime()+35*24*3600*1000),
+            // This fixture does NOT contain an independently authenticated
+            // post-delete source for the entire eight-owner data set.
+            independentSourceVerified: false,
+            fullRestoreBackupHorizonVerified: false,
+          },
+        }, reports);
+      };
+      const incomplete = p3Audit(
+        partialDocs.ownedDocuments + partialDocs.ownedRevisions +
+          partialDocs.otherSubjectRevisionsWithParticipant,
+        partialTraining.attendanceRows + partialTraining.registrationRows +
+          partialTraining.registrationHistoryRows,
+        "unverified",
+      );
+      expect(incomplete.status).toBe("QUARANTINE_BLOCKED");
+      expect(incomplete.risks).toContainEqual({
+        owner: "ulc-linz-lifecycle", code: "STRUCTURED_RESIDUAL",
+      });
+      expect(incomplete.risks).toContainEqual({ owner: "identity", code: "MISSING_OWNER" });
+      expect(incomplete.permitsPromotion).toBe(false);
+
       // Recovery only on a proven frozen store with independent authority.
       await expect(frozenHistoryRepository().eraseSubjectHistoryOnFrozenStore(
         ORG, SUBJECT,
@@ -285,6 +341,16 @@ if (!url) {
         .toBe(true);
       expect(preserved.some(rev => (rev.note ?? "").includes("P03 Target")))
         .toBe(true);
+      // Even after both structured owners are empty, previously stored
+      // trainer text is still personal and six owners remain unverified.
+      const recovered = p3Audit(0, 0, "unverified");
+      expect(recovered.status).toBe("QUARANTINE_BLOCKED");
+      expect(recovered.risks).toContainEqual({
+        owner: "training-documentation", code: "UNSTRUCTURED_REVIEW_OPEN",
+      });
+      expect(recovered.risks).toContainEqual({ owner: "exercise-catalog", code: "MISSING_OWNER" });
+      expect(recovered.permitsDeployment).toBe(false);
+
 
       const sessions = await required().client.unsafe(
         `SELECT id FROM ulc_linz_training_session ORDER BY id`,
