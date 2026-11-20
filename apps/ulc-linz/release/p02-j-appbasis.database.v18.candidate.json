@@ -1,0 +1,107 @@
+{
+  "manifestVersion": 1,
+  "application": "ulc-linz",
+  "dialect": "postgresql",
+  "owners": [
+    {
+      "id": "identity",
+      "root": "packages/identity",
+      "schemaVersion": 3,
+      "migrations": [
+        "packages/identity/drizzle/0000_appbasis_identity_foundation.sql",
+        "packages/identity/drizzle/0001_appbasis_identity_foundation.sql",
+        "packages/identity/drizzle/0002_appbasis_identity_provisioning_audit.sql"
+      ]
+    },
+    {
+      "id": "permissions",
+      "root": "packages/permissions",
+      "schemaVersion": 4,
+      "migrations": [
+        "packages/permissions/migrations/0000_appbasis_permissions_foundation.sql",
+        "packages/permissions/migrations/0001_appbasis_permission_role_lifecycle.sql",
+        "packages/permissions/migrations/0002_appbasis_permission_administration_audit.sql",
+        "packages/permissions/migrations/0003_appbasis_principal_permission_administration_audit.sql"
+      ]
+    },
+    {
+      "id": "athletes",
+      "root": "modules/athletes",
+      "schemaVersion": 4,
+      "migrations": [
+        "modules/athletes/migrations/0000_appbasis_athletes_foundation.sql",
+        "modules/athletes/migrations/0001_appbasis_athletes_deletion_markers.sql",
+        "modules/athletes/migrations/0002_appbasis_athlete_contacts.sql",
+        "modules/athletes/migrations/0003_appbasis_training_group_attendance_mode.sql"
+      ]
+    },
+    {
+      "id": "exercise-catalog",
+      "root": "modules/exercise-catalog",
+      "schemaVersion": 5,
+      "migrations": [
+        "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
+        "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql",
+        "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql",
+        "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql",
+        "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql"
+      ]
+    },
+    {
+      "id": "training-blocks",
+      "root": "modules/training-blocks",
+      "schemaVersion": 6,
+      "migrations": [
+        "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql",
+        "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql",
+        "modules/training-blocks/migrations/0002_appbasis_training_block_multi_audience.sql",
+        "modules/training-blocks/migrations/0003_appbasis_training_block_category.sql",
+        "modules/training-blocks/migrations/0004_appbasis_training_block_favorite_deletion.sql",
+        "modules/training-blocks/migrations/0005_appbasis_training_block_usage_subject.sql"
+      ]
+    },
+    {
+      "id": "training-documentation",
+      "root": "modules/training-documentation",
+      "schemaVersion": 2,
+      "migrations": [
+        "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
+        "modules/training-documentation/migrations/0001_appbasis_training_documentation_subject_deletion.sql"
+      ]
+    },
+    {
+      "id": "training-plans",
+      "root": "modules/training-plans",
+      "schemaVersion": 2,
+      "migrations": [
+        "modules/training-plans/migrations/0000_appbasis_training_plans_foundation.sql",
+        "modules/training-plans/migrations/0001_appbasis_training_plan_subject_deletion.sql"
+      ]
+    },
+    {
+      "id": "ulc-linz-lifecycle",
+      "root": "apps/ulc-linz",
+      "schemaVersion": 18,
+      "migrations": [
+        "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
+        "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
+        "apps/ulc-linz/migrations/0002_ulc_linz_security_event_log.sql",
+        "apps/ulc-linz/migrations/0003_ulc_linz_security_event_access.sql",
+        "apps/ulc-linz/migrations/0004_ulc_linz_training_sessions.sql",
+        "apps/ulc-linz/migrations/0005_ulc_linz_trainer_identity_audit.sql",
+        "apps/ulc-linz/migrations/0006_ulc_linz_training_module_groups.sql",
+        "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
+        "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql",
+        "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
+        "apps/ulc-linz/migrations/0010_ulc_linz_registration_notes.sql",
+        "apps/ulc-linz/migrations/0011_ulc_linz_youth_training_content.sql",
+        "apps/ulc-linz/migrations/0012_ulc_linz_youth_training_catalog.sql",
+        "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
+        "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
+        "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
+        "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
+        "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql"
+      ]
+    }
+  ]
+}
