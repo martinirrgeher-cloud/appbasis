@@ -1,0 +1,69 @@
+name: M6 ULC Targeted Application Hyperdrive Role Reconcile
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type RECONCILE-ULC-APPLICATION-HYPERDRIVE-ROLE to update only the existing Application Hyperdrive SQL role'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  reconcile-application-role-only:
+    name: Reconcile exactly one existing private application Hyperdrive role
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    environment: m4-dr
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_WRITE_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
+      ULC_LINZ_PRODUCTION_CLOUDFLARE_API_TOKEN: ${{ secrets.ULC_LINZ_PRODUCTION_CLOUDFLARE_API_TOKEN }}
+      ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+      ULC_HYPERDRIVE_ROLE_CONFIRMATION: ${{ inputs.confirmation }}
+      ULC_LINZ_APPLY_APPLICATION_HYPERDRIVE_ROLE: '1'
+    steps:
+      - name: Require main branch and exact operator consent
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$ULC_HYPERDRIVE_ROLE_CONFIRMATION" = "RECONCILE-ULC-APPLICATION-HYPERDRIVE-ROLE"
+      - name: Check out exact approved main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+      - name: Validate required inputs without printing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$CLOUDFLARE_API_WRITE_TOKEN"
+          test -n "$ULC_LINZ_PRODUCTION_CLOUDFLARE_API_TOKEN"
+          test -n "$ULC_LINZ_PRODUCTION_DATABASE_URL"
+          echo "::add-mask::$CLOUDFLARE_ACCOUNT_ID"
+          echo "::add-mask::$CLOUDFLARE_API_WRITE_TOKEN"
+          echo "::add-mask::$ULC_LINZ_PRODUCTION_CLOUDFLARE_API_TOKEN"
+          echo "::add-mask::$ULC_LINZ_PRODUCTION_DATABASE_URL"
+          node --check ./tooling/ulc-linz-m6-application-hyperdrive-role-reconcile.mjs
+      - name: Check private Worker and correct ONLY existing Application Hyperdrive SQL role
+        run: node ./tooling/ulc-linz-m6-application-hyperdrive-role-reconcile.mjs
+      - name: Record narrow approval outcome
+        if: success()
+        shell: bash
+        run: |
+          printf '%s\n' '## ULC M6 — Application Hyperdrive role reconciliation' \
+            '' 'Only the existing Application Hyperdrive SQL role was checked/reconciled.' \
+            'Worker routes, deployments, preview Worker, security-log Hyperdrive, Neon tables and schema were not modified.' \
+            'This is not approval to deploy, open public ingress, or change production module lifecycle.' >> "$GITHUB_STEP_SUMMARY"
