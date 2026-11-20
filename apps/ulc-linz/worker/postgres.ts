@@ -25,6 +25,9 @@ import {
   PostgresTrainingDocumentationRepository,
   TrainingDocumentationService,
 } from "@appbasis/training-documentation";
+import {
+  assertUlcTrainingDocumentationProductionReadiness,
+} from "./training-documentation-production-readiness";
 
 import {
   createUlcLinzAthletesAccessService,
@@ -233,6 +236,8 @@ export interface GeneratedPostgresApplicationRuntimeOptions {
     | "isolated-preview-verified-subject"
     | "protected-production-verified-subject";
   exerciseCatalogMediaStore?: UlcExerciseCatalogObjectStore | null;
+  /** Explicit opt-in; never implicitly turns on production writing. */
+  trainingDocumentationRuntimeMode?: "protected-production";
 }
 
 export async function createGeneratedPostgresApplicationRuntime(
@@ -685,6 +690,13 @@ export async function createGeneratedPostgresApplicationRuntime(
           }
         : {}),
     });
+    if (options.trainingDocumentationRuntimeMode !== undefined &&
+        options.trainingDocumentationRuntimeMode !== "protected-production") {
+      throw new Error("Unsupported production training documentation mode.");
+    }
+    if (options.trainingDocumentationRuntimeMode === "protected-production") {
+      await assertUlcTrainingDocumentationProductionReadiness(applicationSql);
+    }
     const trainingDocumentation = new TrainingDocumentationService({
       repository: new PostgresTrainingDocumentationRepository(applicationSql),
     });
