@@ -84,6 +84,9 @@ jobs:
       - name: Rehearse P03-D stale training-subject write fence on disposable PostgreSQL 18
         run: node --test ./tooling/ulc-linz-p03-d-subject-fence.postgres.test.mjs
 
+      - name: Rehearse P02-G actual in-place synthetic 51-to-69 schema upgrade on PostgreSQL 18
+        run: node --test ./tooling/ulc-linz-p02-g-synthetic-upgrade.postgres.test.mjs
+
       - name: Verify proposed G-04 calendar in isolated PostgreSQL
         run: pnpm --filter @appbasis/app-ulc-linz exec vitest run --maxWorkers=1 ./test/registration-calendar.postgres.e2e.test.ts
 
