@@ -199,6 +199,16 @@ jobs:
           node ./tooling/ulc-linz-g04-calendar-v17-preview.mjs verify
           node ./tooling/ulc-linz-g04-direct-preview-preflight.mjs
 
+      # P1: the regular AppBasis migration executor is empty-schema-only.
+      # A populated, already-migrated Preview MUST be reconciled read-only
+      # before any Worker or secret mutation; never replay v18/v5 SQL.
+      - name: Prove canonical ULC 69 schema already installed (read only)
+        env:
+          APPBASIS_MIGRATION_DATABASE_URL: ${{ secrets.APPBASIS_MIGRATION_DATABASE_URL }}
+          APPBASIS_DATABASE_URL: ${{ secrets.APPBASIS_DATABASE_URL }}
+          APPBASIS_SECURITY_LOG_DATABASE_URL: ${{ secrets.APPBASIS_SECURITY_LOG_DATABASE_URL }}
+        run: node ./tooling/ulc-linz-p1-preview-69-reconcile.mjs
+
       - name: Resolve preview worker and URL
         id: preview
         shell: bash
