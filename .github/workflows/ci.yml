@@ -192,6 +192,9 @@ jobs:
       - name: Validate unpublished P03-D training subject write-fence contract
         run: node --test ./tooling/ulc-linz-p03-d-subject-fence.test.mjs
 
+      - name: Pin P03-E canonical erasure rehearsal outside live runtime
+        run: node --test ./tooling/ulc-linz-p03-e-marked-erasure.test.mjs
+
       - name: Test ULC K2 isolated backup and restore policy (no provider access)
         run: node --test ./tooling/ulc-linz-k2-backup-plan.test.mjs
 
