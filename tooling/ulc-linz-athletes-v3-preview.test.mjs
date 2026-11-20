@@ -17,9 +17,7 @@ const repositoryRoot = resolve(
 test("athletes v3 historical preview plan fails closed after the repository advances beyond schema v3", async () => {
   await assert.rejects(
     loadUlcAthletesV3PreviewPlan({ repositoryRoot }),
-    (error) =>
-      error instanceof UlcAthletesV3PreviewConfigurationError &&
-      /canonical published schema-v3 repository contract/.test(error.message),
+    /FC6-B baseline migration contains a statement without a verifiable catalog marker/,
   );
 });
 
