@@ -26,6 +26,8 @@ test("P03-D pins unregistered app-owned subject deletion fence and no-resurrecti
   assert.match(sql, /SECURITY DEFINER/);
   assert.match(sql, /SET search_path = pg_catalog, pg_temp/);
   assert.match(sql, /pg_advisory_xact_lock/);
+  assert.match(sql, /FROM public\.ulc_linz_training_session/);
+  assert.match(sql, /FOR KEY SHARE/);
   assert.match(sql, /REVOKE ALL ON FUNCTION/);
   assert.match(sql, /NEW.organization_id IS DISTINCT FROM OLD.organization_id/);
   assert.match(sql, /NEW.athlete_id IS DISTINCT FROM OLD.athlete_id/);
