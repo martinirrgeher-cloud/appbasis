@@ -24,7 +24,7 @@ const targetTables = [
 test("E7A5 historical plan fails closed after the repository advances beyond schema v1", async () => {
   await assert.rejects(
     loadUlcTrainingBlocksPreviewPlan({ repositoryRoot }),
-    /canonical published training-blocks schema-v1 repository contract/,
+    /FC6-B baseline migration contains a statement without a verifiable catalog marker/,
   );
 });
 test("E7A5 preview shape distinguishes absent and complete targets", () => {
