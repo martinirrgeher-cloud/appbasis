@@ -42,6 +42,43 @@ export const P02_SCHEMA_COUNTS = Object.freeze({
   guardedCandidate: 68,
 });
 
+const EXPECTED_OWNER_ROOTS = Object.freeze({
+  identity: "packages/identity",
+  permissions: "packages/permissions",
+  athletes: "modules/athletes",
+  "exercise-catalog": "modules/exercise-catalog",
+  "training-blocks": "modules/training-blocks",
+  "training-documentation": "modules/training-documentation",
+  "training-plans": "modules/training-plans",
+  "ulc-linz-lifecycle": "apps/ulc-linz",
+});
+
+/**
+ * Immutable file-level owner pins. A distinct migration creating the same
+ * table is NOT an authorized substitute, even under the same module root.
+ */
+export const EXPECTED_MISSING_TABLE_CREATORS = Object.freeze({
+  appbasis_athlete_contact: "modules/athletes/migrations/0002_appbasis_athlete_contacts.sql",
+  appbasis_training_block_favorite_deletion: "modules/training-blocks/migrations/0004_appbasis_training_block_favorite_deletion.sql",
+  appbasis_training_block_usage_subject: "modules/training-blocks/migrations/0005_appbasis_training_block_usage_subject.sql",
+  appbasis_training_block_usage_subject_deletion: "modules/training-blocks/migrations/0005_appbasis_training_block_usage_subject.sql",
+  appbasis_training_documentation: "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
+  appbasis_training_documentation_revision: "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
+  appbasis_training_documentation_subject_deletion: "modules/training-documentation/migrations/0001_appbasis_training_documentation_subject_deletion.sql",
+  appbasis_training_plan_subject_deletion: "modules/training-plans/migrations/0001_appbasis_training_plan_subject_deletion.sql",
+  ulc_linz_registration_calendar_exception: CALENDAR_MIGRATION,
+  ulc_linz_registration_calendar_rule: CALENDAR_MIGRATION,
+  ulc_linz_training_registration: "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql",
+  ulc_linz_training_registration_change: "apps/ulc-linz/migrations/0008_ulc_linz_session_registration.sql",
+  ulc_linz_training_trainer_attendance: "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
+  ulc_linz_youth_content_category: "apps/ulc-linz/migrations/0013_ulc_linz_youth_categories.sql",
+  ulc_linz_youth_group_category: "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
+});
+const EXPECTED_GUARD_CREATORS = Object.freeze({
+  appbasis_exercise_catalog_favorite_deletion: CATALOG_CANDIDATES[0],
+  appbasis_exercise_catalog_usage_subject: CATALOG_CANDIDATES[1],
+});
+
 const APP_MANIFEST = "../apps/ulc-linz/appbasis.database.json";
 const REQUIRED_OWNERS = [
   "identity", "permissions", "athletes", "exercise-catalog",
@@ -105,6 +142,15 @@ export async function loadUlcP02ParityRehearsalPlan() {
     JSON.stringify(manifest.owners.map(owner => owner.id)) !==
       JSON.stringify(REQUIRED_OWNERS)
   ) block("owner manifest drift");
+  // An owner cannot silently claim another module's migration file.
+  for (const owner of manifest.owners) {
+    if (
+      owner.root !== EXPECTED_OWNER_ROOTS[owner.id] ||
+      !Array.isArray(owner.migrations) ||
+      owner.migrations.some(path => typeof path !== "string" ||
+        !path.startsWith(owner.root + "/"))
+    ) block("manifest owner root/migration ownership drift");
+  }
   const migrations = manifest.owners.flatMap(owner => owner.migrations ?? []);
   if (
     migrations.length !== 41 ||
@@ -140,12 +186,16 @@ export async function loadUlcP02ParityRehearsalPlan() {
       statements: Object.freeze(statements),
     }));
   }
+  if (
+    Object.keys(EXPECTED_MISSING_TABLE_CREATORS).length !== PRODUCTION_MISSING_TABLES.length ||
+    PRODUCTION_MISSING_TABLES.some(table => !Object.hasOwn(EXPECTED_MISSING_TABLE_CREATORS, table))
+  ) block("expected table source inventory drift");
   for (const table of expected) {
     if (!creator.has(table)) block("missing source for table: " + table);
-  }
-  for (const table of CATALOG_GUARD_TABLES) {
-    if (!CATALOG_CANDIDATES.includes(creator.get(table))) {
-      block("catalog owner guard improperly registered");
+    const exactSource = EXPECTED_MISSING_TABLE_CREATORS[table] ??
+      EXPECTED_GUARD_CREATORS[table];
+    if (creator.get(table) !== exactSource) {
+      block("wrong original migration for table: " + table);
     }
   }
   const manifestFiles = files.slice(0, 41);
