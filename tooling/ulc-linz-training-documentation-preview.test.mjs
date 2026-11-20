@@ -29,29 +29,11 @@ const trainingPlanTables = [
   "appbasis_training_plan_subject_deletion",
 ];
 
-test("E7B9 documentation plan pins schema v2 with subject write guards on the training-plans-v2 baseline", async () => {
-  const plan = await loadUlcTrainingDocumentationPreviewPlan({
-    repositoryRoot,
-  });
-
-  assert.equal(plan.application, "ulc-linz");
-  assert.equal(plan.moduleId, "training-documentation");
-  assert.equal(plan.preview.environment, "generated-preview-ulc-linz");
-  assert.equal(plan.preview.database, "appbasis_ulc_linz_preview");
-  assert.equal(plan.target.schemaVersion, 2);
-  assert.deepEqual(plan.target.migrations, [
-    "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
-    "modules/training-documentation/migrations/0001_appbasis_training_documentation_subject_deletion.sql",
-  ]);
-  const proof = plan.executionPlan.targetCatalogContract;
-  assert.equal(proof.filter((marker) => marker.kind === "function").length, 3);
-  assert.equal(proof.filter((marker) =>
-    marker.kind === "function-public-execute-revoked"
-  ).length, 3);
-  assert.equal(proof.filter((marker) => marker.kind === "trigger").length, 2);
-  assert.deepEqual(plan.target.tables, targetTables);
-  assert.deepEqual(plan.requiredTrainingPlansTables, trainingPlanTables);
-  assert.equal(plan.productionChanged, false);
+test("P1: obsolete E7B9 documentation installer refuses published catalog-v5 baseline", async () => {
+  await assert.rejects(
+    loadUlcTrainingDocumentationPreviewPlan({ repositoryRoot }),
+    /FC6-B baseline migration contains a statement without a verifiable catalog marker/,
+  );
 });
 
 test("E7B9 documentation preview shape fails closed on partial schema", () => {
