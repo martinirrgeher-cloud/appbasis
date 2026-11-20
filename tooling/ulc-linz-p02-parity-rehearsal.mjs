@@ -195,8 +195,8 @@ export function assessUlcP02CatalogRestoreMarkers(authoritativeRows, candidateRo
       const completed = row?.completed_at;
       const purgeAfter = row?.purge_after;
       if (
-        typeof org !== "string" || !/^[^\\u0000]{1,200}$/.test(org) || org.trim() !== org ||
-        typeof principal !== "string" || !/^[^\\u0000]{1,200}$/.test(principal) ||
+        typeof org !== "string" || !/^[^\u0000]{1,200}$/.test(org) || org.trim() !== org ||
+        typeof principal !== "string" || !/^[^\u0000]{1,200}$/.test(principal) ||
         principal.trim() !== principal ||
         typeof completed !== "string" || typeof purgeAfter !== "string" ||
         !Number.isFinite(Date.parse(completed)) ||
