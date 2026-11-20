@@ -63,12 +63,12 @@ async function data<T>(path: string): Promise<T> {
 }
 
 describe("ULC P01 confirmed target guidance – no legal or runtime approval", () => {
-  it("covers all 66 current Preview tables without claiming unregistered v17 migrations are canonical", async () => {
+  it("preserves historical 64→66 P01 retention proposal without claiming current v18 authorization", async () => {
     const candidate = await data<Candidate>(
       "../privacy/p01-operator-retention-candidate.json",
     );
     const manifestInventory = await data<Inventory>(
-      "../privacy/m5-data-inventory.json",
+      "./fixtures/g04-m5-data-inventory.v16.historical.json",
     );
     const previewInventory = await data<Inventory>(
       "../privacy/m5-data-inventory.v17-proposed.json",
