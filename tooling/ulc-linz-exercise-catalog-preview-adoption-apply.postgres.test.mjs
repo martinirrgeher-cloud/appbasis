@@ -57,7 +57,7 @@ test(
         "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' " +
         "AND tablename LIKE 'appbasis_exercise_catalog_%' ORDER BY tablename",
       );
-      assert.deepEqual(tables,[],"no target table may be created by obsolete installer");
+      assert.deepEqual(tables.map(row => row.tablename),[],"no target table may be created by obsolete installer");
     });
   },
 );
@@ -95,7 +95,7 @@ test(
         "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' " +
         "AND tablename LIKE 'appbasis_exercise_catalog_%' ORDER BY tablename",
       );
-      assert.deepEqual(tables,[]);
+      assert.deepEqual(tables.map(row => row.tablename),[]);
     });
   },
 );
