@@ -47,16 +47,23 @@ export async function loadG04CalendarPreviewPlan({ repositoryRoot = process.cwd(
     repositoryRoot, "apps/ulc-linz/appbasis.database.json",
   ), "utf8"));
   const matches = manifest?.owners?.filter((entry) => entry.id === owner.id);
+  const originalV16 = owner.schemaVersion === 16 &&
+    owner.migrations.length === 16 &&
+    owner.migrations[15] === PRIOR &&
+    !owner.migrations.includes(FILE);
+  const publishedV18 = owner.schemaVersion === 18 &&
+    owner.migrations.length === 18 &&
+    owner.migrations[15] === PRIOR &&
+    owner.migrations[16] === FILE &&
+    owner.migrations[17] ===
+      "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql";
   if (manifest.application !== "ulc-linz" ||
       manifest.manifestVersion !== 1 ||
       manifest.dialect !== "postgresql" ||
       matches?.length !== 1 ||
       JSON.stringify(matches[0]) !== JSON.stringify(owner) ||
-      owner.schemaVersion !== 16 ||
-      owner.migrations.length !== 16 ||
-      owner.migrations[15] !== PRIOR ||
-      manifest.owners.flatMap((entry) => entry.migrations).includes(FILE)) {
-    refuse("G-04 requires unchanged canonical schema v16; no automatic v17 promotion.");
+      !(originalV16 || publishedV18)) {
+    refuse("G-04 requires the exact v16 historical or published v18 calendar owner.");
   }
   const sql = await readFile(resolve(repositoryRoot, FILE), "utf8");
   const statements = sql.split("--> statement-breakpoint")
@@ -83,6 +90,7 @@ export async function loadG04CalendarPreviewPlan({ repositoryRoot = process.cwd(
     migrationRole: MIGRATION_ROLE,
     schemaVersion: 17,
     migrationPath: FILE,
+    canonicalPublished: publishedV18,
     statements: Object.freeze(statements),
     productionChanged: false,
   });
@@ -233,6 +241,13 @@ export async function inspectG04CalendarPreview(input, options = {}) {
 export async function migrateG04CalendarPreview(input, options = {}) {
   if (input?.apply !== true) {
     refuse("G-04 requires the operator's explicit apply=true approval.");
+  }
+  // v18 has been published and Preview has already been migrated. The
+  // historical G-04 inspector remains available, but blind reapplication
+  // is forbidden even if an operator passes the older approval switches.
+  const checkedPlan = await loadG04CalendarPreviewPlan(options);
+  if (checkedPlan.canonicalPublished) {
+    refuse("G-04 calendar migration is already registered in v18; no SQL replay.");
   }
   // Never allow direct CLI or API apply to bypass the independent privacy,
   // backed-up restore and operator-authorization evidence gate. The canonical
