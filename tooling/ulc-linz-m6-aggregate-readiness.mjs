@@ -2,6 +2,10 @@
 import { createHmac, createHash } from "node:crypto";
 import { appendFile, readFile } from "node:fs/promises";
 import {
+  diagnoseExactProductionHyperdrive,
+  diagnoseExistingPrivateProductionRefresh,
+} from "./ulc-linz-m6-reconciliation-audit.mjs";
+import {
   parseUlcLinzProductionDatabaseUrl,
   parseUlcLinzSecurityLogIngestDatabaseUrl,
   resolveUlcLinzProductionHyperdrive,
@@ -51,12 +55,13 @@ async function cfGet(name,path) {
     return data.result;
   } catch {note("Cloudflare API",name,"BLOCKED","transport or response error");return null;}
 }
-const [subdomain,worker,versions,deployments,scripts]=await Promise.all([
+const [subdomain,worker,versions,deployments,scripts,hyperdrives]=await Promise.all([
   cfGet("Account workers.dev subdomain","/workers/subdomain"),
   cfGet("Worker object","/workers/workers/"+workerName),
   cfGet("Worker versions","/workers/workers/"+workerName+"/versions?page=1&per_page=100"),
   cfGet("Worker deployments","/workers/scripts/"+workerName+"/deployments"),
   cfGet("Script and route inventory","/workers/scripts"),
+  cfGet("All Hyperdrive configs (first page)","/hyperdrive/configs?page=1&per_page=100"),
 ]);
 if(worker!==null) {
   note("Worker private state","Exact name",worker?.name===workerName?"PASS":"BLOCKED");
@@ -100,6 +105,25 @@ if(versions!==null){
       note("Worker version","Current-SHA prepared version",current>1?"BLOCKED":current===1?"PASS":"WARN",
         current===0?"not yet uploaded (configuration step creates it)":"matching="+current);
     }
+  }
+}
+if(worker!==null&&versions!==null&&deployments!==null&&scripts!==null&&
+   authOk&&originHash&&e.GITHUB_SHA){
+  for(const check of diagnoseExistingPrivateProductionRefresh({
+    worker,versions,deployments,scripts,githubSha:e.GITHUB_SHA,
+    authSecret:auth,pilotOriginFingerprint:originHash,
+  })) note("Existing Worker refresh path",check.name,check.status,check.detail);
+}
+if(hyperdrives!==null&&app&&log){
+  // A 100-result first page may conceal later matching resources; do not claim absence.
+  if(!Array.isArray(hyperdrives)||hyperdrives.length>=100){
+    note("Hyperdrive diagnostics","Complete provider inventory","BLOCKED","Invalid or possibly truncated first page");
+  }else{
+    for(const [name,origin,label] of [
+      ["appbasis-ulc-linz-production-db",app,"Application"],
+      ["appbasis-ulc-linz-production-security-log",log,"Security log"],
+    ]) for(const check of diagnoseExactProductionHyperdrive(hyperdrives,{name,origin}))
+      note("Hyperdrive diagnostics / "+label,check.name,check.status,check.detail);
   }
 }
 if(app&&log&&e.CLOUDFLARE_API_TOKEN&&e.CLOUDFLARE_ACCOUNT_ID){
