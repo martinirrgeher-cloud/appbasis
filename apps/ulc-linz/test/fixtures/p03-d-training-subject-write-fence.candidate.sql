@@ -42,6 +42,17 @@ BEGIN
       USING ERRCODE = '23514';
   END IF;
 
+  -- The app-owned child row must belong to this exact session scope.
+  -- An arbitrary organization_id on an old direct SQL writer is not
+  -- sufficient to bypass another organization's subject deletion marker.
+  PERFORM 1 FROM public.ulc_linz_training_session
+   WHERE id = NEW.session_id AND organization_id = NEW.organization_id
+   FOR KEY SHARE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Training session ownership scope invalid.'
+      USING ERRCODE = '23514';
+  END IF;
+
   -- A fixed organization+subject key; collision over-serializes only.
   PERFORM pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(
