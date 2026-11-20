@@ -112,7 +112,7 @@ describe("P02-C verified plan/block runtime preflight", () => {
     // The read-only metadata query must check the absence of TRUNCATE
     // privileges, so the literal string '...TRUNCATE' is expected. Strip
     // quoted SQL values and comments before checking actual SQL operators.
-    const structureOnly = sql.queries[1]
+    const structureOnly = (sql.queries[1] ?? "")
       .replace(/'(?:''|[^'])*'/g, "''")
       .replace(/--[^\n]*/g, "");
     expect(structureOnly).not.toMatch(/\b(DELETE\s+FROM|UPDATE\s+public|INSERT\s+INTO|TRUNCATE|GRANT|DROP)\b/i);
