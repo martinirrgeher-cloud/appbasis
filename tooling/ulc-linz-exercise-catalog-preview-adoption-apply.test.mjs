@@ -11,75 +11,11 @@ import {
 const PREVIEW_URL =
   "postgresql://appbasis_ulc_linz_preview_migration:secret@ep-c3b.eu-central-1.aws.neon.tech/appbasis_ulc_linz_preview?sslmode=require";
 
-test("E6G-C3B plans one atomic preview schema/copy transaction without runtime cutover", async () => {
-  const plan = await loadUlcExerciseCatalogPreviewAdoptionApplyPlan();
-
-  assert.equal(plan.schemaVersion, 1);
-  assert.equal(
-    plan.operation,
-    "ulc-exercise-catalog-preview-adoption-apply",
+test("P1: obsolete E6G-C3B schema/copy planner refuses published v5 (no provider access)", async () => {
+  await assert.rejects(
+    loadUlcExerciseCatalogPreviewAdoptionApplyPlan(),
+    /FC6-B baseline migration contains a statement without a verifiable catalog marker/,
   );
-  assert.equal(
-    plan.state,
-    "ready-for-explicit-preview-schema-copy-apply",
-  );
-  assert.equal(plan.application, "ulc-linz");
-  assert.equal(plan.moduleId, "exercise-catalog");
-  assert.equal(plan.repositoryState, "published-target");
-
-  assert.deepEqual(plan.preview, {
-    environment: "generated-preview-ulc-linz",
-    database: "appbasis_ulc_linz_preview",
-    migrationPrincipal:
-      "appbasis_ulc_linz_preview_migration",
-  });
-
-  assert.deepEqual(plan.transaction, {
-    atomic: true,
-    isolation: "repeatable-read",
-    rollbackSchemaOnCopyFailure: true,
-  });
-
-  assert.equal(plan.targetSchemaMigration.ownerId, "exercise-catalog");
-  assert.equal(plan.targetSchemaMigration.schemaVersion, 2);
-  assert.equal(plan.targetSchemaMigration.migrationCount, 2);
-  assert.deepEqual(plan.targetSchemaMigration.migrationPaths, [
-    "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
-    "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql",
-  ]);
-
-  assert.equal(plan.copyAndVerify.tableCount, 4);
-  assert.deepEqual(plan.copyAndVerify.sourceTables, [
-    "ulc_linz_exercise_catalog_item",
-    "ulc_linz_exercise_parameter",
-    "ulc_linz_exercise_group",
-    "ulc_linz_exercise_favorite",
-  ]);
-  assert.deepEqual(plan.copyAndVerify.targetTables, [
-    "appbasis_exercise_catalog_item",
-    "appbasis_exercise_catalog_parameter",
-    "appbasis_exercise_catalog_audience",
-    "appbasis_exercise_catalog_favorite",
-  ]);
-  assert.equal(
-    plan.copyAndVerify.targetTablesMustBeAbsentBeforeApply,
-    true,
-  );
-  assert.equal(
-    plan.copyAndVerify.sourceWriteQuiescenceApplied,
-    false,
-  );
-
-  assert.equal(plan.runtimeCutover.eligible, false);
-  assert.equal(plan.runtimeCutover.separateGate, true);
-  assert.deepEqual(plan.runtimeCutover.blockedUntil, [
-    "preview-schema-copy-pass",
-    "source-writes-quiesced",
-    "final-source-target-equality-pass",
-  ]);
-  assert.equal(plan.providerAccess, false);
-  assert.equal(plan.databaseAccess, false);
-  assert.deepEqual(plan.writes, []);
 });
 
 test("E6G-C3B requires two independent explicit preview apply approvals", () => {
