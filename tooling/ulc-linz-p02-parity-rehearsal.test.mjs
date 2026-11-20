@@ -89,6 +89,14 @@ test("P2-E excludes stale erasure-marker restores, including expired markers", (
     providerWritesAllowed: false,
   });
   assert.equal(assessUlcP02CatalogRestoreMarkers([], []).promotionAuthorized, false);
+  // Principal IDs are arbitrary canonical text, including digit 0 and 'u'.
+  const validId = { ...marker, organization_id: "ulc-0", principal_id: "user-007" };
+  assert.equal(assessUlcP02CatalogRestoreMarkers(
+    [validId], [validId],
+  ).markerCount, 1);
+  assert.throws(() => assessUlcP02CatalogRestoreMarkers(
+    [{ ...marker, principal_id: "bad\\u0000id" }], [],
+  ), /invalid marker contract/);
   for (const candidate of [
     [],
     [{ ...marker, completed_at: "2026-01-02T12:00:00.000Z",
