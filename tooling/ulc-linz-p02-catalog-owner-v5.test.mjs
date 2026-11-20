@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 const MODULE_CANDIDATE =
-  "../modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql";
+  "../modules/exercise-catalog/test/fixtures/0004_appbasis_exercise_catalog_subject_lifecycle.candidate.sql";
 const FIXTURES = [
   "../apps/ulc-linz/test/fixtures/p02-g-catalog-favorite-erasure-marker.candidate.sql",
   "../apps/ulc-linz/test/fixtures/p02-h-catalog-usage-subject.candidate.sql",
