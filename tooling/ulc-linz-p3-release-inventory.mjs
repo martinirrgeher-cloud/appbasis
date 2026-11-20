@@ -148,7 +148,7 @@ export function formatUlcP3ReleaseInventory(result){
     "",
     "Module: "+(result.blockedModules.join(", ")||"keine")+".",
     "Übergreifend: "+(result.blockedCrossCutting.join(", ")||"keine")+".",
-    "Provider-Konto-/AVV-Nachweise: offen. Retention: 35 Tage Marker, danach deny.",
+    "Provider-Konto-/AVV-Nachweise: "+result.providerAccountEvidence+". Retention: 35 Tage Marker, danach deny.",
     "Objektspeicher laut Inventar nicht konfiguriert; eine spätere Einführung erfordert neue Belege.",
     "",
     "## Entscheidung für den nächsten Schritt",
