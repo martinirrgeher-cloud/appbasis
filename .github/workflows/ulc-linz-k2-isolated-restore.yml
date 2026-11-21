@@ -188,6 +188,26 @@ jobs:
           test "$STATUS" = "t" || { echo "ULC K2 restore is missing one or more of the eight canonical app owners." >&2; exit 1; }
           echo "ULC K2 encrypted backup restored into separate quarantine; no promotion or user access was enabled." >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Attest full 69-table production restore and five write fences (metadata only)
+        if: inputs.apply == true
+        shell: bash
+        env:
+          APPBASIS_ULC_RESTORE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_RESTORE_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          # The query reads pg_catalog only, never personal rows; the shell
+          # receives a single t/f result and emits no connection string.
+          export ULC_RESTORE_INTEGRITY_SQL="$(node ./tooling/ulc-linz-k2-backup-plan.mjs restore-integrity-sql)"
+          STATUS="$(docker run --rm --env APPBASIS_ULC_RESTORE_DATABASE_URL \
+            --env ULC_RESTORE_INTEGRITY_SQL \
+            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
+            sh -ceu 'psql --no-psqlrc --tuples-only --no-align --dbname="$APPBASIS_ULC_RESTORE_DATABASE_URL" --command="$ULC_RESTORE_INTEGRITY_SQL"')"
+          test "$STATUS" = "t" || {
+            echo "ULC K2 restore structural integrity FAIL: incomplete canonical owner schema, inactive required fences or invalid constraints." >&2
+            exit 1
+          }
+          echo "ULC K2 quarantine restore structural integrity PASS. Production neondb: 69 tables, eight owners, five active write fences, zero NOT VALID constraints. This is not a personal-data fingerprint, media or privacy acceptance." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Delete confidential restore working files
         if: always() && steps.download.outputs.workspace != ''
         shell: bash
