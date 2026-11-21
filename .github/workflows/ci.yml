@@ -16,8 +16,58 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  pr-scope:
+    name: PR scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      pull-requests: read
+    outputs:
+      run_heavy: ${{ steps.classify.outputs.run_heavy }}
+    steps:
+      - name: Classify documentation-only pull requests (fail closed)
+        id: classify
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            echo "run_heavy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || exit 1
+          page=1
+          checked=0
+          run_heavy=false
+          while :; do
+            url="https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100&page=${page}"
+            files="$(curl --fail-with-body --silent --show-error --retry 2 --connect-timeout 10 --max-time 30 \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' "$url")"
+            jq -e 'type == "array" and all(.[]; .filename | type == "string")' <<< "$files" >/dev/null
+            count="$(jq 'length' <<< "$files")"
+            checked=$((checked + count))
+            if jq -e 'any(.[]; .filename | test("^(AGENTS\\.md|CURRENT-GATE\\.md|\\.github/PULL_REQUEST_TEMPLATE\\.md|docs/.+\\.md)$") | not)' <<< "$files" >/dev/null; then
+              run_heavy=true
+            fi
+            if (( count < 100 )); then break; fi
+            page=$((page + 1))
+            if (( page > 30 )); then run_heavy=true; break; fi
+          done
+          if (( checked == 0 )); then run_heavy=true; fi
+          echo "run_heavy=$run_heavy" >> "$GITHUB_OUTPUT"
+          if [[ "$run_heavy" == "true" ]]; then
+            echo '### Full CI: source, config, workflow or non-doc file changed.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '### Docs-only PR: heavy CI skipped (no runtime/config/workflow change).' >> "$GITHUB_STEP_SUMMARY"
+          fi
   identity-postgres-e2e:
     name: Identity PostgreSQL E2E
+    needs: pr-scope
+    if: needs.pr-scope.outputs.run_heavy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -143,6 +193,8 @@ jobs:
 
   quality-gate:
     name: Quality gate
+    needs: pr-scope
+    if: needs.pr-scope.outputs.run_heavy == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
