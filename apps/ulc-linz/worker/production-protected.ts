@@ -35,6 +35,13 @@ export function protectedUlcProductionRuntimeOptions(
     exerciseCatalogRuntimeMode: "standard-module-protected-production" as const,
     trainingBlockUsageMode: "protected-production-verified-subject" as const,
     trainingDocumentationRuntimeMode: "protected-production" as const,
+    // The live HTTP caller supplies trustedActorIdentityId only from the
+    // authenticated access result. The repository rechecks the current
+    // trainer/admin principal, role, capability and group membership under
+    // the same PostgreSQL transaction that writes the training.
+    // Do not inherit Preview's caller-supplied mode; production always uses
+    // this explicit fail-closed guard when the private entrypoint is refreshed.
+    trainingSessionWriteGuardMode: "require-live-training-actor-transaction" as const,
   });
 }
 
