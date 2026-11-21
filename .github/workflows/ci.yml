@@ -136,6 +136,12 @@ jobs:
       - name: Rehearse P03-D stale training-subject write fence on disposable PostgreSQL 18
         run: node --test ./tooling/ulc-linz-p03-d-subject-fence.postgres.test.mjs
 
+      - name: Verify P24 deadlock-safe source-athlete and personal-favorite fences on isolated PostgreSQL 18
+        run: |
+          node --test ./tooling/ulc-linz-p24-training-deadlock-safe.postgres.test.mjs
+          node --test ./tooling/ulc-linz-p24-favorites-deadlock-safe.postgres.test.mjs
+          node --test ./tooling/ulc-linz-p24-lock-order-concurrency.postgres.test.mjs
+
       - name: Rehearse P02-G actual in-place synthetic 51-to-69 schema upgrade on PostgreSQL 18
         run: node --test ./tooling/ulc-linz-p02-g-synthetic-upgrade.postgres.test.mjs
 
