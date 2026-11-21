@@ -287,6 +287,9 @@ jobs:
       - name: Test ULC K2 isolated backup and restore policy (no provider access)
         run: node --test ./tooling/ulc-linz-k2-backup-plan.test.mjs
 
+      - name: Test read-only ULC production onboarding readiness and no-data-output contract
+        run: node --test ./tooling/ulc-linz-production-onboarding-readonly.test.mjs
+
       - name: Rehearse encrypted ULC private-media byte recovery fully offline
         run: node --test ./tooling/ulc-linz-k2-offline-media-recovery.test.mjs
 
