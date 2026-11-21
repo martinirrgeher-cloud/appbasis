@@ -82,6 +82,13 @@ export async function verifyK2OfflineMediaRecovery({
   catch { fail("ROOT_UNAVAILABLE"); }
   if (!base.isDirectory() || base.isSymbolicLink()) fail("ROOT_UNSAFE");
 
+  const allowedDirectories = new Set();
+  for (const key of expected.keys()) {
+    const parts = key.split("/");
+    for (let i = 1; i < 4; i++) {
+      allowedDirectories.add(parts.slice(0, i).join("/"));
+    }
+  }
   let count = 0;
   let bytes = 0;
   const found = new Set();
@@ -98,8 +105,7 @@ export async function verifyK2OfflineMediaRecovery({
       const full = join(dir, entry.name);
       if (entry.isSymbolicLink()) fail("SYMLINK_DISALLOWED");
       if (entry.isDirectory()) {
-        if (nested.length >= 4 ||
-            ![...expected.keys()].some(k => k.startsWith(key + "/"))) {
+        if (nested.length >= 4 || !allowedDirectories.has(key)) {
           fail("EXTRA_DIRECTORY");
         }
         await walk(full, nested);
