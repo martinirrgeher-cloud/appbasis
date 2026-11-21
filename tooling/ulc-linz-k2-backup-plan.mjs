@@ -26,6 +26,54 @@ export function ulcRequiredOwnerSchemaSql() {
   ).join(" AND ");
 }
 
+
+/**
+ * Read-only structural integrity attestation for an isolated K2 restore.
+ * It never scans or returns personal rows. For the actual 69-table neondb
+ * production layout, require all eight app owners, all five published write
+ * fences and no NOT VALID constraints. Any future intentional schema change
+ * must be reviewed here explicitly. Historical preview archives retain the
+ * existing minimal owner-presence check; they must not be represented as a
+ * production-quality 69-table restore.
+ *
+ * This query is exclusively for the disconnected quarantine destination.
+ * It is NOT a row-by-row/source snapshot, media, ACL or privacy proof.
+ */
+export function ulcRestoreIntegritySql(databaseName) {
+  const name = assertUlcDatabaseName(databaseName);
+  const owners = "(" + ulcRequiredOwnerSchemaSql().replace(/^SELECT\s+/, "") + ")";
+  if (name !== "neondb") return "SELECT " + owners;
+
+  const expected = [
+    ["ulc_linz_training_attendance", "ulc_linz_training_attendance_subject_fence", "ulc_linz_training_subject_write_fence"],
+    ["ulc_linz_training_registration", "ulc_linz_training_registration_subject_fence", "ulc_linz_training_subject_write_fence"],
+    ["ulc_linz_training_registration_change", "ulc_linz_training_registration_change_subject_fence", "ulc_linz_training_subject_write_fence"],
+    ["appbasis_training_documentation", "appbasis_training_documentation_guard_root", "appbasis_training_documentation_guard_root_insert"],
+    ["appbasis_training_documentation_revision", "appbasis_training_documentation_guard_revision", "appbasis_training_documentation_guard_revision_write"],
+  ];
+  const values = expected.map(row => "(" + row.map(value => "'" + value + "'").join(",") + ")").join(",\n      ");
+  return [
+    "WITH expected_fences(relation_name,trigger_name,function_name) AS (",
+    "  VALUES " + values,
+    ") SELECT ",
+    "  (SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname='public')=69",
+    "  AND " + owners,
+    "  AND (SELECT count(*) FROM pg_catalog.pg_constraint x",
+    "    JOIN pg_catalog.pg_class r ON r.oid=x.conrelid",
+    "    JOIN pg_catalog.pg_namespace n ON n.oid=r.relnamespace",
+    "    WHERE n.nspname='public' AND NOT x.convalidated)=0",
+    "  AND (SELECT count(*) FROM expected_fences e",
+    "    JOIN pg_catalog.pg_trigger t ON t.tgname=e.trigger_name",
+    "      AND NOT t.tgisinternal AND t.tgenabled IN ('O','A')",
+    "      AND (t.tgtype::integer & 23)=23",
+    "    JOIN pg_catalog.pg_class r ON r.oid=t.tgrelid AND r.relname=e.relation_name",
+    "    JOIN pg_catalog.pg_namespace n ON n.oid=r.relnamespace AND n.nspname='public'",
+    "    JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid AND p.proname=e.function_name",
+    "      AND p.pronargs=0",
+    "    JOIN pg_catalog.pg_namespace pn ON pn.oid=p.pronamespace AND pn.nspname='public')=5",
+  ].join("\n");
+}
+
 export function ulcBackupPlan(now = new Date(), databaseName) {
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
     throw new Error("Backup timestamp is invalid.");
@@ -208,6 +256,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       process.stdout.write(assertUlcBackupBucket(process.env.APPBASIS_ULC_R2_BUCKET) + "\n");
     } else if (command === "schema-sql") {
       process.stdout.write(ulcRequiredOwnerSchemaSql() + "\n");
+    } else if (command === "restore-integrity-sql") {
+      process.stdout.write(ulcRestoreIntegritySql(process.env.APPBASIS_ULC_EXPECTED_DATABASE_NAME) + "\n");
     } else if (command === "source") {
       assertUlcBackupSourceDatabase(
         process.env.APPBASIS_ULC_SOURCE_DATABASE_URL,
@@ -231,7 +281,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       );
       process.stdout.write("ok\n");
     } else {
-      throw new Error("Expected plan, endpoint, bucket, schema-sql, source, targets, key or lifecycle.");
+      throw new Error("Expected plan, endpoint, bucket, schema-sql, restore-integrity-sql, source, targets, key or lifecycle.");
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : "ULC backup input error.");
