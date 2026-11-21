@@ -53,6 +53,58 @@ export function privateExerciseVideoStorageKey(
   ].join("/");
 }
 
+/**
+ * Validate the full SQL media reference before ANY provider read. A same-org
+ * metadata row with a foreign storageKey is still an authorization failure.
+ * The canonical key is derived from trusted request scope, never from SQL.
+ */
+export function isExactUlcPrivateMediaStorageReference(
+  media: unknown,
+  organizationId: string,
+  exerciseId: string,
+  mediaId: string,
+): media is Readonly<{
+  organizationId: string;
+  exerciseId: string;
+  id: string;
+  storageKey: string;
+}> {
+  if (media === null || typeof media !== "object") return false;
+  const row = media as Partial<{
+    organizationId: string;
+    exerciseId: string;
+    id: string;
+    storageKey: string;
+  }>;
+  return row.organizationId === organizationId &&
+    row.exerciseId === exerciseId &&
+    row.id === mediaId &&
+    row.storageKey === privateExerciseVideoStorageKey(
+      organizationId, exerciseId, mediaId,
+    );
+}
+
+/**
+ * Enforce tenant, exercise, media and key equality before consulting R2.
+ * No provider operation is performed for corrupt or foreign SQL metadata.
+ */
+export async function readUlcPrivateExerciseMediaWithScope(input: Readonly<{
+  organizationId: string;
+  exerciseId: string;
+  mediaId: string;
+  media: unknown;
+  store: UlcExerciseCatalogObjectStore;
+  range?: Headers;
+}>): Promise<UlcExerciseCatalogStoredObject | null> {
+  if (!isExactUlcPrivateMediaStorageReference(
+    input.media, input.organizationId, input.exerciseId, input.mediaId,
+  )) return null;
+  const key = privateExerciseVideoStorageKey(
+    input.organizationId, input.exerciseId, input.mediaId,
+  );
+  return input.store.get(key, { range: input.range });
+}
+
 export function normalizedPrivateVideoContentType(value: unknown): string {
   if (typeof value !== "string") {
     throw new Error("Private exercise video content type is invalid.");
