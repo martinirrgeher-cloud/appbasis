@@ -220,6 +220,28 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
     await expect(assertUlcProtectedCatalogProductionReadiness(sql)).resolves.toBeUndefined();
   });
 
+  it("blocks unauthorized direct mutation grants on subject usage and its deletion marker", async () => {
+    const sql = adapter(ordinaryApp());
+    for (const [table, privilege] of [
+      ["appbasis_training_block_usage_subject", "DELETE"],
+      ["appbasis_training_block_usage_subject_deletion", "INSERT"],
+    ] as const) {
+      await database().client.unsafe(
+        "GRANT " + privilege + " ON public." + table + " TO " + applicationRole,
+      );
+      try {
+        await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
+          .rejects.toBeInstanceOf(UlcVerifiedBlockUsageUnavailableError);
+      } finally {
+        await database().client.unsafe(
+          "REVOKE " + privilege + " ON public." + table + " FROM " + applicationRole,
+        );
+      }
+      await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
+        .resolves.toBeUndefined();
+    }
+  });
+
   it("fails closed on training-block subject grant drift without disabling documentation", async () => {
     const sql = adapter(ordinaryApp());
     await database().client.unsafe(
