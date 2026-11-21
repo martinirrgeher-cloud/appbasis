@@ -120,7 +120,7 @@ export async function trainingDocumentationHttpResponse(
       ? notFound()
       : privateJson({ documentation: clientDocumentation(documentation) });
   } catch (error) {
-    return errorResponse(error);
+    return mutationErrorResponse(error, runtime, access);
   }
 }
 
@@ -239,7 +239,7 @@ async function startResponse(
       { status: 201 },
     );
   } catch (error) {
-    return errorResponse(error);
+    return mutationErrorResponse(error, runtime, access);
   }
 }
 
@@ -506,6 +506,24 @@ function clientPlan(plan: TrainingPlanSnapshot): Readonly<Record<string, unknown
       items: plan.revision.items,
     }),
   });
+}
+
+function mutationErrorResponse(
+  error: unknown,
+  runtime: GeneratedPostgresApplicationRuntime,
+  access: Readonly<{ organizationId: string; actorPrincipalId: string }>,
+): Response {
+  if (error instanceof UlcTrainingDocumentationActorWriteBlockedError) {
+    recordUlcLinzSecurityEvent(runtime.securityEvents, {
+      eventType: "authorization.denied",
+      actorPrincipalId: access.actorPrincipalId,
+      organizationId: access.organizationId,
+      action: "edit",
+      targetId: "training_documentation",
+      reasonCode: "capability-denied",
+    });
+  }
+  return errorResponse(error);
 }
 
 function errorResponse(error: unknown): Response {

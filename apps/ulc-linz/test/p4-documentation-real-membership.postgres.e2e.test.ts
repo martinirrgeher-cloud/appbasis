@@ -4,6 +4,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning";
 import { PostgresPermissionStore } from "@appbasis/permissions";
+import {
+  PostgresTrainingDocumentationRepository,
+  TrainingDocumentationService,
+} from "@appbasis/training-documentation";
 
 import {
   createUlcLinzTrainingDocumentationAccessService,
@@ -348,15 +352,71 @@ describeLocal("P4 documentation real membership and capability SQL authorization
     )).rejects.toBeInstanceOf(UlcTrainingDocumentationActorWriteBlockedError);
   });
 
-  it("never stores a training-documentation row during this identity/permission rehearsal", async () => {
-    for (const table of [
-      "appbasis_training_documentation",
-      "appbasis_training_documentation_revision",
-    ]) {
-      const row = await db().client.unsafe(
-        "SELECT COUNT(*)::int AS count FROM public." + table,
-      );
-      expect(row[0]?.count).toBe(0);
-    }
+  it("atomically rejects a revoked trainer's next real document revision without saving data", async () => {
+    const person = await member("trainer");
+    const docs = new TrainingDocumentationService({
+      repository: new PostgresTrainingDocumentationRepository(db().client, {
+        writeGuard: assertUlcLiveTrainingDocumentationActor,
+      }),
+      createId: () => "p03-atomic-document-" + randomUUID(),
+      now: () => new Date("2026-11-21T10:00:00.000Z"),
+    });
+
+    const doc = await docs.create(person.org, {
+      subjectId: "p03-atomic-athlete",
+      sessionDate: "2026-11-21",
+      sourcePlanId: "p03-verified-source",
+      sourcePlanRevision: 1,
+    }, person.id);
+    expect(doc).toMatchObject({ currentRevision: 1, status: "draft" });
+
+    await db().client.unsafe(
+      `INSERT INTO appbasis_permission_principal_revoke(principal_id,capability_id)
+       VALUES ($1,'ulc-linz:module:training_documentation:edit')`,
+      [person.id],
+    );
+    await expect(docs.update(person.org, doc.id, 1, {
+      note: "Must not persist after revoke",
+    }, person.id)).rejects.toBeInstanceOf(
+      UlcTrainingDocumentationActorWriteBlockedError,
+    );
+    const revisions = await db().client.unsafe(
+      `SELECT COUNT(*)::int AS count
+       FROM appbasis_training_documentation_revision
+       WHERE organization_id=$1 AND documentation_id=$2`,
+      [person.org, doc.id],
+    );
+    expect(revisions).toEqual([{ count: 1 }]);
+    expect((await docs.findCurrent(person.org, doc.id))?.currentRevision).toBe(1);
+  });
+
+  it("rejects a real document INSERT without trusted HTTP actor, leaving no root", async () => {
+    const docs = new TrainingDocumentationService({
+      repository: new PostgresTrainingDocumentationRepository(db().client, {
+        writeGuard: assertUlcLiveTrainingDocumentationActor,
+      }),
+      createId: () => "p03-no-http-actor-" + randomUUID(),
+    });
+    const totalBefore = await db().client.unsafe(
+      "SELECT COUNT(*)::int AS count FROM appbasis_training_documentation",
+    );
+    await expect(docs.create("synthetic-p4-org", {
+      subjectId: "p03-denied-subject",
+      sessionDate: "2026-11-21",
+      sourcePlanId: "p03-denied-source",
+      sourcePlanRevision: 1,
+    })).rejects.toBeInstanceOf(UlcTrainingDocumentationActorWriteBlockedError);
+    const totalAfter = await db().client.unsafe(
+      "SELECT COUNT(*)::int AS count FROM appbasis_training_documentation",
+    );
+    expect(totalAfter).toEqual(totalBefore);
+  });
+
+  it("keeps test-created documentation explicitly revision-scoped", async () => {
+    const counts = await db().client.unsafe(
+      `SELECT (SELECT COUNT(*)::int FROM appbasis_training_documentation) AS roots,
+              (SELECT COUNT(*)::int FROM appbasis_training_documentation_revision) AS revisions`,
+    );
+    expect(counts).toEqual([{ roots: 1, revisions: 1 }]);
   });
 });
