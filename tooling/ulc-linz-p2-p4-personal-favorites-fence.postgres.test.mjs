@@ -40,6 +40,19 @@ test("P2-P4: direct favorite SQL bypass before candidate; both owners reject res
     "VALUES ($1,$2,'2026-11-20T12:00:00Z','2026-12-25T12:00:00Z')",
     [org, principal],
   );
+  // The block owner has a DEFERRABLE current-revision FK; seed the block and
+  // its first revision atomically, as the real service does.
+  const seedBlock = async (org, block) => db.client.begin(async tx => {
+    await tx.unsafe(
+      "INSERT INTO appbasis_training_block(id,organization_id) VALUES ($1,$2)",
+      [block,org],
+    );
+    await tx.unsafe(
+      "INSERT INTO appbasis_training_block_revision " +
+      "(organization_id,block_id,revision,name) VALUES ($1,$2,1,'Synthetic favorite block')",
+      [org,block],
+    );
+  });
   const insertFavorite = async (table, org, principal, item) => query(
     "INSERT INTO " + table + " (organization_id,principal_id," +
       (table === CATALOG_FAVORITE ? "exercise_id" : "block_id") +
@@ -81,7 +94,7 @@ test("P2-P4: direct favorite SQL bypass before candidate; both owners reject res
         "(id,organization_id,name,category_key) VALUES ($1,$2,'Synthetic favorite test','basic')",
         [item, org],
       );
-      await query("INSERT INTO appbasis_training_block(id,organization_id) VALUES ($1,$2)", [block,org]);
+      await seedBlock(org,block);
     }
     // Preexisting rows demonstrate the UPDATE bypass, while two new rows
     // demonstrate the direct-SQL INSERT bypass before candidate activation.
@@ -98,7 +111,7 @@ test("P2-P4: direct favorite SQL bypass before candidate; both owners reject res
       "(id,organization_id,name,category_key) VALUES ('p24-second-exercise',$1,'Another synthetic exercise','basic')",
       [ORG],
     );
-    await query("INSERT INTO appbasis_training_block(id,organization_id) VALUES ('p24-second-block',$1)",[ORG]);
+    await seedBlock(ORG,"p24-second-block");
     await insertFavorite(CATALOG_FAVORITE,ORG,DELETED,"p24-second-exercise");
     await insertFavorite(BLOCK_FAVORITE,ORG,DELETED,"p24-second-block");
     await query(
