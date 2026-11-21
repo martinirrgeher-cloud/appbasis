@@ -30,6 +30,8 @@ Der private HTTP-Abruf von Katalogvideos verwendete bisher `media.storageKey` au
 
 **Änderung:** Ein gemeinsamer strenger Referenzvalidator prüft Organisation, Übung, Medien-ID und exakt den kanonisch abgeleiteten Objektschlüssel; GET und DELETE verwenden ihn. Auf unbekannte/fremde Referenzen erfolgt **kein Provider-GET/DELETE**. Offline-Negativtests decken fremde Organisation, Übung, Medien-ID, Key und ungültige Metadaten ab.
 
+**Weitere P02-Sicherung:** Der produktive Plan→Block-Readiness-Check verweigert nun direktes UPDATE/DELETE/TRUNCATE auf personenbezogen zugeschriebenen Block-Usage-Zeilen und jegliches INSERT/UPDATE/DELETE/TRUNCATE auf deren Löschmarker für die normale App-Rolle. Die tatsächlichen Produktions- **und** Preview-Rollen wurden rein lesend geprüft: beide haben diese gefährlichen Rechte nicht. **Offenes Risiko:** die vorhandene Produktions-App-Rolle besitzt derzeit weiterhin UPDATE/DELETE auf der *alten, nicht attributierten* `appbasis_training_block_usage`-Tabelle. Das ist kein Freigabebeleg für Legacy-Usage und erfordert getrennte Owner-/Migration-/GRANT-Abnahme, bevor historische Usage als vollständig geschützt gelten darf.
+
 **Nicht gelöst:** vollständiger providerbestätigter Lösch- und Restore-Horizont, Reupload-Race, historische persönliche Usage, 8-Owner-Koordination. `exercise-catalog` und `training-blocks` bleiben `blocked`.
 
 ## 3. P03 – Beendete Mitgliedschaften nicht weiter berechtigen
