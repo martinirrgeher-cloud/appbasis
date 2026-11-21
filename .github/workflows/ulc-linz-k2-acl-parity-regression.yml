@@ -1,0 +1,28 @@
+name: K2 ACL restore parity offline regression
+on:
+  pull_request:
+    paths:
+      - "tooling/ulc-linz-k2-acl-parity.mjs"
+      - "tooling/ulc-linz-k2-acl-parity.test.mjs"
+      - "tooling/ulc-linz-k2-acl-readonly.sql"
+      - "apps/ulc-linz/docs/K2-A02-ACL-RESTORE-PARITY.md"
+      - ".github/workflows/ulc-linz-k2-acl-parity-regression.yml"
+permissions:
+  contents: read
+jobs:
+  offline-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test fail-closed ACL evidence from synthetic and observed aggregate fixtures
+        run: node --test tooling/ulc-linz-k2-acl-parity.test.mjs
+      - name: State evidence limit
+        if: success()
+        run: |
+          echo "K2 offline ACL evidence gate PASS. Actual K2 restore parity is still FAIL; no grants, runtime writes or deploys performed." >> "$GITHUB_STEP_SUMMARY"
