@@ -256,12 +256,22 @@ suite("ULC P5 one-pass synthetic real-HTTP functional admission", () => {
       data:{name:"P6 Synthetic Training Block",note:"Verified HTTP persistence",exercises:[]},
     });
     expect(blockCreate.status).toBe(201);
-    const block = (await blockCreate.json() as {block:{id:string;name:string}}).block;
-    expect(block.name).toBe("P6 Synthetic Training Block");
+    // The live API exposes the persisted name under block.revision.name,
+    // not as a top-level block.name property.
+    const block = (await blockCreate.json() as {
+      block:{id:string;currentRevision:number;revision:{name:string}}
+    }).block;
+    expect(block.revision.name).toBe("P6 Synthetic Training Block");
     const blockPath = "/api/modules/training-blocks/" + encodeURIComponent(block.id);
     const blockReload = await send(blockPath,{cookie:trainerCookie});
     expect(blockReload.status).toBe(200);
-    expect((await blockReload.json() as {block:{id:string}}).block.id).toBe(block.id);
+    expect((await blockReload.json() as {
+      block:{id:string;currentRevision:number;revision:{name:string}}
+    }).block).toMatchObject({
+      id:block.id,
+      currentRevision:block.currentRevision,
+      revision:{name:"P6 Synthetic Training Block"},
+    });
 
     const documentationStart = await send("/api/modules/training-documentation/start", {
       method:"POST",cookie:trainerCookie,
