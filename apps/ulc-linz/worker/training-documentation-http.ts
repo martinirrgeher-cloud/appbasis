@@ -527,11 +527,11 @@ function mutationErrorResponse(
 }
 
 function errorResponse(error: unknown): Response {
+  const transient = ulcWriteLockConflictHttpResponse(error);
+  if (transient !== null) return transient;
   if (error instanceof UlcTrainingDocumentationActorWriteBlockedError) {
     return scopeDenied();
   }
-  const transient = ulcWriteLockConflictHttpResponse(error);
-  if (transient !== null) return transient;
   if (error instanceof TrainingDocumentationConflictError) {
     return Response.json(
       {
