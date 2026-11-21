@@ -32,7 +32,7 @@ describe("ULC P4 immutable aggregate unstructured history inventory", () => {
       ...empty,
       registration_history_notes: 2,
       documentation_revision_json: 1,
-      plan_revision_item_notes: 1,
+      plan_revision_item_text: 1,
       block_revision_item_notes: 2,
       block_revision_parameter_values: 1,
     };
@@ -70,6 +70,11 @@ describe("ULC P4 immutable aggregate unstructured history inventory", () => {
     expect(query).toContain("source_ref");
     expect(query).toContain("nullif(btrim(comment)");
     expect(query).toContain("nullif(btrim(parameter_value)");
+    for (const field of [
+      "name", "sets_value", "repetitions_value", "amount_value", "unit_value",
+    ]) expect(query).toContain("nullif(btrim(" + field + ")");
+    expect(query).toContain("AS plan_revision_item_text");
+    expect(query).toContain("AS block_revision_text");
     expect(query).not.toMatch(/\b(?:INSERT|DELETE|UPDATE|TRUNCATE|DROP)\b/i);
     expect(JSON.stringify(result)).not.toContain("synthetic-org");
   });
