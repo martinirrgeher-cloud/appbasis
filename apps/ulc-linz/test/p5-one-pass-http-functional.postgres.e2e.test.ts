@@ -139,23 +139,30 @@ suite("ULC P5 one-pass synthetic real-HTTP functional admission", () => {
       await sql().unsafe("INSERT INTO appbasis_permission_role(role_id) VALUES ($1)",
         ["ulc-linz:" + role]);
     }
-    for (const permission of [
-      "ulc-linz:module:training_planning:view",
-      "ulc-linz:module:training_planning:edit",
+    // The four connected modules run under real SQL-backed capabilities:
+    // trainer may read and write; functionary may only read.
+    for (const module of [
+      "training_planning", "exercise_catalog", "training_blocks",
+      "training_documentation",
     ]) {
-      await sql().unsafe("INSERT INTO appbasis_permission_capability(capability_id) VALUES ($1)",
-        [permission]);
+      for (const action of ["view", "edit"]) {
+        const permission = "ulc-linz:module:" + module + ":" + action;
+        await sql().unsafe(
+          "INSERT INTO appbasis_permission_capability(capability_id) VALUES ($1)",
+          [permission],
+        );
+        await sql().unsafe(
+          "INSERT INTO appbasis_permission_role_capability(role_id,capability_id) VALUES ($1,$2)",
+          ["ulc-linz:trainer", permission],
+        );
+        if (action === "view") {
+          await sql().unsafe(
+            "INSERT INTO appbasis_permission_role_capability(role_id,capability_id) VALUES ($1,$2)",
+            ["ulc-linz:functionary", permission],
+          );
+        }
+      }
     }
-    for (const capability of ["view", "edit"]) {
-      await sql().unsafe(
-        "INSERT INTO appbasis_permission_role_capability(role_id,capability_id) VALUES ($1,$2)",
-        ["ulc-linz:trainer", "ulc-linz:module:training_planning:" + capability],
-      );
-    }
-    await sql().unsafe(
-      "INSERT INTO appbasis_permission_role_capability(role_id,capability_id) VALUES ($1,$2)",
-      ["ulc-linz:functionary", "ulc-linz:module:training_planning:view"],
-    );
     for (const [identity,role] of [
       [trainerId, "trainer"], [functionaryId, "functionary"],
     ] as const) {
@@ -230,6 +237,64 @@ suite("ULC P5 one-pass synthetic real-HTTP functional admission", () => {
     );
     expect(rows[0]?.total).toBe(1);
 
+    // (2b) Catalog, blocks and documentation are exercised through actual
+    // Worker HTTP routes. Each fresh request reconstructs its SQL runtime.
+    const catalogCreate = await send("/api/modules/exercise-catalog", {
+      method:"POST",cookie:trainerCookie,
+      data:{name:"P6 Synthetic Warmup",categoryKey:"warmup"},
+    });
+    expect(catalogCreate.status).toBe(201);
+    const catalogItem = (await catalogCreate.json() as {item:{id:string;name:string}}).item;
+    expect(catalogItem.name).toBe("P6 Synthetic Warmup");
+    const catalogPath = "/api/modules/exercise-catalog/" + encodeURIComponent(catalogItem.id);
+    const catalogReload = await send(catalogPath,{cookie:trainerCookie});
+    expect(catalogReload.status).toBe(200);
+    expect((await catalogReload.json() as {item:{id:string}}).item.id).toBe(catalogItem.id);
+
+    const blockCreate = await send("/api/modules/training-blocks", {
+      method:"POST",cookie:trainerCookie,
+      data:{name:"P6 Synthetic Training Block",note:"Verified HTTP persistence",exercises:[]},
+    });
+    expect(blockCreate.status).toBe(201);
+    const block = (await blockCreate.json() as {block:{id:string;name:string}}).block;
+    expect(block.name).toBe("P6 Synthetic Training Block");
+    const blockPath = "/api/modules/training-blocks/" + encodeURIComponent(block.id);
+    const blockReload = await send(blockPath,{cookie:trainerCookie});
+    expect(blockReload.status).toBe(200);
+    expect((await blockReload.json() as {block:{id:string}}).block.id).toBe(block.id);
+
+    const documentationStart = await send("/api/modules/training-documentation/start", {
+      method:"POST",cookie:trainerCookie,
+      data:{subjectId:SUBJECT,sessionDate:DATE},
+    });
+    expect(documentationStart.status).toBe(201);
+    const documentation = (await documentationStart.json() as {
+      documentation:{id:string;currentRevision:number}
+    }).documentation;
+    const documentationPath = "/api/modules/training-documentation/"
+      + encodeURIComponent(documentation.id) + "/update";
+    const documentationSave = await send(documentationPath, {
+      method:"POST",cookie:trainerCookie,
+      data:{expectedRevision:documentation.currentRevision,
+        note:"P6 synthetic session documentation",items:[]},
+    });
+    expect(documentationSave.status).toBe(200);
+    const docDayPath = "/api/modules/training-documentation/day?subjectId="
+      + SUBJECT + "&sessionDate=" + DATE;
+    const documentationReload = await send(docDayPath,{cookie:trainerCookie});
+    expect(documentationReload.status).toBe(200);
+    expect((await documentationReload.json() as {
+      documentation:{id:string;revision:{note:string}}
+    }).documentation).toMatchObject({
+      id:documentation.id,revision:{note:"P6 synthetic session documentation"},
+    });
+    // Old client revision must never overwrite an already-saved document.
+    expect((await send(documentationPath, {
+      method:"POST",cookie:trainerCookie,
+      data:{expectedRevision:documentation.currentRevision,
+        note:"Stale overwrite",items:[]},
+    })).status).toBe(409);
+
     // (3) A real functionary may read but not write; runtime rejects missing
     // session and a trainer whose edit permission is revoked in PostgreSQL.
     const functionaryLogin = await send("/api/auth/sign-in", {
@@ -243,6 +308,20 @@ suite("ULC P5 one-pass synthetic real-HTTP functional admission", () => {
     expect(functionaryChange.status).toBe(200);
     const functionaryCookie = cookie(functionaryChange);
     expect((await send(url,{cookie:functionaryCookie})).status).toBe(200);
+    for (const path of [catalogPath,blockPath,docDayPath]) {
+      expect((await send(path,{cookie:functionaryCookie})).status).toBe(200);
+      expect((await send(path)).status).toBe(401);
+    }
+    for (const [path,data] of [
+      ["/api/modules/exercise-catalog",{name:"Denied",categoryKey:"warmup"}],
+      ["/api/modules/training-blocks",{name:"Denied",exercises:[]}],
+      [documentationPath,{expectedRevision:documentation.currentRevision + 1,
+        note:"Denied",items:[]}],
+    ] as const) {
+      expect((await send(path,{
+        method:"POST",cookie:functionaryCookie,data,
+      })).status).toBe(403);
+    }
     const denied = await send("/api/modules/training-plans",{
       method:"POST",cookie:functionaryCookie,
       data:{subjectId:SUBJECT,planDate:"2026-11-24",items:[]},
@@ -258,6 +337,29 @@ suite("ULC P5 one-pass synthetic real-HTTP functional admission", () => {
       data:{subjectId:SUBJECT,planDate:"2026-11-25",items:[]},
     })).status).toBe(403);
     expect((await send(url,{cookie:trainerCookie})).status).toBe(200);
+    // Rights revocation is evaluated against current SQL, not a cached session.
+    for (const module of ["exercise_catalog","training_blocks","training_documentation"]) {
+      await sql().unsafe(
+        "INSERT INTO appbasis_permission_principal_revoke(principal_id,capability_id) VALUES ($1,$2)",
+        [trainerId,"ulc-linz:module:" + module + ":edit"],
+      );
+    }
+    expect((await send("/api/modules/exercise-catalog", {
+      method:"POST",cookie:trainerCookie,
+      data:{name:"Revoked catalog write",categoryKey:"warmup"},
+    })).status).toBe(403);
+    expect((await send("/api/modules/training-blocks", {
+      method:"POST",cookie:trainerCookie,
+      data:{name:"Revoked block write",exercises:[]},
+    })).status).toBe(403);
+    expect((await send(documentationPath, {
+      method:"POST",cookie:trainerCookie,
+      data:{expectedRevision:documentation.currentRevision + 1,
+        note:"Revoked document write",items:[]},
+    })).status).toBe(403);
+    for (const path of [catalogPath,blockPath,docDayPath]) {
+      expect((await send(path,{cookie:trainerCookie})).status).toBe(200);
+    }
     const countAfterDenied = await sql().unsafe(
       "SELECT count(*)::int AS total FROM appbasis_training_plan WHERE organization_id=$1",
       [ORG],
