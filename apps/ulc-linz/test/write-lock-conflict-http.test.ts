@@ -29,7 +29,7 @@ describe("P24 retryable database lock conflicts", () => {
     expect(body).toEqual({
       error: {
         code: "ULC_WRITE_TEMPORARILY_BUSY",
-        message: "The record is being updated or removed. Nothing was saved. Keep your changes, reload the current state and retry.",
+        message: "The record is being updated or removed. This change could not be completed. Keep your edits, reload the current state and retry.",
       },
     });
     const serialized = JSON.stringify(body);
