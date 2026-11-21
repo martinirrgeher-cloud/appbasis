@@ -11,6 +11,7 @@ import {
   assertUlcBackupSourceDatabase,
   assertIsolatedUlcRestoreTarget,
   assertUlcBackupKey,
+  assertUlcBackupR2Lifecycle,
 } from "./ulc-linz-k2-backup-plan.mjs";
 
 const SOURCE = "postgresql://readonly:secret@ep-ulcprod.aws-eu-central-1.neon.tech/neondb?sslmode=require";
@@ -167,4 +168,45 @@ test("disabled scheduled K2 backups fail visibly instead of falsely reporting su
   assert.doesNotMatch(scheduledGate, /exit 0/);
   assert.match(workflow, /echo "run=preflight" >> "\$GITHUB_OUTPUT"/);
   assert.match(workflow, /if: steps\.gate\.outputs\.run == 'upload'/);
+});
+
+test("ULC backup requires an enabled exact-prefix R2 expiration of 30 days", () => {
+  const prefix = "appbasis/ulc-linz/pilot/db/neondb/daily/";
+  const approved = { Rules: [
+    { ID: "AbortIncomplete", Status: "Enabled", Filter: { Prefix: "" }, AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 } },
+    { ID: "ULC-30-day", Status: "Enabled", Filter: { Prefix: prefix }, Expiration: { Days: 30 } },
+    { ID: "OtherFiles", Status: "Enabled", Filter: { Prefix: "other/" }, Expiration: { Days: 14 } },
+  ] };
+  assert.deepEqual(assertUlcBackupR2Lifecycle(approved, "neondb"),
+    { prefix, days: 30, valid: true });
+  for (const policy of [
+    null, {}, { Rules: [] },
+    { Rules: [{ ID: "ULC-30", Status: "Disabled", Filter: { Prefix: prefix }, Expiration: { Days: 30 } }] },
+    { Rules: [{ Status: "Enabled", Filter: { Prefix: prefix }, Expiration: { Days: 31 } }] },
+    { Rules: [{ Status: "Enabled", Filter: { Prefix: "" }, Expiration: { Days: 30 } }] },
+    { Rules: [{ Status: "Enabled", Filter: { Prefix: prefix + "2026" }, Expiration: { Days: 30 } }] },
+    { Rules: [{ Status: "Enabled", Filter: { Prefix: prefix }, Expiration: { Date: "2026-12-21T00:00:00Z" } }] },
+    { Rules: [{ Status: "Enabled", Filter: { And: { Prefix: prefix } }, Expiration: { Days: 30 } }] },
+    { Rules: [approved.Rules[1], approved.Rules[1]] },
+    { Rules: [approved.Rules[1], { Status: "Enabled", Filter: { Prefix: "" }, Expiration: { Days: 90 } }] },
+  ]) {
+    assert.throws(() => assertUlcBackupR2Lifecycle(policy, "neondb"), /retention/);
+  }
+  assert.throws(() => assertUlcBackupR2Lifecycle(approved, "appbasis_ulc_linz_preview"), /retention/);
+});
+
+test("ULC upload workflow enforces R2 30-day expiry before creating ciphertext", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/ulc-linz-k2-encrypted-backup.yml", import.meta.url),
+    "utf8",
+  );
+  const lifecycleAt = workflow.indexOf("      - name: Require exact ULC R2 30-day backup lifecycle");
+  const workspaceAt = workflow.indexOf("      - name: Create secure temporary workspace and fixed daily object key");
+  const uploadAt = workflow.indexOf("      - name: Store immutable ciphertext and verify provider metadata");
+  assert.ok(lifecycleAt > 0 && workspaceAt > lifecycleAt && uploadAt > workspaceAt);
+  const part = workflow.slice(lifecycleAt, workspaceAt);
+  assert.match(part, /if: steps\.gate\.outputs\.run == 'upload'/);
+  assert.match(part, /get-bucket-lifecycle-configuration/);
+  assert.match(part, /ulc-linz-k2-backup-plan\.mjs lifecycle/);
+  assert.doesNotMatch(part, /put-bucket-lifecycle|delete-object|aws s3api put-object/);
 });

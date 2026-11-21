@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -122,6 +123,63 @@ export function assertUlcBackupBucket(value) {
   return value;
 }
 
+/**
+ * A backup upload is allowed only if Cloudflare R2 already has exactly
+ * one enabled, prefix-scoped 30-day expiration. Reads an S3-compatible
+ * GetBucketLifecycleConfiguration response; it never changes lifecycle
+ * rules, deletes objects, or enables backups.
+ *
+ * Provider bucket locks are NOT visible in this S3 response and require
+ * a separate operator check before the first real-data activation.
+ */
+export function assertUlcBackupR2Lifecycle(configuration, expectedDatabaseName) {
+  const databaseName = assertUlcDatabaseName(expectedDatabaseName);
+  const prefix = ULC_BACKUP_PREFIX + databaseName + "/daily/";
+  if (!configuration || typeof configuration !== "object" ||
+      !Array.isArray(configuration.Rules) || configuration.Rules.length === 0) {
+    throw new Error("ULC backup retention: R2 lifecycle rules are missing.");
+  }
+  let matches = 0;
+  for (const rule of configuration.Rules) {
+    if (!rule || typeof rule !== "object" ||
+        !["Enabled", "Disabled"].includes(rule.Status)) {
+      throw new Error("ULC backup retention: invalid rule status.");
+    }
+    if (rule.Status !== "Enabled") continue;
+    // Default incomplete-multipart cleanup needs no object-expiration proof.
+    if (!Object.hasOwn(rule, "Expiration") &&
+        !Object.hasOwn(rule, "NoncurrentVersionExpiration")) continue;
+    if ((rule.Filter && typeof rule.Filter === "object" &&
+         (Object.hasOwn(rule.Filter, "And") || Object.hasOwn(rule.Filter, "Tag") ||
+          Object.hasOwn(rule.Filter, "ObjectSizeGreaterThan") ||
+          Object.hasOwn(rule.Filter, "ObjectSizeLessThan"))) ||
+        (rule.Prefix !== undefined && rule.Filter?.Prefix !== undefined &&
+         rule.Prefix !== rule.Filter.Prefix)) {
+      throw new Error("ULC backup retention: complex expiration rule needs review.");
+    }
+    const rulePrefix = rule.Filter?.Prefix ?? rule.Prefix ?? "";
+    if (typeof rulePrefix !== "string") {
+      throw new Error("ULC backup retention: invalid prefix.");
+    }
+    // Rules for an unrelated prefix must not affect our daily backup.
+    if (!prefix.startsWith(rulePrefix) && !rulePrefix.startsWith(prefix)) continue;
+    // Broad expiration or a more-specific exception can delete backups
+    // at an unintended time; do not mistake either for the approved policy.
+    if (rulePrefix !== prefix ||
+        !rule.Expiration || !Number.isInteger(rule.Expiration.Days) ||
+        rule.Expiration.Days !== 30 ||
+        Object.keys(rule.Expiration).some(key => key !== "Days") ||
+        Object.hasOwn(rule, "NoncurrentVersionExpiration")) {
+      throw new Error("ULC backup retention: conflicting or broad expiration rule.");
+    }
+    matches++;
+  }
+  if (matches !== 1) {
+    throw new Error("ULC backup retention: exactly one enabled 30-day daily-prefix rule is required.");
+  }
+  return Object.freeze({ prefix, days: 30, valid: true });
+}
+
 export function assertUlcBackupKey(value, expectedDatabaseName) {
   const databaseName = assertUlcDatabaseName(expectedDatabaseName);
   const prefix = ULC_BACKUP_PREFIX + databaseName + "/daily/";
@@ -156,6 +214,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
         process.env.APPBASIS_ULC_EXPECTED_DATABASE_NAME,
       );
       process.stdout.write("ok\n");
+    } else if (command === "lifecycle") {
+      const policy = JSON.parse(readFileSync(process.argv[3], "utf8"));
+      assertUlcBackupR2Lifecycle(policy, process.env.APPBASIS_ULC_EXPECTED_DATABASE_NAME);
+      process.stdout.write("ok\n");
     } else if (command === "key") {
       process.stdout.write(assertUlcBackupKey(process.argv[3], process.env.APPBASIS_ULC_EXPECTED_DATABASE_NAME) + "\n");
     } else if (command === "targets") {
@@ -169,7 +231,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       );
       process.stdout.write("ok\n");
     } else {
-      throw new Error("Expected plan, endpoint, bucket, schema-sql, source, targets or key.");
+      throw new Error("Expected plan, endpoint, bucket, schema-sql, source, targets, key or lifecycle.");
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : "ULC backup input error.");

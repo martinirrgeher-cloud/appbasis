@@ -105,6 +105,23 @@ jobs:
           aws s3api head-bucket --bucket "$BUCKET" --endpoint-url "$ENDPOINT" >/dev/null
           echo "endpoint=$ENDPOINT" >> "$GITHUB_OUTPUT"
 
+      - name: Require exact ULC R2 30-day backup lifecycle
+        if: steps.gate.outputs.run == 'upload'
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_ULC_R2_BACKUP_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_ULC_R2_BACKUP_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          ENDPOINT: ${{ steps.settings.outputs.endpoint }}
+        run: |
+          set -euo pipefail
+          POLICY="$RUNNER_TEMP/ulc-k2-backup-lifecycle-$GITHUB_RUN_ID.json"
+          aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET" \
+            --endpoint-url "$ENDPOINT" --output json > "$POLICY"
+          node ./tooling/ulc-linz-k2-backup-plan.mjs lifecycle "$POLICY"
+          rm -f -- "$POLICY"
+          echo "ULC K2 30-day daily-prefix expiration verified; bucket locks require independent operator check." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Create secure temporary workspace and fixed daily object key
         if: steps.gate.outputs.run != '0'
         id: setup
