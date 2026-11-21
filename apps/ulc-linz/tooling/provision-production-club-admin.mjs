@@ -20,12 +20,22 @@ function required(name) {
 }
 
 async function provision() {
+  phase = "configuration:database-url-missing";
   const databaseUrl = required("ULC_LINZ_PRODUCTION_DATABASE_URL");
+  phase = "configuration:database-target-invalid";
   parseUlcLinzProductionDatabaseUrl(databaseUrl);
+  phase = "configuration:auth-secret-missing";
   const secret = required("ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET");
+  phase = "configuration:root-password-missing";
   const rootPassword = required("ULC_LINZ_PRODUCTION_ADMIN_PASSWORD");
+  phase = "configuration:temporary-password-missing";
   const temporaryPassword = required("ULC_LINZ_CLUB_ADMIN_TEMPORARY_PASSWORD");
-  if (temporaryPassword.length < 20 || temporaryPassword === rootPassword) {
+  phase = "configuration:temporary-password-too-short";
+  if (temporaryPassword.length < 20) {
+    throw new Error("Invalid temporary password.");
+  }
+  phase = "configuration:temporary-password-matches-root";
+  if (temporaryPassword === rootPassword) {
     throw new Error("Invalid temporary password.");
   }
 
