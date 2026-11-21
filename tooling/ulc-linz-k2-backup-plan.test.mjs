@@ -5,6 +5,7 @@ import {
   ulcBackupPlan,
   ULC_REQUIRED_OWNER_TABLES,
   ulcRequiredOwnerSchemaSql,
+  ulcRestoreIntegritySql,
   ulcR2Endpoint,
   assertUlcBackupBucket,
   assertUlcNeonDatabaseUrl,
@@ -250,4 +251,29 @@ test("ULC repeated same-day apply verifies immutable ciphertext and never overwr
   assert.match(upload, /aws s3api head-object/);
   assert.match(upload, /30-day retention verified/);
   assert.match(workflow, /if: steps\.gate\.outputs\.run == 'preflight'/);
+});
+
+
+test("K2 restored production structural attestation is metadata-only and strict", () => {
+  const sql = ulcRestoreIntegritySql("neondb");
+  assert.match(sql, /pg_catalog\.pg_tables/);
+  assert.match(sql, /schemaname='public'\)=69/);
+  assert.match(sql, /NOT x\.convalidated\)=0/);
+  assert.match(sql, /expected_fences/);
+  assert.match(sql, /ulc_linz_training_attendance_subject_fence/);
+  assert.match(sql, /ulc_linz_training_registration_subject_fence/);
+  assert.match(sql, /ulc_linz_training_registration_change_subject_fence/);
+  assert.match(sql, /appbasis_training_documentation_guard_root/);
+  assert.match(sql, /appbasis_training_documentation_guard_revision/);
+  assert.match(sql, /t\.tgenabled IN \('O','A'\)/);
+  assert.match(sql, /t\.tgtype::integer & 23/);
+  assert.match(sql, /AS restored_integrity_ok/);
+  for (const table of ULC_REQUIRED_OWNER_TABLES) {
+    assert.ok(sql.includes('public."' + table + '"'));
+  }
+  assert.doesNotMatch(sql, /(?:SELECT\s+\*|FROM\s+(?:public\.)?(?:appbasis_|ulc_linz_|user\b)|\b(?:INSERT|UPDATE|DELETE|GRANT|TRUNCATE)\b)/i);
+  const preview = ulcRestoreIntegritySql("appbasis_ulc_linz_preview");
+  assert.match(preview, /AS restored_integrity_ok/);
+  assert.doesNotMatch(preview, /pg_catalog\.pg_tables|expected_fences/);
+  assert.throws(() => ulcRestoreIntegritySql("not a database"), /name is missing or invalid/);
 });

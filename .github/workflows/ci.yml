@@ -142,6 +142,9 @@ jobs:
       - name: Rehearse P02-J candidate 44-migration fresh 69-table PostgreSQL 18 install
         run: node --test ./tooling/ulc-linz-p02-j-fresh-install.postgres.test.mjs
 
+      - name: Verify K2 quarantine restore full 69-table structural integrity on disposable PostgreSQL 18
+        run: node --test ./tooling/ulc-linz-k2-restore-integrity.postgres.test.mjs
+
       - name: Validate P02-H exact new-table application SQL privileges
         run: node --test ./tooling/ulc-linz-p02-h-application-acl.test.mjs
 
