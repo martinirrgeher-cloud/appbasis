@@ -26,7 +26,7 @@
     "lifecycle": []
   },
   "blockers": [
-    "Production HTTP authorization has not been independently verified against a real ULC membership and permission store.",
+    "Production HTTP session authorization has not been verified end-to-end with real signed-in ULC users.",
     "Training documentation subject-lifecycle still needs reviewed free-text, historical revision and cross-owner restore evidence before personal-data release."
   ]
 }
