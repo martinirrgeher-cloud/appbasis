@@ -50,7 +50,9 @@ jobs:
             jq -e 'type == "array" and all(.[]; .filename | type == "string")' <<< "$files" >/dev/null
             count="$(jq 'length' <<< "$files")"
             checked=$((checked + count))
-            if jq -e 'any(.[]; .filename | test("^(AGENTS\\.md|CURRENT-GATE\\.md|\\.github/PULL_REQUEST_TEMPLATE\\.md|docs/.+\\.md)$") | not)' <<< "$files" >/dev/null; then
+            # A rename can move executable code into docs/: the old path
+            # must never be silently classified as documentation-only.
+            if jq -e 'any(.[]; (.status == "renamed") or (.previous_filename != null) or ((.filename | test("^(AGENTS\\.md|CURRENT-GATE\\.md|\\.github/PULL_REQUEST_TEMPLATE\\.md|docs/.+\\.md)$")) | not))' <<< "$files" >/dev/null; then
               run_heavy=true
             fi
             if (( count < 100 )); then break; fi
@@ -67,7 +69,7 @@ jobs:
   identity-postgres-e2e:
     name: Identity PostgreSQL E2E
     needs: pr-scope
-    if: needs.pr-scope.outputs.run_heavy == 'true'
+    if: ${{ always() && (needs.pr-scope.result != 'success' || needs.pr-scope.outputs.run_heavy == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -194,7 +196,7 @@ jobs:
   quality-gate:
     name: Quality gate
     needs: pr-scope
-    if: needs.pr-scope.outputs.run_heavy == 'true'
+    if: ${{ always() && (needs.pr-scope.result != 'success' || needs.pr-scope.outputs.run_heavy == 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
