@@ -33,6 +33,8 @@ test("P05: candidate never copies Preview or mutates person, roles, revokes or d
   assert.match(sql, /^-- P05 REVIEW CANDIDATE ONLY/);
   assert.match(sql, /current_database\(\) <> 'neondb'/);
   assert.match(sql, /count\(DISTINCT organization_id\)/);
+  assert.match(sql, /P05 refuses non-production organization/);
+  assert.match(sql, /target_org ILIKE .*smoke/);
   assert.match(sql, /pg_catalog\.pg_tables/);
   assert.match(sql, /existing_groups = 0 AND existing_mappings = 0/);
   assert.match(sql, /exact_groups <> 4 OR exact_mappings <> 3/);
@@ -106,6 +108,14 @@ test("P05: exact four-group and three-module first run is atomic, rerunnable, an
     const createdAt = await query("SELECT id,created_at::text FROM public.appbasis_training_group ORDER BY id");
     await query(candidate);
     assert.deepEqual(await query("SELECT id,created_at::text FROM public.appbasis_training_group ORDER BY id"), createdAt);
+
+    // A synthetic smoke membership is not authority to initialize the
+    // real club. This is the exact negative scenario missed before P05.
+    await query("UPDATE public.ulc_linz_membership SET organization_id='ulc-linz-m6-smoke' WHERE identity_id='synthetic-id-1'");
+    await assert.rejects(query(candidate), /P05 refuses non-production organization/);
+    await query("UPDATE public.ulc_linz_membership SET organization_id='ulc-synthetic-org' WHERE identity_id='synthetic-id-1'");
+    assert.deepEqual(await counts(), first);
+
 
     // Fail closed when an actual group was renamed or attendance mode changed.
     await query("UPDATE public.appbasis_training_group SET attendance_mode='self_registration' WHERE id='ulc-linz-u14'");
