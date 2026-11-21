@@ -65,7 +65,7 @@ describe("ULC org-scoped role permissions and functionary presets", () => {
     expect(kindertrainer?.modules.find(m => m.key === "u14")?.level).toBe("edit");
     const administrator = permissionPresetsForRole("admin").find(p => p.id === "administrator");
     expect(administrator?.modules.find(m => m.key === "u14")?.level).toBe("edit");
-    const athlete = permissionPresetsForRole("athlete")[0];
+    const athlete = permissionPresetsForRole("athlete")[0]!;
     expect(athlete.modules.find(m => m.key === "u14")?.level).toBe("none");
     expect(ULC_PERMISSION_EDITABLE_BY_ROLE.athlete).not.toContain("u14");
     expect(ULC_PERMISSION_EDITABLE_BY_ROLE.parent).not.toContain("u14");
