@@ -87,6 +87,10 @@ export async function assertUlcLegacyBlockUsageRoleCutoverReady(
             THEN true ELSE
             has_table_privilege(current_user, 'public.appbasis_training_block_usage_subject', 'DELETE')
           END AS can_delete_subject,
+          CASE WHEN to_regclass('public.appbasis_training_block_usage_subject') IS NULL
+            THEN true ELSE
+            has_table_privilege(current_user, 'public.appbasis_training_block_usage_subject', 'TRUNCATE')
+          END AS can_truncate_subject,
           CASE WHEN to_regclass('public.appbasis_training_block_usage_subject_deletion') IS NULL
             THEN false ELSE
             has_table_privilege(current_user, 'public.appbasis_training_block_usage_subject_deletion', 'SELECT')
@@ -102,7 +106,11 @@ export async function assertUlcLegacyBlockUsageRoleCutoverReady(
           CASE WHEN to_regclass('public.appbasis_training_block_usage_subject_deletion') IS NULL
             THEN true ELSE
             has_table_privilege(current_user, 'public.appbasis_training_block_usage_subject_deletion', 'DELETE')
-          END AS can_delete_marker
+          END AS can_delete_marker,
+          CASE WHEN to_regclass('public.appbasis_training_block_usage_subject_deletion') IS NULL
+            THEN true ELSE
+            has_table_privilege(current_user, 'public.appbasis_training_block_usage_subject_deletion', 'TRUNCATE')
+          END AS can_truncate_marker
       `);
       const row = rows[0];
       if (
@@ -126,10 +134,12 @@ export async function assertUlcLegacyBlockUsageRoleCutoverReady(
         row.can_insert_subject !== true ||
         row.can_update_subject !== false ||
         row.can_delete_subject !== false ||
+        row.can_truncate_subject !== false ||
         row.can_read_marker !== true ||
         row.can_insert_marker !== false ||
         row.can_update_marker !== false ||
-        row.can_delete_marker !== false
+        row.can_delete_marker !== false ||
+        row.can_truncate_marker !== false
       ) {
         throw new UlcLegacyBlockUsageCutoverNotReadyError();
       }
