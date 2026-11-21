@@ -13,6 +13,10 @@ import {
   UlcVerifiedBlockUsageUnavailableError,
 } from "../worker/training-block-verified-runtime-readiness";
 import {
+  assertUlcLegacyBlockUsageRoleCutoverReady,
+  UlcLegacyBlockUsageCutoverNotReadyError,
+} from "../worker/training-block-legacy-rights-cutover";
+import {
   assertUlcTrainingDocumentationProductionReadiness,
   UlcTrainingDocumentationProductionUnavailableError,
 } from "../worker/training-documentation-production-readiness";
@@ -131,7 +135,7 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
       ["SELECT", "appbasis_exercise_catalog_favorite_deletion"],
       ["INSERT, SELECT", "appbasis_training_block_usage_subject"],
       ["SELECT", "appbasis_training_block_usage_subject_deletion"],
-      ["INSERT", "appbasis_training_block_usage"],
+      ["SELECT, INSERT", "appbasis_training_block_usage"],
       ["SELECT", "appbasis_training_plan"],
       ["SELECT", "appbasis_training_plan_revision"],
       ["SELECT", "appbasis_training_plan_revision_item"],
@@ -240,6 +244,87 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
       await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
         .resolves.toBeUndefined();
     }
+  });
+
+  it("separates ordinary app INSERT from privileged legacy UPDATE and DELETE on real PostgreSQL", async () => {
+    const roleSql = adapter(ordinaryApp());
+    await expect(assertUlcLegacyBlockUsageRoleCutoverReady(
+      roleSql, "production",
+    )).resolves.toBeUndefined();
+
+    for (const privilege of ["UPDATE", "DELETE"]) {
+      // Deliberate privilege drift only in this disposable localhost database.
+      await database().client.unsafe(
+        "GRANT " + privilege + " ON public.appbasis_training_block_usage TO " +
+        applicationRole,
+      );
+      try {
+        await expect(assertUlcLegacyBlockUsageRoleCutoverReady(
+          roleSql, "production",
+        )).rejects.toBeInstanceOf(UlcLegacyBlockUsageCutoverNotReadyError);
+      } finally {
+        await database().client.unsafe(
+          "REVOKE " + privilege + " ON public.appbasis_training_block_usage FROM " +
+          applicationRole,
+        );
+      }
+      await expect(assertUlcLegacyBlockUsageRoleCutoverReady(
+        roleSql, "production",
+      )).resolves.toBeUndefined();
+    }
+
+    const org = "p4-role-cutover-club";
+    const block = "p4-role-cutover-block";
+    const usage = "p4-role-cutover-usage";
+    // Seed only a synthetic block in a disposable database, satisfying the
+    // deferred current-revision FK in the same transaction.
+    await database().client.begin(async tx => {
+      await tx.unsafe(
+        "INSERT INTO appbasis_training_block(id,organization_id) VALUES ($1,$2)",
+        [block,org],
+      );
+      await tx.unsafe(
+        `INSERT INTO appbasis_training_block_revision
+          (organization_id,block_id,revision,name)
+         VALUES ($1,$2,1,'Synthetic P4 block')`,
+        [org,block],
+      );
+    });
+    await ordinaryApp().client.unsafe(
+      `INSERT INTO appbasis_training_block_usage
+       (organization_id,id,block_id,occurred_at,source_kind,source_ref,note)
+       VALUES ($1,$2,$3,now(),'training_plan','synthetic-plan:item-1',NULL)`,
+      [org,usage,block],
+    );
+    await ordinaryApp().client.unsafe(
+      `INSERT INTO appbasis_training_block_usage_subject
+       (organization_id,usage_id,subject_id,source_plan_id,source_item_id)
+       VALUES ($1,$2,'synthetic-athlete','synthetic-plan','item-1')`,
+      [org,usage],
+    );
+    await expect(ordinaryApp().client.unsafe(
+      "UPDATE appbasis_training_block_usage SET note='forbidden' " +
+      "WHERE organization_id=$1 AND id=$2",
+      [org,usage],
+    )).rejects.toThrow(/permission denied/i);
+    await expect(ordinaryApp().client.unsafe(
+      "DELETE FROM appbasis_training_block_usage WHERE organization_id=$1 AND id=$2",
+      [org,usage],
+    )).rejects.toThrow(/permission denied/i);
+
+    // Only the migration/lifecycle owner can perform actual erasure.
+    const deleted = await database().client.unsafe(
+      "DELETE FROM appbasis_training_block_usage WHERE organization_id=$1 " +
+      "AND id=$2 RETURNING id",
+      [org,usage],
+    );
+    expect(deleted).toEqual([{ id: usage }]);
+    const attributed = await database().client.unsafe(
+      "SELECT COUNT(*)::int AS count FROM appbasis_training_block_usage_subject " +
+      "WHERE organization_id=$1",
+      [org],
+    );
+    expect(attributed).toEqual([{ count: 0 }]);
   });
 
   it("fails closed on training-block subject grant drift without disabling documentation", async () => {
