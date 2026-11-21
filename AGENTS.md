@@ -4,7 +4,7 @@ Diese Regeln gelten für menschliche Entwickler, ChatGPT und Codex.
 
 ## Operativer Arbeitsstart
 
-- Vor jeder Änderung, Weiterentwicklung oder Merge-Entscheidung muss zuerst `CURRENT-GATE.md` gelesen werden.
+- Vor jeder Änderung, Weiterentwicklung oder Merge-Entscheidung zuerst die **aktive Priorität am Anfang** von `CURRENT-GATE.md` lesen. Historische Abschnitte der langen Datei nur bei tatsächlicher Relevanz gezielt öffnen; nicht pauschal die gesamte Historie in den Agentenkontext laden.
 - Danach wird `AGENTS.md` als verbindliche Entwicklungsregel gelesen.
 - Anschließend wird der GitHub-Live-State vollständig geprüft; volatile PR-, CI-, Review-, Branch- und Freeze-Zustände werden ausschließlich live aus GitHub abgeleitet und nicht dauerhaft in Projektdateien repliziert.
 - Arbeit ist auf den in `CURRENT-GATE.md` definierten Gate-Scope und den unmittelbar folgenden Produkt-Vertical-Slice begrenzt.
@@ -86,3 +86,16 @@ werden.
 Wenn eine Änderung bestehendes Verhalten verändert oder einer vorhandenen
 Entscheidung widerspricht, muss dies vor der Umsetzung ausdrücklich angezeigt
 werden.
+
+## Ressourcenschonende Plus-Entwicklung (ULC Linz)
+
+- Verbindlicher Ablauf: **ein nutzbarer Vertical Slice pro Paket** mit konkreter Definition of Done; Umsetzung in einem Arbeitsauftrag, zielgerichtete lokale Tests, maximal ein gebündelter PR, CI und risikobasiertes finales Review. Keine Mikro-PRs oder Wiederholung bereits dokumentierter PASS-Gates ohne Änderung am betroffenen Pfad.
+- **Vor Agentenlauf**: aktive Priorität aus `CURRENT-GATE.md`, betroffene Verträge und exakte Dateien/Tests angeben; Logs und große Dateien nur bedarfsweise ausschnittsweise lesen. Keine parallelen Codex-/Work-Aufträge zum selben Problem.
+- Für Routinearbeit ein verfügbares ressourcenschonendes Codex-Modell wählen; stärkste Reasoning-Modelle nur für Architektur, schwierige Root-Causes oder sicherheitskritische Entscheidungen. Kein erzwungenes Modell-Upgrade.
+- **Codex-Code-Review einmal pro fachlichem PR im finalen Stand**, wenn Code, Berechtigungen, Migrationen, Persistenz, Datenschutz oder Provider-Verbindungen geändert werden. Re-Review nur bei wesentlichen Korrekturen; reine Dokumentationsänderungen benötigen keinen Codex-Review. Mechanische Stilfragen bleiben in CI.
+- **Zwei verbindliche Review-Fragen für ULC**: (1) Kann die Änderung bestehende mobile Anmeldung/Anwesenheit, Autosave, Rechte oder gespeicherte Trainingsdaten unbemerkt verändern? (2) Prüfen Backup-, Restore-, Datenbank- und Deploypfade den konkreten Quell-Branch, Datenbanknamen, Ziel-Endpunkt und den Freigabe-Scope vor einer mutierenden Aktion? Nur belegte Finding-Linien, keine Spekulationen.
+- **Work nur für einen konkreten UI-/Provider-Mehrschritt**, wenn GitHub-API, Codex oder bestehende Actions diesen nicht bereits leisten. Work ersetzt keinen CI-Nachweis; kein dauerhafter Parallelagent, keine stündlichen KI-Schleifen.
+- **Budgetbremse**: vor größeren Codex-/Work-Aufträgen Restbudget in `Settings → Usage` prüfen. Bei niedrigem 5-Stunden- oder Wochenkontingent zuerst lokale/offline Prüfungen und vorhandene GitHub-CI nutzen; keine kostenpflichtigen Credits, API-Abrechnung, Modell-/Plan-Upgrades oder zusätzlichen Dienstleister ohne gesonderte Zustimmung.
+- **Re-Run-Regel**: pro FAIL zuerst vollständige Fehlerursache und voraussehbare Folgefehler bündeln, dann gezielte lokale Prüfung. Keine blinden Wiederholungen. Wenn ein zweiter externer Lauf aus derselben Fehlerklasse scheitert, stoppen und Ursache/Prüfstrategie überarbeiten.
+- Keine autonomen Merges, produktiven Deployments, Datenbankmutationen, Löschungen, Secret-Änderungen, Retention-Löschungen oder kostenpflichtigen Provideraktionen ohne spezifische Betreiberfreigabe.
+- Fortschritt und Abnahme: **ein** kompakter Bericht pro Paket mit PR-/SHA, CI-/Review-PASS/FAIL, veränderten Funktionen, Restrisiko und maximal einer echten Freigabeentscheidung. Weitere Details stehen im [ULC-Linz-Plus-Delivery-Plan](docs/ULC-LINZ-PLUS-DELIVERY.md).
