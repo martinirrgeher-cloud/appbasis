@@ -13,6 +13,9 @@ const baseline = Object.freeze({
   trainingFences: 3,
   documentationFences: 2,
   activeGroups: 0,
+  smokeGroups: 0,
+  nonSmokeMemberships: 0,
+  nonSmokeAdminLogins: 0,
   activeTrainers: 0,
   activeAthletes: 0,
   trainerGroupLinks: 0,
@@ -28,6 +31,7 @@ const baseline = Object.freeze({
 const ready = Object.freeze({
   ...baseline,
   activeGroups: 3, activeTrainers: 2, activeAthletes: 6,
+  nonSmokeMemberships: 1, nonSmokeAdminLogins: 1, activeAdminLogins: 1,
   trainerGroupLinks: 4, eligibleTrainerCandidates: 1,
   catalogItems: 8, trainingBlocks: 2,
 });
@@ -35,6 +39,7 @@ test("ULC: current real 69-table technical admin exists, but missing trainer/gro
   const result = evaluate(baseline);
   assert.equal(result.status, "ONBOARDING_BLOCKED");
   assert.deepEqual(result.blockers, [
+    "NO_REAL_ULC_ORGANIZATION", "REAL_ULC_ADMIN_MEMBERSHIP_MISSING",
     "GROUPS_NOT_INITIALIZED", "TRAINERS_OR_GROUP_ASSIGNMENTS_MISSING",
     "ATHLETES_NOT_INITIALIZED", "NO_ELIGIBLE_TRAINER_WRITE_CANDIDATE",
   ]);
@@ -71,6 +76,25 @@ test("ULC: missing admin or malformed schema blocks even with active coaches and
     assert.ok(result.blockers.length > 0);
   }
 });
+test("ULC: a synthetic M6 smoke organization never satisfies production onboarding", () => {
+  const result = evaluate({
+    ...ready,
+    activeGroups: 4,
+    smokeGroups: 4,
+    nonSmokeMemberships: 0,
+    nonSmokeAdminLogins: 0,
+    activeAdminLogins: 0,
+  });
+  assert.equal(result.status, "ONBOARDING_BLOCKED");
+  assert.deepEqual(result.blockers.slice(0, 3), [
+    "GROUPS_ASSIGNED_TO_SMOKE_ORGANIZATION",
+    "NO_REAL_ULC_ORGANIZATION",
+    "REAL_ULC_ADMIN_MEMBERSHIP_MISSING",
+  ]);
+  assert.match(format(result), /Testgruppen \/ Nicht-Test-Mitgliedschaften/);
+  assert.equal(result.productionReleaseAuthorized, false);
+});
+
 test("ULC: existing media metadata flags unverified media scope, no fake backup PASS", () => {
   const result = evaluate({ ...ready, privateMediaMetadata: 1 });
   assert.deepEqual(result.warnings, ["REAL_PRIVATE_MEDIA_BACKUP_NOT_VERIFIED"]);
