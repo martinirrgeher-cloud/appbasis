@@ -39,8 +39,9 @@ async function provision() {
           WHERE organization_id = ${organization} AND is_active
         ) AS club,
         EXISTS (
-          SELECT 1 FROM public.appbasis_permission_role_capability
-          WHERE role_id = ${role} AND capability_id = ${capability}
+          SELECT 1 FROM public.appbasis_permission_role r
+          JOIN public.appbasis_permission_role_capability c USING (role_id)
+          WHERE r.role_id = ${role} AND r.state = 'active' AND c.capability_id = ${capability}
         ) AS capability
     `;
     if (target.name !== "neondb" || !target.club || !target.capability) {
@@ -95,6 +96,14 @@ async function provision() {
           FOR UPDATE
         `;
         if (!membership) throw new Error("Conflicting club membership.");
+
+        const [activeRole] = await tx`
+          SELECT r.role_id FROM public.appbasis_permission_role r
+          JOIN public.appbasis_permission_role_capability c USING (role_id)
+          WHERE r.role_id = ${role} AND r.state = 'active' AND c.capability_id = ${capability}
+          FOR SHARE OF r, c
+        `;
+        if (!activeRole) throw new Error("Club admin role is unavailable.");
 
         const sql = { unsafe: (query, params) => tx.unsafe(query, params) };
         const existing = await new PostgresPermissionStore(sql).findPrincipal(targetPrincipalId);
