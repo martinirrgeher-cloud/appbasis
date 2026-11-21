@@ -1,0 +1,296 @@
+import { randomBytes } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning";
+import {
+  assertUlcProtectedCatalogProductionReadiness,
+  UlcProtectedCatalogUnavailableError,
+  type UlcProtectedCatalogPreviewReadinessClient,
+} from "../worker/exercise-catalog-protected-runtime-readiness";
+import {
+  assertUlcVerifiedBlockUsageProductionReadiness,
+  UlcVerifiedBlockUsageUnavailableError,
+} from "../worker/training-block-verified-runtime-readiness";
+import {
+  assertUlcTrainingDocumentationProductionReadiness,
+  UlcTrainingDocumentationProductionUnavailableError,
+} from "../worker/training-documentation-production-readiness";
+
+/**
+ * P4 private-pilot rehearsal: genuine PostgreSQL 18 SQL privileges and
+ * canonical v18 schema against one ephemeral, local-only database.
+ * The exact production-role and database-name guards cannot meaningfully
+ * be tested against a randomly named DB, so we create 'neondb' only after
+ * proving that the local CI database/role names do not already exist.
+ *
+ * Never connects to Neon, production or Preview. No live app writes.
+ * Success is not a legal/lifecycle/production activation approval.
+ */
+const baseUrl = process.env.DATABASE_URL;
+const databaseName = "neondb";
+const applicationRole = "ulc_linz_application";
+const describeLocal = baseUrl ? describe : describe.skip;
+
+if (baseUrl) {
+  const base = new URL(baseUrl);
+  if (
+    !["localhost", "127.0.0.1", "::1"].includes(base.hostname) ||
+    base.port !== "5432" ||
+    base.username !== "postgres" ||
+    base.pathname !== "/appbasis_identity_e2e"
+  ) {
+    throw new Error("P4 role rehearsal requires the disposable localhost CI PostgreSQL service only.");
+  }
+}
+
+describeLocal("P4 protected production role admission on real disposable 69-table PostgreSQL", () => {
+  const admin = baseUrl ? createPostgresDatabase(baseUrl) : null;
+  const secret = randomBytes(18).toString("hex");
+  const isolatedUrl = baseUrl ? new URL(baseUrl) : null;
+  const appUrl = baseUrl ? new URL(baseUrl) : null;
+  if (isolatedUrl) isolatedUrl.pathname = "/" + databaseName;
+  if (appUrl) {
+    appUrl.pathname = "/" + databaseName;
+    appUrl.username = applicationRole;
+    appUrl.password = secret;
+  }
+
+  type Database = ReturnType<typeof createPostgresDatabase>;
+  let owner: Database | null = null;
+  let app: Database | null = null;
+  let createdDatabase = false;
+  let createdRole = false;
+  function database(): Database {
+    if (!owner) throw new Error("P4 disposable schema was not initialized.");
+    return owner;
+  }
+  function ordinaryApp(): Database {
+    if (!app) throw new Error("P4 disposable app principal was not initialized.");
+    return app;
+  }
+  function adapter(connection: Database): UlcProtectedCatalogPreviewReadinessClient {
+    return {
+      begin<T>(callback: (transaction: {
+        unsafe(query: string, parameters?: Array<string | number | boolean | null>):
+          PromiseLike<readonly Record<string, unknown>[]>;
+      }) => Promise<T>): Promise<T> {
+        return connection.client.begin(async transaction => callback({
+          unsafe(query, parameters) { return transaction.unsafe(query, parameters); },
+        }));
+      },
+    };
+  }
+
+  beforeAll(async () => {
+    if (!admin || !isolatedUrl || !appUrl) throw new Error("Missing P4 localhost connection.");
+    const existing = await admin.client.unsafe(
+      "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1) AS db, " +
+      "EXISTS(SELECT 1 FROM pg_roles WHERE rolname = $2) AS principal",
+      [databaseName, applicationRole],
+    );
+    if (existing[0]?.db !== false || existing[0]?.principal !== false) {
+      throw new Error("P4 refuses an existing database or login role: no destructive reuse.");
+    }
+    await admin.client.unsafe(
+      "CREATE ROLE " + applicationRole + " LOGIN PASSWORD '" + secret + "'",
+    );
+    createdRole = true;
+    await admin.client.unsafe("CREATE DATABASE " + databaseName);
+    createdDatabase = true;
+    owner = createPostgresDatabase(isolatedUrl.toString());
+
+    const manifest = JSON.parse(await readFile(
+      new URL("../appbasis.database.json", import.meta.url), "utf8",
+    )) as { owners: readonly { migrations: readonly string[] }[] };
+    const migrations = manifest.owners.flatMap(x => x.migrations);
+    if (migrations.length !== 44 || new Set(migrations).size !== 44 ||
+      !migrations.some(x => x.endsWith("0017_ulc_linz_training_subject_write_fence.sql"))) {
+      throw new Error("P4 requires exactly the published 44-migration v18 manifest.");
+    }
+    for (const path of migrations) {
+      const sql = await readFile(new URL("../../../" + path, import.meta.url), "utf8");
+      for (const statement of sql.split("--> statement-breakpoint")) {
+        if (statement.trim()) await database().client.unsafe(statement);
+      }
+    }
+    const tables = await database().client.unsafe(
+      "SELECT count(*)::int AS count FROM pg_catalog.pg_tables WHERE schemaname='public'",
+    );
+    if (tables[0]?.count !== 69) throw new Error("P4 requires exactly 69 real tables.");
+
+    // Grant only operations explicitly verified by the three production checks.
+    // In particular NEVER GRANT any app access to the training-subject marker.
+    const grants = [
+      ["SELECT, INSERT, UPDATE", "appbasis_exercise_catalog_item"],
+      ["SELECT, INSERT, DELETE", "appbasis_exercise_catalog_favorite"],
+      ["SELECT, INSERT, DELETE", "appbasis_exercise_catalog_parameter"],
+      ["SELECT, INSERT, DELETE", "appbasis_exercise_catalog_audience"],
+      ["SELECT, INSERT, DELETE", "appbasis_exercise_catalog_video"],
+      ["SELECT, INSERT, DELETE", "appbasis_exercise_catalog_similarity"],
+      ["SELECT", "appbasis_exercise_catalog_favorite_deletion"],
+      ["INSERT, SELECT", "appbasis_training_block_usage_subject"],
+      ["SELECT", "appbasis_training_block_usage_subject_deletion"],
+      ["INSERT", "appbasis_training_block_usage"],
+      ["SELECT", "appbasis_training_plan"],
+      ["SELECT", "appbasis_training_plan_revision"],
+      ["SELECT", "appbasis_training_plan_revision_item"],
+      ["SELECT, INSERT, UPDATE", "appbasis_training_documentation"],
+      ["SELECT, INSERT", "appbasis_training_documentation_revision"],
+      ["SELECT", "appbasis_training_documentation_subject_deletion"],
+    ] as const;
+    await database().client.unsafe("GRANT USAGE ON SCHEMA public TO " + applicationRole);
+    for (const [operations, table] of grants) {
+      await database().client.unsafe(
+        "GRANT " + operations + " ON public." + table + " TO " + applicationRole,
+      );
+    }
+
+    app = createPostgresDatabase(appUrl.toString());
+    const current = await ordinaryApp().client.unsafe(
+      "SELECT current_database() AS database_name, current_user AS principal_name",
+    );
+    expect(current[0]).toMatchObject({
+      database_name: databaseName, principal_name: applicationRole,
+    });
+  }, 120_000);
+
+  afterAll(async () => {
+    // Disconnect before a database drop. Never drop a pre-existing database.
+    if (app) { await app.client.end(); app = null; }
+    if (owner) { await owner.client.end(); owner = null; }
+    if (admin) {
+      try {
+        if (createdDatabase) {
+          await admin.client.unsafe("DROP DATABASE " + databaseName + " WITH (FORCE)");
+          createdDatabase = false;
+        }
+        if (createdRole) {
+          await admin.client.unsafe("DROP ROLE " + applicationRole);
+          createdRole = false;
+        }
+      } finally {
+        await admin.client.end();
+      }
+    }
+  }, 120_000);
+
+  it("allows all three production preflights together with real role, schema, ACLs and SQL triggers", async () => {
+    const sql = adapter(ordinaryApp());
+    await expect(assertUlcProtectedCatalogProductionReadiness(sql)).resolves.toBeUndefined();
+    await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql)).resolves.toBeUndefined();
+    await expect(assertUlcTrainingDocumentationProductionReadiness(sql)).resolves.toBeUndefined();
+
+    const guardFunctions = await database().client.unsafe(
+      "SELECT proname, has_function_privilege($1, oid, 'EXECUTE') AS app_execute " +
+      "FROM pg_proc WHERE proname IN " +
+      "('appbasis_training_documentation_guard_root_insert'," +
+      "'appbasis_training_documentation_guard_revision_write') ORDER BY proname",
+      [applicationRole],
+    );
+    expect(guardFunctions).toHaveLength(2);
+    expect(guardFunctions.every(x => x.app_execute === false)).toBe(true);
+  });
+
+  it("cannot access either private owner marker by direct SELECT or INSERT", async () => {
+    await expect(ordinaryApp().client.unsafe(
+      "SELECT count(*) FROM public.ulc_linz_training_subject_deletion",
+    )).rejects.toThrow(/permission denied/i);
+    await expect(ordinaryApp().client.unsafe(
+      "INSERT INTO public.ulc_linz_training_subject_deletion " +
+      "(organization_id, athlete_id, completed_at, purge_after) " +
+      "VALUES ('synthetic-p4','subject-p4',now(),now()+interval '35 days')",
+    )).rejects.toThrow(/permission denied/i);
+  });
+
+  it("fails closed if a required catalog write grant is revoked, then recovers after exact restoration", async () => {
+    const sql = adapter(ordinaryApp());
+    await database().client.unsafe(
+      "REVOKE INSERT ON public.appbasis_exercise_catalog_favorite FROM " + applicationRole,
+    );
+    try {
+      await expect(assertUlcProtectedCatalogProductionReadiness(sql))
+        .rejects.toBeInstanceOf(UlcProtectedCatalogUnavailableError);
+      await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql)).resolves.toBeUndefined();
+    } finally {
+      await database().client.unsafe(
+        "GRANT INSERT ON public.appbasis_exercise_catalog_favorite TO " + applicationRole,
+      );
+    }
+    await expect(assertUlcProtectedCatalogProductionReadiness(sql)).resolves.toBeUndefined();
+  });
+
+  it("fails closed on training-block subject grant drift without disabling documentation", async () => {
+    const sql = adapter(ordinaryApp());
+    await database().client.unsafe(
+      "REVOKE SELECT ON public.appbasis_training_plan_revision_item FROM " + applicationRole,
+    );
+    try {
+      await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
+        .rejects.toBeInstanceOf(UlcVerifiedBlockUsageUnavailableError);
+      await expect(assertUlcTrainingDocumentationProductionReadiness(sql)).resolves.toBeUndefined();
+    } finally {
+      await database().client.unsafe(
+        "GRANT SELECT ON public.appbasis_training_plan_revision_item TO " + applicationRole,
+      );
+    }
+    await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql)).resolves.toBeUndefined();
+  });
+
+  it("fails closed if documentation guard trigger is disabled, then recovers when restored", async () => {
+    const sql = adapter(ordinaryApp());
+    await database().client.unsafe(
+      "ALTER TABLE public.appbasis_training_documentation " +
+      "DISABLE TRIGGER appbasis_training_documentation_guard_root",
+    );
+    try {
+      await expect(assertUlcTrainingDocumentationProductionReadiness(sql))
+        .rejects.toBeInstanceOf(UlcTrainingDocumentationProductionUnavailableError);
+      await expect(assertUlcProtectedCatalogProductionReadiness(sql)).resolves.toBeUndefined();
+    } finally {
+      await database().client.unsafe(
+        "ALTER TABLE public.appbasis_training_documentation " +
+        "ENABLE TRIGGER appbasis_training_documentation_guard_root",
+      );
+    }
+    await expect(assertUlcTrainingDocumentationProductionReadiness(sql)).resolves.toBeUndefined();
+  });
+
+  it("fails closed if app ever gains private training-subject marker privileges", async () => {
+    const sql = adapter(ordinaryApp());
+    await database().client.unsafe(
+      "GRANT SELECT ON public.ulc_linz_training_subject_deletion TO " + applicationRole,
+    );
+    try {
+      await expect(assertUlcProtectedCatalogProductionReadiness(sql))
+        .rejects.toBeInstanceOf(UlcProtectedCatalogUnavailableError);
+      await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
+        .rejects.toBeInstanceOf(UlcVerifiedBlockUsageUnavailableError);
+      await expect(assertUlcTrainingDocumentationProductionReadiness(sql))
+        .rejects.toBeInstanceOf(UlcTrainingDocumentationProductionUnavailableError);
+    } finally {
+      await database().client.unsafe(
+        "REVOKE SELECT ON public.ulc_linz_training_subject_deletion FROM " + applicationRole,
+      );
+    }
+    await expect(assertUlcProtectedCatalogProductionReadiness(sql)).resolves.toBeUndefined();
+    await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql)).resolves.toBeUndefined();
+    await expect(assertUlcTrainingDocumentationProductionReadiness(sql)).resolves.toBeUndefined();
+  });
+
+  it("does not insert persistent real-looking training or personal records", async () => {
+    const tables = [
+      "appbasis_exercise_catalog_favorite",
+      "appbasis_training_block_usage",
+      "appbasis_training_documentation",
+      "appbasis_training_documentation_revision",
+      "ulc_linz_training_attendance",
+    ];
+    for (const name of tables) {
+      const rows = await database().client.unsafe(
+        "SELECT count(*)::int AS count FROM public." + name,
+      );
+      expect(rows[0]?.count).toBe(0);
+    }
+  });
+});
