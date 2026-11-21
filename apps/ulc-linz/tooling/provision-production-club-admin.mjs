@@ -72,12 +72,15 @@ async function provision() {
       const targetPrincipalId = principalId(admin.identityId);
       await client.begin(async (tx) => {
         const [account] = await tx`
-          SELECT id FROM public."user"
-          WHERE id = ${admin.identityId} AND username = ${username}
-            AND role IS DISTINCT FROM 'admin' AND banned IS NOT TRUE
-          FOR UPDATE
+          SELECT u.role FROM public."user" u
+          JOIN public.appbasis_identity_security_state s ON s.identity_id = u.id
+          WHERE u.id = ${admin.identityId} AND u.username = ${username}
+            AND u.banned IS NOT TRUE AND s.disabled_at IS NULL AND s.must_change_password
+          FOR UPDATE OF u, s
         `;
-        if (!account) throw new Error("Provisioned account is not eligible.");
+        if (!account || account.role?.split(",").some((part) => part.trim() === "admin")) {
+          throw new Error("Provisioned account is not eligible.");
+        }
 
         await tx`
           INSERT INTO public.appbasis_permission_principal (principal_id)
