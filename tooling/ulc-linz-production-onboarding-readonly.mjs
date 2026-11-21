@@ -71,7 +71,7 @@ SELECT jsonb_build_object(
   'trainingBlocks', (SELECT count(*)::int FROM public.appbasis_training_block),
   'privateMediaMetadata', (SELECT count(*)::int FROM public.appbasis_exercise_catalog_private_media)
 )::text AS inventory
-`;
+`.trim();
 const KEYS = Object.freeze([
   "tables", "trainingFences", "documentationFences", "activeGroups",
   "activeTrainers", "activeAthletes", "trainerGroupLinks",
