@@ -115,7 +115,7 @@ describe("ULC athlete user provisioning", () => {
         }
         if (
           query.includes(
-            "SELECT organization_id, source_role, active",
+            "SELECT organization_id, source_role,",
           )
         ) {
           return [
