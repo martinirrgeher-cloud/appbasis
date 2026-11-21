@@ -1,6 +1,6 @@
 # ULC Linz – P24 HTTP-Behandlung für konkurrierende Löschung und Speicherung
 
-**21.11.2026 · Code- und Unit-Testpaket. Keine Aktivierung der SQL-Kandidaten, kein Runtime-Refresh.**
+**21.11.2026 · HTTP- und additive UI-Fehlerbehandlung. Keine SQL-Aktivierung, kein Runtime-Refresh.**
 
 ## Warum dieses Paket nötig ist
 
@@ -42,8 +42,7 @@ Nicht-55P03-Fehler, keine Ausgabe vertraulicher Fehlerdetails,
 HTTP 409 ohne Retry-Automatik und Anbindung an die fünf HTTP-Familien.
 
 PR #697 hat konkurrierende Datenbanktransaktionen mit echten zwei
-PostgreSQL-Verbindungen bereits erfolgreich durchlaufen. Dieser PR
-ändert **ausschließlich die HTTP-Abbildung**, keine DB-Migration.
+PostgreSQL-Verbindungen bereits erfolgreich durchlaufen. Dieser PR ändert die HTTP-Abbildung und ausschließlich die Meldung für den **neuen** Fehlercode in Übungskatalog, Trainingsblock-Speichern/Löschen und Dokumentations-Speichern. Bestehende Dubletten-, Versions- und Rollenfehler bleiben unverändert. Der neue UI-Vertrags-Test kontrolliert das Beibehalten der Bearbeitungsentwürfe. Keine DB-Migration.
 
 ## Noch ausdrücklich nicht freigegeben
 
@@ -54,7 +53,4 @@ Trainingseinträge, Backup-/Lösch-Reconciliation sowie P01-D2-/AVV
 und der fachliche Produktions-Erstbestand abgenommen werden. Der
 Produktiv-Worker wurde hier nicht aktualisiert.
 
-Eine spätere gesonderte Produktivabnahme soll am Handy bestätigen,
-dass die Oberfläche die 409-Meldung verständlich anzeigt und lokale
-ungespeicherte Eingaben nicht verwirft. Das ist kein durch diese
-HTTP-Unit-Tests bewiesener UI-PASS.
+Der neue Quellcode-Test kontrolliert die 409-Zweige der drei Editoren und den weiter gesetzten Dirty-Status. Eine spätere gesonderte **Handy-Abnahme** muss dennoch bestätigen, dass die Oberfläche lokal bearbeitete Eingaben bei einem realen Sperrkonflikt behält; die reinen Tests sind kein interaktiver UI-PASS.
