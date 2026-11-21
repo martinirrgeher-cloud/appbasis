@@ -140,6 +140,22 @@ test("P24: canonical athlete row and favorite advisory locks fail fast under dir
       assert.equal(rows[0]?.count,0);
     }
 
+    // ULC app-owned marker/deletion transaction takes the subject advisory
+    // lock before deleting attendance. Direct attendance UPDATE must return
+    // retryable 55P03 rather than wait with its own tuple lock held.
+    await holdThenProbe(owner.client,
+      tx => tx.unsafe(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1::text || chr(31) || $2::text,0))",
+        [ORG,SUBJECT],
+      ),
+      async()=>{
+        await retry(writer.client.unsafe(
+          "UPDATE ulc_linz_training_attendance SET status='excused' WHERE organization_id=$1 AND athlete_id=$2",
+          [ORG,SUBJECT],
+        ),"app-owned training UPDATE must reject concurrent erasure immediately");
+      },
+    );
+
     // Source ATHLETES eraser first: it holds the parent row FOR UPDATE.
     // A direct child attendance UPDATE already holds its own tuple lock;
     // it must NOWAIT instead of forming a cross-table lock cycle.
