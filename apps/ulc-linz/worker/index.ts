@@ -96,6 +96,7 @@ import {
 } from "./youth-category-postgres";
 import { UlcTrainingSessionConflictError } from "./training-session-postgres";
 import { trainingWriteGuardHttpResponse } from "./training-write-http-error";
+import { ulcWriteLockConflictHttpResponse } from "./write-lock-conflict-http";
 import { pilotTrainingGuardPreflightCode, pilotTrainingWriteGuardActivation } from "./pilot-training-write-guard";
 import { validateU12StatisticsDateRange } from "./u12-statistics-postgres";
 import {
@@ -1100,6 +1101,8 @@ function trainingBlockClientRevision(revision: {
 }
 
 function trainingBlockErrorResponse(error: unknown): Response {
+  const transient = ulcWriteLockConflictHttpResponse(error);
+  if (transient !== null) return transient;
   if (error instanceof TrainingBlockConflictError) {
     return Response.json(
       {
@@ -1298,6 +1301,8 @@ async function selfRegistrationResponse(
       { headers: { "cache-control": "private, no-store" } },
     );
   } catch (error) {
+    const transient = ulcWriteLockConflictHttpResponse(error);
+    if (transient !== null) return transient;
     if (
       error instanceof InvalidSelfRegistrationRequestError ||
       error instanceof UlcTrainingValidationError
@@ -4440,6 +4445,8 @@ async function authorizeExerciseCatalogRequest(
 }
 
 function exerciseCatalogErrorResponse(error: unknown): Response {
+  const transient = ulcWriteLockConflictHttpResponse(error);
+  if (transient !== null) return transient;
   if (error instanceof ExerciseCatalogUsageSubjectRequiredError) {
     // No anonymous/direct usage recovery is available in the protected mode.
     return Response.json({
