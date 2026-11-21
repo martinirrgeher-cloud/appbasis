@@ -206,7 +206,11 @@ jobs:
             echo "ULC K2 restore structural integrity FAIL: incomplete canonical owner schema, inactive required fences or invalid constraints." >&2
             exit 1
           }
-          echo "ULC K2 quarantine restore structural integrity PASS. Production neondb: 69 tables, eight owners, five active write fences, zero NOT VALID constraints. This is not a personal-data fingerprint, media or privacy acceptance." >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$APPBASIS_ULC_EXPECTED_DATABASE_NAME" == "neondb" ]]; then
+            echo "ULC K2 quarantine production structural integrity PASS: 69 tables, eight owners, five active write fences, zero NOT VALID constraints. This is not a personal-data fingerprint, media or privacy acceptance." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ULC K2 historical Preview archive: eight-owner minimum restored. This is NOT full 69-table production integrity, media or privacy acceptance." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Delete confidential restore working files
         if: always() && steps.download.outputs.workspace != ''
