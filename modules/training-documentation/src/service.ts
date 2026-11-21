@@ -199,6 +199,7 @@ export class TrainingDocumentationService {
   async create(
     organizationId: string,
     input: CreateTrainingDocumentationDraftInput,
+    authenticatedIdentityId?: string,
   ): Promise<TrainingDocumentationSnapshot> {
     const organization = normalizeTrainingDocumentationIdentifier(
       organizationId,
@@ -235,7 +236,7 @@ export class TrainingDocumentationService {
       updatedAt: now,
       revision,
     });
-    const result = await this.#repository.create(snapshot);
+    const result = await this.#repository.create(snapshot, authenticatedIdentityId);
     if (result.status === "created") {
       return this.#assertSnapshot(
         result.documentation,
@@ -260,6 +261,7 @@ export class TrainingDocumentationService {
     documentationId: string,
     expectedRevision: number,
     input: UpdateTrainingDocumentationInput,
+    authenticatedIdentityId?: string,
   ): Promise<TrainingDocumentationSnapshot | undefined> {
     const current = await this.#currentForMutation(
       organizationId,
@@ -275,13 +277,14 @@ export class TrainingDocumentationService {
       items: input.items ?? current.revision.items,
       attendance: input.attendance ?? current.revision.attendance,
     });
-    return this.#append(current, "draft", null, content);
+    return this.#append(current, "draft", null, content, authenticatedIdentityId);
   }
 
   async complete(
     organizationId: string,
     documentationId: string,
     expectedRevision: number,
+    authenticatedIdentityId?: string,
   ): Promise<TrainingDocumentationSnapshot | undefined> {
     const current = await this.#currentForMutation(
       organizationId,
@@ -291,13 +294,14 @@ export class TrainingDocumentationService {
     if (current === undefined) return undefined;
     if (current.status === "completed") return current;
     const completedAt = this.#timestamp();
-    return this.#append(current, "completed", completedAt, current.revision);
+    return this.#append(current, "completed", completedAt, current.revision, authenticatedIdentityId);
   }
 
   async reopen(
     organizationId: string,
     documentationId: string,
     expectedRevision: number,
+    authenticatedIdentityId?: string,
   ): Promise<TrainingDocumentationSnapshot | undefined> {
     const current = await this.#currentForMutation(
       organizationId,
@@ -306,7 +310,7 @@ export class TrainingDocumentationService {
     );
     if (current === undefined) return undefined;
     if (current.status === "draft") return current;
-    return this.#append(current, "draft", null, current.revision);
+    return this.#append(current, "draft", null, current.revision, authenticatedIdentityId);
   }
 
   async listRevisions(
@@ -361,6 +365,7 @@ export class TrainingDocumentationService {
       TrainingDocumentationRevision,
       "note" | "items" | "attendance"
     >,
+    authenticatedIdentityId?: string,
   ): Promise<TrainingDocumentationSnapshot> {
     const revision = this.#revision({
       organizationId: current.organizationId,
@@ -378,6 +383,7 @@ export class TrainingDocumentationService {
       current.id,
       current.currentRevision,
       revision,
+      authenticatedIdentityId,
     );
     if (result.status === "conflict") {
       throw new TrainingDocumentationConflictError(

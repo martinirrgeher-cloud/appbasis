@@ -113,6 +113,7 @@ export function createUlcTrainingDocumentationService({
       organizationId: string,
       subjectId: string,
       sessionDate: string,
+      authenticatedIdentityId?: string,
     ): Promise<TrainingDocumentationSnapshot> {
       const [selectedSubject, plan, attendanceStatus] = await Promise.all([
         subject(organizationId, subjectId),
@@ -141,7 +142,7 @@ export function createUlcTrainingDocumentationService({
               status: attendanceStatus,
             },
           ],
-        });
+        }, authenticatedIdentityId);
       } catch (error) {
         if (error instanceof TrainingDocumentationTargetOccupiedError) {
           const existing = await documentation.findCurrentBySubjectDate(
@@ -160,12 +161,14 @@ export function createUlcTrainingDocumentationService({
       documentationId: string,
       expectedRevision: number,
       input: UpdateTrainingDocumentationInput,
+      authenticatedIdentityId?: string,
     ) {
       return documentation.update(
         organizationId,
         documentationId,
         expectedRevision,
         input,
+        authenticatedIdentityId,
       );
     },
 
@@ -173,6 +176,7 @@ export function createUlcTrainingDocumentationService({
       organizationId: string,
       documentationId: string,
       expectedRevision: number,
+      authenticatedIdentityId?: string,
     ) {
       const current = await documentation.findCurrent(
         organizationId,
@@ -201,6 +205,7 @@ export function createUlcTrainingDocumentationService({
             },
           ],
         },
+        authenticatedIdentityId,
       );
     },
 
@@ -208,11 +213,13 @@ export function createUlcTrainingDocumentationService({
       organizationId: string,
       documentationId: string,
       expectedRevision: number,
+      authenticatedIdentityId?: string,
     ) {
       return documentation.complete(
         organizationId,
         documentationId,
         expectedRevision,
+        authenticatedIdentityId,
       );
     },
 
@@ -220,11 +227,13 @@ export function createUlcTrainingDocumentationService({
       organizationId: string,
       documentationId: string,
       expectedRevision: number,
+      authenticatedIdentityId?: string,
     ) {
       return documentation.reopen(
         organizationId,
         documentationId,
         expectedRevision,
+        authenticatedIdentityId,
       );
     },
   });

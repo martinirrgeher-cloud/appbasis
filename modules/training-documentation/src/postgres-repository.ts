@@ -54,14 +54,30 @@ export interface TrainingDocumentationPostgresClient
   ): Promise<T>;
 }
 
+export interface TrainingDocumentationPostgresWriteGuard {
+  (
+    sql: TrainingDocumentationPostgresQueryClient,
+    input: Readonly<{
+      organizationId: string;
+      subjectId: string;
+      authenticatedIdentityId: string | undefined;
+    }>,
+  ): Promise<void>;
+}
+
 export class PostgresTrainingDocumentationRepository
   implements TrainingDocumentationRepository, TrainingDocumentationSubjectPrivacyInspectionReader,
     TrainingDocumentationSubjectDeletionRepository, TrainingDocumentationSubjectRestoreRepository
 {
   readonly #client: TrainingDocumentationPostgresClient;
+  readonly #writeGuard: TrainingDocumentationPostgresWriteGuard | undefined;
 
-  constructor(client: TrainingDocumentationPostgresClient) {
+  constructor(
+    client: TrainingDocumentationPostgresClient,
+    options: Readonly<{ writeGuard?: TrainingDocumentationPostgresWriteGuard }> = {},
+  ) {
     this.#client = client;
+    this.#writeGuard = options.writeGuard;
   }
 
   /**
@@ -453,12 +469,22 @@ export class PostgresTrainingDocumentationRepository
 
   async create(
     documentation: TrainingDocumentationSnapshot,
+    authenticatedIdentityId?: string,
   ): Promise<TrainingDocumentationCreateResult> {
     return this.#client.begin(async (transaction) => {
       await transaction.unsafe(
         "SELECT pg_advisory_xact_lock(202611031, hashtext($1::text)) AS acquired",
         [documentation.organizationId],
       );
+      // Same DB transaction as the actual INSERT. A revoked/disabled actor
+      // must not reuse a successful earlier HTTP access check.
+      if (this.#writeGuard !== undefined) {
+        await this.#writeGuard(transaction, {
+          organizationId: documentation.organizationId,
+          subjectId: documentation.subjectId,
+          authenticatedIdentityId,
+        });
+      }
       const rows = await transaction.unsafe(
         `INSERT INTO appbasis_training_documentation (
            id, organization_id, subject_id, session_date,
@@ -537,6 +563,7 @@ export class PostgresTrainingDocumentationRepository
     documentationId: string,
     expectedRevision: number,
     revision: TrainingDocumentationRevision,
+    authenticatedIdentityId?: string,
   ): Promise<TrainingDocumentationRevisionAppendResult> {
     return this.#client.begin(async (transaction) => {
       // Acquire the organization lock BEFORE SELECT FOR UPDATE. Otherwise a
@@ -570,6 +597,13 @@ export class PostgresTrainingDocumentationRepository
         throw new Error(
           "Training documentation lock returned multiple rows.",
         );
+      }
+      if (this.#writeGuard !== undefined) {
+        await this.#writeGuard(transaction, {
+          organizationId,
+          subjectId: requiredString(rows[0]!.subject_id, "subject id"),
+          authenticatedIdentityId,
+        });
       }
       const currentRevision = requiredInteger(
         rows[0]!.current_revision,

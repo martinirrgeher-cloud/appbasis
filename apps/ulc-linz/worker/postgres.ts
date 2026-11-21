@@ -28,6 +28,7 @@ import {
 import {
   assertUlcTrainingDocumentationProductionReadiness,
 } from "./training-documentation-production-readiness";
+import { assertUlcLiveTrainingDocumentationActor } from "./training-documentation-write-actor";
 
 import {
   createUlcLinzAthletesAccessService,
@@ -698,7 +699,12 @@ export async function createGeneratedPostgresApplicationRuntime(
       await assertUlcTrainingDocumentationProductionReadiness(applicationSql);
     }
     const trainingDocumentation = new TrainingDocumentationService({
-      repository: new PostgresTrainingDocumentationRepository(applicationSql),
+      repository: new PostgresTrainingDocumentationRepository(
+        applicationSql,
+        options.trainingDocumentationRuntimeMode === "protected-production"
+          ? { writeGuard: assertUlcLiveTrainingDocumentationActor }
+          : {},
+      ),
     });
     return Object.freeze({
       identity: identityRuntime.identity,
