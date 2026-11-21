@@ -139,8 +139,72 @@ jobs:
           echo "key=$(jq -r .key <<<"$PLAN")" >> "$GITHUB_OUTPUT"
           echo "created_at=$(jq -r .createdAt <<<"$PLAN")" >> "$GITHUB_OUTPUT"
 
+      - name: Verify pre-existing immutable daily backup before new dump
+        if: steps.gate.outputs.run == 'upload'
+        id: existing
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_ULC_R2_BACKUP_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_ULC_R2_BACKUP_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          ENDPOINT: ${{ steps.settings.outputs.endpoint }}
+          WORK: ${{ steps.setup.outputs.workspace }}
+          KEY: ${{ steps.setup.outputs.key }}
+          APPBASIS_ULC_BACKUP_ENCRYPTION_KEY: ${{ secrets.APPBASIS_ULC_BACKUP_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          HEAD="$WORK/existing-head.json"
+          ERROR="$WORK/existing-head-error.txt"
+          if aws s3api head-object --bucket "$BUCKET" --key "$KEY" \
+            --endpoint-url "$ENDPOINT" --output json > "$HEAD" 2> "$ERROR"; then
+            # A prior backup for the same UTC day is immutable. Verify it instead
+            # of attempting to overwrite it with a different randomized ciphertext.
+            HASH="$(jq -r '.Metadata.sha256 // empty' "$HEAD")"
+            COMMIT="$(jq -r '.Metadata.sourcecommit // empty' "$HEAD")"
+            [[ "$HASH" =~ ^[0-9a-f]{64}$ ]] || { echo "Existing ULC backup checksum metadata is invalid." >&2; exit 1; }
+            [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "Existing ULC backup source commit metadata is invalid." >&2; exit 1; }
+            aws s3api get-object --bucket "$BUCKET" --key "$KEY" \
+              --endpoint-url "$ENDPOINT" "$WORK/existing.tar.aesgcm" >/dev/null
+            SIZE="$(stat -c %s "$WORK/existing.tar.aesgcm")"
+            test "$SIZE" -gt 36
+            jq -e --arg sha "$HASH" --arg size "$SIZE" --arg commit "$COMMIT" \
+              '(.ContentLength|tostring)==$size and .Metadata.sha256==$sha and
+               .Metadata.appbasisapp=="ulc-linz" and .Metadata.sourcecommit==$commit and
+               .ContentType=="application/octet-stream"' "$HEAD" >/dev/null
+            test "$(sha256sum "$WORK/existing.tar.aesgcm" | awk '{print $1}')" = "$HASH"
+            node --input-type=module <<'NODE'
+          import { decryptM4BackupFile } from "./tooling/m4-backup-crypto.mjs";
+          import { join } from "node:path";
+          await decryptM4BackupFile({
+            inputPath: join(process.env.WORK, "existing.tar.aesgcm"),
+            outputPath: join(process.env.WORK, "existing.tar"),
+            keyHex: process.env.APPBASIS_ULC_BACKUP_ENCRYPTION_KEY,
+          });
+          NODE
+            tar -xOf "$WORK/existing.tar" manifest.json > "$WORK/existing-manifest.json"
+            DAY="${KEY##*/}"
+            DAY="${DAY:0:10}"
+            jq -e --arg key "$KEY" --arg commit "$COMMIT" --arg day "$DAY" \
+              '.schemaVersion==1 and .appId=="ulc-linz" and .backupKind=="daily" and
+               .objectKey==$key and .sourceGitSha==$commit and
+               .dumpFile=="database.pgdump" and
+               (.createdAt | type=="string" and startswith($day))' \
+              "$WORK/existing-manifest.json" >/dev/null
+            tar -tf "$WORK/existing.tar" | grep -Fx 'database.pgdump' >/dev/null
+            rm -f -- "$WORK/existing.tar.aesgcm" "$WORK/existing.tar" "$WORK/existing-manifest.json"
+            echo "already_exists=true" >> "$GITHUB_OUTPUT"
+            echo "ULC K2 DAILY BACKUP VERIFIED: existing immutable daily ciphertext, SHA-256, AES-256-GCM authentication, manifest and 30-day R2 lifecycle all confirmed. No new object written." >> "$GITHUB_STEP_SUMMARY"
+          elif grep -Eq 'An error occurred \((404|NoSuchKey|NotFound)\)' "$ERROR"; then
+            echo "already_exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat "$ERROR" >&2
+            echo "ULC K2: cannot safely determine whether the daily object already exists." >&2
+            exit 1
+          fi
+
       - name: Verify target is ULC and capture consistent PostgreSQL custom dump
-        if: steps.gate.outputs.run != '0'
+        if: steps.gate.outputs.run != '0' && steps.existing.outputs.already_exists != 'true'
         shell: bash
         env:
           APPBASIS_ULC_SOURCE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_SOURCE_DATABASE_URL }}
@@ -162,7 +226,7 @@ jobs:
           test -s "$WORK/database.pgdump"
 
       - name: Create bounded manifest, encrypt archive, remove plaintext
-        if: steps.gate.outputs.run != '0'
+        if: steps.gate.outputs.run != '0' && steps.existing.outputs.already_exists != 'true'
         shell: bash
         env:
           WORK: ${{ steps.setup.outputs.workspace }}
@@ -194,7 +258,7 @@ jobs:
           echo "ULC K2 PREFLIGHT PASS: source tables, PostgreSQL dump, AES-256-GCM encryption and EU-R2 bucket access checked. No R2 backup object written; scheduled backups remain disabled." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Store immutable ciphertext and verify provider metadata
-        if: steps.gate.outputs.run == 'upload'
+        if: steps.gate.outputs.run == 'upload' && steps.existing.outputs.already_exists != 'true'
         shell: bash
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_ULC_R2_BACKUP_ACCESS_KEY_ID }}
@@ -219,7 +283,7 @@ jobs:
           jq -e --arg sha "$HASH" --arg size "$SIZE" --arg commit "$GITHUB_SHA" \
             '(.ContentLength|tostring)==$size and .Metadata.sha256==$sha and .Metadata.appbasisapp=="ulc-linz" and .Metadata.sourcecommit==$commit' \
             "$WORK/head.json" >/dev/null
-          echo "ULC K2 encrypted database backup uploaded to isolated EU-R2 and metadata confirmed. Restore rehearsal and retention still required before real-data pilot." >> "$GITHUB_STEP_SUMMARY"
+          echo "ULC K2 encrypted database backup uploaded to isolated EU-R2 and metadata confirmed. 30-day retention verified; restore rehearsal still required before real-data pilot." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary backup material
         if: always() && steps.setup.outputs.workspace != ''
