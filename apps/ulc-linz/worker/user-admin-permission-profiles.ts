@@ -8,6 +8,7 @@
 export const ULC_USER_ACCESS_MODULES = Object.freeze([
   { key: "kindertraining", label: "Anwesenheit" },
   { key: "u12", label: "Kindertraining U12" },
+  { key: "u14", label: "U14" },
   { key: "athletes", label: "Stammdaten" },
   { key: "exercise_catalog", label: "Übungskatalog" },
   { key: "training_blocks", label: "Trainingsblöcke" },
@@ -62,12 +63,12 @@ function preset(
 
 export const ULC_PERMISSION_PRESETS: readonly UlcPermissionPreset[] = Object.freeze([
   preset("administrator", "Administrator", "Alle App-Module, technische Administratorrolle bleibt separat", "admin", {
-    kindertraining: "edit", u12: "edit", athletes: "edit",
+    kindertraining: "edit", u12: "edit", u14: "edit", athletes: "edit",
     exercise_catalog: "edit", training_blocks: "edit", training_planning: "edit",
     training_documentation: "edit", countdown: "edit",
   }),
   preset("kindertrainer", "Kindertrainer", "Anwesenheit und U12 betreuen", "trainer", {
-    kindertraining: "edit", u12: "edit", countdown: "edit",
+    kindertraining: "edit", u12: "edit", u14: "edit", countdown: "edit",
   }),
   preset("leistungstrainer", "Leistungstrainer", "Planung, Katalog und Training", "trainer", {
     kindertraining: "view", athletes: "edit", exercise_catalog: "edit",

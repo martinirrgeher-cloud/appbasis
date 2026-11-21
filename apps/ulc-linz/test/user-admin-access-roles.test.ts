@@ -55,6 +55,41 @@ function fixture(role: SourceRole, opts: {
 }
 
 describe("ULC org-scoped role permissions and functionary presets", () => {
+  it("exposes canonical U14 for explicit trainer editing without elevating unrelated permissions", async () => {
+    const { service, changes } = fixture("trainer");
+    const before = await service.read(ORG, USER);
+    const module = before.modules.find(m => m.key === "u14");
+    expect(module).toMatchObject({ label: "U14", level: "none", editable: true });
+    expect(before.modules.filter(m => m.key === "u14")).toHaveLength(1);
+    const kindertrainer = permissionPresetsForRole("trainer").find(p => p.id === "kindertrainer");
+    expect(kindertrainer?.modules.find(m => m.key === "u14")?.level).toBe("edit");
+    const administrator = permissionPresetsForRole("admin").find(p => p.id === "administrator");
+    expect(administrator?.modules.find(m => m.key === "u14")?.level).toBe("edit");
+    const athlete = permissionPresetsForRole("athlete")[0]!;
+    expect(athlete.modules.find(m => m.key === "u14")?.level).toBe("none");
+    expect(ULC_PERMISSION_EDITABLE_BY_ROLE.athlete).not.toContain("u14");
+    expect(ULC_PERMISSION_EDITABLE_BY_ROLE.parent).not.toContain("u14");
+    await service.update(ORG, ACTOR, USER, {
+      modules: before.modules.map(m => ({
+        key: m.key,
+        level: m.key === "u14" ? "edit" as const : m.level,
+      })),
+      expectedGrants: before.expectedGrants,
+      expectedRevokes: before.expectedRevokes,
+    });
+    expect(changes).toHaveLength(1);
+    const change = changes[0] as {
+      roleIds: readonly string[];
+      access: { grants: readonly string[]; revokes: readonly string[] };
+    };
+    expect(change.roleIds).toEqual(["ulc-linz:trainer"]);
+    expect(change.access.grants).toContain("ulc-linz:module:u14:view");
+    expect(change.access.grants).toContain("ulc-linz:module:u14:edit");
+    expect(change.access.grants).not.toContain("ulc-linz:module:u12:edit");
+    expect(change.access.grants).not.toContain("ulc-linz:module:athletes:edit");
+    expect(change.access.revokes).toEqual([]);
+  });
+
   it("allows administrators to tailor modules without modifying their technical administrator role", async () => {
     const { service, changes } = fixture("admin");
     const access = await service.read(ORG, USER);
