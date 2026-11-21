@@ -216,3 +216,38 @@ test("ULC upload workflow enforces R2 30-day expiry before creating ciphertext",
   assert.match(part, /ulc-linz-k2-backup-plan\.mjs lifecycle/);
   assert.doesNotMatch(part, /put-bucket-lifecycle|delete-object|aws s3api put-object/);
 });
+
+test("ULC repeated same-day apply verifies immutable ciphertext and never overwrites it", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/ulc-linz-k2-encrypted-backup.yml", import.meta.url),
+    "utf8",
+  );
+  const lifecycleAt = workflow.indexOf("      - name: Require exact ULC R2 30-day backup lifecycle");
+  const setupAt = workflow.indexOf("      - name: Create secure temporary workspace and fixed daily object key");
+  const existingAt = workflow.indexOf("      - name: Verify pre-existing immutable daily backup before new dump");
+  const dumpAt = workflow.indexOf("      - name: Verify target is ULC and capture consistent PostgreSQL custom dump");
+  const encryptAt = workflow.indexOf("      - name: Create bounded manifest, encrypt archive, remove plaintext");
+  const putAt = workflow.indexOf("      - name: Store immutable ciphertext and verify provider metadata");
+  assert.ok(lifecycleAt > 0 && setupAt > lifecycleAt && existingAt > setupAt &&
+    dumpAt > existingAt && encryptAt > dumpAt && putAt > encryptAt);
+  const existing = workflow.slice(existingAt, dumpAt);
+  assert.match(existing, /aws s3api head-object/);
+  assert.match(existing, /aws s3api get-object/);
+  assert.match(existing, /sha256sum/);
+  assert.match(existing, /decryptM4BackupFile/);
+  assert.match(existing, /tar -xOf/);
+  assert.match(existing, /sourceGitSha/);
+  assert.match(existing, /appbasisapp/);
+  assert.match(existing, /already_exists=true/);
+  assert.match(existing, /already_exists=false/);
+  assert.match(existing, /No new object written/);
+  assert.doesNotMatch(existing, /aws s3api put-object|aws s3api delete-object/);
+  assert.match(workflow.slice(dumpAt, encryptAt), /steps\.existing\.outputs\.already_exists != 'true'/);
+  assert.match(workflow.slice(encryptAt, putAt), /steps\.existing\.outputs\.already_exists != 'true'/);
+  const upload = workflow.slice(putAt);
+  assert.match(upload, /steps\.existing\.outputs\.already_exists != 'true'/);
+  assert.match(upload, /--if-none-match '\*'/);
+  assert.match(upload, /aws s3api head-object/);
+  assert.match(upload, /30-day retention verified/);
+  assert.match(workflow, /if: steps\.gate\.outputs\.run == 'preflight'/);
+});
