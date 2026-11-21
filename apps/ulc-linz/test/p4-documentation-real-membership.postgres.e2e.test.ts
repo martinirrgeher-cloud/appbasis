@@ -213,6 +213,18 @@ describeLocal("P4 documentation real membership and capability SQL authorization
       .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
   });
 
+  it("rejects a SQL membership with an end timestamp even if active stayed true", async () => {
+    const person = await member("trainer");
+    await db().client.unsafe(
+      `UPDATE ulc_linz_membership SET ended_at=now()
+       WHERE identity_id=$1 AND active=true`, [person.id],
+    );
+    await expect(access().assertViewAccess(current(person.id)))
+      .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+    await expect(access().assertEditAccess(current(person.id)))
+      .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+  });
+
   it("rejects SQL role drift from canonical source membership", async () => {
     const person = await member("trainer");
     await db().client.unsafe(
