@@ -17,8 +17,21 @@ import {
 export function protectedUlcProductionRuntimeOptions(
   options: GeneratedPostgresApplicationRuntimeOptions,
 ): GeneratedPostgresApplicationRuntimeOptions {
+  // Private exercise media is not yet approved for production. Even if a
+  // Cloudflare R2 binding is configured, uploads/downloads/deletions via the
+  // regular HTTP routes remain unavailable until provider-level erasure and
+  // privacy evidence have been explicitly approved in a separate change.
+  //
+  // Preview-only activation flags must never be inherited by production.
+  const {
+    exerciseCatalogMediaStore: _unapprovedMediaStore,
+    registrationCalendarActivation: _previewCalendar,
+    trainingSessionWriteGuardMode: _previewTrainingWriteGuard,
+    ...productionOptions
+  } = options;
   return Object.freeze({
-    ...options,
+    ...productionOptions,
+    exerciseCatalogMediaStore: null,
     exerciseCatalogRuntimeMode: "standard-module-protected-production" as const,
     trainingBlockUsageMode: "protected-production-verified-subject" as const,
     trainingDocumentationRuntimeMode: "protected-production" as const,
