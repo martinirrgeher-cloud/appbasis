@@ -1,0 +1,69 @@
+name: ULC Linz – produktive Erstkonfiguration prüfen (nur lesend)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ulc-linz-k2-production-onboarding-readonly
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: ULC-Echtbetrieb Stammdaten und Trainerrechte auswerten
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: ulc-linz-k2-backup
+    env:
+      APPBASIS_ULC_EXPECTED_DATABASE_NAME: ${{ vars.APPBASIS_ULC_EXPECTED_DATABASE_NAME }}
+    steps:
+      - name: Check out reviewed main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+
+      - name: Verify production onboarding read-only contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test ./tooling/ulc-linz-production-onboarding-readonly.test.mjs
+          test "$APPBASIS_ULC_EXPECTED_DATABASE_NAME" = neondb || {
+            echo "ULC onboarding scan only supports reviewed neondb production." >&2
+            exit 1
+          }
+
+      - name: Read only aggregated installed app data and current writer prerequisites
+        shell: bash
+        env:
+          APPBASIS_ULC_SOURCE_DATABASE_URL: ${{ secrets.APPBASIS_ULC_SOURCE_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          test -n "${APPBASIS_ULC_SOURCE_DATABASE_URL:-}" || {
+            echo "ULC onboarding scan source is missing." >&2
+            exit 1
+          }
+          echo "::add-mask::$APPBASIS_ULC_SOURCE_DATABASE_URL"
+          node ./tooling/ulc-linz-k2-backup-plan.mjs source >/dev/null
+          export ULC_ONBOARDING_SQL="$(node ./tooling/ulc-linz-production-onboarding-readonly.mjs sql)"
+          # PostgreSQL itself enforces read-only sessions; the query returns
+          # exactly one JSON aggregate with counts, never rows or identities.
+          export PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=2000'
+          FACTS="$(docker run --rm \
+            --env APPBASIS_ULC_SOURCE_DATABASE_URL \
+            --env ULC_ONBOARDING_SQL \
+            --env PGOPTIONS \
+            postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15 \
+            sh -ceu 'psql --no-psqlrc -v ON_ERROR_STOP=1 --tuples-only --no-align \
+              --dbname="$APPBASIS_ULC_SOURCE_DATABASE_URL" \
+              --command="$ULC_ONBOARDING_SQL"')"
+          # The assessment CLI emits only blocker codes. A successful
+          # workflow means only this READ-ONLY SCAN completed, not go-live PASS.
+          printf '%s' "$FACTS" | node ./tooling/ulc-linz-production-onboarding-readonly.mjs assess
