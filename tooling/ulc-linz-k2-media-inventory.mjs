@@ -55,7 +55,7 @@ function requireHash(value) {
   }
   return value;
 }
-function index(items, label) {
+export function indexK2PrivateMediaRecords(items, label = "media") {
   const map = new Map();
   for (const item of requireArray(items, label)) {
     if (!record(item)) throw new K2MediaInventoryError("Invalid " + label + " record.");
@@ -82,8 +82,8 @@ export function reconcileK2PrivateMedia({
       metadataSnapshot !== objectSnapshot) {
     throw new K2MediaInventoryError("Independent media snapshots are not version-fenced.");
   }
-  const a = index(metadata, "metadata");
-  const b = index(objects, "provider");
+  const a = indexK2PrivateMediaRecords(metadata, "metadata");
+  const b = indexK2PrivateMediaRecords(objects, "provider");
   let missing = 0;
   let unexpected = 0;
   let sizeMismatch = 0;
