@@ -11,6 +11,7 @@
 | Remote Worker ↔ produktive PostgreSQL-Bindung | [Private Security Smoke PASS #44874534467](https://github.com/martinirrgeher-cloud/appbasis/actions/runs/44874534467): echte Hyperdrive-Anfrage und verweigerte Session mit Sicherheitsereignis |
 | Datenbank | 44 aktuelle Migrationen, 69 Tabellen; P4-E2E mit `ulc_linz_application` für die geschützten Module bestanden |
 | Produktionsdaten zuletzt gelesen | 2 bestehende Konten; 0 Athleten, Trainings, Anwesenheiten, Pläne, Dokumente und Übungskatalogeinträge in den jeweiligen aktuellen Tabellen. Kein Beweis, dass alte Backups, Freitext oder die Konten selbst synthetisch sind |
+| Neon-Region und aktuelle Wiederherstellungsmetadaten | Read-only API-Abfrage vom 21.11.2026: Projekt `bold-dew-01343606` in **`aws-eu-central-1` (Frankfurt)**, PostgreSQL 18, `history_retention_seconds=21600` (**6 Stunden**); ein manuell angelegter Snapshot vom 20.11.2026 läuft am **05.12.2026, 23:00 UTC** ab. Diese Einzelwerte **beweisen nicht** den vollständigen Backup-/Exporthorizont oder eine vertragliche Datenregion-Freigabe. |
 | Dokumentation – PostgreSQL | `training-documentation/appbasis.production.json`: **database=verified** mit an Git-Blob-SHAs gebundenen Migrationen und realem PostgreSQL-E2E. **authorization=blocked, lifecycle=blocked, status=blocked** bleiben absichtlich erhalten |
 
 **Wichtige Abgrenzung:** Der Private Security Smoke hat keine interaktive Anmeldung eines Vereinsbenutzers oder persistente Fachmoduldaten getestet. Kein vollständiger Vereinsbetrieb ist damit nachgewiesen.
