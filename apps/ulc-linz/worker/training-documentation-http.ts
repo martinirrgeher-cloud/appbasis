@@ -22,6 +22,7 @@ import {
   UlcTrainingDocumentationSubjectNotFoundError,
 } from "./training-documentation-service";
 import { recordUlcLinzSecurityEvent } from "./security-events";
+import { ulcWriteLockConflictHttpResponse } from "./write-lock-conflict-http";
 import type { GeneratedPostgresApplicationRuntime } from "./postgres";
 
 class InvalidTrainingDocumentationRequestError extends Error {}
@@ -502,6 +503,8 @@ function clientPlan(plan: TrainingPlanSnapshot): Readonly<Record<string, unknown
 }
 
 function errorResponse(error: unknown): Response {
+  const transient = ulcWriteLockConflictHttpResponse(error);
+  if (transient !== null) return transient;
   if (error instanceof TrainingDocumentationConflictError) {
     return Response.json(
       {

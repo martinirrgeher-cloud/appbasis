@@ -2553,9 +2553,11 @@ async function saveExerciseCatalogItem(event) {
   } catch (error) {
     showMessage(
       elements.exerciseCatalogMessage,
-      error?.status === 409
-        ? "Eine Übung mit diesem Namen ist bereits vorhanden."
-        : error?.status === 404
+      error?.code === "ULC_WRITE_TEMPORARILY_BUSY"
+        ? "Die Übung wird gerade bearbeitet oder gelöscht. Dein Entwurf bleibt erhalten. Bitte den aktuellen Stand prüfen und erneut speichern."
+        : error?.status === 409
+          ? "Eine Übung mit diesem Namen ist bereits vorhanden."
+          : error?.status === 404
           ? "Eine ausgewählte Trainingsgruppe ist nicht mehr verfügbar."
           : "Die Übung konnte nicht gespeichert werden. Bitte Eingaben prüfen.",
     );

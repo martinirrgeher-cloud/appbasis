@@ -1,3 +1,4 @@
+import { ulcWriteLockConflictHttpResponse } from "./write-lock-conflict-http";
 import { UlcTrainingActorWriteBlockedError } from "./training-session-write-actor";
 import { UlcTrainingScopeWriteBlockedError } from "./training-session-write-scope";
 import { UlcTrainingSubjectWriteBlockedError } from "./training-session-postgres";
@@ -9,6 +10,8 @@ import { UlcTrainingSubjectWriteBlockedError } from "./training-session-postgres
  * drafts and let the user refresh after checking the server state.
  */
 export function trainingWriteGuardHttpResponse(error: unknown): Response | null {
+  const retryable = ulcWriteLockConflictHttpResponse(error);
+  if (retryable !== null) return retryable;
   if (error instanceof UlcTrainingActorWriteBlockedError) {
     return Response.json(
       { error: {
