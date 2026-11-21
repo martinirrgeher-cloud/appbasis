@@ -15,7 +15,7 @@ function simulatedSql(
   return {
     begin: async callback => callback({
       unsafe: async (query, params) => {
-        commands.push({ query, params });
+        commands.push({ query, ...(params === undefined ? {} : { params }) });
         return query.startsWith("SET TRANSACTION") ? [] : response;
       },
     }),
