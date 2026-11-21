@@ -44,6 +44,46 @@ SELECT jsonb_build_object(
     SELECT count(*)::int FROM public."user"
     WHERE username='ulc.production.admin' AND banned IS NOT TRUE
   ),
+  'technicalAdminAppIdentityState', (
+    SELECT count(*)::int FROM public.appbasis_identity_security_state state
+    JOIN public."user" account ON account.id=state.identity_id
+    WHERE account.username='ulc.production.admin'
+  ),
+  'regularClubAdminCandidates', (
+    -- Structural prerequisites for normal application login only.
+    -- The Better Auth technical root intentionally has no AppBasis state;
+    -- its ULC membership and role binding alone do not make it usable.
+    -- This is NOT a password/session/HTTP smoke-test.
+    SELECT count(*)::int
+    FROM public.ulc_linz_membership m
+    JOIN public."user" u ON u.id=m.identity_id
+    JOIN public.appbasis_identity_security_state state
+      ON state.identity_id=m.identity_id
+    JOIN public.appbasis_permission_principal principal
+      ON principal.principal_id=m.identity_id
+    JOIN public.appbasis_permission_principal_role role
+      ON role.principal_id=m.identity_id AND role.role_id='ulc-linz:admin'
+    WHERE m.organization_id='ulc-linz' AND m.source_role='admin'
+      AND m.active AND m.ended_at IS NULL
+      AND u.username IS NOT NULL AND u.username<>'ulc.production.admin'
+      AND u.banned IS NOT TRUE AND state.disabled_at IS NULL
+      AND state.must_change_password IS FALSE
+      AND NOT EXISTS (
+        SELECT 1 FROM public.appbasis_permission_principal_role other_role
+        WHERE other_role.principal_id=m.identity_id
+          AND other_role.role_id<>'ulc-linz:admin'
+      )
+      AND EXISTS (
+        SELECT 1 FROM public.appbasis_permission_role_capability capability
+        WHERE capability.role_id='ulc-linz:admin'
+          AND capability.capability_id='ulc-linz:module:athletes:edit'
+          AND NOT EXISTS (
+            SELECT 1 FROM public.appbasis_permission_principal_revoke revoke
+            WHERE revoke.principal_id=m.identity_id
+              AND revoke.capability_id=capability.capability_id
+          )
+      )
+  ),
   'eligibleTrainerCandidates', (
     SELECT count(*)::int FROM public.ulc_linz_membership m
     WHERE m.active=true AND m.ended_at IS NULL AND m.source_role='trainer'
@@ -80,6 +120,7 @@ const KEYS = Object.freeze([
   "smokeGroups", "nonSmokeMemberships", "nonSmokeAdminLogins",
   "activeTrainers", "activeAthletes", "trainerGroupLinks",
   "activeTrainerLogins", "activeAdminLogins", "technicalAdmins",
+  "technicalAdminAppIdentityState", "regularClubAdminCandidates",
   "eligibleTrainerCandidates", "sessions", "catalogItems", "trainingBlocks",
   "privateMediaMetadata",
 ]);
@@ -101,6 +142,9 @@ export function evaluateUlcProductionOnboarding(value) {
   if (facts.smokeGroups > 0) blockers.push("GROUPS_ASSIGNED_TO_SMOKE_ORGANIZATION");
   if (facts.nonSmokeMemberships < 1) blockers.push("NO_REAL_ULC_ORGANIZATION");
   if (facts.nonSmokeAdminLogins !== 1) blockers.push("REAL_ULC_ADMIN_MEMBERSHIP_MISSING");
+  if (facts.regularClubAdminCandidates < 1)
+    blockers.push("NO_REGULAR_APP_ADMIN_IDENTITY");
+
   if (facts.activeGroups < 1) blockers.push("GROUPS_NOT_INITIALIZED");
   if (facts.activeTrainers < 1 || facts.trainerGroupLinks < 1)
     blockers.push("TRAINERS_OR_GROUP_ASSIGNMENTS_MISSING");
@@ -139,6 +183,10 @@ export function formatUlcProductionOnboardingSummary(result) {
     "- Trainings-/Dokumentations-Trigger: " + result.counts.trainingFences + " / " +
         result.counts.documentationFences,
     "- Technischer Administrator (Anzahl): " + result.counts.technicalAdmins,
+    "- Technischer Root mit regulärem AppBasis-Identitätsstatus: " +
+        result.counts.technicalAdminAppIdentityState,
+    "- Mögliche reguläre ULC-App-Admins (vollständiger Identity-/Rollenstatus): " +
+        result.counts.regularClubAdminCandidates,
     "- Testgruppen / Nicht-Test-Mitgliedschaften / echte ULC-Admin-Mitgliedschaften: " +
         [result.counts.smokeGroups, result.counts.nonSmokeMemberships, result.counts.nonSmokeAdminLogins].join(" / "),
     "- Gruppen / Trainer / Athleten: " + [
@@ -150,6 +198,9 @@ export function formatUlcProductionOnboardingSummary(result) {
     "- Sitzungen / Übungen / Blöcke / private Medien-Metadaten: " +
         [result.counts.sessions, result.counts.catalogItems, result.counts.trainingBlocks,
           result.counts.privateMediaMetadata].join(" / "),
+    "- **Wichtig:** Ein technischer Better-Auth-Root mit fehlendem AppBasis-Status " +
+      "kann keine normale ULC-Anmeldung nutzen. Die Zähler prüfen nur Identitäts-" +
+      " und Rollen-Vorbedingungen, keine echte App-Session-/UI-Anmeldung.",
     "- **Kein Go-live-Nachweis:** Worker-Bindings, komplette Benutzerrechte, Medienprovider, " +
       "Wiederherstellung, Löschrecht und Handy-Smoke bleiben getrennt.",
     "- Keine Datenänderung oder Berechtigungserweiterung. Ein erfolgreicher Workflow-Run " +
