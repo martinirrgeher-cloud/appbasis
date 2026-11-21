@@ -42,7 +42,7 @@ export function ulcRequiredOwnerSchemaSql() {
 export function ulcRestoreIntegritySql(databaseName) {
   const name = assertUlcDatabaseName(databaseName);
   const owners = "(" + ulcRequiredOwnerSchemaSql().replace(/^SELECT\s+/, "") + ")";
-  if (name !== "neondb") return "SELECT " + owners;
+  if (name !== "neondb") return "SELECT " + owners + " AS restored_integrity_ok";
 
   const expected = [
     ["ulc_linz_training_attendance", "ulc_linz_training_attendance_subject_fence", "ulc_linz_training_subject_write_fence"],
@@ -70,7 +70,7 @@ export function ulcRestoreIntegritySql(databaseName) {
     "    JOIN pg_catalog.pg_namespace n ON n.oid=r.relnamespace AND n.nspname='public'",
     "    JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid AND p.proname=e.function_name",
     "      AND p.pronargs=0",
-    "    JOIN pg_catalog.pg_namespace pn ON pn.oid=p.pronamespace AND pn.nspname='public')=5",
+    "    JOIN pg_catalog.pg_namespace pn ON pn.oid=p.pronamespace AND pn.nspname='public')=5 AS restored_integrity_ok",
   ].join("\n");
 }
 
