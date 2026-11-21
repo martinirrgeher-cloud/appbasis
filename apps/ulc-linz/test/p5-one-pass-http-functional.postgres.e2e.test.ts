@@ -158,7 +158,7 @@ suite("ULC P5 one-pass synthetic real-HTTP functional admission", () => {
     );
     for (const [identity,role] of [
       [trainerId, "trainer"], [functionaryId, "functionary"],
-    ]) {
+    ] as const) {
       await sql().unsafe(
         "INSERT INTO ulc_linz_membership(identity_id,organization_id,subject_id,source_role) VALUES ($1,$2,$3,$4)",
         [identity, ORG, identity + "-subject", role],
