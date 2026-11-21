@@ -78,7 +78,7 @@ suite("ULC P5 one-pass synthetic real-HTTP functional admission", () => {
     const raw = response.headers.get("set-cookie");
     if (!raw) throw new Error("Signed-in identity did not receive a session cookie.");
     const first = raw.split(";")[0];
-    if (!first || !/^(?:__Secure-|__Host-)?better-auth\\.session_token=.+$/.test(first)) {
+    if (!first || !/^(?:__Secure-|__Host-)?better-auth\.session_token=.+$/.test(first)) {
       throw new Error("Unexpected session cookie header.");
     }
     return first;
