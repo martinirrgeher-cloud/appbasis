@@ -13,6 +13,10 @@ import {
   type UlcLinzCurrentIdentity,
 } from "../worker/authorization";
 import { PostgresUlcLinzScopePersistence } from "../worker/scope-persistence";
+import {
+  assertUlcLiveTrainingDocumentationActor,
+  UlcTrainingDocumentationActorWriteBlockedError,
+} from "../worker/training-documentation-write-actor";
 
 /**
  * Genuine SQL membership, role, capability, revoke and subject-scope decisions
@@ -278,6 +282,70 @@ describeLocal("P4 documentation real membership and capability SQL authorization
     const person = await member("parent");
     await expect(access().assertViewAccess(current(person.id)))
       .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+  });
+
+  it("rechecks a real trainer's SQL role and blocks a later direct revoke in the same write transaction", async () => {
+    const person = await member("trainer");
+    const scope = {
+      organizationId: person.org,
+      subjectId: "synthetic-p4-target",
+      authenticatedIdentityId: person.id,
+    };
+    await expect(db().client.begin(async transaction =>
+      assertUlcLiveTrainingDocumentationActor(transaction, scope),
+    )).resolves.toBeUndefined();
+
+    await db().client.unsafe(
+      `INSERT INTO appbasis_permission_principal_revoke(principal_id,capability_id)
+       VALUES ($1,'ulc-linz:module:training_documentation:edit')`, [person.id],
+    );
+    await expect(db().client.begin(async transaction =>
+      assertUlcLiveTrainingDocumentationActor(transaction, scope),
+    )).rejects.toBeInstanceOf(UlcTrainingDocumentationActorWriteBlockedError);
+  });
+
+  it("blocks an in-flight canonical role mutation while the SQL actor write holds its principal lock", async () => {
+    const person = await member("trainer");
+    await db().client.begin(async transaction => {
+      await assertUlcLiveTrainingDocumentationActor(transaction, {
+        organizationId: person.org,
+        subjectId: "synthetic-p4-target",
+        authenticatedIdentityId: person.id,
+      });
+      await expect(db().client.begin(async concurrent => {
+        await concurrent.unsafe("SET LOCAL lock_timeout = '120ms'");
+        await concurrent.unsafe(
+          "SELECT principal_id FROM appbasis_permission_principal " +
+          "WHERE principal_id=$1 FOR UPDATE",
+          [person.id],
+        );
+      })).rejects.toThrow(/lock timeout/i);
+    });
+  });
+
+  it("admits only the athlete's own subject with a persisted self-scope row", async () => {
+    const person = await member("athlete");
+    const scope = {
+      organizationId: person.org,
+      subjectId: person.subject,
+      authenticatedIdentityId: person.id,
+    };
+    await expect(db().client.begin(async transaction =>
+      assertUlcLiveTrainingDocumentationActor(transaction, scope),
+    )).rejects.toBeInstanceOf(UlcTrainingDocumentationActorWriteBlockedError);
+    await db().client.unsafe(
+      `INSERT INTO ulc_linz_subject_scope
+       (identity_id,organization_id,subject_id,relation_type)
+       VALUES ($1,$2,$3,'self')`, [person.id, person.org, person.subject],
+    );
+    await expect(db().client.begin(async transaction =>
+      assertUlcLiveTrainingDocumentationActor(transaction, scope),
+    )).resolves.toBeUndefined();
+    await expect(db().client.begin(async transaction =>
+      assertUlcLiveTrainingDocumentationActor(transaction, {
+        ...scope, subjectId: "foreign-subject",
+      }),
+    )).rejects.toBeInstanceOf(UlcTrainingDocumentationActorWriteBlockedError);
   });
 
   it("never stores a training-documentation row during this identity/permission rehearsal", async () => {
