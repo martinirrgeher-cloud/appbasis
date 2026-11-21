@@ -1,0 +1,63 @@
+name: ULC Linz Production Club Admin
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type PROVISION-ULC-ADMIN to create ulc.admin for ulc-linz
+        required: true
+        type: string
+      expected_head_sha:
+        description: Reviewed main commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: m4-dr
+    steps:
+      - name: Require fresh approval for the reviewed main head
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$CONFIRMATION" = PROVISION-ULC-ADMIN
+          test "$EXPECTED_HEAD_SHA" = "$GITHUB_SHA"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Provision ulc.admin and require a first password change
+        working-directory: apps/ulc-linz
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          ULC_LINZ_PRODUCTION_ADMIN_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD }}
+          ULC_LINZ_CLUB_ADMIN_TEMPORARY_PASSWORD: ${{ secrets.ULC_LINZ_CLUB_ADMIN_TEMPORARY_PASSWORD }}
+        run: node --experimental-transform-types --import ./tooling/register-native-typescript-resolution.mjs ./tooling/provision-production-club-admin.mjs
