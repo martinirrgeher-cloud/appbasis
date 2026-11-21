@@ -16,7 +16,10 @@ export const ULC_UNSTRUCTURED_REVIEW_AREAS = Object.freeze([
   "documentation_revision_notes",
   "documentation_revision_json",
   "plan_revision_notes",
+  "plan_revision_item_notes",
   "block_revision_notes",
+  "block_revision_item_notes",
+  "block_revision_parameter_values",
   "catalog_usage_legacy_refs",
   "block_usage_legacy_refs",
 ] as const);
@@ -94,9 +97,21 @@ export async function inspectUlcUnstructuredHistoryReadOnly(
         (SELECT count(*)::int FROM appbasis_training_plan_revision
           WHERE organization_id = $1 AND nullif(btrim(note), '') IS NOT NULL)
           AS plan_revision_notes,
+        (SELECT count(*)::int FROM appbasis_training_plan_revision_item
+          WHERE organization_id = $1 AND (
+            nullif(btrim(note), '') IS NOT NULL OR
+            nullif(btrim(comment), '') IS NOT NULL))
+          AS plan_revision_item_notes,
         (SELECT count(*)::int FROM appbasis_training_block_revision
           WHERE organization_id = $1 AND nullif(btrim(note), '') IS NOT NULL)
           AS block_revision_notes,
+        (SELECT count(*)::int FROM appbasis_training_block_revision_item
+          WHERE organization_id = $1 AND nullif(btrim(note), '') IS NOT NULL)
+          AS block_revision_item_notes,
+        (SELECT count(*)::int FROM appbasis_training_block_revision_item_parameter
+          WHERE organization_id = $1 AND
+            nullif(btrim(parameter_value), '') IS NOT NULL)
+          AS block_revision_parameter_values,
         (SELECT count(*)::int FROM appbasis_exercise_catalog_usage
           WHERE organization_id = $1 AND (
             nullif(btrim(note),'') IS NOT NULL OR
