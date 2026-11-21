@@ -118,12 +118,12 @@ test("ULC: technical Root membership and role do not prove AppBasis login", () =
     new URL("../packages/identity/src/service.ts", import.meta.url),
     "utf8",
   );
-  assert.match(identitySource, /this\\.stateStore\\.find\\(identityId\\)/);
+  assert.match(identitySource, /this\.stateStore\.find\(identityId\)/);
   assert.match(identitySource, /IDENTITY_STATE_MISSING/);
-  assert.match(ULC_PRODUCTION_ONBOARDING_SQL, /JOIN public\\.appbasis_identity_security_state state/);
-  assert.match(ULC_PRODUCTION_ONBOARDING_SQL, /u\\.username<>'ulc\\.production\\.admin'/);
-  assert.match(ULC_PRODUCTION_ONBOARDING_SQL, /state\\.must_change_password IS FALSE/);
-  assert.match(ULC_PRODUCTION_ONBOARDING_SQL, /other_role\\.role_id<>'ulc-linz:admin'/);
+  assert.match(ULC_PRODUCTION_ONBOARDING_SQL, /JOIN public\.appbasis_identity_security_state state/);
+  assert.match(ULC_PRODUCTION_ONBOARDING_SQL, /u\.username<>'ulc\.production\.admin'/);
+  assert.match(ULC_PRODUCTION_ONBOARDING_SQL, /state\.must_change_password IS FALSE/);
+  assert.match(ULC_PRODUCTION_ONBOARDING_SQL, /other_role\.role_id<>'ulc-linz:admin'/);
 });
 
 test("ULC: existing media metadata flags unverified media scope, no fake backup PASS", () => {
