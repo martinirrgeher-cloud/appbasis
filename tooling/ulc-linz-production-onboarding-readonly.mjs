@@ -200,7 +200,7 @@ export function formatUlcProductionOnboardingSummary(result) {
           result.counts.privateMediaMetadata].join(" / "),
     "- **Wichtig:** Ein technischer Better-Auth-Root mit fehlendem AppBasis-Status " +
       "kann keine normale ULC-Anmeldung nutzen. Die Zähler prüfen nur Identitäts-" +
-      " und Rollen-Vorbedingungen, keine echte Passwort-/Session-/UI-Anmeldung.",
+      " und Rollen-Vorbedingungen, keine echte App-Session-/UI-Anmeldung.",
     "- **Kein Go-live-Nachweis:** Worker-Bindings, komplette Benutzerrechte, Medienprovider, " +
       "Wiederherstellung, Löschrecht und Handy-Smoke bleiben getrennt.",
     "- Keine Datenänderung oder Berechtigungserweiterung. Ein erfolgreicher Workflow-Run " +

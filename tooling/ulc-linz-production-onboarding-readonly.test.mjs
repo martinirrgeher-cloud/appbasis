@@ -113,7 +113,7 @@ test("ULC: technical Root membership and role do not prove AppBasis login", () =
   assert.equal(mistakenPass.counts.nonSmokeAdminLogins, 1);
   assert.equal(mistakenPass.counts.technicalAdminAppIdentityState, 0);
   assert.equal(mistakenPass.productionReleaseAuthorized, false);
-  assert.match(format(mistakenPass), /keine echte Passwort-\/Session-\/UI-Anmeldung/);
+  assert.match(format(mistakenPass), /keine echte App-Session-\/UI-Anmeldung/);
   const identitySource = readFileSync(
     new URL("../packages/identity/src/service.ts", import.meta.url),
     "utf8",
