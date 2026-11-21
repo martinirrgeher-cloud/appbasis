@@ -26,6 +26,9 @@ SELECT jsonb_build_object(
       AND t.tgname IN ('appbasis_training_documentation_guard_root','appbasis_training_documentation_guard_revision')
   ),
   'activeGroups', (SELECT count(*)::int FROM public.appbasis_training_group WHERE is_active=true),
+  'smokeGroups', (SELECT count(*)::int FROM public.appbasis_training_group WHERE organization_id='ulc-linz-m6-smoke'),
+  'nonSmokeMemberships', (SELECT count(*)::int FROM public.ulc_linz_membership WHERE active AND ended_at IS NULL AND organization_id<>'ulc-linz-m6-smoke'),
+  'nonSmokeAdminLogins', (SELECT count(*)::int FROM public.ulc_linz_membership WHERE active AND ended_at IS NULL AND source_role='admin' AND organization_id<>'ulc-linz-m6-smoke'),
   'activeTrainers', (SELECT count(*)::int FROM public.appbasis_trainer WHERE is_active=true),
   'activeAthletes', (SELECT count(*)::int FROM public.appbasis_athlete WHERE is_active=true),
   'trainerGroupLinks', (SELECT count(*)::int FROM public.appbasis_trainer_group_membership),
@@ -74,6 +77,7 @@ SELECT jsonb_build_object(
 `.trim();
 const KEYS = Object.freeze([
   "tables", "trainingFences", "documentationFences", "activeGroups",
+  "smokeGroups", "nonSmokeMemberships", "nonSmokeAdminLogins",
   "activeTrainers", "activeAthletes", "trainerGroupLinks",
   "activeTrainerLogins", "activeAdminLogins", "technicalAdmins",
   "eligibleTrainerCandidates", "sessions", "catalogItems", "trainingBlocks",
@@ -94,6 +98,9 @@ export function evaluateUlcProductionOnboarding(value) {
   if (facts.tables !== 69 || facts.trainingFences !== 3 ||
       facts.documentationFences !== 2) blockers.push("DATABASE_SCHEMA_OR_FENCES");
   if (facts.technicalAdmins !== 1) blockers.push("TECHNICAL_ADMIN_BOOTSTRAP");
+  if (facts.smokeGroups > 0) blockers.push("GROUPS_ASSIGNED_TO_SMOKE_ORGANIZATION");
+  if (facts.nonSmokeMemberships < 1) blockers.push("NO_REAL_ULC_ORGANIZATION");
+  if (facts.nonSmokeAdminLogins !== 1) blockers.push("REAL_ULC_ADMIN_MEMBERSHIP_MISSING");
   if (facts.activeGroups < 1) blockers.push("GROUPS_NOT_INITIALIZED");
   if (facts.activeTrainers < 1 || facts.trainerGroupLinks < 1)
     blockers.push("TRAINERS_OR_GROUP_ASSIGNMENTS_MISSING");
@@ -132,6 +139,8 @@ export function formatUlcProductionOnboardingSummary(result) {
     "- Trainings-/Dokumentations-Trigger: " + result.counts.trainingFences + " / " +
         result.counts.documentationFences,
     "- Technischer Administrator (Anzahl): " + result.counts.technicalAdmins,
+    "- Testgruppen / Nicht-Test-Mitgliedschaften / echte ULC-Admin-Mitgliedschaften: " +
+        [result.counts.smokeGroups, result.counts.nonSmokeMemberships, result.counts.nonSmokeAdminLogins].join(" / "),
     "- Gruppen / Trainer / Athleten: " + [
       result.counts.activeGroups, result.counts.activeTrainers, result.counts.activeAthletes,
     ].join(" / "),

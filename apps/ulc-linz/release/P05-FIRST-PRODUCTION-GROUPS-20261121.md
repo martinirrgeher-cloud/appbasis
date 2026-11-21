@@ -1,5 +1,23 @@
 # ULC Linz – P05 Erstkonfiguration für den tatsächlichen Vereinsstart
 
+> **Korrektur vom 21.11.2026 (wichtig):** Die vier Gruppen wurden später
+> zwar in `neondb` angelegt, aber aufgrund der einzigen aktiven
+> `ulc_linz_membership` irrtümlich unter `ulc-linz-m6-smoke`, der
+> **separaten Testorganisation** des M6-Smoke-Accounts. Die 3 Modulzuordnungen
+> liegen ebenfalls dort. Das ist **keine echte Vereinsinitialisierung**.
+> Die nachträgliche Prüfung hat 4 Testorganisations-Gruppen,
+> 0 echte Vereinsgruppen und 0 echte App-Admin-Mitgliedschaften bestätigt.
+> Das technische Root-Admin-Konto existiert, ist aber keiner echten
+> ULC-Mitgliedschaft zugeordnet. **Keine Admin-Rolle an die
+> Testorganisation vergeben.** Kein Datenbank- oder Rollen-Write zur
+> Korrektur durchgeführt. Vor Reparatur ist eine dauerhafte
+> Vereins-`organization_id` fachlich festzulegen; erst danach die
+> 4 Gruppen und 3 Zuordnungen in einer geprüften Transaktion umhängen
+> und den Root-Admin begrenzt für diese Zielorganisation aktivieren.
+> Es gibt derzeit keine Trainingseinheiten, Trainer-/Athleten- oder
+> Kalenderdatensätze an diesen Gruppen. Der P05-Kandidat und der
+> Go-live-Lesecheck verweigern künftig die Smoke-Organisation.
+
 **21.11.2026 · überprüfbarer Produktions-Einrichtungsentwurf, noch nicht ausgeführt.**
 
 ## Umfang und fachliche Herkunft

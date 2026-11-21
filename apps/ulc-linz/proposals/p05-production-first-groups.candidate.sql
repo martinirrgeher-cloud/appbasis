@@ -27,6 +27,11 @@ BEGIN
   IF target_org IS NULL OR target_org = '' OR target_org <> btrim(target_org) THEN
     RAISE EXCEPTION 'P05 organization is invalid';
   END IF;
+  -- A smoke principal is not a real ULC club organization. The earlier
+  -- implementation accidentally accepted this only active membership.
+  IF target_org ILIKE '%smoke%' OR target_org ILIKE '%preview%' OR target_org ILIKE '%test%' THEN
+    RAISE EXCEPTION 'P05 refuses non-production organization';
+  END IF;
   SELECT count(*) INTO existing_groups FROM public.appbasis_training_group;
   SELECT count(*) INTO existing_mappings FROM public.ulc_linz_training_module_group;
   IF existing_groups = 0 AND existing_mappings = 0 THEN
