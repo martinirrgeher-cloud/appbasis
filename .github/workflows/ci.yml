@@ -136,6 +136,10 @@ jobs:
       - name: Rehearse P03-D stale training-subject write fence on disposable PostgreSQL 18
         run: node --test ./tooling/ulc-linz-p03-d-subject-fence.postgres.test.mjs
 
+      - name: Rehearse P2-P4 source-owner/ULC training write fence on disposable PostgreSQL 18
+        run: node --test ./tooling/ulc-linz-p2-p4-source-owner-fence.postgres.test.mjs
+
+
       - name: Rehearse P02-G actual in-place synthetic 51-to-69 schema upgrade on PostgreSQL 18
         run: node --test ./tooling/ulc-linz-p02-g-synthetic-upgrade.postgres.test.mjs
 
