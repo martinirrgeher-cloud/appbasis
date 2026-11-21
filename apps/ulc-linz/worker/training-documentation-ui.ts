@@ -1226,9 +1226,11 @@ async function saveTrainingDocumentation() {
   } catch (error) {
     showMessage(
       trainingDocumentationElements.message,
-      error?.payload?.error?.code === "TRAINING_DOCUMENTATION_CONFLICT"
-        ? "Die Dokumentation wurde zwischenzeitlich geändert. Bitte den Tag neu laden."
-        : "Die Trainingsdokumentation konnte nicht gespeichert werden.",
+      error?.code === "ULC_WRITE_TEMPORARILY_BUSY"
+        ? "Die Speicherung ist vorübergehend gesperrt. Deine Eingaben bleiben erhalten. Bitte den aktuellen Stand prüfen und erneut speichern."
+        : error?.payload?.error?.code === "TRAINING_DOCUMENTATION_CONFLICT"
+          ? "Die Dokumentation wurde zwischenzeitlich geändert. Bitte den Tag neu laden."
+          : "Die Trainingsdokumentation konnte nicht gespeichert werden.",
     );
     return false;
   } finally {

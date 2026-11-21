@@ -2330,7 +2330,14 @@ async function saveTrainingBlock() {
     refreshTrainingBlockParityMetadata();
   } catch (error) {
     trainingBlockDirty = true;
-    if (
+    if (error?.status === 409 && error?.code === "ULC_WRITE_TEMPORARILY_BUSY") {
+      setTrainingBlockSaveState("error", "Vorübergehend gesperrt");
+      if (trainingBlockElements.retry) trainingBlockElements.retry.hidden = false;
+      showMessage(
+        trainingBlockElements.editorMessage,
+        "Die Speicherung ist durch einen parallelen Vorgang gesperrt. Dein Entwurf bleibt erhalten. Bitte den aktuellen Stand prüfen und später erneut speichern.",
+      );
+    } else if (
       error?.status === 409 &&
       ["TRAINING_BLOCK_CONFLICT", "TRAINING_BLOCK_INACTIVE"].includes(error?.code)
     ) {
@@ -3129,7 +3136,13 @@ async function deleteUnusedTrainingBlock() {
     closeTrainingBlockEditor(true);
     renderTrainingBlocks();
   } catch (error) {
-    if (error?.status === 409 && error?.code === "TRAINING_BLOCK_IN_USE") {
+    if (error?.status === 409 && error?.code === "ULC_WRITE_TEMPORARILY_BUSY") {
+      setTrainingBlockSaveState("error", "Vorübergehend gesperrt");
+      showMessage(
+        trainingBlockElements.editorMessage,
+        "Der Block wird gerade anderweitig bearbeitet. Die Löschung wurde nicht abgeschlossen. Bitte den aktuellen Stand prüfen und später erneut versuchen.",
+      );
+    } else if (error?.status === 409 && error?.code === "TRAINING_BLOCK_IN_USE") {
       setTrainingBlockSaveState("error", "Bereits verwendet");
       showMessage(
         trainingBlockElements.editorMessage,
