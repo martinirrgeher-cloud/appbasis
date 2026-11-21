@@ -1,6 +1,7 @@
 import type { ExerciseCatalogPrivateMedia } from "@appbasis/exercise-catalog";
 
 import {
+  isExactUlcPrivateMediaStorageReference,
   privateExerciseVideoStorageKey,
   type UlcExerciseCatalogObjectStore,
 } from "./exercise-catalog-private-media";
@@ -31,32 +32,6 @@ export type UlcConfirmedMediaDeletionResult =
   | Readonly<{ status: "unconfirmed" }>
   | Readonly<{ status: "deleted" }>;
 
-function isExactStorageObject(
-  media: ExerciseCatalogPrivateMedia,
-  organizationId: string,
-  exerciseId: string,
-  mediaId: string,
-): boolean {
-  if (
-    media === null ||
-    typeof media !== "object" ||
-    media.organizationId !== organizationId ||
-    media.exerciseId !== exerciseId ||
-    media.id !== mediaId ||
-    typeof media.storageKey !== "string"
-  ) {
-    return false;
-  }
-
-  // ULC HTTP uploads always use this deterministic tenant+exercise+media key.
-  // Never execute a provider delete for a forged, old, or foreign key.
-  return media.storageKey === privateExerciseVideoStorageKey(
-    organizationId,
-    exerciseId,
-    mediaId,
-  );
-}
-
 export async function deleteUlcPrivateExerciseMediaWithConfirmation(
   input: Readonly<{
     organizationId: string;
@@ -83,7 +58,7 @@ export async function deleteUlcPrivateExerciseMediaWithConfirmation(
     return Object.freeze({ status: "not-found" });
   }
   if (
-    !isExactStorageObject(target, organizationId, exerciseId, mediaId) ||
+    !isExactUlcPrivateMediaStorageReference(target, organizationId, exerciseId, mediaId) ||
     target.storageKey !== exactKey
   ) {
     return Object.freeze({ status: "unconfirmed" });
