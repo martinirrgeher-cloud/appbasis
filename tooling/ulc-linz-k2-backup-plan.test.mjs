@@ -152,3 +152,19 @@ test("K2 restore apply=false verifies the ciphertext without requiring an empty 
   assert.match(writer, /pg_restore --single-transaction --no-owner --no-acl --exit-on-error/);
   assert.doesNotMatch(preflight, /pg_restore --single-transaction/);
 });
+
+test("disabled scheduled K2 backups fail visibly instead of falsely reporting success", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/ulc-linz-k2-encrypted-backup.yml", import.meta.url),
+    "utf8",
+  );
+  const scheduledGate = workflow.split('if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]')[1]
+    ?.split('elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]')[0];
+  assert.ok(scheduledGate, "scheduled gate must exist");
+  assert.match(scheduledGate, /SCHEDULED BACKUP FAILED/);
+  assert.match(scheduledGate, /::error title=ULC K2 daily backup missing/);
+  assert.match(scheduledGate, /exit 1/);
+  assert.doesNotMatch(scheduledGate, /exit 0/);
+  assert.match(workflow, /echo "run=preflight" >> "\$GITHUB_OUTPUT"/);
+  assert.match(workflow, /if: steps\.gate\.outputs\.run == 'upload'/);
+});
