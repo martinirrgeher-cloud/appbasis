@@ -207,6 +207,12 @@ test("ULC upload workflow enforces R2 30-day expiry before creating ciphertext",
   const part = workflow.slice(lifecycleAt, workspaceAt);
   assert.match(part, /if: steps\.gate\.outputs\.run == 'upload'/);
   assert.match(part, /get-bucket-lifecycle-configuration/);
+  assert.match(part, /secrets\.APPBASIS_ULC_R2_LIFECYCLE_READ_ACCESS_KEY_ID/);
+  assert.match(part, /secrets\.APPBASIS_ULC_R2_LIFECYCLE_READ_SECRET_ACCESS_KEY/);
+  assert.match(part, /lifecycle read credential missing/);
+  assert.doesNotMatch(part, /secrets\.APPBASIS_ULC_R2_BACKUP_(?:ACCESS_KEY_ID|SECRET_ACCESS_KEY)/);
+  assert.match(workflow.slice(uploadAt), /secrets\.APPBASIS_ULC_R2_BACKUP_ACCESS_KEY_ID/);
+  assert.match(workflow.slice(uploadAt), /secrets\.APPBASIS_ULC_R2_BACKUP_SECRET_ACCESS_KEY/);
   assert.match(part, /ulc-linz-k2-backup-plan\.mjs lifecycle/);
   assert.doesNotMatch(part, /put-bucket-lifecycle|delete-object|aws s3api put-object/);
 });

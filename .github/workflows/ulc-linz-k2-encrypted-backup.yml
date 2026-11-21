@@ -109,12 +109,15 @@ jobs:
         if: steps.gate.outputs.run == 'upload'
         shell: bash
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_ULC_R2_BACKUP_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_ULC_R2_BACKUP_SECRET_ACCESS_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.APPBASIS_ULC_R2_LIFECYCLE_READ_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.APPBASIS_ULC_R2_LIFECYCLE_READ_SECRET_ACCESS_KEY }}
           AWS_REGION: auto
           ENDPOINT: ${{ steps.settings.outputs.endpoint }}
         run: |
           set -euo pipefail
+          for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            test -n "${!name:-}" || { echo "ULC K2 lifecycle read credential missing: $name" >&2; exit 1; }
+          done
           POLICY="$RUNNER_TEMP/ulc-k2-backup-lifecycle-$GITHUB_RUN_ID.json"
           aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET" \
             --endpoint-url "$ENDPOINT" --output json > "$POLICY"
