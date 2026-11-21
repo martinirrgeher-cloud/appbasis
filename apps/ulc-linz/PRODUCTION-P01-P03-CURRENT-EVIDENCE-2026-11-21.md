@@ -36,7 +36,7 @@ Der private HTTP-Abruf von Katalogvideos verwendete bisher `media.storageKey` au
 
 ## 3. P03 – Beendete Mitgliedschaften nicht weiter berechtigen
 
-Der Doku-Access-Service las `active` und Quellrolle aus `ulc_linz_membership`, aber nicht die zusätzlich persistierte Spalte `ended_at`. Er verweigert jetzt auch dann den Zugriff, wenn eine fälschlich noch aktive Mitgliedschaft bereits ein Enddatum besitzt. Der kanonische Membership- und Capability-Check bleibt bestehen. Ein Negativtest erzwingt **active=true + ended_at gesetzt => DENY**.
+Der Doku-Access-Service las `active` und Quellrolle aus `ulc_linz_membership`, aber nicht die zusätzlich persistierte Spalte `ended_at`. Er verweigert jetzt auch dann den Zugriff, wenn eine fälschlich noch aktive Mitgliedschaft bereits ein Enddatum besitzt. Zusätzlich bewertet der **gemeinsame** `PostgresUlcLinzScopePersistence.resolveMembership` beendete Zeilen unabhängig vom noch gesetzten `active`-Flag als inaktiv. Bestehende Rollen-/Capability-Prüfungen bleiben bestehen; Unit- und echte PostgreSQL-Negativtests erzwingen **active=true + ended_at gesetzt => DENY**. Diese gemeinsame Änderung beeinflusst auch weitere Modulzugriffe und bleibt deshalb vor Merge/Deployment besonders reviewpflichtig.
 
 **Nicht gelöst:** atomare Berechtigungsneubewertung unmittelbar beim Doku-SQL-Write, reale HTTP-Anmeldung unter den echten Benutzerrollen, vollständige Freitext-/Revisionen-/Trainer-Audit-Löschung und Restore-Nachweise. `training-documentation.authorization` und `applicationLifecycle/privacy` bleiben `blocked`.
 
