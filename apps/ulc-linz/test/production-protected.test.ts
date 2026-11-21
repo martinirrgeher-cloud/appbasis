@@ -47,7 +47,7 @@ describe("ULC production private protected entrypoint", () => {
     expect(workflow).not.toContain(
       "entrypoint: './worker/index.ts'",
     );
-    expect(workflow).toContain("if: github.ref == 'refs/heads/main'");
+    expect(workflow).toContain('test "$GITHUB_REF" = "refs/heads/main"');
     expect(workflow).toContain("REFRESH-CONFIGURE-ULC-PRODUCTION-RUNTIME");
   });
 });
