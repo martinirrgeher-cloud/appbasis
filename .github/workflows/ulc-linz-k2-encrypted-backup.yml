@@ -33,7 +33,7 @@ jobs:
       APPBASIS_ULC_EXPECTED_DATABASE_NAME: ${{ vars.APPBASIS_ULC_EXPECTED_DATABASE_NAME }}
 
     steps:
-      - name: Keep daily schedule disabled; allow explicit manual preflight or upload
+      - name: Fail closed when a scheduled backup is not enabled
         id: gate
         shell: bash
         env:
@@ -42,9 +42,10 @@ jobs:
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
             if [[ "$ENABLED" != "1" ]]; then
-              echo "ULC K2 scheduled backup is disabled; NO backup created." >> "$GITHUB_STEP_SUMMARY"
+              echo "ULC K2 SCHEDULED BACKUP FAILED: daily backup is disabled; NO backup created." >> "$GITHUB_STEP_SUMMARY"
+              echo "::error title=ULC K2 daily backup missing::Scheduled backup disabled; no encrypted R2 object was created."
               echo "run=0" >> "$GITHUB_OUTPUT"
-              exit 0
+              exit 1
             fi
             echo "run=upload" >> "$GITHUB_OUTPUT"
           elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
