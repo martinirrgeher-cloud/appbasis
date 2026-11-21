@@ -28,7 +28,14 @@ const empty = Object.fromEntries(
 describe("ULC P4 immutable aggregate unstructured history inventory", () => {
   it("checks every historic notes/JSON/opaque-ref location without returning values", async () => {
     const commands: Array<{ query: string; params?: unknown[] }> = [];
-    const data = { ...empty, registration_history_notes: 2, documentation_revision_json: 1 };
+    const data = {
+      ...empty,
+      registration_history_notes: 2,
+      documentation_revision_json: 1,
+      plan_revision_item_notes: 1,
+      block_revision_item_notes: 2,
+      block_revision_parameter_values: 1,
+    };
     const result = await inspectUlcUnstructuredHistoryReadOnly(
       simulatedSql([data], commands), "synthetic-org",
     );
@@ -50,7 +57,10 @@ describe("ULC P4 immutable aggregate unstructured history inventory", () => {
       "ulc_linz_training_registration_change",
       "appbasis_training_documentation_revision",
       "appbasis_training_plan_revision",
+      "appbasis_training_plan_revision_item",
       "appbasis_training_block_revision",
+      "appbasis_training_block_revision_item",
+      "appbasis_training_block_revision_item_parameter",
       "appbasis_exercise_catalog_usage",
       "appbasis_training_block_usage",
     ]) expect(query).toContain(table);
@@ -58,6 +68,8 @@ describe("ULC P4 immutable aggregate unstructured history inventory", () => {
     expect(query).toContain("items_json");
     expect(query).toContain("training_content_items");
     expect(query).toContain("source_ref");
+    expect(query).toContain("nullif(btrim(comment)");
+    expect(query).toContain("nullif(btrim(parameter_value)");
     expect(query).not.toMatch(/\b(?:INSERT|DELETE|UPDATE|TRUNCATE|DROP)\b/i);
     expect(JSON.stringify(result)).not.toContain("synthetic-org");
   });
