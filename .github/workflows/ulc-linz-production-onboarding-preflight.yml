@@ -64,6 +64,7 @@ jobs:
             sh -ceu 'psql --no-psqlrc -v ON_ERROR_STOP=1 --tuples-only --no-align \
               --dbname="$APPBASIS_ULC_SOURCE_DATABASE_URL" \
               --command="$ULC_ONBOARDING_SQL"')"
-          # The assessment CLI emits only blocker codes. A successful
-          # workflow means only this READ-ONLY SCAN completed, not go-live PASS.
+          # The assessment CLI writes aggregate evidence to GITHUB_STEP_SUMMARY.
+          # A successful workflow means only this READ-ONLY SCAN completed,
+          # not go-live PASS; stdout contains blocker codes only.
           printf '%s' "$FACTS" | node ./tooling/ulc-linz-production-onboarding-readonly.mjs assess
