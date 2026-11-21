@@ -30,7 +30,7 @@ export function ulcWriteLockConflictHttpResponse(error: unknown): Response | nul
     {
       error: {
         code: "ULC_WRITE_TEMPORARILY_BUSY",
-        message: "The record is being updated or removed. Nothing was saved. Keep your changes, reload the current state and retry.",
+        message: "The record is being updated or removed. This change could not be completed. Keep your edits, reload the current state and retry.",
       },
     },
     {
