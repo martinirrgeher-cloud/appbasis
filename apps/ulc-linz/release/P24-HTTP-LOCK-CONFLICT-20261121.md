@@ -19,7 +19,7 @@ strukturierten SQLSTATE-Code `55P03` (gegebenenfalls über bis zu drei
 
 - HTTP-Status **409 Conflict**, JSON-Fehlercode
   `ULC_WRITE_TEMPORARILY_BUSY`, `Cache-Control: private, no-store`.
-- Eine allgemeine Meldung erklärt, dass **nichts gespeichert wurde**.
+- Eine allgemeine Meldung erklärt, dass die **Änderung nicht abgeschlossen werden konnte**.
   Anwender sollen ihre lokale Eingabe behalten, den Serverstand prüfen und
   den Schreibvorgang gegebenenfalls manuell erneut durchführen.
 - Keine Query-Texte, SQL-Details, Tabellen, Personenkennungen,
