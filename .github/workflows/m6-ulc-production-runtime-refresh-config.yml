@@ -198,7 +198,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import { writeGeneratedProductionWranglerConfig } from './tooling/generated-production-deploy-config.mjs';
-          await writeGeneratedProductionWranglerConfig({ appId: 'ulc-linz', hyperdriveId: process.env.HYPERDRIVE_ID, securityLogHyperdriveId: process.env.SECURITY_LOG_HYPERDRIVE_ID, baseURL: process.env.PILOT_BASE_URL, entrypoint: './worker/index.ts', outputPath: './apps/ulc-linz/wrangler.production.generated.json' });
+          await writeGeneratedProductionWranglerConfig({ appId: 'ulc-linz', hyperdriveId: process.env.HYPERDRIVE_ID, securityLogHyperdriveId: process.env.SECURITY_LOG_HYPERDRIVE_ID, baseURL: process.env.PILOT_BASE_URL, entrypoint: './worker/production-protected.ts', outputPath: './apps/ulc-linz/wrangler.production.generated.json' });
           NODE
 
       - name: Upload exact current runtime as an undeployed version
