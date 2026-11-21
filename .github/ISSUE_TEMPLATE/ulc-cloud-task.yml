@@ -1,0 +1,53 @@
+name: "ULC Cloud – Entwicklungspaket"
+description: "Handy-First-Auftrag für Codex Cloud (manueller Start, kein API-Key)"
+title: "ULC: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Codex Cloud startet durch dieses Issue nicht automatisch.**
+        In der ChatGPT-App Codex Cloud öffnen und den Startauftrag aus
+        `docs/ulc-autodev-cloud.md` mit der Issue-Nummer verwenden.
+        Kein Merge oder Deployment ohne gesonderte Freigabe.
+  - type: textarea
+    id: goal
+    attributes:
+      label: "Ziel und fachlicher Nutzen"
+      description: "Was soll am Handy sichtbar besser funktionieren?"
+      placeholder: "Nach Umsetzung kann ich ..."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: "Betroffene Module und Grenzen"
+      value: |
+        Standard: apps/ulc-linz/
+        Keine Core-/Schema-/Datenbank-/Rechte-/Deploymentänderungen.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "Konkrete Abnahmekriterien"
+      placeholder: |
+        - Verhalten auf dem Handy ist ...
+        - Bestehende Funktion X bleibt unverändert
+        - Typecheck und zielgerichtete Tests bestehen
+        - Draft-PR mit PASS/FAIL und Handytest-Anleitung
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: "Abhängigkeiten, bestehende PRs, bekannte Risiken"
+      description: "Falls vorhanden; sonst 'keine bekannt'."
+    validations:
+      required: false
+  - type: checkboxes
+    id: approvals
+    attributes:
+      label: "Freigabegrenzen"
+      options:
+        - label: "Nur Vorbereitung, Code, Tests und Draft-PR; kein Merge, Deploy oder produktiver Datenzugriff."
+          required: true
