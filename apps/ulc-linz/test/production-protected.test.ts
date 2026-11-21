@@ -18,19 +18,29 @@ describe("ULC production private protected entrypoint", () => {
       secret: "S".repeat(32),
       exerciseCatalogMediaStore: mediaStore,
       exerciseCatalogRuntimeMode: "legacy" as const,
+      trainingSessionWriteGuardMode: "require-live-training-actor-transaction" as const,
+      registrationCalendarActivation: "isolated-preview-v17" as const,
     };
     const options = protectedUlcProductionRuntimeOptions(input);
     expect(options).toMatchObject({
-      ...input,
+      connectionString: input.connectionString,
+      securityLogConnectionString: input.securityLogConnectionString,
+      baseURL: input.baseURL,
+      secret: input.secret,
       exerciseCatalogRuntimeMode: "standard-module-protected-production",
       trainingBlockUsageMode: "protected-production-verified-subject",
       trainingDocumentationRuntimeMode: "protected-production",
     });
-    expect(options.exerciseCatalogMediaStore).toBe(mediaStore);
+    // Explicit production policy: never expose a private media store, even
+    // when the source environment has a valid Cloudflare object binding.
+    expect(options.exerciseCatalogMediaStore).toBeNull();
     expect(options).not.toHaveProperty("trainingSessionWriteGuardMode");
     expect(options).not.toHaveProperty("registrationCalendarActivation");
     expect(Object.isFrozen(options)).toBe(true);
     expect(input.exerciseCatalogRuntimeMode).toBe("legacy");
+    expect(input.exerciseCatalogMediaStore).toBe(mediaStore);
+    expect(input.registrationCalendarActivation).toBe("isolated-preview-v17");
+    expect(input.trainingSessionWriteGuardMode).toBe("require-live-training-actor-transaction");
   });
 
   it("uses the protected entrypoint only for the existing private production refresh", () => {
