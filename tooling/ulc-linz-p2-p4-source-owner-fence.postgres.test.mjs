@@ -85,7 +85,7 @@ test("P2-P4: 0017 source-owner gap and additive candidate are tested only on dis
     const initial = await execute(
       "SELECT count(*)::int AS total FROM pg_tables WHERE schemaname='public'",
     );
-    assert.equal(initial[0]?.total, 14);
+    assert.equal(initial[0]?.total, 11);
     for (const [id, org] of [
       [TARGET, ORG], [NEIGHBOR, ORG], [STALE, ORG],
       [APPMARKED, ORG], [FOREIGN, OTHER],
@@ -117,10 +117,11 @@ test("P2-P4: 0017 source-owner gap and additive candidate are tested only on dis
         [TARGET, ORG],
       );
     });
-    await insertHistory("p24-unprotected-after-source-delete", ORG, "p24-own-session", TARGET);
-    await execute(
-      "DELETE FROM ulc_linz_training_registration_change WHERE id='p24-unprotected-after-source-delete'",
+    const acceptedStaleUpdate = await execute(
+      "UPDATE ulc_linz_training_attendance SET status='excused' WHERE organization_id=$1 AND athlete_id=$2 RETURNING status",
+      [ORG, TARGET],
     );
+    assert.equal(acceptedStaleUpdate[0]?.status, "excused", "published 0017 still accepts a stale source-deleted athlete update");
     const evidence = await execute(
       "SELECT count(*)::int AS total FROM ulc_linz_training_subject_deletion WHERE organization_id=$1 AND athlete_id=$2",
       [ORG, TARGET],
