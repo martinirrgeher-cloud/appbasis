@@ -219,6 +219,9 @@ describeLocal("P4 documentation real membership and capability SQL authorization
       `UPDATE ulc_linz_membership SET ended_at=now()
        WHERE identity_id=$1 AND active=true`, [person.id],
     );
+    const resolved = await new PostgresUlcLinzScopePersistence(db().client)
+      .resolveMembership({ identityId: person.id, organizationId: person.org });
+    expect(resolved?.active).toBe(false);
     await expect(access().assertViewAccess(current(person.id)))
       .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
     await expect(access().assertEditAccess(current(person.id)))
