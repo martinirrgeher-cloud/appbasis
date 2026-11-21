@@ -77,6 +77,14 @@ describe("P02 ordinary app SQL role cutover: fail closed after privileged erasur
     expect(sql).toContain("current_database()");
     expect(sql).toContain("current_user");
     expect(sql).toContain("has_table_privilege(current_user");
+    expect((sql.match(/has_any_column_privilege\(current_user/g) ?? [])).toHaveLength(4);
+    for (const table of [
+      "appbasis_training_block_usage",
+      "appbasis_training_block_usage_subject",
+      "appbasis_training_block_usage_subject_deletion",
+    ]) {
+      expect(sql).toContain("has_any_column_privilege(current_user, 'public." + table);
+    }
     expect(sql).toContain("'UPDATE'");
     expect(sql).toContain("'DELETE'");
     expect(sql).toContain("'TRUNCATE'");

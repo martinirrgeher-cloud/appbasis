@@ -61,7 +61,8 @@ export async function assertUlcLegacyBlockUsageRoleCutoverReady(
           END AS can_insert_usage,
           CASE WHEN to_regclass('public.appbasis_training_block_usage') IS NULL
             THEN true ELSE
-            has_table_privilege(current_user, 'public.appbasis_training_block_usage', 'UPDATE')
+            (has_table_privilege(current_user, 'public.appbasis_training_block_usage', 'UPDATE')
+             OR has_any_column_privilege(current_user, 'public.appbasis_training_block_usage', 'UPDATE'))
           END AS can_update_usage,
           CASE WHEN to_regclass('public.appbasis_training_block_usage') IS NULL
             THEN true ELSE
@@ -81,7 +82,8 @@ export async function assertUlcLegacyBlockUsageRoleCutoverReady(
           END AS can_insert_subject,
           CASE WHEN to_regclass('public.appbasis_training_block_usage_subject') IS NULL
             THEN true ELSE
-            has_table_privilege(current_user, 'public.appbasis_training_block_usage_subject', 'UPDATE')
+            (has_table_privilege(current_user, 'public.appbasis_training_block_usage_subject', 'UPDATE')
+             OR has_any_column_privilege(current_user, 'public.appbasis_training_block_usage_subject', 'UPDATE'))
           END AS can_update_subject,
           CASE WHEN to_regclass('public.appbasis_training_block_usage_subject') IS NULL
             THEN true ELSE
@@ -97,11 +99,13 @@ export async function assertUlcLegacyBlockUsageRoleCutoverReady(
           END AS can_read_marker,
           CASE WHEN to_regclass('public.appbasis_training_block_usage_subject_deletion') IS NULL
             THEN true ELSE
-            has_table_privilege(current_user, 'public.appbasis_training_block_usage_subject_deletion', 'INSERT')
+            (has_table_privilege(current_user, 'public.appbasis_training_block_usage_subject_deletion', 'INSERT')
+             OR has_any_column_privilege(current_user, 'public.appbasis_training_block_usage_subject_deletion', 'INSERT'))
           END AS can_insert_marker,
           CASE WHEN to_regclass('public.appbasis_training_block_usage_subject_deletion') IS NULL
             THEN true ELSE
-            has_table_privilege(current_user, 'public.appbasis_training_block_usage_subject_deletion', 'UPDATE')
+            (has_table_privilege(current_user, 'public.appbasis_training_block_usage_subject_deletion', 'UPDATE')
+             OR has_any_column_privilege(current_user, 'public.appbasis_training_block_usage_subject_deletion', 'UPDATE'))
           END AS can_update_marker,
           CASE WHEN to_regclass('public.appbasis_training_block_usage_subject_deletion') IS NULL
             THEN true ELSE

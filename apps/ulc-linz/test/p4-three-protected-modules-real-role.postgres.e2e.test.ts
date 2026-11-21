@@ -327,6 +327,48 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
     expect(attributed).toEqual([{ count: 0 }]);
   });
 
+  it("detects column-level grants which table-only UPDATE/INSERT checks would miss", async () => {
+    const roleSql = adapter(ordinaryApp());
+    const examples = [
+      ["appbasis_training_block_usage", "UPDATE", "note"],
+      ["appbasis_training_block_usage_subject", "UPDATE", "subject_id"],
+      ["appbasis_training_block_usage_subject_deletion", "INSERT", "subject_id"],
+      ["appbasis_training_block_usage_subject_deletion", "UPDATE", "purge_after"],
+    ] as const;
+    for (const [table, operation, column] of examples) {
+      const target = "public." + table;
+      // The ordinary application has no table-level grant on these
+      // operations; the deliberately added single-column grant is sufficient
+      // to make the data mutation possible and must be detected.
+      await database().client.unsafe(
+        "GRANT " + operation + " (" + column + ") ON " +
+        target + " TO " + applicationRole,
+      );
+      try {
+        const effective = await ordinaryApp().client.unsafe(
+          "SELECT has_table_privilege(current_user,$1,$2) AS table_level, " +
+          "has_any_column_privilege(current_user,$1,$2) AS column_effective",
+          [target, operation],
+        );
+        expect(effective).toEqual([{
+          table_level: false,
+          column_effective: true,
+        }]);
+        await expect(assertUlcLegacyBlockUsageRoleCutoverReady(
+          roleSql, "production",
+        )).rejects.toBeInstanceOf(UlcLegacyBlockUsageCutoverNotReadyError);
+      } finally {
+        await database().client.unsafe(
+          "REVOKE " + operation + " (" + column + ") ON " +
+          target + " FROM " + applicationRole,
+        );
+      }
+      await expect(assertUlcLegacyBlockUsageRoleCutoverReady(
+        roleSql, "production",
+      )).resolves.toBeUndefined();
+    }
+  });
+
   it("fails closed on training-block subject grant drift without disabling documentation", async () => {
     const sql = adapter(ordinaryApp());
     await database().client.unsafe(
