@@ -22,6 +22,8 @@ const baseline = Object.freeze({
   activeTrainerLogins: 1,
   activeAdminLogins: 0,
   technicalAdmins: 1,
+  technicalAdminAppIdentityState: 0,
+  regularClubAdminCandidates: 0,
   eligibleTrainerCandidates: 0,
   sessions: 0,
   catalogItems: 0,
@@ -32,6 +34,7 @@ const ready = Object.freeze({
   ...baseline,
   activeGroups: 3, activeTrainers: 2, activeAthletes: 6,
   nonSmokeMemberships: 1, nonSmokeAdminLogins: 1, activeAdminLogins: 1,
+  regularClubAdminCandidates: 1,
   trainerGroupLinks: 4, eligibleTrainerCandidates: 1,
   catalogItems: 8, trainingBlocks: 2,
 });
@@ -40,6 +43,7 @@ test("ULC: current real 69-table technical admin exists, but missing trainer/gro
   assert.equal(result.status, "ONBOARDING_BLOCKED");
   assert.deepEqual(result.blockers, [
     "NO_REAL_ULC_ORGANIZATION", "REAL_ULC_ADMIN_MEMBERSHIP_MISSING",
+    "NO_REGULAR_APP_ADMIN_IDENTITY",
     "GROUPS_NOT_INITIALIZED", "TRAINERS_OR_GROUP_ASSIGNMENTS_MISSING",
     "ATHLETES_NOT_INITIALIZED", "NO_ELIGIBLE_TRAINER_WRITE_CANDIDATE",
   ]);
@@ -93,6 +97,33 @@ test("ULC: a synthetic M6 smoke organization never satisfies production onboardi
   ]);
   assert.match(format(result), /Testgruppen \/ Nicht-Test-Mitgliedschaften/);
   assert.equal(result.productionReleaseAuthorized, false);
+});
+
+test("ULC: technical Root membership and role do not prove AppBasis login", () => {
+  const mistakenPass = evaluate({
+    ...ready,
+    activeGroups: 4,
+    technicalAdmins: 1,
+    technicalAdminAppIdentityState: 0,
+    nonSmokeAdminLogins: 1,
+    regularClubAdminCandidates: 0,
+  });
+  assert.equal(mistakenPass.status, "ONBOARDING_BLOCKED");
+  assert.ok(mistakenPass.blockers.includes("NO_REGULAR_APP_ADMIN_IDENTITY"));
+  assert.equal(mistakenPass.counts.nonSmokeAdminLogins, 1);
+  assert.equal(mistakenPass.counts.technicalAdminAppIdentityState, 0);
+  assert.equal(mistakenPass.productionReleaseAuthorized, false);
+  assert.match(format(mistakenPass), /keine echte Passwort-\/Session-\/UI-Anmeldung/);
+  const identitySource = readFileSync(
+    new URL("../packages/identity/src/service.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(identitySource, /this\\.stateStore\\.find\\(identityId\\)/);
+  assert.match(identitySource, /IDENTITY_STATE_MISSING/);
+  assert.match(ULC_PRODUCTION_ONBOARDING_SQL, /JOIN public\\.appbasis_identity_security_state state/);
+  assert.match(ULC_PRODUCTION_ONBOARDING_SQL, /u\\.username<>'ulc\\.production\\.admin'/);
+  assert.match(ULC_PRODUCTION_ONBOARDING_SQL, /state\\.must_change_password IS FALSE/);
+  assert.match(ULC_PRODUCTION_ONBOARDING_SQL, /other_role\\.role_id<>'ulc-linz:admin'/);
 });
 
 test("ULC: existing media metadata flags unverified media scope, no fake backup PASS", () => {
