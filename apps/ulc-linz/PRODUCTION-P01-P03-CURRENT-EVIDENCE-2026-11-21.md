@@ -36,7 +36,9 @@ Der private HTTP-Abruf von Katalogvideos verwendete bisher `media.storageKey` au
 
 ## 3. P03 – Beendete Mitgliedschaften nicht weiter berechtigen
 
-Der Doku-Access-Service las `active` und Quellrolle aus `ulc_linz_membership`, aber nicht die zusätzlich persistierte Spalte `ended_at`. Er verweigert jetzt auch dann den Zugriff, wenn eine fälschlich noch aktive Mitgliedschaft bereits ein Enddatum besitzt. Zusätzlich bewertet der **gemeinsame** `PostgresUlcLinzScopePersistence.resolveMembership` beendete Zeilen unabhängig vom noch gesetzten `active`-Flag als inaktiv. Bestehende Rollen-/Capability-Prüfungen bleiben bestehen; Unit- und echte PostgreSQL-Negativtests erzwingen **active=true + ended_at gesetzt => DENY**. Diese gemeinsame Änderung beeinflusst auch weitere Modulzugriffe und bleibt deshalb vor Merge/Deployment besonders reviewpflichtig.
+**Aktueller Datenbankbefund:** Die reale Produktionsdatenbank besitzt bereits `ulc_linz_membership_lifecycle_state_check`: Eine aktive Mitgliedschaft darf **kein** `ended_at` besitzen; eine beendete nicht-administrative Mitgliedschaft muss `active=false` setzen. Ein zuvor vermuteter aktiv+beendet-Fehler ist damit unter dem gültigen Schema **nicht reproduzierbar** und darf nicht als bestehende Schwachstelle ausgegeben werden.
+
+**Defensive Ergänzung:** Der Doku-Access-Service und der gemeinsame `PostgresUlcLinzScopePersistence.resolveMembership` verweigern zusätzlich Rechte für einen widersprüchlichen Endstatus, falls ein Datenzustand außerhalb des gültigen Schemas an sie gelangt. Unit-Test mit manipuliertem Resolver-Ergebnis und echtes PostgreSQL-E2E prüfen die bestehende Datenbank-Constraint, einen legalen Deaktivierungswechsel und danach verweigerten Zugriff. Die gemeinsame Resolver-Änderung betrifft mehrere Module und bleibt vor Merge/Deployment besonders reviewpflichtig.
 
 **Nicht gelöst:** atomare Berechtigungsneubewertung unmittelbar beim Doku-SQL-Write, reale HTTP-Anmeldung unter den echten Benutzerrollen, vollständige Freitext-/Revisionen-/Trainer-Audit-Löschung und Restore-Nachweise. `training-documentation.authorization` und `applicationLifecycle/privacy` bleiben `blocked`.
 

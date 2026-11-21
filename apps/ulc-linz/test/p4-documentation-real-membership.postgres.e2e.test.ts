@@ -213,15 +213,28 @@ describeLocal("P4 documentation real membership and capability SQL authorization
       .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
   });
 
-  it("rejects a SQL membership with an end timestamp even if active stayed true", async () => {
+  it("enforces the real membership lifecycle CHECK and denies correctly ended accounts", async () => {
     const person = await member("trainer");
-    await db().client.unsafe(
+    // The persisted table already prevents the inconsistent state. Never
+    // bypass its constraint merely to exercise a hypothetical stale row.
+    await expect(db().client.unsafe(
       `UPDATE ulc_linz_membership SET ended_at=now()
        WHERE identity_id=$1 AND active=true`, [person.id],
-    );
-    const resolved = await new PostgresUlcLinzScopePersistence(db().client)
+    )).rejects.toThrow(/ulc_linz_membership_lifecycle_state_check/);
+
+    // The failed statement is atomic; an otherwise active account remains
+    // usable until a legitimate lifecycle transition deactivates it.
+    const active = await new PostgresUlcLinzScopePersistence(db().client)
       .resolveMembership({ identityId: person.id, organizationId: person.org });
-    expect(resolved?.active).toBe(false);
+    expect(active?.active).toBe(true);
+
+    await db().client.unsafe(
+      `UPDATE ulc_linz_membership SET active=false, ended_at=now()
+       WHERE identity_id=$1`, [person.id],
+    );
+    const ended = await new PostgresUlcLinzScopePersistence(db().client)
+      .resolveMembership({ identityId: person.id, organizationId: person.org });
+    expect(ended?.active).toBe(false);
     await expect(access().assertViewAccess(current(person.id)))
       .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
     await expect(access().assertEditAccess(current(person.id)))
