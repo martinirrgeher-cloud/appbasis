@@ -23,7 +23,7 @@ describe("P24 temporary DB contention: mobile editor draft safety", () => {
     expect(save).toContain("Dein Entwurf bleibt erhalten");
     expect(save).toContain('"TRAINING_BLOCK_CONFLICT"');
     expect(save).toContain('"TRAINING_BLOCK_INACTIVE"');
-    const deletion = blocks.slice(blocks.indexOf("async function deleteTrainingBlock("));
+    const deletion = blocks.slice(blocks.indexOf("async function deleteUnusedTrainingBlock("));
     expect(deletion).toContain('error?.code === "ULC_WRITE_TEMPORARILY_BUSY"');
     expect(deletion).toContain('"TRAINING_BLOCK_IN_USE"');
   });
