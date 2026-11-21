@@ -84,6 +84,23 @@ test("K2 actual writes and verification stay explicitly apply-gated", () => {
   assert.doesNotMatch(workflow, /(?:wrangler deploy|vercel deploy|neon branches promote|aws s3api delete-object)/);
 });
 
+test("K2 restored production structural integrity is checked only after a successful quarantined restore", () => {
+  const schema = workflow.indexOf("      - name: Check restored ULC application tables");
+  const integrity = workflow.indexOf("      - name: Attest full 69-table production restore and five write fences (metadata only)");
+  const cleanup = workflow.indexOf("      - name: Delete confidential restore working files");
+  assert.ok(schema > 0 && integrity > schema && cleanup > integrity);
+  const part = workflow.slice(integrity, cleanup);
+  assert.match(part, /if: inputs\.apply == true/);
+  assert.match(part, /restore-integrity-sql/);
+  assert.match(part, /ULC_RESTORE_INTEGRITY_SQL/);
+  assert.match(part, /--tuples-only --no-align/);
+  assert.match(part, /test "\$STATUS" = "t"/);
+  assert.match(part, /not a personal-data fingerprint, media or privacy acceptance/);
+  assert.doesNotMatch(part, /(?:(?:INSERT|UPDATE|DELETE|GRANT|TRUNCATE)\s+(?:INTO\s+)?(?:public\.)?(?:appbasis_|ulc_linz_)|aws s3api delete-object)/);
+  const preflight = workflow.slice(0,workflow.indexOf("      - name: Check quarantine is empty"));
+  assert.doesNotMatch(preflight, /restore-integrity-sql/);
+});
+
 test("K2 restore wipes temporary confidential files on both success and failure", () => {
   assert.match(workflow, /umask 077/);
   assert.match(workflow, /mkdir -m 700 "\$WORK"/);
