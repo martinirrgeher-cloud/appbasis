@@ -102,7 +102,10 @@ export async function readUlcPrivateExerciseMediaWithScope(input: Readonly<{
   const key = privateExerciseVideoStorageKey(
     input.organizationId, input.exerciseId, input.mediaId,
   );
-  return input.store.get(key, { range: input.range });
+  return input.store.get(
+    key,
+    input.range === undefined ? undefined : { range: input.range },
+  );
 }
 
 export function normalizedPrivateVideoContentType(value: unknown): string {
