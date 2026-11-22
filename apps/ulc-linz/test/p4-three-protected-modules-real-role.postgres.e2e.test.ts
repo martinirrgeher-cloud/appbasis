@@ -246,6 +246,41 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
     }
   });
 
+  it("rejects column-scoped mutation grants in both ACTIVE preview and production admission paths", async () => {
+    const sql = adapter(ordinaryApp());
+    const variants = [
+      ["appbasis_training_block_usage_subject", "UPDATE", "subject_id"],
+      ["appbasis_training_block_usage_subject_deletion", "INSERT", "subject_id"],
+      ["appbasis_training_block_usage_subject_deletion", "UPDATE", "purge_after"],
+    ] as const;
+    await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
+      .resolves.toBeUndefined();
+    for (const [table, operation, column] of variants) {
+      const target = "public." + table;
+      await database().client.unsafe(
+        "GRANT " + operation + " (" + column + ") ON " + target +
+        " TO " + applicationRole,
+      );
+      try {
+        const effective = await ordinaryApp().client.unsafe(
+          "SELECT has_table_privilege(current_user,$1,$2) AS table_level, " +
+          "has_any_column_privilege(current_user,$1,$2) AS column_effective",
+          [target, operation],
+        );
+        expect(effective).toEqual([{table_level:false,column_effective:true}]);
+        await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
+          .rejects.toBeInstanceOf(UlcVerifiedBlockUsageUnavailableError);
+      } finally {
+        await database().client.unsafe(
+          "REVOKE " + operation + " (" + column + ") ON " + target +
+          " FROM " + applicationRole,
+        );
+      }
+      await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
+        .resolves.toBeUndefined();
+    }
+  });
+
   it("separates ordinary app INSERT from privileged legacy UPDATE and DELETE on real PostgreSQL", async () => {
     const roleSql = adapter(ordinaryApp());
     await expect(assertUlcLegacyBlockUsageRoleCutoverReady(

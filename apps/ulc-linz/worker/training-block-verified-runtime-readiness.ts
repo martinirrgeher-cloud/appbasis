@@ -119,8 +119,10 @@ async function assertVerifiedBlockUsageReadiness(
             END AS may_read_subject,
           CASE WHEN to_regclass('public.appbasis_training_block_usage_subject') IS NULL
             THEN true ELSE
-              has_table_privilege(current_user,
+              (has_table_privilege(current_user,
                 'public.appbasis_training_block_usage_subject', 'UPDATE,DELETE,TRUNCATE')
+                OR has_any_column_privilege(current_user,
+                  'public.appbasis_training_block_usage_subject', 'UPDATE'))
             END AS may_mutate_attributed_subject_usage,
           CASE WHEN to_regclass('public.appbasis_training_block_usage_subject_deletion') IS NULL
             THEN false ELSE
@@ -129,8 +131,12 @@ async function assertVerifiedBlockUsageReadiness(
             END AS may_read_deletion,
           CASE WHEN to_regclass('public.appbasis_training_block_usage_subject_deletion') IS NULL
             THEN true ELSE
-              has_table_privilege(current_user,
+              (has_table_privilege(current_user,
                 'public.appbasis_training_block_usage_subject_deletion', 'INSERT,UPDATE,DELETE,TRUNCATE')
+                OR has_any_column_privilege(current_user,
+                  'public.appbasis_training_block_usage_subject_deletion', 'INSERT')
+                OR has_any_column_privilege(current_user,
+                  'public.appbasis_training_block_usage_subject_deletion', 'UPDATE'))
             END AS may_mutate_deletion_marker,
           CASE WHEN to_regclass('public.appbasis_training_block_usage') IS NULL
             THEN false ELSE

@@ -108,6 +108,14 @@ describe("P02-C verified plan/block runtime preflight", () => {
     expect(sql.queries[1]).toContain("appbasis_training_block_usage_subject_deletion");
     expect(sql.queries[1]).toContain("may_mutate_attributed_subject_usage");
     expect(sql.queries[1]).toContain("may_mutate_deletion_marker");
+    expect(sql.queries[1]).toContain(
+      "has_any_column_privilege(current_user,");
+    expect(sql.queries[1]).toContain(
+      "'public.appbasis_training_block_usage_subject', 'UPDATE'");
+    expect(sql.queries[1]).toContain(
+      "'public.appbasis_training_block_usage_subject_deletion', 'INSERT'");
+    expect(sql.queries[1]).toContain(
+      "'public.appbasis_training_block_usage_subject_deletion', 'UPDATE'");
     expect(sql.queries[1]).toContain("appbasis_exercise_catalog_favorite_deletion");
     expect(sql.queries[1]).toContain("appbasis_exercise_catalog_usage_subject");
     expect(sql.queries[1]).toContain("ulc_linz_training_subject_deletion");
