@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "documentType": "p05-technical-production-schema-coverage-delta-not-runtime-or-legal-approval",
+  "status": "TECHNICAL_COVERAGE_PROPOSAL_ONLY",
+  "observedAt": "2026-11-22",
+  "observedBy": "Neon PostgreSQL pg_catalog.pg_tables read-only as ulc_linz_application",
+  "baseline": {
+    "historicalDecisionFile": "apps/ulc-linz/privacy/p01-operator-retention-candidate.json",
+    "historicalDecisionStatus": "FACHLICHE_ZIELVORGABE_BESTAETIGT",
+    "historicalPreviewTableCount": 66,
+    "currentProductionTableCount": 69,
+    "historicalPreviewTablesPresentInProduction": 66,
+    "additionalProductionTableCount": 3
+  },
+  "additions": [
+    {
+      "table": "appbasis_exercise_catalog_favorite_deletion",
+      "proposedExistingPurposeGroup": "deletion_markers",
+      "basis": "Dedicated exercise catalog favorite subject-deletion guard; review and reconcile 35-day source-marker scope before legal activation"
+    },
+    {
+      "table": "appbasis_exercise_catalog_usage_subject",
+      "proposedExistingPurposeGroup": "usage_events",
+      "basis": "Subject-attributed catalog usage; existing conditional personal-usage purpose/retention target only"
+    },
+    {
+      "table": "ulc_linz_training_subject_deletion",
+      "proposedExistingPurposeGroup": "deletion_markers",
+      "basis": "App-owned training subject-deletion guard; retain existing 35-day/post-expiry deny limits pending verified eight-owner restore and erasure lifecycle"
+    }
+  ],
+  "safeguards": {
+    "historicalP01DocumentUnchanged": true,
+    "operatorApprovedTargetDurationsUnchanged": true,
+    "legalApproval": false,
+    "runtimeActive": false,
+    "productionPrivacyGate": "blocked",
+    "mustNotExtendOriginal35DayAuthority": true,
+    "mustNotActivateMedia": true,
+    "noRuntimeOrSqlMigrationChanges": true
+  },
+  "remainingReview": [
+    "Confirm current migration and owner cross-reference for these three production tables",
+    "Review each proposed purpose group and exact row/subject/retention/replay semantics without inferring legal approval",
+    "Complete Cloudflare/Neon and backup copy evidence and eight-owner no-resurrection before production privacy release",
+    "Use exact current production evidence for a future reviewed 69-table policy, not the historic 66-table guideline"
+  ]
+}
