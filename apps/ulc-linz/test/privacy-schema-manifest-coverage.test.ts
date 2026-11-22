@@ -58,7 +58,7 @@ async function json<T>(path: string): Promise<T> {
 }
 
 describe("ULC P01 declared-schema privacy inventory coverage (no DB writes)", () => {
-  it("matches all 44 manifest-owned migration paths and owner schema versions exactly", async () => {
+  it("matches all 45 manifest-owned migration paths and owner schema versions exactly", async () => {
     const manifest = await json<DatabaseManifest>("../appbasis.database.json");
     const inventory = await json<PrivacyInventory>(
       "../privacy/m5-data-inventory.json",
@@ -66,8 +66,8 @@ describe("ULC P01 declared-schema privacy inventory coverage (no DB writes)", ()
     const declared = manifest.owners.flatMap((owner) => owner.migrations);
     const recorded = inventory.persistentOwners.flatMap((owner) => owner.migrations);
 
-    expect(declared).toHaveLength(44);
-    expect(new Set(declared).size).toBe(44);
+    expect(declared).toHaveLength(45);
+    expect(new Set(declared).size).toBe(45);
     expect(recorded).toEqual(declared);
     const selectedFields = (owner: ManifestOwner) => ({
       id: owner.id,
@@ -79,7 +79,7 @@ describe("ULC P01 declared-schema privacy inventory coverage (no DB writes)", ()
     expect(inventory.scope).toContain("not-runtime-evidence");
     expect(inventory.repositorySchemaReview).toMatchObject({
       sourceManifest: "apps/ulc-linz/appbasis.database.json",
-      declaredMigrationCount: 44,
+      declaredMigrationCount: 45,
       declaredTableCount: 69,
       expectedLifecycleSchemaVersion: 18,
       previousRecordedMigrations: 41,

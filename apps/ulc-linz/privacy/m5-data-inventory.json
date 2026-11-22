@@ -89,21 +89,23 @@
     {
       "id": "training-blocks",
       "root": "modules/training-blocks",
-      "schemaVersion": 6,
+      "schemaVersion": 7,
       "migrations": [
         "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql",
         "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql",
         "modules/training-blocks/migrations/0002_appbasis_training_block_multi_audience.sql",
         "modules/training-blocks/migrations/0003_appbasis_training_block_category.sql",
         "modules/training-blocks/migrations/0004_appbasis_training_block_favorite_deletion.sql",
-        "modules/training-blocks/migrations/0005_appbasis_training_block_usage_subject.sql"
+        "modules/training-blocks/migrations/0005_appbasis_training_block_usage_subject.sql",
+        "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql"
       ],
       "lifecycleStatus": "training-block-data-lifecycle-pending",
       "notes": [
         "training-block-template-revision-favorite-usage-lifecycle-pending",
         "training-block-notes-may-contain-user-entered-content",
         "ulc-preview-schema-v6-migration-and-verification-pending",
-        "production-lifecycle-activation-not-authorized"
+        "production-lifecycle-activation-not-authorized",
+        "ulc-preview-v7-db-tombstone-guard-migration-and-verification-pending"
       ]
     },
     {
@@ -796,11 +798,11 @@
     "productionReady": false
   },
   "repositorySchemaReview": {
-    "reviewedAt": "2026-11-20",
+    "reviewedAt": "2026-11-22",
     "reviewKind": "repository-schema-v18-inventory-no-live-deletion-or-production-approval",
     "sourceManifest": "apps/ulc-linz/appbasis.database.json",
-    "sourceManifestBlobSha": "a3400438df88eef877710dbcb8aaeeb2c352f0f8",
-    "declaredMigrationCount": 44,
+    "sourceManifestBlobSha": "eafbfd0fbae4812f902f2191f004508acc2ad51a",
+    "declaredMigrationCount": 45,
     "declaredTableCount": 69,
     "persistentTableInventoryCount": 69,
     "expectedLifecycleSchemaVersion": 18,
@@ -809,7 +811,8 @@
     "newlyRecordedMigrations": [
       "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
       "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
-      "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql"
+      "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql",
+      "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql"
     ],
     "migrationChanges": [
       {
@@ -843,6 +846,18 @@
           "principal_id"
         ],
         "dataRisk": "catalog-user-subject-attribution-and-deletion-policy-pending"
+      },
+      {
+        "migration": "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql",
+        "tables": [
+          "appbasis_training_block_usage_subject",
+          "appbasis_training_block_usage_subject_deletion"
+        ],
+        "columns": [
+          "organization_id",
+          "subject_id"
+        ],
+        "dataRisk": "sql-level-attribution-replay-guard-no-new-table-db-cutover-pending"
       }
     ],
     "stillOpen": "privacy-and-retention-approval-cross-owner-lifecycle-freetext-revisions-live-no-resurrection-backup-restore",

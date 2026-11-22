@@ -258,12 +258,13 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "training-blocks",
       ),
     ).toMatchObject({
-      schemaVersion: 6,
+      schemaVersion: 7,
       lifecycleStatus: "training-block-data-lifecycle-pending",
       notes: expect.arrayContaining([
         "training-block-template-revision-favorite-usage-lifecycle-pending",
         "training-block-notes-may-contain-user-entered-content",
         "ulc-preview-schema-v6-migration-and-verification-pending",
+        "ulc-preview-v7-db-tombstone-guard-migration-and-verification-pending",
         "production-lifecycle-activation-not-authorized",
       ]),
     });

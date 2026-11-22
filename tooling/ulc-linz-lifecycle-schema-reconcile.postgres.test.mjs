@@ -102,7 +102,8 @@ test("P04: three canonical lifecycle migrations reconcile an existing partial Pr
       "SELECT count(*)::int AS count FROM pg_catalog.pg_trigger " +
       "WHERE tgname='appbasis_training_block_usage_subject_tombstone_guard' AND tgenabled='O'",
     );
-    assert.deepEqual(guarded, [{ count: 1 }]);
+    assert.equal(guarded.length, 1);
+    assert.equal(guarded[0]?.count, 1);
     const retained = await database.client.unsafe(
       "SELECT first_name FROM appbasis_athlete WHERE id = 'p04-safe-neighbor'",
     );
