@@ -90,6 +90,19 @@ test("P04: three canonical lifecycle migrations reconcile an existing partial Pr
     const after = await inspectUlcLifecycleSchema(database.client);
     assert.equal(after.state, "current");
     assert.deepEqual(after.requiredMigrations, []);
+    // The independent v7 tombstone-guard migration can only be applied
+    // after the deliberately missing v6 subject attribution table exists.
+    const guardSql = await readFile(
+      new URL("../" + laterGuard, import.meta.url), "utf8",
+    );
+    for (const statement of guardSql.split("--> statement-breakpoint")) {
+      if (statement.trim()) await database.client.unsafe(statement);
+    }
+    const guarded = await database.client.unsafe(
+      "SELECT count(*)::int AS count FROM pg_catalog.pg_trigger " +
+      "WHERE tgname='appbasis_training_block_usage_subject_tombstone_guard' AND tgenabled='O'",
+    );
+    assert.deepEqual(guarded, [{ count: 1 }]);
     const retained = await database.client.unsafe(
       "SELECT first_name FROM appbasis_athlete WHERE id = 'p04-safe-neighbor'",
     );
