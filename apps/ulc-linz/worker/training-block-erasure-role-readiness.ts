@@ -55,7 +55,10 @@ export async function assertUlcDedicatedBlockErasureRoleReady(
                role.rolcreatedb AS can_create_databases,
                role.rolbypassrls AS can_bypass_rls,
                role.rolinherit AS inherits_roles,
-               pg_has_role(current_user,'neondb_owner','MEMBER')
+               pg_has_role(current_user,
+                 (SELECT pg_get_userbyid(database.datdba)
+                    FROM pg_catalog.pg_database AS database
+                   WHERE database.datname = current_database()),'MEMBER')
                  AS is_database_owner_member,
                pg_has_role(current_user,
                  CASE WHEN current_database() = 'neondb'
