@@ -36,6 +36,23 @@ export function buildUlc69ManifestProposal(appManifest,catalogModule) {
   // Pin the single additional owner migration explicitly, then project
   // the exact former 44-file publication without rewriting historical DDL.
   // NO existing populated schema may replay these SQL files.
+  // Preserve the previously published 41/44/45-migration historical
+  // proposals. The current v19 owner appends a forward-only replacement
+  // function; project it back to the verified v18 45-file inventory ONLY
+  // for reviewing historical P02-J plans, never for execution.
+  if (appManifest?.application==="ulc-linz" &&
+      appManifest.manifestVersion===1 &&
+      appManifest?.owners?.flatMap(x=>x.migrations??[]).length===46) {
+    const review=structuredClone(appManifest);
+    const lifecycle=review.owners?.find(x=>x.id==="ulc-linz-lifecycle");
+    const next="apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql";
+    if (!lifecycle || lifecycle.schemaVersion!==19 ||
+        lifecycle.migrations.length!==19 || lifecycle.migrations.at(-1)!==next)
+      block("current v19 forward migration drift");
+    lifecycle.schemaVersion=18;
+    lifecycle.migrations.pop();
+    appManifest=review;
+  }
   if (appManifest?.application==="ulc-linz" &&
       appManifest.manifestVersion===1 &&
       appManifest.dialect==="postgresql" &&

@@ -75,7 +75,7 @@ test("P24: canonical athlete row and favorite advisory locks fail fast under dir
     ));
     const migrations=manifest.owners.flatMap(o=>o.migrations);
     assert.equal(manifest.owners.length,8);
-    assert.equal(migrations.length,45);
+    assert.equal(migrations.length, 46);
     for(const path of migrations) {
       const sql=await readFile(new URL("../"+path,import.meta.url),"utf8");
       for(const stmt of split(sql)) await query(stmt);

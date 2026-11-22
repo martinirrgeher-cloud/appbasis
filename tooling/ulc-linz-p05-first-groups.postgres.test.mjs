@@ -72,7 +72,7 @@ test("P05: exact four-group and three-module first run is atomic, rerunnable, an
     const manifest = JSON.parse(await readFile(new URL("../apps/ulc-linz/appbasis.database.json", import.meta.url),"utf8"));
     assert.equal(manifest.owners.length, 8);
     const migrations = manifest.owners.flatMap(o => o.migrations);
-    assert.equal(migrations.length, 45);
+    assert.equal(migrations.length, 46);
     for (const path of migrations) {
       const sql = await readFile(new URL("../" + path, import.meta.url), "utf8");
       for (const stmt of split(sql)) await query(stmt);

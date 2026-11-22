@@ -34,9 +34,9 @@ test("P03-E canonical-erasure rehearsal stays completely disconnected from live 
   assert.match(guard, /UNREGISTERED/);
   const db = JSON.parse(manifest);
   const lifecycle = db.owners.find(owner => owner.id === "ulc-linz-lifecycle");
-  assert.equal(lifecycle.schemaVersion, 18);
+  assert.equal(lifecycle.schemaVersion, 19);
   assert.equal(lifecycle.migrations.at(-1),
-    "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql");
+    "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql");
   assert.ok(db.owners.every(owner =>
     owner.migrations.every(path => !path.includes("p03-d-training-subject-write-fence"))
   ));

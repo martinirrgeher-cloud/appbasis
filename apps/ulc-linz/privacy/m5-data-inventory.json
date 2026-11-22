@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "application": "ulc-linz",
-  "scope": "repository-declared-schema-v18-review-not-runtime-evidence",
+  "scope": "repository-declared-schema-v19-review-not-runtime-evidence",
   "basis": {
     "databaseManifest": "apps/ulc-linz/appbasis.database.json",
     "appManifest": "apps/ulc-linz/appbasis.app.json",
@@ -145,7 +145,7 @@
     {
       "id": "ulc-linz-lifecycle",
       "root": "apps/ulc-linz",
-      "schemaVersion": 18,
+      "schemaVersion": 19,
       "migrations": [
         "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
         "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -164,7 +164,8 @@
         "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
         "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
         "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
-        "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql"
+        "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
+        "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql"
       ],
       "lifecycleStatus": "training-and-catalog-data-lifecycle-pending",
       "notes": [
@@ -799,20 +800,21 @@
   },
   "repositorySchemaReview": {
     "reviewedAt": "2026-11-22",
-    "reviewKind": "repository-schema-v18-inventory-no-live-deletion-or-production-approval",
+    "reviewKind": "repository-schema-v19-forward-reconciliation-inventory-no-legal-or-production-approval",
     "sourceManifest": "apps/ulc-linz/appbasis.database.json",
-    "sourceManifestBlobSha": "eafbfd0fbae4812f902f2191f004508acc2ad51a",
-    "declaredMigrationCount": 45,
+    "sourceManifestBlobSha": "3884bf202ac8c239b2a63d0c7d52179a55b42070",
+    "declaredMigrationCount": 46,
     "declaredTableCount": 69,
     "persistentTableInventoryCount": 69,
-    "expectedLifecycleSchemaVersion": 18,
+    "expectedLifecycleSchemaVersion": 19,
     "previousInventoryScope": "current-materialized-v0.5",
     "previousRecordedMigrations": 41,
     "newlyRecordedMigrations": [
       "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
       "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
       "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql",
-      "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql"
+      "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql",
+      "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql"
     ],
     "migrationChanges": [
       {
@@ -858,6 +860,16 @@
           "subject_id"
         ],
         "dataRisk": "sql-level-attribution-replay-guard-no-new-table-db-cutover-pending"
+      },
+      {
+        "migration": "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql",
+        "tables": [
+          "ulc_linz_training_subject_deletion"
+        ],
+        "columns": [
+          "athlete_id"
+        ],
+        "dataRisk": "single-security-definer-write-fence-function-replacement-no-new-table-35-day-guard-and-restore-replay-approval-still-pending"
       }
     ],
     "stillOpen": "privacy-and-retention-approval-cross-owner-lifecycle-freetext-revisions-live-no-resurrection-backup-restore",

@@ -111,8 +111,8 @@ if (!DATABASE_URL) {
         new URL("../appbasis.database.json", import.meta.url), "utf8",
       )) as Manifest;
       const migrations = manifest.owners.flatMap(owner => owner.migrations);
-      if (migrations.length !== 45 || new Set(migrations).size !== 45) {
-        throw new Error("P03-H requires the canonical 45 migration inventory");
+      if (migrations.length !== 46 || new Set(migrations).size !== 46) {
+        throw new Error("P03-H requires the canonical 46 migration inventory");
       }
       for (const file of migrations) {
         const script = await readFile(

@@ -28,12 +28,12 @@ const load = async () => {
 };
 const copy = (x) => structuredClone(x);
 
-test("G-04.2d historical v16 fixture has 64 tables; v17 proposal has 66; live owner remains v18", async () => {
+test("G-04.2d historical v16 fixture has 64 tables; v17 proposal has 66; live owner is v19", async () => {
   const input = await load();
   assert.equal(input.v16Inventory.persistentTables.length,64);
   assert.equal(input.v16Export.excludedTables.length,62);
-  assert.equal(ULC_LINZ_LIFECYCLE_DATABASE_OWNER.schemaVersion,18);
-  assert.equal(ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.length,18);
+  assert.equal(ULC_LINZ_LIFECYCLE_DATABASE_OWNER.schemaVersion,19);
+  assert.equal(ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.length,19);
   assert.deepEqual(ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations.slice(0,16),
     input.canonicalOwner.migrations);
   assert.equal(ULC_LINZ_LIFECYCLE_DATABASE_OWNER.migrations[16],

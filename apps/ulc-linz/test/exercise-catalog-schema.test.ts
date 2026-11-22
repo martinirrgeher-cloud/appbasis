@@ -118,7 +118,7 @@ describe("ULC E6A exercise catalog schema", () => {
         candidate.id === "ulc-linz-lifecycle",
     );
 
-    expect(owner?.schemaVersion).toBe(18);
+    expect(owner?.schemaVersion).toBe(19);
     expect(owner?.migrations?.[7]).toBe(
       "apps/ulc-linz/migrations/0007_ulc_linz_exercise_catalog.sql",
     );
@@ -143,9 +143,10 @@ describe("ULC E6A exercise catalog schema", () => {
     expect(owner?.migrations?.[14]).toBe(
       "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql",
     );
-    expect(owner?.migrations?.slice(-2)).toEqual([
+    expect(owner?.migrations?.slice(-3)).toEqual([
       "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
       "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
+      "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql",
     ]);
   });
 });

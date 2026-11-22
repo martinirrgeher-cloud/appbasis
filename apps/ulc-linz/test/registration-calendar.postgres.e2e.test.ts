@@ -42,13 +42,20 @@ if (!databaseUrl) {
       )) as { owners: readonly { migrations: readonly string[] }[] };
       const installed = manifest.owners.flatMap((owner) => owner.migrations);
       const candidate = "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql";
-      // P1: calendar v17 is now registered with lifecycle v18. Install
-      // each canonical file ONCE on the disposable database, never replay
-      // the candidate on the existing Preview.
-      if (!installed.includes(candidate) || installed.length !== 45 ||
-          installed.indexOf(candidate) !==
-            installed.indexOf("apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql")-1) {
-        throw new Error("G-04 published v17 calendar release manifest is incomplete.");
+      // Calendar v17 is published in the 46-file v19 chain. Install
+      // every canonical migration ONCE in this disposable database, including
+      // the forward-only post-v18 training-subject fence reconciliation.
+      // Never replay the historical candidate on an existing Preview.
+      const originalFence =
+        "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql";
+      const restoredFence =
+        "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql";
+      if (!installed.includes(candidate) || installed.length !== 46 ||
+          new Set(installed).size !== 46 ||
+          installed.indexOf(candidate) !== installed.indexOf(originalFence) - 1 ||
+          installed.indexOf(restoredFence) !== installed.indexOf(originalFence) + 1 ||
+          installed.at(-1) !== restoredFence) {
+        throw new Error("G-04 current v19 calendar/fence release manifest is incomplete.");
       }
       for (const path of installed) {
         const sql = await readFile(new URL("../../../" + path, import.meta.url), "utf8");

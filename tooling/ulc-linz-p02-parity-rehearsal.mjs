@@ -136,12 +136,25 @@ export function evaluateUlcP02ParityInventory({ productionTables, previewTables 
  */
 export async function loadUlcP02ParityRehearsalPlan() {
   // This is intentionally a HISTORICAL 51→64→66→68 rehearsal.
-  // The canonical repository now publishes 45 files, including the new
+  // The canonical repository now publishes 46 files, including the new
   // training-block tombstone guard that was NOT part of that old snapshot.
   // Verify and remove only the exact post-41 published additions before
   // evaluating the original 41-file historical inventory.
   // Do not reinterpret the old catalog counts as today's production state.
-  const current = JSON.parse(await readFile(new URL(APP_MANIFEST, import.meta.url), "utf8"));
+  const latest = JSON.parse(await readFile(new URL(APP_MANIFEST, import.meta.url), "utf8"));
+  // Fail closed against an unrecognized live manifest. Project exactly the
+  // appended v19 reconciliation back to the historic v18 publication before
+  // deriving the older 41-file synthetic schema. Never execute that projection.
+  const current = structuredClone(latest);
+  const v19Owner = current.owners?.find(o=>o.id==="ulc-linz-lifecycle");
+  const newest = "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql";
+  if (current?.owners?.flatMap(o=>o.migrations??[]).length!==46 ||
+      v19Owner?.schemaVersion!==19 || v19Owner?.migrations?.length!==19 ||
+      v19Owner.migrations.at(-1)!==newest) {
+    block("v19 forward-reconciliation manifest drift");
+  }
+  v19Owner.schemaVersion=18;
+  v19Owner.migrations.pop();
   const currentCatalog = current.owners?.find(o=>o.id==="exercise-catalog");
   const currentBlocks = current.owners?.find(o=>o.id==="training-blocks");
   const currentLifecycle = current.owners?.find(o=>o.id==="ulc-linz-lifecycle");

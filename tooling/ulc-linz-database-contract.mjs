@@ -24,7 +24,7 @@ const ULC_LINZ_MODULE_DATABASE_DEFINITIONS = Object.freeze([
 export const ULC_LINZ_LIFECYCLE_DATABASE_OWNER = Object.freeze({
   id: "ulc-linz-lifecycle",
   root: "apps/ulc-linz",
-  schemaVersion: 18,
+  schemaVersion: 19,
   migrations: Object.freeze([
     "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
     "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -44,6 +44,7 @@ export const ULC_LINZ_LIFECYCLE_DATABASE_OWNER = Object.freeze({
     "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
       "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
       "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
+      "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql",
   ]),
 });
 

@@ -16,10 +16,12 @@ test("P03-D pins app-owned published subject deletion fence and no-resurrection 
     new URL("../apps/ulc-linz/appbasis.database.json", import.meta.url), "utf8"
   ));
   const lifecycle = appManifest.owners.find(owner => owner.id === "ulc-linz-lifecycle");
-  assert.equal(lifecycle?.schemaVersion, 18);
-  assert.equal(lifecycle?.migrations.length, 18);
+  assert.equal(lifecycle?.schemaVersion, 19);
+  assert.equal(lifecycle?.migrations.length, 19);
   const canonical = "../apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql";
   assert.equal(lifecycle.migrations.includes(canonical.slice(3)), true);
+  assert.equal(lifecycle.migrations.at(-1),
+    "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql");
   assert.equal((await readFile(new URL(canonical,import.meta.url),"utf8")).split("--> statement-breakpoint").length,6);
   assert.equal(lifecycle?.migrations.includes(CANDIDATE.slice(3)), false);
   assert.match(sql, /CANDIDATE ONLY/);

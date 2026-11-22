@@ -374,11 +374,12 @@ async function createUlcBaselineFixture(t) {
   const currentLifecycle = publishedDatabaseManifest.owners.find(
     (owner) => owner.id === "ulc-linz-lifecycle",
   );
-  assert.equal(currentLifecycle.schemaVersion, 18);
-  assert.equal(currentLifecycle.migrations.length, 18);
+  assert.equal(currentLifecycle.schemaVersion, 19);
+  assert.equal(currentLifecycle.migrations.length, 19);
   assert.deepEqual(currentLifecycle.migrations.slice(16), [
     "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
     "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
+    "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql",
   ]);
   await writeFile(
     join(root, "apps", "ulc-linz", "appbasis.database.json"),
@@ -386,9 +387,9 @@ async function createUlcBaselineFixture(t) {
       {
         ...publishedDatabaseManifest,
         // E2B is intentionally a pre-athletes (historical v16) fixture.
-        // Published v18 includes the calendar and training-write-fence,
+        // Published v19 includes the calendar, training-write-fence and its hardening,
         // which require athletes tables absent from this isolated baseline.
-        // Only the disposable fixture is trimmed; published v18 is unchanged.
+        // Only the disposable fixture is trimmed; published v19 is unchanged.
         owners: publishedDatabaseManifest.owners.filter(
           (owner) =>
             owner.id !== "athletes" &&
