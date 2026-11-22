@@ -10,6 +10,8 @@
 
 ## 2. Wozu dient die App?
 
+**Bestätigter fachlicher Nutzerkreis (22.11.2026):** Die App erfasst ausschließlich **Vereinsmitglieder**; Nichtmitglieder oder Schnupperteilnehmer werden nicht als Athleten-/Trainingsnutzer aufgenommen. Die Nutzung erfolgt durch nach Rolle und Gruppenzuordnung berechtigte Vereinsmitglieder. Diese Betreiberangabe ist eine fachliche Vorgabe und ersetzt keinen technischen Nachweis, dass sämtliche Anlage-/Importpfade Nichtmitglieder ablehnen.
+
 Die nicht öffentliche App dient der vereinsinternen Trainingsorganisation und betreuten Nutzung durch berechtigte Personen: Benutzer-/Rollenverwaltung, Gruppen und Athleten-/Trainerstammdaten, Trainingsplanung, Übungskatalog und Trainingsblöcke, Anmeldung, Anwesenheit, Trainingsdokumentation sowie vereinsinterne Auswertungen und Sicherheitsprüfungen.
 
 **Wir verwenden die App nicht zur öffentlichen Veröffentlichung von Teilnehmerlisten.** Private Bilder oder Videos, insbesondere erkennbarer Minderjähriger, sind im derzeit vorgesehenen geschützten Betrieb **nicht freigeschaltet**. Keine Gesundheitsdaten, Diagnosen oder Verletzungen in gewöhnliche Freitextfelder eintragen.
@@ -17,7 +19,7 @@ Die nicht öffentliche App dient der vereinsinternen Trainingsorganisation und b
 ## 3. Welche Daten können verarbeitet werden?
 
 - **Konto und Berechtigung:** Benutzername, für die Anmeldung nötige Kontodaten, Rolle, Gruppen-/Vereinszuordnung, Sitzungen, Berechtigungsänderungen.
-- **Vereins- und Trainingsstammdaten:** Name, Gruppenzugehörigkeit und gegebenenfalls im System erfasste Kontakt-/Vertretungsbeziehungen von Athletinnen und Athleten (auch Minderjährigen), Trainern und Funktionären.
+- **Vereins- und Trainingsstammdaten:** Name, Mitgliedschafts- und Gruppenzugehörigkeit und gegebenenfalls im System erfasste Kontakt-/Vertretungsbeziehungen von Athletinnen und Athleten (auch Minderjährigen), Trainern und Funktionären. **Kontaktangaben von Erziehungsberechtigten können personenbezogene Daten von Nichtmitgliedern sein, auch wenn ausschließlich Mitglieder als Athleten erfasst werden.**
 - **Trainingsbetrieb:** Termine, Anmeldungen, Teilnahmen und Traineranwesenheit, Planung, Übungs-/Blockzuordnung, Trainingsdokumentation, Notizen und historische Revisionen.
 - **Personalisierte Funktionen:** persönliche Favoriten, Zuordnungen und Nutzungsereignisse, soweit die jeweiligen Funktionen aktiv sind.
 - **Betrieb und Sicherheit:** technische Sitzungs-, Zugriffs-, Fehler- und Berechtigungsprotokolle sowie Lösch-/Wiederherstellungsnachweise.
@@ -26,11 +28,11 @@ Freitextangaben können auch personenbezogene Informationen über andere Persone
 
 ## 4. Warum dürfen wir Daten verarbeiten?
 
-**Die folgende Rechtsgrundlagenzuordnung ist eine zur Vereinsfreigabe vorbereitete fachliche Bewertung; sie ist noch kein verbindlich bestätigter rechtlicher Entscheid.**
+**Fachliche Bestätigung:** Erfasste Athletinnen und Athleten sind Vereinsmitglieder; Schnupperkinder/Nichtmitglieder gehören nicht zum vorgesehenen Nutzungsumfang. Die folgende Rechtsgrundlagenzuordnung ist eine zur Vereinsfreigabe vorbereitete fachliche Bewertung und noch kein verbindlich bestätigter rechtlicher Entscheid. **Mitgliedschaft allein macht nicht jede Datenerhebung vertraglich erforderlich; Art. 6 Abs. 1 lit. b gilt nur, soweit die Verarbeitung für die konkrete Mitgliedschafts- bzw. Teilnahmevereinbarung objektiv notwendig ist.**
 
 | Verarbeitung | Zu prüfende Rechtsgrundlage | Zweck und Grenze |
 | --- | --- | --- |
-| Notwendige Stammdaten, Trainingsgruppen, Anmeldung/Teilnahme | Art. 6 Abs. 1 lit. b DSGVO, **soweit** tatsächlich zur Durchführung der jeweiligen Vereins-/Teilnahmevereinbarung erforderlich; andernfalls gesondert lit. f prüfen | Vereinsinterne Teilnahme und Trainingsorganisation; nur benötigte Angaben |
+| Notwendige Stammdaten von Vereinsmitgliedern, Trainingsgruppen, Anmeldung/Teilnahme | Art. 6 Abs. 1 lit. b DSGVO, **soweit** objektiv zur Durchführung der tatsächlichen Vereinsmitgliedschaft bzw. Teilnahmevereinbarung erforderlich; zusätzliche Zwecke gesondert nach lit. f prüfen | Vereinsinterne Teilnahme und Trainingsorganisation; nur benötigte Angaben |
 | Trainer-, Funktionärs- und Rollenverwaltung | Art. 6 Abs. 1 lit. b oder lit. f DSGVO, abhängig von konkreter Beziehung | Betreuung und berechtigter Zugriff; Interessenabwägung, insbesondere bei Kindern, erforderlich |
 | Trainingsplanung, Dokumentation, zweckgebundene Jahresstatistik | Art. 6 Abs. 1 lit. b oder lit. f DSGVO nach dokumentierter Zweck-/Erforderlichkeitsprüfung | Nachvollziehbarkeit und Entwicklung des Trainings; keine unbegrenzte Aufbewahrung |
 | Anmeldungssicherheit, Audit, Missbrauchsvermeidung und Datensicherung | Art. 6 Abs. 1 lit. f DSGVO; lit. c nur bei nachweislich konkret bestehender Rechtspflicht | Sicherer und nachvollziehbarer Betrieb; Zugriffe begrenzen |
@@ -70,7 +72,7 @@ Es besteht das Recht zur Beschwerde bei der **österreichischen Datenschutzbehö
 
 ## 8. Was müssen Athletinnen und Athleten sowie Eltern wissen?
 
-Die App ist ein vereinsinternes Organisationsmittel. Bei Minderjährigen werden ihre gesetzlichen Vertreter altersgerecht informiert und dort einbezogen, wo die Rechtsgrundlage oder die konkrete Verarbeitung dies verlangt. Eine pauschale Veröffentlichung von Kinderfotos, Gesundheitsdaten oder Anwesenheitslisten findet über die derzeit freigeschalteten Funktionen nicht statt.
+Die App ist ein vereinsinternes Organisationsmittel **für Vereinsmitglieder; Nichtmitglieder und Schnupperteilnehmer werden nicht als Athleten aufgenommen**. Eltern bzw. gesetzliche Vertreter können selbst Nichtmitglieder sein, deren Kontaktdaten zur Betreuung des minderjährigen Mitglieds benötigt werden; dafür sind Zweck, Informationspflicht und Rechtsgrundlage gesondert zu beurteilen. Bei Minderjährigen werden ihre gesetzlichen Vertreter altersgerecht informiert und dort einbezogen, wo die Rechtsgrundlage oder die konkrete Verarbeitung dies verlangt. Eine pauschale Veröffentlichung von Kinderfotos, Gesundheitsdaten oder Anwesenheitslisten findet über die derzeit freigeschalteten Funktionen nicht statt.
 
 Für die Teilnahme notwendige Daten werden benötigt, soweit sie organisatorisch erforderlich sind. Werden erforderliche Daten nicht bereitgestellt, kann die betreffende App-Funktion möglicherweise nicht genutzt werden; über mögliche andere Wege der Organisation entscheidet der Verein. Nicht notwendige Angaben sollen nicht erfasst werden.
 
@@ -83,7 +85,7 @@ Die App trifft nach der derzeit dokumentierten Funktionalität **keine ausschlie
 **Verantwortlich:** laut Betreiberangabe ist die formale Datenschutz- und Betriebsentscheidung an die projektführende Person delegiert. Ein gesonderter schriftlicher Delegations-/Vereinsnachweis wurde nicht unabhängig geprüft. **Kontaktentscheidung** `martin.irrgeher@gmail.com` ist bestätigt.
 
 ### Für T02 noch vor endgültigem „PASS“ zu dokumentieren
-- [ ] **R1 – Zweck und Rechtsgrundlagen bestätigen:** Vereinsverantwortliche Person bewertet die obige Zuordnung pro Datenzweck (Art. 6 lit. b/f), einschließlich tatsächlicher Mitgliedschafts-/Betreuungsverhältnisse und ggf. Interessenabwägung gerade für Minderjährige. Keine Art.-9-Daten ohne eigenständige Prüfung. 
+- [ ] **R1 – Zweck und Rechtsgrundlagen bestätigen:** Die Betreiberangabe **„ausschließlich Vereinsmitglieder“ (22.11.2026)** ist für Athleten-/Trainingsnutzer erfasst; Nichtmitglieder/Schnupperteilnehmer sind ausgeschlossen. Vereinsverantwortliche Person bewertet die Zuordnung pro Datenzweck (Art. 6 lit. b/f): *objektiv notwendige* Verarbeitung zur Mitgliedschaft von weiteren Zwecke unterscheiden, Elternkontakte von Nichtmitgliedern gesondert beurteilen, ggf. Interessenabwägung gerade für Minderjährige. Keine Art.-9-Daten ohne eigenständige Prüfung. 
 - [ ] **R2 – Verständliche Eltern-/Trainerinformation freigeben und zustellen:** Endfassung des Betroffenentextes mit Datum/Version freigeben; dokumentieren, ob und wann bestehende Trainer, Eltern bzw. neue Benutzer den Hinweis erhalten und wo er in der App zugänglich ist. Bei indirekt erhobenen Daten zusätzlich Art. 14 DSGVO prüfen.
 - [ ] **R3 – Tatsächliche Speicherpraxis und Empfänger abgleichen:** 12/24 Monate, 90-Tage-Prüfung, Backup-/Restore-Kopien und Drittlandtransferinfos müssen den wirklichen Betriebs- und Vertragsnachweisen entsprechen. P01 `runtimeActive=false`, `legalApproval=false`; T01/T03/T04 noch offen. **Kein rechtlicher oder produktiver GO-Schalter** durch bloße Textfreigabe.
 - [ ] **R4 – Ansprechpartner/Funktion und Veröffentlichung:** Kontaktentscheidung bestätigt; betriebliche Zuständigkeit für Anfragen und tatsächlicher Veröffentlichungskanal prüfen. Die allgemeine Vereinsadresse `office@ulc-linz.at` ist **nicht** App-Datenschutzkontakt.
