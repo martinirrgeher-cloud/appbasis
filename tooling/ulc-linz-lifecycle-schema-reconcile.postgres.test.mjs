@@ -34,8 +34,13 @@ test("P04: three canonical lifecycle migrations reconcile an existing partial Pr
     ));
     const migrations = manifest.owners.flatMap(owner => owner.migrations);
     assert.equal(migrations.length, 45);
-    const omitted = new Set(ULC_LIFECYCLE_REPAIR_PATHS);
-    assert.equal(omitted.size, 3);
+    // The v7 attribution trigger depends on a subject table deliberately
+    // missing from this historical three-migration rehearsal baseline.
+    const laterGuard =
+      "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql";
+    assert.ok(migrations.includes(laterGuard));
+    const omitted = new Set([...ULC_LIFECYCLE_REPAIR_PATHS, laterGuard]);
+    assert.equal(omitted.size, 4);
 
     // Install every existing canonical migration except the three missing
     // ones: a realistic already-populated repository baseline.
