@@ -40,6 +40,7 @@ import {
 import { ULC_START_HELP_CSS, ULC_START_HELP_HTML } from "./start-help-ui";
 import { ULC_NETWORK_STATUS_HTML, ULC_NETWORK_STATUS_CSS, ULC_NETWORK_STATUS_SCRIPT } from "./network-status-ui";
 import { generatedPwaResponse } from "./pwa";
+import { ULC_LINZ_PRIVACY_HTML } from "./privacy-info-ui";
 import { ULC_DESIGN_SYSTEM_CSS, ULC_TRAINING_PAGE_HEADER_CSS } from "./design-system";
 import { ULC_REGISTRATION_CALENDAR_CSS, ULC_REGISTRATION_CALENDAR_SCRIPT } from "./registration-calendar-ui";
 
@@ -82,6 +83,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             <p class="message message--error" id="login-message" role="alert" hidden></p>
             <button class="button button--primary" type="submit">Anmelden</button>
           </form>
+          <p class="summary"><a href="/datenschutz">Datenschutzinformation</a></p>
         </section>
       </main>
 
@@ -145,6 +147,7 @@ export const ULC_LINZ_APP_HTML = `<!doctype html>
             </section>
             <button class="app-nav__link" type="button" data-nav-view="useful" data-nav-priority="8" hidden disabled>Nützliches</button>
             <div class="app-nav__overflow-footer">
+              <a class="app-nav__link" href="/datenschutz">Datenschutzinformation</a>
               <button class="app-nav__link app-nav__signout" id="app-sign-out" type="button">Abmelden / Benutzer wechseln</button>
             </div>
           </div>
@@ -8993,6 +8996,14 @@ export function generatedUiResponse(request: Request): Response | null {
   if (pathname === "/") {
     return staticResponse(
       ULC_LINZ_APP_HTML,
+      "text/html; charset=utf-8",
+      request.method === "HEAD",
+      true,
+    );
+  }
+  if (pathname === "/datenschutz" || pathname === "/datenschutz/") {
+    return staticResponse(
+      ULC_LINZ_PRIVACY_HTML,
       "text/html; charset=utf-8",
       request.method === "HEAD",
       true,
