@@ -379,6 +379,83 @@ describe("training-blocks PostgreSQL repository", () => {
     expect(markers[0]?.count).toBe(0);
   });
 
+  it("supports verified usage replay using only SELECT/INSERT while deletion remains fenced", async () => {
+    const connection = requiredConnection();
+    const organization = "org-p02-insert-only";
+    const subject = "subject-p02-insert-only";
+    const service = serviceFor(connection, ["block-p02-insert-only"]);
+    const block = await service.create(organization, { name: "Least privilege" });
+    const role = "ulc_tb_insert_" + randomUUID().replaceAll("-", "").slice(0, 18);
+    const password = randomUUID().replaceAll("-", "");
+    await administrativeConnection.client.unsafe(
+      "CREATE ROLE " + role + " LOGIN NOINHERIT PASSWORD '" + password + "'",
+    );
+    let limited: ReturnType<typeof createPostgresDatabase> | null = null;
+    try {
+      await administrativeConnection.client.unsafe(
+        "GRANT CONNECT ON DATABASE " + isolatedDatabaseName + " TO " + role,
+      );
+      await connection.client.unsafe("GRANT USAGE ON SCHEMA public TO " + role);
+      for (const [table, privileges] of [
+        ["appbasis_training_block", "SELECT"],
+        ["appbasis_training_block_usage", "SELECT, INSERT"],
+        ["appbasis_training_block_usage_subject", "SELECT, INSERT"],
+        ["appbasis_training_block_usage_subject_deletion", "SELECT"],
+      ]) {
+        await connection.client.unsafe(
+          "GRANT " + privileges + " ON public." + table + " TO " + role,
+        );
+      }
+      const roleUrl = new URL(isolatedDatabaseUrl);
+      roleUrl.username = role;
+      roleUrl.password = password;
+      limited = createPostgresDatabase(roleUrl.toString());
+      const writer = new PostgresTrainingBlockRepository(postgresClient(limited.client));
+      const event = {
+        id: "usage-p02-insert-only",
+        organizationId: organization,
+        blockId: block.id,
+        occurredAt: "2026-11-22T12:00:00.000Z",
+        sourceKind: "training_plan" as const,
+        sourceRef: "insert-only-plan:insert-only-item",
+        note: null,
+      };
+      const input = {
+        event, subjectId: subject,
+        sourcePlanId: "insert-only-plan", sourceItemId: "insert-only-item",
+      };
+      await expect(writer.recordVerifiedSubjectUsageOnce(input)).resolves.toEqual(event);
+      // Replaying an existing row would fail if its SELECT still used FOR UPDATE.
+      await expect(writer.recordVerifiedSubjectUsageOnce(input)).resolves.toEqual(event);
+      await expect(limited.client.unsafe(
+        "UPDATE public.appbasis_training_block_usage SET note = NULL WHERE id = $1",
+        [event.id],
+      )).rejects.toThrow(/permission denied/i);
+      await expect(limited.client.unsafe(
+        "DELETE FROM public.appbasis_training_block_usage WHERE id = $1",
+        [event.id],
+      )).rejects.toThrow(/permission denied/i);
+      const erasure = new PostgresTrainingBlockRepository(postgresClient(connection.client));
+      await expect(erasure.markSubjectDeletedAndRemoveAttributedUsage(
+        organization, subject, new Date("2026-11-22T13:00:00.000Z"),
+      )).resolves.toEqual({ markerInserted: true, deletedUsageEvents: 1 });
+      await expect(writer.recordVerifiedSubjectUsageOnce(input))
+        .rejects.toThrow(/deletion marker/);
+      const remaining = await connection.client.unsafe(
+        "SELECT count(*)::int AS count FROM appbasis_training_block_usage WHERE id = $1",
+        [event.id],
+      );
+      expect(remaining[0]?.count).toBe(0);
+    } finally {
+      if (limited !== null) await limited.client.end();
+      await connection.client.unsafe("DROP OWNED BY " + role);
+      await administrativeConnection.client.unsafe(
+        "REVOKE CONNECT ON DATABASE " + isolatedDatabaseName + " FROM " + role,
+      );
+      await administrativeConnection.client.unsafe("DROP ROLE " + role);
+    }
+  });
+
   it("atomically persists exact verified subject ownership and only replays matching events", async () => {
     const connection = requiredConnection();
     const service = serviceFor(connection, ["block-verified-a", "block-verified-b", "usage-legacy"]);
