@@ -44,6 +44,8 @@ describe("training-blocks schema", () => {
   it("blocks direct SQL resurrection under the existing subject lifecycle lock", () => {
     expect(tombstoneGuardMigration).toContain("BEFORE INSERT OR UPDATE");
     expect(tombstoneGuardMigration).toContain("SECURITY INVOKER");
+    expect(tombstoneGuardMigration).toContain("current_setting('transaction_isolation')");
+    expect(tombstoneGuardMigration).toContain("READ COMMITTED");
     expect(tombstoneGuardMigration).toContain("pg_advisory_xact_lock");
     expect(tombstoneGuardMigration).toContain("'training-block-usage-subject'");
     expect(tombstoneGuardMigration).toContain("appbasis_training_block_usage_subject_deletion");

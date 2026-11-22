@@ -8,6 +8,12 @@ SECURITY INVOKER
 SET search_path = pg_catalog, public
 AS $guard$
 BEGIN
+  -- REPEATABLE READ/SERIALIZABLE may use a pre-deletion snapshot even after
+  -- the advisory lock is obtained. Deny these write modes outright.
+  IF current_setting('transaction_isolation') <> 'read committed' THEN
+    RAISE EXCEPTION 'Training-block attribution requires READ COMMITTED isolation'
+      USING ERRCODE = '25001';
+  END IF;
   PERFORM pg_advisory_xact_lock(
     hashtextextended(
       jsonb_build_array(

@@ -159,6 +159,34 @@ describe("training-blocks PostgreSQL repository", () => {
   });
 
 
+  it("denies repeatable-read and serializable direct attributions to prevent old-snapshot bypass", async () => {
+    const connection = requiredConnection();
+    const service = serviceFor(connection, ["isolation-block"]);
+    const block = await service.create("org-isolation-guard", { name: "Isolation guard" });
+    for (const mode of ["REPEATABLE READ", "SERIALIZABLE"]) {
+      await expect(connection.client.begin(async tx => {
+        await tx.unsafe("SET TRANSACTION ISOLATION LEVEL " + mode);
+        await tx.unsafe(
+          `INSERT INTO appbasis_training_block_usage
+             (organization_id,id,block_id,occurred_at,source_kind,source_ref,note)
+           VALUES ($1,$2,$3,now(),'training_plan','synthetic:isolation',NULL)`,
+          ["org-isolation-guard", "usage-" + mode.replace(" ", "-"), block.id],
+        );
+        await tx.unsafe(
+          `INSERT INTO appbasis_training_block_usage_subject
+             (organization_id,usage_id,subject_id,source_plan_id,source_item_id)
+           VALUES ($1,$2,'subject-guarded','synthetic','isolation')`,
+          ["org-isolation-guard", "usage-" + mode.replace(" ", "-")],
+        );
+      })).rejects.toThrow(/requires READ COMMITTED/);
+    }
+    const rows = await connection.client.unsafe(
+      "SELECT count(*)::int AS count FROM appbasis_training_block_usage WHERE organization_id=$1",
+      ["org-isolation-guard"],
+    );
+    expect(rows).toEqual([{ count: 0 }]);
+  });
+
   it("inspects scoped attributable usage, not ambiguous legacy events", async () => {
     const connection = requiredConnection();
     const service = serviceFor(connection, ["inspect-subject-block"]);
