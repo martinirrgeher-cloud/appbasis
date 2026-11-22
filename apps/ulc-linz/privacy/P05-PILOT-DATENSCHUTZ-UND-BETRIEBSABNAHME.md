@@ -2,6 +2,8 @@
 
 **Stand:** 22.11.2026 · **Nur Abstimmungs-/Prüfunterlage. Keine Datenschutzfreigabe, keine Aktivierung und kein Produktiv-Deploy.**
 
+**Aktualisierte, rein lesende Belegbasis (22.11.):** [Acht Daten-Owner, 69/69 Tabellen, aktuelle Cloudflare-/Databricks-Neon-Vertragsquellen und nur noch echte Restentscheidungen](./P05-ACHT-OWNER-UND-PROVIDER-FAKTEN-20261122.md). Sie ergänzt die bestehenden Betreiberentscheidungen, ersetzt aber **keine** rechtliche oder operative Freigabe. Keine erneuten Fragen zur bereits bestätigten offiziellen ULC-Kontoverwendung.
+
 ## A. Was bereits entschieden und bewiesen ist – nicht erneut abfragen
 
 - Die persönlich verwalteten Providerkonten werden laut Betreiberbestätigung **offiziell für ULC Linz** verwendet. Diese Entscheidung ist getroffen; formale Dokumentationspflichten sind davon zu unterscheiden. Keine persönlichen Konto-/Kontaktkennungen in diesem Repository veröffentlichen.
