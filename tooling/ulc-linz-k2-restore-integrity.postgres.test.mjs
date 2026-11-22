@@ -46,8 +46,8 @@ test("K2 restore: complete 69-table eight-owner schema PASS; missing fences, inv
     ));
     assert.equal(manifest.owners.length,8);
     const paths=manifest.owners.flatMap(owner=>owner.migrations);
-    assert.equal(paths.length,46);
-    assert.equal(new Set(paths).size,46);
+    assert.equal(paths.length,47);
+    assert.equal(new Set(paths).size,47);
     for(const path of paths){
       const source=await readFile(new URL("../"+path,import.meta.url),"utf8");
       for(const stmt of statements(source)) await query(stmt);
