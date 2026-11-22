@@ -2,6 +2,18 @@
 
 **Entwurf, Stand 22.11.2026 – nicht veröffentlicht, keine rechtliche oder produktive Freigabe.** **Vom Betreiber am 22.11.2026 festgelegter Informationsweg:** Nach Freigabe dauerhaft in der App abrufbar und einmalige E-Mail an Trainer sowie Eltern minderjähriger Athleten. Der Informationsweg ist beschlossen, aber noch nicht technisch umgesetzt und keine E-Mail versendet. Dieser Text ist für Athletinnen und Athleten, Erziehungsberechtigte, Trainerinnen und Trainer sowie App-Benutzer bestimmt. Er ergänzt die Datenschutzerklärung der Vereinswebsite, ersetzt sie nicht.
 
+## T02 – Abschlussentscheidung und klare Abgrenzung
+
+**Betreiberanweisung vom 22.11.2026:** „Mach es jetzt fertig.“ Die für die App delegiert zuständige Person hat damit die **Fertigstellung des T02-Inhalts, die Mitgliederausrichtung, die App-Datenschutzkontaktadresse und das Verteilungsverfahren** beauftragt. Die [statisch eingebundene Fassung](../worker/privacy-info-ui.ts) bildet den zur Einführung vorgesehenen Hinweis ab und ist ohne Anmeldung unter `/datenschutz` erreichbar, **sobald** ein entsprechender Release tatsächlich genehmigt und ausgeliefert ist. Die Nutzerseite enthält keine internen Checklisten.
+
+**Zweckbezogene Festlegung auf den dokumentierten, privaten Mitgliederbetrieb:**
+- **Art. 6 Abs. 1 lit. b DSGVO** für nach dem Mitgliedschafts-/Teilnahmeverhältnis objektiv erforderliche Mitglieds-, Gruppen-, Anmeldungs- und Anwesenheitsdaten. Keine aus der Mitgliedschaft abgeleitete pauschale Erlaubnis für beliebige Analysen.
+- **Art. 6 Abs. 1 lit. f DSGVO** für verhältnismäßige Sicherheits-/Berechtigungs- und Auditprotokolle sowie zusätzliche, auf Trainingsorganisation begrenzte fachliche Auswertungen; Zweck ist ein sicherer und sinnvoll organisierter Vereinsbetrieb. Maßnahmen zur Interessenwahrung: rollen-/gruppengebundener Zugriff, keine öffentlichen Listen, zeitbegrenzte Aufbewahrungsziele, minimierte Freitexte, keine private Minderjährigenmedien und Betroffenenrechte. Kinderinteressen haben erhöhtes Gewicht; Verhältnismäßigkeit bei konkreter Nutzung prüfen.
+- **Eltern/gesetzliche Vertreter**, auch wenn sie selbst keine Mitglieder sind: notwendige Kontaktaufnahme und Betreuung minderjähriger Mitglieder nur mit zweckbezogener Minimierung und Informationspflichten; Art. 6 Abs. 1 lit. f gesondert mit Interessenabwägung, keine Annahme eines Eltern-Mitgliedschaftsvertrags.
+- **Art. 9 Daten** (z. B. Diagnosen) und private Medien **nicht freigeschaltet**. Einwilligung wird nicht als pauschale Mitgliedschaftsvoraussetzung verlangt. Freigabe zusätzlicher Zwecke nur in neuem, eigenständigem Entscheid.
+
+**Wichtige technische/rechtliche Abgrenzung – nicht als stillschweigende Freigabe behandeln:** Die Dokumentations-/Oberflächenarbeit schaltet keine personenbezogenen Produktionsschreibwege frei. Provider-/Drittland-DPA-Belege gehören zu T01, der echte Lösch- und Backup-/Restore-Horizont zu T03/T04. **Die tatsächliche App-Veröffentlichung, Information der Eltern/Trainer und Nachweis der Zustellung sind mit dem späteren explizit freizugebenden Start T11 gekoppelt.** Die Fakten in der final veröffentlichten Fassung sind vorher mit T01/T03/T04 abzugleichen. `privacy=blocked` bleibt bis dahin unverändert. Die in den folgenden internen Prüfpunkten verbleibenden Fragen sind kein Auftrag für erneute Grundsatzrunden über bereits bestätigte Vereinsmitgliedschaft oder Kontakte.
+
 ## 1. Wer ist verantwortlich, und an wen kann ich mich wenden?
 
 **ULC Linz Oberbank**, Wieningerstraße 11, 4020 Linz, Österreich, ZVR **284674441** (öffentlicher Vereinsregister-/SPORTUNION-Eintrag).
