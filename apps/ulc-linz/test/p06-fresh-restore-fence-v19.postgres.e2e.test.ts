@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 /**
  * P06 v18 -> v19 forward migration / fresh-install recovery boundary.
- * Exactly the currently registered 46 owner migrations are rehearsed in a
+ * Exactly the currently registered 47 owner migrations are rehearsed in a
  * disposable localhost PostgreSQL 18 database. The historical v18 function
  * must be replaced by the identical live-approved v19 function.
  *
@@ -31,7 +31,7 @@ const NEIGHBOR = "p06-kept";
 const SESSION = "p06-session";
 const FOREIGN_SESSION = "p06-foreign-session";
 
-suite("P06 published 46-migration restore/fresh-install fencing", () => {
+suite("P06 published 47-migration restore/fresh-install fencing", () => {
   const admin = DATABASE_URL ? createPostgresDatabase(DATABASE_URL) : null;
   const name = "ulc_p06_v19_" + randomUUID().replaceAll("-", "").slice(0, 12);
   const isolated = DATABASE_URL ? new URL(DATABASE_URL) : null;
@@ -85,8 +85,8 @@ suite("P06 published 46-migration restore/fresh-install fencing", () => {
     const paths = manifest.owners.flatMap(o => o.migrations);
     const lifecycle = manifest.owners.find(o => o.id === "ulc-linz-lifecycle");
     const v19 = "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql";
-    if (manifest.owners.length !== 8 || paths.length !== 46 ||
-        new Set(paths).size !== 46 || lifecycle?.schemaVersion !== 19 ||
+    if (manifest.owners.length !== 8 || paths.length !== 47 ||
+        new Set(paths).size !== 47 || lifecycle?.schemaVersion !== 19 ||
         lifecycle.migrations.length !== 19 || paths.at(-1) !== v19 ||
         lifecycle.migrations[17] !==
           "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql") {
