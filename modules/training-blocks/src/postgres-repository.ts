@@ -766,6 +766,10 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
         throw new Error("Training block subject usage deletion marker blocks new writes.");
       }
 
+      // The subject advisory lock above serializes this read with canonical
+      // erasure. The (organization_id, id) unique key serializes competing
+      // inserts. FOR UPDATE here would require the ordinary app role to keep
+      // legacy UPDATE privileges after the least-privilege cutover.
       const stored = await transaction.unsafe(
         `SELECT u.id, u.organization_id, u.block_id,
                 u.occurred_at::text AS occurred_at,
@@ -774,8 +778,7 @@ export class PostgresTrainingBlockRepository implements TrainingBlockRepository 
          FROM appbasis_training_block_usage AS u
          LEFT JOIN appbasis_training_block_usage_subject AS owner
            ON owner.organization_id = u.organization_id AND owner.usage_id = u.id
-         WHERE u.organization_id = $1 AND u.id = $2
-         FOR UPDATE OF u`,
+         WHERE u.organization_id = $1 AND u.id = $2`,
         [organization, usageId],
       );
       if (stored.length > 1) throw new Error("Training block usage identity is ambiguous.");
