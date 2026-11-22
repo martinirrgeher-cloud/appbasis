@@ -3,6 +3,11 @@ import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning";
+import { PostgresTrainingBlockRepository } from "@appbasis/training-blocks";
+import {
+  assertUlcDedicatedBlockErasureRoleReady,
+  UlcBlockErasureRoleNotReadyError,
+} from "../worker/training-block-erasure-role-readiness";
 import {
   assertUlcProtectedCatalogProductionReadiness,
   UlcProtectedCatalogUnavailableError,
@@ -51,20 +56,30 @@ if (baseUrl) {
 describeLocal("P4 protected production role admission on real disposable 69-table PostgreSQL", () => {
   const admin = baseUrl ? createPostgresDatabase(baseUrl) : null;
   const secret = randomBytes(18).toString("hex");
+  const erasureSecret = randomBytes(18).toString("hex");
+  const erasureRole = "ulc_linz_erasure";
   const isolatedUrl = baseUrl ? new URL(baseUrl) : null;
   const appUrl = baseUrl ? new URL(baseUrl) : null;
+  const erasureUrl = baseUrl ? new URL(baseUrl) : null;
   if (isolatedUrl) isolatedUrl.pathname = "/" + databaseName;
   if (appUrl) {
     appUrl.pathname = "/" + databaseName;
     appUrl.username = applicationRole;
     appUrl.password = secret;
   }
+  if (erasureUrl) {
+    erasureUrl.pathname = "/" + databaseName;
+    erasureUrl.username = erasureRole;
+    erasureUrl.password = erasureSecret;
+  }
 
   type Database = ReturnType<typeof createPostgresDatabase>;
   let owner: Database | null = null;
   let app: Database | null = null;
+  let erasure: Database | null = null;
   let createdDatabase = false;
   let createdRole = false;
+  let createdErasureRole = false;
   function database(): Database {
     if (!owner) throw new Error("P4 disposable schema was not initialized.");
     return owner;
@@ -72,6 +87,10 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
   function ordinaryApp(): Database {
     if (!app) throw new Error("P4 disposable app principal was not initialized.");
     return app;
+  }
+  function erasureOwner(): Database {
+    if (!erasure) throw new Error("P4 isolated erasure role was not initialized.");
+    return erasure;
   }
   function adapter(connection: Database): UlcProtectedCatalogPreviewReadinessClient {
     return {
@@ -87,19 +106,28 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
   }
 
   beforeAll(async () => {
-    if (!admin || !isolatedUrl || !appUrl) throw new Error("Missing P4 localhost connection.");
+    if (!admin || !isolatedUrl || !appUrl || !erasureUrl) {
+      throw new Error("Missing P4 localhost connection.");
+    }
     const existing = await admin.client.unsafe(
       "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1) AS db, " +
-      "EXISTS(SELECT 1 FROM pg_roles WHERE rolname = $2) AS principal",
-      [databaseName, applicationRole],
+      "EXISTS(SELECT 1 FROM pg_roles WHERE rolname = $2) AS principal, " +
+      "EXISTS(SELECT 1 FROM pg_roles WHERE rolname = $3) AS erasure",
+      [databaseName, applicationRole, erasureRole],
     );
-    if (existing[0]?.db !== false || existing[0]?.principal !== false) {
+    if (existing[0]?.db !== false || existing[0]?.principal !== false ||
+        existing[0]?.erasure !== false) {
       throw new Error("P4 refuses an existing database or login role: no destructive reuse.");
     }
     await admin.client.unsafe(
       "CREATE ROLE " + applicationRole + " LOGIN PASSWORD '" + secret + "'",
     );
     createdRole = true;
+    await admin.client.unsafe(
+      "CREATE ROLE " + erasureRole +
+      " LOGIN NOINHERIT PASSWORD '" + erasureSecret + "'",
+    );
+    createdErasureRole = true;
     await admin.client.unsafe("CREATE DATABASE " + databaseName);
     createdDatabase = true;
     owner = createPostgresDatabase(isolatedUrl.toString());
@@ -150,7 +178,22 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
       );
     }
 
+    // Dedicated owner-specific privileges. Erasure never runs with the broad
+    // migration database owner or the HTTP application's SQL identity.
+    await database().client.unsafe(
+      "GRANT USAGE ON SCHEMA public TO " + erasureRole,
+    );
+    for (const [operations, table] of [
+      ["SELECT, DELETE", "appbasis_training_block_usage"],
+      ["SELECT", "appbasis_training_block_usage_subject"],
+      ["SELECT, INSERT, UPDATE", "appbasis_training_block_usage_subject_deletion"],
+    ] as const) {
+      await database().client.unsafe(
+        "GRANT " + operations + " ON public." + table + " TO " + erasureRole,
+      );
+    }
     app = createPostgresDatabase(appUrl.toString());
+    erasure = createPostgresDatabase(erasureUrl.toString());
     const current = await ordinaryApp().client.unsafe(
       "SELECT current_database() AS database_name, current_user AS principal_name",
     );
@@ -162,6 +205,7 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
   afterAll(async () => {
     // Disconnect before a database drop. Never drop a pre-existing database.
     if (app) { await app.client.end(); app = null; }
+    if (erasure) { await erasure.client.end(); erasure = null; }
     if (owner) { await owner.client.end(); owner = null; }
     if (admin) {
       try {
@@ -173,11 +217,89 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
           await admin.client.unsafe("DROP ROLE " + applicationRole);
           createdRole = false;
         }
+        if (createdErasureRole) {
+          await admin.client.unsafe("DROP ROLE " + erasureRole);
+          createdErasureRole = false;
+        }
       } finally {
         await admin.client.end();
       }
     }
   }, 120_000);
+
+  it("admits only the dedicated erasure SQL user; rejects app and generic owner", async () => {
+    await expect(assertUlcDedicatedBlockErasureRoleReady(
+      adapter(erasureOwner()), "production",
+    )).resolves.toBeUndefined();
+    await expect(assertUlcDedicatedBlockErasureRoleReady(
+      adapter(ordinaryApp()), "production",
+    )).rejects.toBeInstanceOf(UlcBlockErasureRoleNotReadyError);
+    await expect(assertUlcDedicatedBlockErasureRoleReady(
+      adapter(database()), "production",
+    )).rejects.toBeInstanceOf(UlcBlockErasureRoleNotReadyError);
+  });
+
+  it("rejects partial INSERT grants on usage and attribution despite missing table grants", async () => {
+    const roleSql = adapter(erasureOwner());
+    const cases = [
+      ["appbasis_training_block_usage", "note"],
+      ["appbasis_training_block_usage_subject", "subject_id"],
+    ] as const;
+    for (const [table, column] of cases) {
+      const target = "public." + table;
+      await database().client.unsafe(
+        "GRANT INSERT (" + column + ") ON " + target + " TO " + erasureRole,
+      );
+      try {
+        const grants = await erasureOwner().client.unsafe(
+          "SELECT has_table_privilege(current_user,$1,'INSERT') AS full_table, " +
+          "has_any_column_privilege(current_user,$1,'INSERT') AS any_column",
+          [target],
+        );
+        expect(grants).toEqual([{ full_table: false, any_column: true }]);
+        await expect(assertUlcDedicatedBlockErasureRoleReady(
+          roleSql, "production",
+        )).rejects.toBeInstanceOf(UlcBlockErasureRoleNotReadyError);
+      } finally {
+        await database().client.unsafe(
+          "REVOKE INSERT (" + column + ") ON " + target + " FROM " + erasureRole,
+        );
+      }
+      await expect(assertUlcDedicatedBlockErasureRoleReady(
+        roleSql, "production",
+      )).resolves.toBeUndefined();
+    }
+  });
+
+  it("denies excess column UPDATE and foreign-table writes for erasure user", async () => {
+    const sql = adapter(erasureOwner());
+    await database().client.unsafe(
+      "GRANT UPDATE (note) ON public.appbasis_training_block_usage TO " + erasureRole,
+    );
+    try {
+      await expect(assertUlcDedicatedBlockErasureRoleReady(sql, "production"))
+        .rejects.toBeInstanceOf(UlcBlockErasureRoleNotReadyError);
+    } finally {
+      await database().client.unsafe(
+        "REVOKE UPDATE (note) ON public.appbasis_training_block_usage FROM " + erasureRole,
+      );
+    }
+    await expect(assertUlcDedicatedBlockErasureRoleReady(sql, "production"))
+      .resolves.toBeUndefined();
+    await database().client.unsafe(
+      "GRANT INSERT ON public.ulc_linz_training_attendance TO " + erasureRole,
+    );
+    try {
+      await expect(assertUlcDedicatedBlockErasureRoleReady(sql, "production"))
+        .rejects.toBeInstanceOf(UlcBlockErasureRoleNotReadyError);
+    } finally {
+      await database().client.unsafe(
+        "REVOKE INSERT ON public.ulc_linz_training_attendance FROM " + erasureRole,
+      );
+    }
+    await expect(assertUlcDedicatedBlockErasureRoleReady(sql, "production"))
+      .resolves.toBeUndefined();
+  });
 
   it("allows all three production preflights together with real role, schema, ACLs and SQL triggers", async () => {
     const sql = adapter(ordinaryApp());
@@ -347,13 +469,28 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
       [org,usage],
     )).rejects.toThrow(/permission denied/i);
 
-    // Only the migration/lifecycle owner can perform actual erasure.
-    const deleted = await database().client.unsafe(
-      "DELETE FROM appbasis_training_block_usage WHERE organization_id=$1 " +
-      "AND id=$2 RETURNING id",
-      [org,usage],
+    // Only the separately scoped erasure role can perform actual erasure.
+    // This also creates the canonical 35-day marker in the SAME transaction.
+    const erased = await new PostgresTrainingBlockRepository(
+      erasureOwner().client,
+    ).markSubjectDeletedAndRemoveAttributedUsage(
+      org, "synthetic-athlete", new Date("2026-11-22T06:00:00.000Z"),
     );
-    expect(deleted).toEqual([{ id: usage }]);
+    expect(erased).toEqual({
+      markerInserted: true,
+      deletedUsageEvents: 1,
+    });
+    await expect(ordinaryApp().client.unsafe(
+      "DELETE FROM appbasis_training_block_usage_subject_deletion " +
+      "WHERE organization_id=$1 AND subject_id='synthetic-athlete'",
+      [org],
+    )).rejects.toThrow(/permission denied/i);
+    const markers = await database().client.unsafe(
+      "SELECT COUNT(*)::int AS count FROM appbasis_training_block_usage_subject_deletion " +
+      "WHERE organization_id=$1 AND subject_id='synthetic-athlete'",
+      [org],
+    );
+    expect(markers).toEqual([{ count: 1 }]);
     const attributed = await database().client.unsafe(
       "SELECT COUNT(*)::int AS count FROM appbasis_training_block_usage_subject " +
       "WHERE organization_id=$1",
