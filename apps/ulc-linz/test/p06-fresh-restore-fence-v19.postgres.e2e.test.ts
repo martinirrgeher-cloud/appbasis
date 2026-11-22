@@ -109,10 +109,10 @@ suite("P06 published 47-migration restore/fresh-install fencing", () => {
       throw new Error("P06 forward DDL deviates from exactly reviewed proposal.");
     }
 
-    // Recreate an actual pre-hotfix v18 state, then apply exactly the 46th
+    // Recreate an actual pre-hotfix v18 state, then apply exactly the 47th
     // registered migration. This also rehearses the full fresh-install order.
     for (let index = 0; index < paths.length; index++) {
-      if (index === 45) {
+      if (index === 46) {
         const old = await client().unsafe(
           "SELECT oid::text AS oid, prosrc AS source FROM pg_proc " +
           "WHERE oid='public.ulc_linz_training_subject_write_fence()'::regprocedure",
