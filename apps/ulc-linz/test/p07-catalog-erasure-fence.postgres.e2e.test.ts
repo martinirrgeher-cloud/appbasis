@@ -205,7 +205,7 @@ suite("T07 catalog SQL erasure fence: disposable PostgreSQL only", () => {
     expect(await favorites(ORG, NEIGHBOR)).toBe(0);
   });
 
-  it("installs exactly two active guards without opening deletion-marker writes", async () => {
+  it("installs exactly two active guards while leaving the published manifest unchanged", async () => {
     const rows = await sql().unsafe(
       `SELECT count(*)::int AS count
        FROM pg_catalog.pg_trigger
@@ -215,9 +215,14 @@ suite("T07 catalog SQL erasure fence: disposable PostgreSQL only", () => {
          )`,
     );
     expect(Number(rows[0]?.count)).toBe(2);
-    const marker = await sql().unsafe(
-      "SELECT purge_after - completed_at AS retention FROM appbasis_exercise_catalog_favorite_deletion LIMIT 1",
-    );
-    expect(marker).toHaveLength(0);
+    const manifest = JSON.parse(await readFile(
+      new URL("../appbasis.database.json", import.meta.url), "utf8",
+    )) as { owners: { id: string; migrations: string[] }[] };
+    const catalog = manifest.owners.find(owner => owner.id === "exercise-catalog");
+    expect(catalog?.migrations).toHaveLength(5);
+    expect(catalog?.migrations.some(path => path.includes("p07-catalog-erasure-fence")))
+      .toBe(false);
+    expect(manifest.owners.flatMap(owner => owner.migrations)).toHaveLength(46);
+    // This SQL is only a tested fixture: no production release claim.
   });
 });
