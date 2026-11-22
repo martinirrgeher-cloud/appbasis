@@ -124,8 +124,8 @@ describeLocal("P4 documentation real membership and capability SQL authorization
       new URL("../appbasis.database.json", import.meta.url), "utf8",
     )) as { owners: readonly { migrations: readonly string[] }[] };
     const files = manifest.owners.flatMap(x => x.migrations);
-    if (files.length !== 46 || new Set(files).size !== 46) {
-      throw new Error("P4 requires the exact current 46-migration manifest.");
+    if (files.length !== 47 || new Set(files).size !== 47) {
+      throw new Error("P4 requires the exact current 47-migration manifest.");
     }
     for (const file of files) {
       const body = await readFile(new URL("../../../" + file, import.meta.url), "utf8");
