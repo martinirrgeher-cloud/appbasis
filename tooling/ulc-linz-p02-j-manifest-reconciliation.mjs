@@ -31,6 +31,38 @@ function owner(manifest,id,version,count) {
 }
 
 export function buildUlc69ManifestProposal(appManifest,catalogModule) {
+  // The canonical ULC manifest now contains an additional catalog-v6 guard.
+  // To evaluate the historical v18/v5 44-file proposal, project only that
+  // exact, last module-owner migration out first; never modify caller inputs
+  // or silently accept an unknown catalog migration.
+  if (appManifest?.application==="ulc-linz" &&
+      appManifest.manifestVersion===1 &&
+      appManifest.owners?.flatMap(x=>x.migrations??[]).length===47) {
+    const currentCatalog=appManifest.owners.filter(x=>x.id==="exercise-catalog");
+    const currentModule=catalogModule?.database;
+    const guard="modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql";
+    if (currentCatalog.length!==1 ||
+        currentCatalog[0].schemaVersion!==6 ||
+        currentCatalog[0].migrations.length!==6 ||
+        currentCatalog[0].migrations.at(-1)!==guard ||
+        catalogModule?.moduleId!=="exercise-catalog" ||
+        currentModule?.schemaVersion!==6 ||
+        currentModule.migrations?.length!==6 ||
+        currentModule.migrations.at(-1)!==guard ||
+        JSON.stringify(currentCatalog[0].migrations)!==
+          JSON.stringify(currentModule.migrations)) {
+      block("canonical catalog v6 forward migration drift");
+    }
+    const olderApp=structuredClone(appManifest);
+    const olderModule=structuredClone(catalogModule);
+    const ownerCatalog=olderApp.owners.find(x=>x.id==="exercise-catalog");
+    ownerCatalog.schemaVersion=5;
+    ownerCatalog.migrations.pop();
+    olderModule.database.schemaVersion=5;
+    olderModule.database.migrations.pop();
+    appManifest=olderApp;
+    catalogModule=olderModule;
+  }
   // P1 historical publication: preserve the original 41→44 proposal,
   // even after the 45th P02 tombstone-guard migration is registered.
   // Pin the single additional owner migration explicitly, then project
