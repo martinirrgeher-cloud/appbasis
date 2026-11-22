@@ -42,7 +42,7 @@ if (!databaseUrl) {
       )) as { owners: readonly { migrations: readonly string[] }[] };
       const installed = manifest.owners.flatMap((owner) => owner.migrations);
       const candidate = "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql";
-      // Calendar v17 is published in the 46-file v19 chain. Install
+      // Calendar v17 is published in the 47-file v19/catalog-v6 chain. Install
       // every canonical migration ONCE in this disposable database, including
       // the forward-only post-v18 training-subject fence reconciliation.
       // Never replay the historical candidate on an existing Preview.
@@ -50,8 +50,8 @@ if (!databaseUrl) {
         "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql";
       const restoredFence =
         "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql";
-      if (!installed.includes(candidate) || installed.length !== 46 ||
-          new Set(installed).size !== 46 ||
+      if (!installed.includes(candidate) || installed.length !== 47 ||
+          new Set(installed).size !== 47 ||
           installed.indexOf(candidate) !== installed.indexOf(originalFence) - 1 ||
           installed.indexOf(restoredFence) !== installed.indexOf(originalFence) + 1 ||
           installed.at(-1) !== restoredFence) {
