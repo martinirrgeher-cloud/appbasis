@@ -38,13 +38,14 @@
     {
       "id": "exercise-catalog",
       "root": "modules/exercise-catalog",
-      "schemaVersion": 5,
+      "schemaVersion": 6,
       "migrations": [
         "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
         "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql",
         "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql",
         "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql",
-        "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql"
+        "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql",
+        "modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql"
       ]
     },
     {
