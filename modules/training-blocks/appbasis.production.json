@@ -44,8 +44,12 @@
         "gitBlobSha": "629697a68e9959fedecba7e68e1fa7939c636b49"
       },
       {
+        "path": "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql",
+        "gitBlobSha": "5bdb1ce99b0e12754a4563e377773b7796a13c22"
+      },
+      {
         "path": "modules/training-blocks/test/postgres-repository.postgres.e2e.ts",
-        "gitBlobSha": "b715e53f1af8f04ee5b8bf3ed90b54452ab285d1"
+        "gitBlobSha": "c21f20edd4875a434001b6a97f52a45edd753b58"
       }
     ],
     "lifecycle": []
