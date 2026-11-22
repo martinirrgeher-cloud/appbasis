@@ -218,17 +218,18 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     assert.equal(blocks.migrations.at(-1), laterGuard);
     assert.equal(owner.schemaVersion, 19);
     assert.equal(owner.migrations.length, 19);
-    assert.equal(catalog.schemaVersion, 5);
-    assert.equal(catalog.migrations.length, 5);
+    assert.equal(catalog.schemaVersion, 6);
+    assert.equal(catalog.migrations.length, 6);
     const additions = [
       "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql",
+      "modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql",
       "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
       "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
       "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql",
     ];
-    assert.equal(publishedPlan.length, 46);
-    assert.equal(catalog.migrations.at(-1), additions[0]);
-    assert.deepEqual(owner.migrations.slice(-3), additions.slice(1));
+    assert.equal(publishedPlan.length, 47);
+    assert.equal(catalog.migrations.at(-1), additions[1]);
+    assert.deepEqual(owner.migrations.slice(-3), additions.slice(2));
     assert.deepEqual(
       publishedPlan.filter((p) => additions.includes(p.relativePath))
         .map((p) => p.relativePath),
@@ -236,7 +237,7 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
     );
     // Synthetic historical v16 dump: run only the original 41 migration
     // sources. The later v7 guard did not exist in this historical schema.
-    // The live v19/v5 and training-block v7 manifest is never downgraded.
+    // The current v19/v6 and training-block v7 manifest is never downgraded.
     const plan = publishedPlan.filter((p) =>
       !additions.includes(p.relativePath) && p.relativePath !== laterGuard);
     assert.equal(plan.length, 41);
