@@ -1,3 +1,5 @@
+> **P2-CUTOVER STATUS 20.11.2026: PASS.** Der nachfolgende Text ist die ursprüngliche Vorabplanung und darf nicht mehr als aktueller Production-Zustand gelesen werden. **Production hat jetzt 69 Tabellen**, P2 51→69 wurde mit 91 SQL-Anweisungen in einer Transaktion abgeschlossen; 141/141 Alt-Datensätze und alle App-Rechte geprüft. Vollständige Umsetzung und Recovery-Nachweise: [P2 CUTOVER PASS](./PRODUCTION-READINESS-P2-CUTOVER-PASS-20261120.md). Kein Worker-Deployment, P3 benötigt gesonderte Freigabe.
+
 # ULC Linz P2 – Production-Migration: ausführungsreifer Plan, KEINE Freigabe
 
 **20.11.2026 | Vorbereitung im P1-PR #669 | Production-SQL: 0 Änderungen | Worker: kein Deployment.**
