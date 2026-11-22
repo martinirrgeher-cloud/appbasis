@@ -45,7 +45,7 @@ if (!databaseUrl) {
       // P1: calendar v17 is now registered with lifecycle v18. Install
       // each canonical file ONCE on the disposable database, never replay
       // the candidate on the existing Preview.
-      if (!installed.includes(candidate) || installed.length !== 44 ||
+      if (!installed.includes(candidate) || installed.length !== 45 ||
           installed.indexOf(candidate) !==
             installed.indexOf("apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql")-1) {
         throw new Error("G-04 published v17 calendar release manifest is incomplete.");
