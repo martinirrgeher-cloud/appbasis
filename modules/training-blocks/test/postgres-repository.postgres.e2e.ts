@@ -59,9 +59,15 @@ beforeAll(async () => {
       new URL("../migrations/0005_appbasis_training_block_usage_subject.sql", import.meta.url),
       "utf8",
     ),
+    readFile(
+      new URL("../migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql", import.meta.url),
+      "utf8",
+    ),
   ]);
   for (const migration of migrations) {
-    await requiredConnection().client.unsafe(migration);
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      if (statement.trim() !== "") await requiredConnection().client.unsafe(statement);
+    }
   }
 });
 
@@ -94,6 +100,64 @@ afterAll(async () => {
 });
 
 describe("training-blocks PostgreSQL repository", () => {
+  it("rejects direct SQL replay of deleted subject attribution without leaving orphan usage", async () => {
+    const connection = requiredConnection();
+    const service = serviceFor(connection, ["guarded-block"]);
+    const block = await service.create("org-raw-replay", { name: "Isolated replay guard" });
+    const repo = new PostgresTrainingBlockRepository(postgresClient(connection.client));
+    const input = {
+      event: {
+        id: "usage-before-erasure", organizationId: "org-raw-replay", blockId: block.id,
+        occurredAt: "2026-11-22T09:00:00.000Z", sourceKind: "training_plan" as const,
+        sourceRef: "synthetic:before", note: null,
+      },
+      subjectId: "subject-erased", sourcePlanId: "synthetic", sourceItemId: "before",
+    };
+    await repo.recordVerifiedSubjectUsageOnce(input);
+    await expect(repo.markSubjectDeletedAndRemoveAttributedUsage(
+      "org-raw-replay", "subject-erased", new Date("2026-11-22T09:15:00.000Z"),
+    )).resolves.toEqual({ markerInserted: true, deletedUsageEvents: 1 });
+
+    await expect(connection.client.begin(async tx => {
+      await tx.unsafe(
+        `INSERT INTO appbasis_training_block_usage
+           (organization_id,id,block_id,occurred_at,source_kind,source_ref,note)
+         VALUES ($1,$2,$3,now(),'training_plan','synthetic:direct-replay',NULL)`,
+        ["org-raw-replay", "usage-direct-replay", block.id],
+      );
+      await tx.unsafe(
+        `INSERT INTO appbasis_training_block_usage_subject
+           (organization_id,usage_id,subject_id,source_plan_id,source_item_id)
+         VALUES ($1,'usage-direct-replay',$2,'synthetic','direct-replay')`,
+        ["org-raw-replay", "subject-erased"],
+      );
+    })).rejects.toThrow(/blocked by a deletion marker/);
+
+    const state = await connection.client.unsafe(
+      `SELECT
+         (SELECT count(*)::int FROM appbasis_training_block_usage
+          WHERE organization_id='org-raw-replay') AS usage_count,
+         (SELECT count(*)::int FROM appbasis_training_block_usage_subject
+          WHERE organization_id='org-raw-replay') AS attribution_count,
+         (SELECT count(*)::int FROM appbasis_training_block_usage_subject_deletion
+          WHERE organization_id='org-raw-replay') AS marker_count`,
+    );
+    expect(state).toEqual([{ usage_count: 0, attribution_count: 0, marker_count: 1 }]);
+
+    await expect(repo.recordVerifiedSubjectUsageOnce({
+      ...input,
+      event: { ...input.event, id: "usage-neighbor", sourceRef: "synthetic:neighbor" },
+      subjectId: "subject-neighbor",
+      sourceItemId: "neighbor",
+    })).resolves.toBeDefined();
+
+    await expect(connection.client.unsafe(
+      `UPDATE appbasis_training_block_usage_subject
+          SET subject_id='subject-erased'
+        WHERE organization_id='org-raw-replay' AND usage_id='usage-neighbor'`,
+    )).rejects.toThrow(/blocked by a deletion marker/);
+  });
+
 
   it("inspects scoped attributable usage, not ambiguous legacy events", async () => {
     const connection = requiredConnection();

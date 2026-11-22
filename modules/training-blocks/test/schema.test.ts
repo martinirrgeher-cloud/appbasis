@@ -35,7 +35,23 @@ const deletionMigration = readFileSync(
   "utf8",
 );
 
+const tombstoneGuardMigration = readFileSync(
+  new URL("../migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql", import.meta.url),
+  "utf8",
+);
+
 describe("training-blocks schema", () => {
+  it("blocks direct SQL resurrection under the existing subject lifecycle lock", () => {
+    expect(tombstoneGuardMigration).toContain("BEFORE INSERT OR UPDATE");
+    expect(tombstoneGuardMigration).toContain("SECURITY INVOKER");
+    expect(tombstoneGuardMigration).toContain("pg_advisory_xact_lock");
+    expect(tombstoneGuardMigration).toContain("'training-block-usage-subject'");
+    expect(tombstoneGuardMigration).toContain("appbasis_training_block_usage_subject_deletion");
+    expect(tombstoneGuardMigration).toContain("23514");
+    expect(tombstoneGuardMigration).not.toContain("DELETE FROM");
+    expect(tombstoneGuardMigration).not.toContain("DROP TABLE");
+  });
+
   it("owns a bounded 35-day favorite deletion marker without cross-owner foreign keys", () => {
     expect(deletionMigration).toContain("CREATE TABLE appbasis_training_block_favorite_deletion");
     expect(deletionMigration).toContain("PRIMARY KEY (organization_id, principal_id)");
