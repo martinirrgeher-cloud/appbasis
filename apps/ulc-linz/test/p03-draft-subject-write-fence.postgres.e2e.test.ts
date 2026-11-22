@@ -134,12 +134,12 @@ if (!DATABASE_URL) {
       ) as Manifest;
       const migrations = manifest.owners.flatMap((owner) => owner.migrations);
       if (
-        migrations.length !== 46 ||
+        migrations.length !== 47 ||
         new Set(migrations).size !== migrations.length ||
         !migrations.some((p) => p.endsWith("0004_ulc_linz_training_sessions.sql")) ||
         !migrations.some((p) => p.endsWith("0008_ulc_linz_session_registration.sql"))
       ) {
-        throw new Error("P03-D requires exact 46-migration canonical ULC manifest.");
+        throw new Error("P03-D requires exact 47-migration canonical ULC manifest.");
       }
       for (const migration of migrations) {
         const sql = await readFile(new URL("../../../" + migration, import.meta.url), "utf8");
