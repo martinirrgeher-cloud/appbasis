@@ -43,8 +43,10 @@ const tombstoneGuardMigration = readFileSync(
 describe("training-blocks schema", () => {
   it("blocks direct SQL resurrection under the existing subject lifecycle lock", () => {
     expect(tombstoneGuardMigration).toContain("BEFORE INSERT OR UPDATE");
-    expect(tombstoneGuardMigration).toContain("SECURITY INVOKER");
-    expect(tombstoneGuardMigration).toContain("current_setting('transaction_isolation')");
+    expect(tombstoneGuardMigration).not.toContain("SECURITY DEFINER");
+    expect(tombstoneGuardMigration).toContain("REVOKE EXECUTE ON FUNCTION");
+    expect(tombstoneGuardMigration).toContain("BEFORE INSERT OR UPDATE OF organization_id, usage_id, subject_id, source_plan_id, source_item_id");
+    expect(tombstoneGuardMigration).toContain("pg_catalog.current_setting('transaction_isolation')");
     expect(tombstoneGuardMigration).toContain("READ COMMITTED");
     expect(tombstoneGuardMigration).toContain("pg_advisory_xact_lock");
     expect(tombstoneGuardMigration).toContain("'training-block-usage-subject'");
