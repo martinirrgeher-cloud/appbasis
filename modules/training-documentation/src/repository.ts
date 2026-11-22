@@ -138,12 +138,14 @@ export interface TrainingDocumentationRepository {
   ): Promise<TrainingDocumentationSnapshot | undefined>;
   create(
     documentation: TrainingDocumentationSnapshot,
+    authenticatedIdentityId?: string,
   ): Promise<TrainingDocumentationCreateResult>;
   appendRevision(
     organizationId: string,
     documentationId: string,
     expectedRevision: number,
     revision: TrainingDocumentationRevision,
+    authenticatedIdentityId?: string,
   ): Promise<TrainingDocumentationRevisionAppendResult>;
   listRevisions(
     organizationId: string,

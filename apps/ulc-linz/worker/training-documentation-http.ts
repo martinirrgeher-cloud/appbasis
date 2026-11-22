@@ -23,6 +23,7 @@ import {
 } from "./training-documentation-service";
 import { recordUlcLinzSecurityEvent } from "./security-events";
 import { ulcWriteLockConflictHttpResponse } from "./write-lock-conflict-http";
+import { UlcTrainingDocumentationActorWriteBlockedError } from "./training-documentation-write-actor";
 import type { GeneratedPostgresApplicationRuntime } from "./postgres";
 
 class InvalidTrainingDocumentationRequestError extends Error {}
@@ -80,6 +81,7 @@ export async function trainingDocumentationHttpResponse(
         documentationId,
         body.expectedRevision,
         body.input,
+        access.actorPrincipalId,
       );
       return documentation === undefined
         ? notFound()
@@ -99,23 +101,26 @@ export async function trainingDocumentationHttpResponse(
             access.organizationId,
             documentationId,
             expectedRevision,
+            access.actorPrincipalId,
           )
         : action === "complete"
           ? await service.complete(
               access.organizationId,
               documentationId,
               expectedRevision,
+              access.actorPrincipalId,
             )
           : await service.reopen(
               access.organizationId,
               documentationId,
               expectedRevision,
+              access.actorPrincipalId,
             );
     return documentation === undefined
       ? notFound()
       : privateJson({ documentation: clientDocumentation(documentation) });
   } catch (error) {
-    return errorResponse(error);
+    return mutationErrorResponse(error, runtime, access);
   }
 }
 
@@ -227,13 +232,14 @@ async function startResponse(
       access.organizationId,
       subjectId,
       sessionDate,
+      access.actorPrincipalId,
     );
     return privateJson(
       { documentation: clientDocumentation(documentation) },
       { status: 201 },
     );
   } catch (error) {
-    return errorResponse(error);
+    return mutationErrorResponse(error, runtime, access);
   }
 }
 
@@ -502,9 +508,30 @@ function clientPlan(plan: TrainingPlanSnapshot): Readonly<Record<string, unknown
   });
 }
 
+function mutationErrorResponse(
+  error: unknown,
+  runtime: GeneratedPostgresApplicationRuntime,
+  access: Readonly<{ organizationId: string; actorPrincipalId: string }>,
+): Response {
+  if (error instanceof UlcTrainingDocumentationActorWriteBlockedError) {
+    recordUlcLinzSecurityEvent(runtime.securityEvents, {
+      eventType: "authorization.denied",
+      actorPrincipalId: access.actorPrincipalId,
+      organizationId: access.organizationId,
+      action: "edit",
+      targetId: "training_documentation",
+      reasonCode: "capability-denied",
+    });
+  }
+  return errorResponse(error);
+}
+
 function errorResponse(error: unknown): Response {
   const transient = ulcWriteLockConflictHttpResponse(error);
   if (transient !== null) return transient;
+  if (error instanceof UlcTrainingDocumentationActorWriteBlockedError) {
+    return scopeDenied();
+  }
   if (error instanceof TrainingDocumentationConflictError) {
     return Response.json(
       {

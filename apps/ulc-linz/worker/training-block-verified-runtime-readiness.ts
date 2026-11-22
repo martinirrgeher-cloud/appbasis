@@ -117,11 +117,27 @@ async function assertVerifiedBlockUsageReadiness(
               has_table_privilege(current_user,
                 'public.appbasis_training_block_usage_subject', 'SELECT')
             END AS may_read_subject,
+          CASE WHEN to_regclass('public.appbasis_training_block_usage_subject') IS NULL
+            THEN true ELSE
+              (has_table_privilege(current_user,
+                'public.appbasis_training_block_usage_subject', 'UPDATE,DELETE,TRUNCATE')
+                OR has_any_column_privilege(current_user,
+                  'public.appbasis_training_block_usage_subject', 'UPDATE'))
+            END AS may_mutate_attributed_subject_usage,
           CASE WHEN to_regclass('public.appbasis_training_block_usage_subject_deletion') IS NULL
             THEN false ELSE
               has_table_privilege(current_user,
                 'public.appbasis_training_block_usage_subject_deletion', 'SELECT')
             END AS may_read_deletion,
+          CASE WHEN to_regclass('public.appbasis_training_block_usage_subject_deletion') IS NULL
+            THEN true ELSE
+              (has_table_privilege(current_user,
+                'public.appbasis_training_block_usage_subject_deletion', 'INSERT,UPDATE,DELETE,TRUNCATE')
+                OR has_any_column_privilege(current_user,
+                  'public.appbasis_training_block_usage_subject_deletion', 'INSERT')
+                OR has_any_column_privilege(current_user,
+                  'public.appbasis_training_block_usage_subject_deletion', 'UPDATE'))
+            END AS may_mutate_deletion_marker,
           CASE WHEN to_regclass('public.appbasis_training_block_usage') IS NULL
             THEN false ELSE
               has_table_privilege(current_user,
@@ -176,7 +192,9 @@ async function assertVerifiedBlockUsageReadiness(
         row.deletion_table_exists !== true ||
         row.may_insert_subject !== true ||
         row.may_read_subject !== true ||
+        row.may_mutate_attributed_subject_usage !== false ||
         row.may_read_deletion !== true ||
+        row.may_mutate_deletion_marker !== false ||
         row.may_insert_usage !== true ||
         row.may_read_plan !== true ||
         row.may_read_plan_revision !== true ||

@@ -78,7 +78,7 @@ export function createUlcLinzTrainingDocumentationAccessService({
       action,
     );
     const rows = await sql.unsafe(
-      `SELECT organization_id, source_role, subject_id, active
+      `SELECT organization_id, source_role, subject_id, active, ended_at
        FROM ulc_linz_membership
        WHERE identity_id = $1`,
       [identityId],
@@ -100,7 +100,9 @@ export function createUlcLinzTrainingDocumentationAccessService({
       identityId,
       action,
     );
-    if (row.active !== true) {
+    // A row that is still flagged active but has an end timestamp must not
+    // regain access through stale permissions or a mismatched resolver.
+    if (row.active !== true || row.ended_at !== null) {
       deny(
         securityEvents,
         identityId,

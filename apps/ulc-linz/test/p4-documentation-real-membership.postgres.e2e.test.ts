@@ -4,6 +4,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning";
 import { PostgresPermissionStore } from "@appbasis/permissions";
+import {
+  PostgresTrainingDocumentationRepository,
+  TrainingDocumentationService,
+} from "@appbasis/training-documentation";
 
 import {
   createUlcLinzTrainingDocumentationAccessService,
@@ -13,6 +17,10 @@ import {
   type UlcLinzCurrentIdentity,
 } from "../worker/authorization";
 import { PostgresUlcLinzScopePersistence } from "../worker/scope-persistence";
+import {
+  assertUlcLiveTrainingDocumentationActor,
+  UlcTrainingDocumentationActorWriteBlockedError,
+} from "../worker/training-documentation-write-actor";
 
 /**
  * Genuine SQL membership, role, capability, revoke and subject-scope decisions
@@ -213,6 +221,34 @@ describeLocal("P4 documentation real membership and capability SQL authorization
       .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
   });
 
+  it("enforces the real membership lifecycle CHECK and denies correctly ended accounts", async () => {
+    const person = await member("trainer");
+    // The persisted table already prevents the inconsistent state. Never
+    // bypass its constraint merely to exercise a hypothetical stale row.
+    await expect(db().client.unsafe(
+      `UPDATE ulc_linz_membership SET ended_at=now()
+       WHERE identity_id=$1 AND active=true`, [person.id],
+    )).rejects.toThrow(/ulc_linz_membership_lifecycle_state_check/);
+
+    // The failed statement is atomic; an otherwise active account remains
+    // usable until a legitimate lifecycle transition deactivates it.
+    const active = await new PostgresUlcLinzScopePersistence(db().client)
+      .resolveMembership({ identityId: person.id, organizationId: person.org });
+    expect(active?.active).toBe(true);
+
+    await db().client.unsafe(
+      `UPDATE ulc_linz_membership SET active=false, ended_at=now()
+       WHERE identity_id=$1`, [person.id],
+    );
+    const ended = await new PostgresUlcLinzScopePersistence(db().client)
+      .resolveMembership({ identityId: person.id, organizationId: person.org });
+    expect(ended?.active).toBe(false);
+    await expect(access().assertViewAccess(current(person.id)))
+      .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+    await expect(access().assertEditAccess(current(person.id)))
+      .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
+  });
+
   it("rejects SQL role drift from canonical source membership", async () => {
     const person = await member("trainer");
     await db().client.unsafe(
@@ -252,15 +288,135 @@ describeLocal("P4 documentation real membership and capability SQL authorization
       .rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
   });
 
-  it("never stores a training-documentation row during this identity/permission rehearsal", async () => {
-    for (const table of [
-      "appbasis_training_documentation",
-      "appbasis_training_documentation_revision",
-    ]) {
-      const row = await db().client.unsafe(
-        "SELECT COUNT(*)::int AS count FROM public." + table,
-      );
-      expect(row[0]?.count).toBe(0);
-    }
+  it("rechecks a real trainer's SQL role and blocks a later direct revoke in the same write transaction", async () => {
+    const person = await member("trainer");
+    const scope = {
+      organizationId: person.org,
+      subjectId: "synthetic-p4-target",
+      authenticatedIdentityId: person.id,
+    };
+    await expect(db().client.begin(async transaction =>
+      assertUlcLiveTrainingDocumentationActor(transaction, scope),
+    )).resolves.toBeUndefined();
+
+    await db().client.unsafe(
+      `INSERT INTO appbasis_permission_principal_revoke(principal_id,capability_id)
+       VALUES ($1,'ulc-linz:module:training_documentation:edit')`, [person.id],
+    );
+    await expect(db().client.begin(async transaction =>
+      assertUlcLiveTrainingDocumentationActor(transaction, scope),
+    )).rejects.toBeInstanceOf(UlcTrainingDocumentationActorWriteBlockedError);
+  });
+
+  it("blocks an in-flight canonical role mutation while the SQL actor write holds its principal lock", async () => {
+    const person = await member("trainer");
+    await db().client.begin(async transaction => {
+      await assertUlcLiveTrainingDocumentationActor(transaction, {
+        organizationId: person.org,
+        subjectId: "synthetic-p4-target",
+        authenticatedIdentityId: person.id,
+      });
+      await expect(db().client.begin(async concurrent => {
+        await concurrent.unsafe("SET LOCAL lock_timeout = '120ms'");
+        await concurrent.unsafe(
+          "SELECT principal_id FROM appbasis_permission_principal " +
+          "WHERE principal_id=$1 FOR UPDATE",
+          [person.id],
+        );
+      })).rejects.toThrow(/lock timeout/i);
+    });
+  });
+
+  it("admits only the athlete's own subject with a persisted self-scope row", async () => {
+    const person = await member("athlete");
+    const scope = {
+      organizationId: person.org,
+      subjectId: person.subject,
+      authenticatedIdentityId: person.id,
+    };
+    await expect(db().client.begin(async transaction =>
+      assertUlcLiveTrainingDocumentationActor(transaction, scope),
+    )).rejects.toBeInstanceOf(UlcTrainingDocumentationActorWriteBlockedError);
+    await db().client.unsafe(
+      `INSERT INTO ulc_linz_subject_scope
+       (identity_id,organization_id,subject_id,relation_type)
+       VALUES ($1,$2,$3,'self')`, [person.id, person.org, person.subject],
+    );
+    await expect(db().client.begin(async transaction =>
+      assertUlcLiveTrainingDocumentationActor(transaction, scope),
+    )).resolves.toBeUndefined();
+    await expect(db().client.begin(async transaction =>
+      assertUlcLiveTrainingDocumentationActor(transaction, {
+        ...scope, subjectId: "foreign-subject",
+      }),
+    )).rejects.toBeInstanceOf(UlcTrainingDocumentationActorWriteBlockedError);
+  });
+
+  it("atomically rejects a revoked trainer's next real document revision without saving data", async () => {
+    const person = await member("trainer");
+    const docs = new TrainingDocumentationService({
+      repository: new PostgresTrainingDocumentationRepository(db().client, {
+        writeGuard: assertUlcLiveTrainingDocumentationActor,
+      }),
+      createId: () => "p03-atomic-document-" + randomUUID(),
+      now: () => new Date("2026-11-21T10:00:00.000Z"),
+    });
+
+    const doc = await docs.create(person.org, {
+      subjectId: "p03-atomic-athlete",
+      sessionDate: "2026-11-21",
+      sourcePlanId: "p03-verified-source",
+      sourcePlanRevision: 1,
+    }, person.id);
+    expect(doc).toMatchObject({ currentRevision: 1, status: "draft" });
+
+    await db().client.unsafe(
+      `INSERT INTO appbasis_permission_principal_revoke(principal_id,capability_id)
+       VALUES ($1,'ulc-linz:module:training_documentation:edit')`,
+      [person.id],
+    );
+    await expect(docs.update(person.org, doc.id, 1, {
+      note: "Must not persist after revoke",
+    }, person.id)).rejects.toBeInstanceOf(
+      UlcTrainingDocumentationActorWriteBlockedError,
+    );
+    const revisions = await db().client.unsafe(
+      `SELECT COUNT(*)::int AS count
+       FROM appbasis_training_documentation_revision
+       WHERE organization_id=$1 AND documentation_id=$2`,
+      [person.org, doc.id],
+    );
+    expect(revisions).toEqual([{ count: 1 }]);
+    expect((await docs.findCurrent(person.org, doc.id))?.currentRevision).toBe(1);
+  });
+
+  it("rejects a real document INSERT without trusted HTTP actor, leaving no root", async () => {
+    const docs = new TrainingDocumentationService({
+      repository: new PostgresTrainingDocumentationRepository(db().client, {
+        writeGuard: assertUlcLiveTrainingDocumentationActor,
+      }),
+      createId: () => "p03-no-http-actor-" + randomUUID(),
+    });
+    const totalBefore = await db().client.unsafe(
+      "SELECT COUNT(*)::int AS count FROM appbasis_training_documentation",
+    );
+    await expect(docs.create("synthetic-p4-org", {
+      subjectId: "p03-denied-subject",
+      sessionDate: "2026-11-21",
+      sourcePlanId: "p03-denied-source",
+      sourcePlanRevision: 1,
+    })).rejects.toBeInstanceOf(UlcTrainingDocumentationActorWriteBlockedError);
+    const totalAfter = await db().client.unsafe(
+      "SELECT COUNT(*)::int AS count FROM appbasis_training_documentation",
+    );
+    expect(totalAfter).toEqual(totalBefore);
+  });
+
+  it("keeps test-created documentation explicitly revision-scoped", async () => {
+    const counts = await db().client.unsafe(
+      `SELECT (SELECT COUNT(*)::int FROM appbasis_training_documentation) AS roots,
+              (SELECT COUNT(*)::int FROM appbasis_training_documentation_revision) AS revisions`,
+    );
+    expect(counts).toEqual([{ roots: 1, revisions: 1 }]);
   });
 });

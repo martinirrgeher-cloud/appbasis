@@ -46,6 +46,7 @@ function service(input: {
   grants?: Array<ReturnType<typeof capabilityId>>;
   roleCapabilities?: Array<ReturnType<typeof capabilityId>>;
   active?: boolean;
+  endedAt?: string | null;
   related?: boolean;
 }) {
   const sourceRole = input.sourceRole ?? "trainer";
@@ -60,6 +61,7 @@ function service(input: {
           source_role: sourceRole,
           subject_id: sourceRole === "athlete" ? ATHLETE_ID : null,
           active: input.active ?? true,
+          ended_at: input.endedAt ?? null,
         },
       ];
     },
@@ -206,6 +208,18 @@ describe("ULC Linz training documentation access", () => {
     }).assertEditAccess(currentIdentity())).rejects.toBeInstanceOf(
       UlcLinzAuthorizationDeniedError,
     );
+  });
+
+  it("rejects an ended SQL membership even if active and capabilities still appear valid", async () => {
+    const view = capabilityId("ulc-linz:module:training_documentation:view");
+    await expect(
+      service({
+        sourceRole: "trainer",
+        grants: [view],
+        active: true,
+        endedAt: "2026-11-20T10:00:00.000Z",
+      }).assertViewAccess(currentIdentity()),
+    ).rejects.toBeInstanceOf(UlcLinzAuthorizationDeniedError);
   });
 
   it("denies parent and inactive memberships", async () => {

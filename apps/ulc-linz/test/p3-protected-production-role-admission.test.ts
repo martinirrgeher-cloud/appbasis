@@ -59,7 +59,9 @@ const block = Object.freeze({
   deletion_table_exists: true,
   may_insert_subject: true,
   may_read_subject: true,
+  may_mutate_attributed_subject_usage: false,
   may_read_deletion: true,
+  may_mutate_deletion_marker: false,
   may_insert_usage: true,
   may_read_plan: true,
   may_read_plan_revision: true,
@@ -158,6 +160,8 @@ describe("P3 production protected-writing admission is opt-in and fail-closed",(
       {catalog_subject_guard_exists:false},
       {catalog_favorite_guard_exists:false},
       {may_read_deletion:false},
+      {may_mutate_attributed_subject_usage:true},
+      {may_mutate_deletion_marker:true},
       {may_insert_subject:false},
       {may_insert_usage:false},
     ]){

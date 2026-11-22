@@ -59,6 +59,7 @@ import {
   normalizedPrivateVideoContentType,
   normalizedPrivateVideoFileName,
   privateExerciseVideoStorageKey,
+  readUlcPrivateExerciseMediaWithScope,
   resolveUlcExerciseCatalogObjectStore,
   ULC_EXERCISE_CATALOG_PRIVATE_VIDEO_MAX_BYTES,
 } from "./exercise-catalog-private-media";
@@ -4145,7 +4146,11 @@ async function exerciseCatalogPrivateMediaContent(
   ).find((entry) => entry.id === mediaId);
   if (media === undefined) return exerciseCatalogNotFound();
 
-  const stored = await store.get(media.storageKey, { range: request.headers });
+  // Never trust storageKey from SQL as a provider access target.
+  // Only the exact key derived from this authenticated tenant/request may be read.
+  const stored = await readUlcPrivateExerciseMediaWithScope({
+    organizationId, exerciseId, mediaId, media, store, range: request.headers,
+  });
   if (stored === null) return exerciseCatalogPrivateMediaUnavailable();
 
   const headers = new Headers({

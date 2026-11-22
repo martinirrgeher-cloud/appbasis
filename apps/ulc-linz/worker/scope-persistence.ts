@@ -87,7 +87,8 @@ export class PostgresUlcLinzScopePersistence
     const identityId = requiredIdentifier(input.identityId);
     const organizationId = requiredIdentifier(input.organizationId);
     const rows = await this.sql.unsafe(
-      `SELECT organization_id, source_role, active
+      `SELECT organization_id, source_role,
+              (active AND ended_at IS NULL) AS active
        FROM ulc_linz_membership
        WHERE identity_id = $1 AND organization_id = $2`,
       [identityId, organizationId],

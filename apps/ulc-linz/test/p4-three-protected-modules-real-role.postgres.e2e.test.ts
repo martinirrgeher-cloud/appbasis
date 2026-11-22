@@ -13,6 +13,10 @@ import {
   UlcVerifiedBlockUsageUnavailableError,
 } from "../worker/training-block-verified-runtime-readiness";
 import {
+  assertUlcLegacyBlockUsageRoleCutoverReady,
+  UlcLegacyBlockUsageCutoverNotReadyError,
+} from "../worker/training-block-legacy-rights-cutover";
+import {
   assertUlcTrainingDocumentationProductionReadiness,
   UlcTrainingDocumentationProductionUnavailableError,
 } from "../worker/training-documentation-production-readiness";
@@ -131,7 +135,7 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
       ["SELECT", "appbasis_exercise_catalog_favorite_deletion"],
       ["INSERT, SELECT", "appbasis_training_block_usage_subject"],
       ["SELECT", "appbasis_training_block_usage_subject_deletion"],
-      ["INSERT", "appbasis_training_block_usage"],
+      ["SELECT, INSERT", "appbasis_training_block_usage"],
       ["SELECT", "appbasis_training_plan"],
       ["SELECT", "appbasis_training_plan_revision"],
       ["SELECT", "appbasis_training_plan_revision_item"],
@@ -218,6 +222,186 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
       );
     }
     await expect(assertUlcProtectedCatalogProductionReadiness(sql)).resolves.toBeUndefined();
+  });
+
+  it("blocks unauthorized direct mutation grants on subject usage and its deletion marker", async () => {
+    const sql = adapter(ordinaryApp());
+    for (const [table, privilege] of [
+      ["appbasis_training_block_usage_subject", "DELETE"],
+      ["appbasis_training_block_usage_subject_deletion", "INSERT"],
+    ] as const) {
+      await database().client.unsafe(
+        "GRANT " + privilege + " ON public." + table + " TO " + applicationRole,
+      );
+      try {
+        await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
+          .rejects.toBeInstanceOf(UlcVerifiedBlockUsageUnavailableError);
+      } finally {
+        await database().client.unsafe(
+          "REVOKE " + privilege + " ON public." + table + " FROM " + applicationRole,
+        );
+      }
+      await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
+        .resolves.toBeUndefined();
+    }
+  });
+
+  it("rejects column-scoped mutation grants in both ACTIVE preview and production admission paths", async () => {
+    const sql = adapter(ordinaryApp());
+    const variants = [
+      ["appbasis_training_block_usage_subject", "UPDATE", "subject_id"],
+      ["appbasis_training_block_usage_subject_deletion", "INSERT", "subject_id"],
+      ["appbasis_training_block_usage_subject_deletion", "UPDATE", "purge_after"],
+    ] as const;
+    await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
+      .resolves.toBeUndefined();
+    for (const [table, operation, column] of variants) {
+      const target = "public." + table;
+      await database().client.unsafe(
+        "GRANT " + operation + " (" + column + ") ON " + target +
+        " TO " + applicationRole,
+      );
+      try {
+        const effective = await ordinaryApp().client.unsafe(
+          "SELECT has_table_privilege(current_user,$1,$2) AS table_level, " +
+          "has_any_column_privilege(current_user,$1,$2) AS column_effective",
+          [target, operation],
+        );
+        expect(effective).toEqual([{table_level:false,column_effective:true}]);
+        await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
+          .rejects.toBeInstanceOf(UlcVerifiedBlockUsageUnavailableError);
+      } finally {
+        await database().client.unsafe(
+          "REVOKE " + operation + " (" + column + ") ON " + target +
+          " FROM " + applicationRole,
+        );
+      }
+      await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
+        .resolves.toBeUndefined();
+    }
+  });
+
+  it("separates ordinary app INSERT from privileged legacy UPDATE and DELETE on real PostgreSQL", async () => {
+    const roleSql = adapter(ordinaryApp());
+    await expect(assertUlcLegacyBlockUsageRoleCutoverReady(
+      roleSql, "production",
+    )).resolves.toBeUndefined();
+
+    for (const privilege of ["UPDATE", "DELETE"]) {
+      // Deliberate privilege drift only in this disposable localhost database.
+      await database().client.unsafe(
+        "GRANT " + privilege + " ON public.appbasis_training_block_usage TO " +
+        applicationRole,
+      );
+      try {
+        await expect(assertUlcLegacyBlockUsageRoleCutoverReady(
+          roleSql, "production",
+        )).rejects.toBeInstanceOf(UlcLegacyBlockUsageCutoverNotReadyError);
+      } finally {
+        await database().client.unsafe(
+          "REVOKE " + privilege + " ON public.appbasis_training_block_usage FROM " +
+          applicationRole,
+        );
+      }
+      await expect(assertUlcLegacyBlockUsageRoleCutoverReady(
+        roleSql, "production",
+      )).resolves.toBeUndefined();
+    }
+
+    const org = "p4-role-cutover-club";
+    const block = "p4-role-cutover-block";
+    const usage = "p4-role-cutover-usage";
+    // Seed only a synthetic block in a disposable database, satisfying the
+    // deferred current-revision FK in the same transaction.
+    await database().client.begin(async tx => {
+      await tx.unsafe(
+        "INSERT INTO appbasis_training_block(id,organization_id) VALUES ($1,$2)",
+        [block,org],
+      );
+      await tx.unsafe(
+        `INSERT INTO appbasis_training_block_revision
+          (organization_id,block_id,revision,name)
+         VALUES ($1,$2,1,'Synthetic P4 block')`,
+        [org,block],
+      );
+    });
+    await ordinaryApp().client.unsafe(
+      `INSERT INTO appbasis_training_block_usage
+       (organization_id,id,block_id,occurred_at,source_kind,source_ref,note)
+       VALUES ($1,$2,$3,now(),'training_plan','synthetic-plan:item-1',NULL)`,
+      [org,usage,block],
+    );
+    await ordinaryApp().client.unsafe(
+      `INSERT INTO appbasis_training_block_usage_subject
+       (organization_id,usage_id,subject_id,source_plan_id,source_item_id)
+       VALUES ($1,$2,'synthetic-athlete','synthetic-plan','item-1')`,
+      [org,usage],
+    );
+    await expect(ordinaryApp().client.unsafe(
+      "UPDATE appbasis_training_block_usage SET note='forbidden' " +
+      "WHERE organization_id=$1 AND id=$2",
+      [org,usage],
+    )).rejects.toThrow(/permission denied/i);
+    await expect(ordinaryApp().client.unsafe(
+      "DELETE FROM appbasis_training_block_usage WHERE organization_id=$1 AND id=$2",
+      [org,usage],
+    )).rejects.toThrow(/permission denied/i);
+
+    // Only the migration/lifecycle owner can perform actual erasure.
+    const deleted = await database().client.unsafe(
+      "DELETE FROM appbasis_training_block_usage WHERE organization_id=$1 " +
+      "AND id=$2 RETURNING id",
+      [org,usage],
+    );
+    expect(deleted).toEqual([{ id: usage }]);
+    const attributed = await database().client.unsafe(
+      "SELECT COUNT(*)::int AS count FROM appbasis_training_block_usage_subject " +
+      "WHERE organization_id=$1",
+      [org],
+    );
+    expect(attributed).toEqual([{ count: 0 }]);
+  });
+
+  it("detects column-level grants which table-only UPDATE/INSERT checks would miss", async () => {
+    const roleSql = adapter(ordinaryApp());
+    const examples = [
+      ["appbasis_training_block_usage", "UPDATE", "note"],
+      ["appbasis_training_block_usage_subject", "UPDATE", "subject_id"],
+      ["appbasis_training_block_usage_subject_deletion", "INSERT", "subject_id"],
+      ["appbasis_training_block_usage_subject_deletion", "UPDATE", "purge_after"],
+    ] as const;
+    for (const [table, operation, column] of examples) {
+      const target = "public." + table;
+      // The ordinary application has no table-level grant on these
+      // operations; the deliberately added single-column grant is sufficient
+      // to make the data mutation possible and must be detected.
+      await database().client.unsafe(
+        "GRANT " + operation + " (" + column + ") ON " +
+        target + " TO " + applicationRole,
+      );
+      try {
+        const effective = await ordinaryApp().client.unsafe(
+          "SELECT has_table_privilege(current_user,$1,$2) AS table_level, " +
+          "has_any_column_privilege(current_user,$1,$2) AS column_effective",
+          [target, operation],
+        );
+        expect(effective).toEqual([{
+          table_level: false,
+          column_effective: true,
+        }]);
+        await expect(assertUlcLegacyBlockUsageRoleCutoverReady(
+          roleSql, "production",
+        )).rejects.toBeInstanceOf(UlcLegacyBlockUsageCutoverNotReadyError);
+      } finally {
+        await database().client.unsafe(
+          "REVOKE " + operation + " (" + column + ") ON " +
+          target + " FROM " + applicationRole,
+        );
+      }
+      await expect(assertUlcLegacyBlockUsageRoleCutoverReady(
+        roleSql, "production",
+      )).resolves.toBeUndefined();
+    }
   });
 
   it("fails closed on training-block subject grant drift without disabling documentation", async () => {

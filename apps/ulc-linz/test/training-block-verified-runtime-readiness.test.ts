@@ -24,7 +24,9 @@ interface ScopeRecord {
   readonly deletion_table_exists: boolean;
   readonly may_insert_subject: boolean;
   readonly may_read_subject: boolean;
+  readonly may_mutate_attributed_subject_usage: boolean;
   readonly may_read_deletion: boolean;
+  readonly may_mutate_deletion_marker: boolean;
   readonly may_insert_usage: boolean;
   readonly may_read_plan: boolean;
   readonly may_read_plan_revision: boolean;
@@ -48,7 +50,9 @@ const BASE: ScopeRecord = {
   deletion_table_exists: true,
   may_insert_subject: true,
   may_read_subject: true,
+  may_mutate_attributed_subject_usage: false,
   may_read_deletion: true,
+  may_mutate_deletion_marker: false,
   may_insert_usage: true,
   may_read_plan: true,
   may_read_plan_revision: true,
@@ -102,6 +106,16 @@ describe("P02-C verified plan/block runtime preflight", () => {
     expect(sql.queries[1]).toContain("appbasis_training_block_usage_subject");
     expect(sql.queries[1]).toContain("appbasis_training_plan_revision_item");
     expect(sql.queries[1]).toContain("appbasis_training_block_usage_subject_deletion");
+    expect(sql.queries[1]).toContain("may_mutate_attributed_subject_usage");
+    expect(sql.queries[1]).toContain("may_mutate_deletion_marker");
+    expect(sql.queries[1]).toContain(
+      "has_any_column_privilege(current_user,");
+    expect(sql.queries[1]).toContain(
+      "'public.appbasis_training_block_usage_subject', 'UPDATE'");
+    expect(sql.queries[1]).toContain(
+      "'public.appbasis_training_block_usage_subject_deletion', 'INSERT'");
+    expect(sql.queries[1]).toContain(
+      "'public.appbasis_training_block_usage_subject_deletion', 'UPDATE'");
     expect(sql.queries[1]).toContain("appbasis_exercise_catalog_favorite_deletion");
     expect(sql.queries[1]).toContain("appbasis_exercise_catalog_usage_subject");
     expect(sql.queries[1]).toContain("ulc_linz_training_subject_deletion");
@@ -178,7 +192,9 @@ describe("P02-C verified plan/block runtime preflight", () => {
       { deletion_table_exists: false },
       { may_insert_subject: false },
       { may_read_subject: false },
+      { may_mutate_attributed_subject_usage: true },
       { may_read_deletion: false },
+      { may_mutate_deletion_marker: true },
       { may_insert_usage: false },
       { may_read_plan: false },
       { may_read_plan_revision: false },
