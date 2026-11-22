@@ -136,9 +136,9 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
       new URL("../appbasis.database.json", import.meta.url), "utf8",
     )) as { owners: readonly { migrations: readonly string[] }[] };
     const migrations = manifest.owners.flatMap(x => x.migrations);
-    if (migrations.length !== 45 || new Set(migrations).size !== 45 ||
+    if (migrations.length !== 46 || new Set(migrations).size !== 46 ||
       !migrations.some(x => x.endsWith("0017_ulc_linz_training_subject_write_fence.sql"))) {
-      throw new Error("P4 requires exactly the published 45-migration v18 manifest.");
+      throw new Error("P4 requires exactly the published 46-migration v18 manifest.");
     }
     for (const path of migrations) {
       const sql = await readFile(new URL("../../../" + path, import.meta.url), "utf8");

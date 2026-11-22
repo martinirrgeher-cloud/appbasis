@@ -2,6 +2,8 @@
 
 **Stand:** 22.11.2026 · **Nur Abstimmungs-/Prüfunterlage. Keine Datenschutzfreigabe, keine Aktivierung und kein Produktiv-Deploy.**
 
+**P06 Neuinstallation/Restore (nur technischer vorbereiteter Stand):** [Vorwärtsmigration v19 und fail-closed Runbook](./P06-RESTORE-V19-CHECKLIST.md). Die neue Migration ist kein automatisches Restore-GO; bestehende 8-Owner-/Provider-/Datenschutzbedingungen bleiben maßgeblich.
+
 **Aktualisierte, rein lesende Belegbasis (22.11.):** [Acht Daten-Owner, 69/69 Tabellen, aktuelle Cloudflare-/Databricks-Neon-Vertragsquellen und nur noch echte Restentscheidungen](./P05-ACHT-OWNER-UND-PROVIDER-FAKTEN-20261122.md). Sie ergänzt die bestehenden Betreiberentscheidungen, ersetzt aber **keine** rechtliche oder operative Freigabe. Keine erneuten Fragen zur bereits bestätigten offiziellen ULC-Kontoverwendung.
 
 ## A. Was bereits entschieden und bewiesen ist – nicht erneut abfragen

@@ -258,7 +258,7 @@ async function applyManifestMigrations(
     await readFile(new URL("../appbasis.database.json", import.meta.url), "utf8"),
   ) as DatabaseManifest;
   const migrations = manifest.owners.flatMap((owner) => owner.migrations);
-  if (migrations.length !== 45 || new Set(migrations).size !== migrations.length) {
+  if (migrations.length !== 46 || new Set(migrations).size !== migrations.length) {
     throw new Error("ULC lifecycle E2E requires the exact manifest-owned migration set.");
   }
   for (const migration of migrations) {
@@ -302,7 +302,8 @@ async function applyManifestMigrations(
       migration !== "apps/ulc-linz/migrations/0014_ulc_linz_youth_group_categories.sql" &&
       migration !== "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql" &&
       migration !== "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql" &&
-      migration !== "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql"
+      migration !== "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql" &&
+      migration !== "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql"
     ) {
       throw new Error("ULC lifecycle E2E encountered an unexpected migration owner.");
     }
