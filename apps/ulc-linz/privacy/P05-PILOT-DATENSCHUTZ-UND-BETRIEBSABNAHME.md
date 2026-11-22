@@ -10,6 +10,7 @@
 
 ## A. Was bereits entschieden und bewiesen ist – nicht erneut abfragen
 
+- **Fachliche Nutzerabgrenzung bestätigt am 22.11.2026:** Die App wird für **Vereinsmitglieder** geführt; Nichtmitglieder und Schnupperteilnehmer werden nicht als Athleten erfasst. Gesetzliche Vertreter können dennoch als Kontaktpersonen Nichtmitglieder sein. Diese Betreiberangabe ist keine automatische Freigabe sämtlicher Verarbeitungszwecke nach Art. 6 Abs. 1 lit. b DSGVO und kein unabhängiger Beleg für technische Registrierungssperren.
 - Die persönlich verwalteten Providerkonten werden laut Betreiberbestätigung **offiziell für ULC Linz** verwendet. Diese Entscheidung ist getroffen; formale Dokumentationspflichten sind davon zu unterscheiden. Keine persönlichen Konto-/Kontaktkennungen in diesem Repository veröffentlichen.
 - Zweckabhängige fachliche Zielregeln wurden am **14.11.2026** bestätigt. Kanonische Quelle: [P01-Fachentscheidung](./p01-operator-retention-candidate.json). **Keine neue Fristentscheidung und keine Aktivierung** dieser noch inaktiven Datei.
 - N03/N04/N05, die existierenden ULC-Anmelde-/Anwesenheits-/Planungstests, echter lokaler HTTP+PostgreSQL-End-to-End-Test, Produktiv-SQL-Readiness Katalog/Blöcke/Doku und privater Worker-Security-Smoke wurden bereits erfolgreich durchgeführt. Sie sollen nicht als komplette Testsuite erneut verlangt werden.
