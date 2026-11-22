@@ -19,7 +19,7 @@ Der nachfolgende Text darf **nicht** ohne Ergänzung und angemessene Prüfung ve
 
 > **Datenschutzinformation zur ULC-Linz-Trainings-App – Entwurf, nicht veröffentlicht**
 >
-> Verantwortlicher Verein: **ULC Linz** – [vollständige Vereinsbezeichnung, Anschrift und gültige Kontaktadresse ergänzen].
+> Verantwortlicher Verein laut veröffentlichtem SPORTUNION-Vereinsverzeichnis: **ULC Linz Oberbank**, Wieningerstraße 11, 4020 Linz, Österreich, ZVR **284674441**. Allgemeine Vereinsadresse: **office@ulc-linz.at**. Diese Kontaktdaten sind öffentlich verifiziert; **die Zuständigkeit der Adresse für App-Datenschutzanfragen und die genaue Betreiberbezeichnung sind vor Veröffentlichung ausdrücklich zu bestätigen**.
 >
 > Wir nutzen die vereinsinterne App zur Verwaltung berechtigter Benutzer, Athletinnen und Athleten, Trainingsgruppen und Trainer, zur Trainingsplanung, Anmeldung und Anwesenheit, Dokumentation sowie zur Vereinsstatistik. Dabei können Namen, Gruppenzugehörigkeiten, Anmeldungen, Anwesenheiten, Trainingsinhalte, Freitextnotizen und technische Sicherheitsprotokolle verarbeitet werden. Einzelne Daten betreffen Kinder und Jugendliche. Freie Gesundheitsangaben sollen nicht in gewöhnliche Notizfelder eingegeben werden.
 >
@@ -27,9 +27,15 @@ Der nachfolgende Text darf **nicht** ohne Ergänzung und angemessene Prüfung ve
 >
 > Zweckabhängige Speicherzielwerte sind vorgesehen: personenbezogene Vereins-/Zugangs- und Athletendaten grundsätzlich nur während des benötigten Zwecks, bei sachlicher Notwendigkeit maximal 12 Monate nach Austritt; personenbezogene Trainings-/Anmeldungs-/Anwesenheitsdaten maximal 24 Monate ab Trainingstag, soweit der Verein diesen Zweck rechtlich bestätigt; personenbezogene Freitexte nach 90 Tagen überprüfen bzw. entfernen, wenn nicht mehr benötigt; personenbezogene Nutzungsevents höchstens 12 Monate, falls ein gerechtfertigter Statistikzweck besteht. Das sind **fachliche Zielvorgaben und keine Behauptung einer bereits aktiven automatischen Löschung**. Gesetzliche Ausnahmen und frühere berechtigte Löschungen sind gesondert zu beurteilen.
 >
-> Betroffene bzw. ihre gesetzlichen Vertretungen können sich für Auskunft, Berichtigung, Löschung, Einschränkung, Widerspruch oder weitere anwendbare Datenschutzrechte an [Vereinskontakt ergänzen] wenden. Eine Beschwerde bei der österreichischen Datenschutzbehörde ist möglich.
+> Betroffene bzw. ihre gesetzlichen Vertretungen können sich für Auskunft, Berichtigung, Löschung, Einschränkung, Widerspruch oder weitere anwendbare Datenschutzrechte vorläufig an den veröffentlichten Vereinskontakt **office@ulc-linz.at** wenden – **vor Veröffentlichung muss der Verein bestätigen, dass dieser Kontakt Datenschutzanliegen zur App tatsächlich entgegennimmt**. Eine Beschwerde bei der österreichischen Datenschutzbehörde ist möglich.
 >
-> **Vor Veröffentlichung zwingend einzutragen/zu prüfen:** vollständige Verantwortlichen- und Kontaktangaben, die je Datenzweck anwendbare DSGVO-Rechtsgrundlage (z. B. konkret geprüfte vertragliche Erforderlichkeit, berechtigtes Interesse oder erforderliche Einwilligung; nicht pauschal behaupten), Informationen für Minderjährige/Eltern, Empfänger/Subprozessoren und etwaige Drittlandtransfers, tatsächliche Speicher- und Löschpraxis, Rechte-/Löschverfahren sowie gegebenenfalls datenschutzbeauftragte Ansprechstelle.
+> **Vor Veröffentlichung zwingend einzutragen/zu prüfen:** die veröffentlichten Vereins-/ZVR-Daten und tatsächliche datenschutzrechtliche Verantwortlichkeit sowie die Zuständigkeit des allgemeinen Vereinskontakts, die je Datenzweck anwendbare DSGVO-Rechtsgrundlage (z. B. konkret geprüfte vertragliche Erforderlichkeit, berechtigtes Interesse oder erforderliche Einwilligung; nicht pauschal behaupten), Informationen für Minderjährige/Eltern, Empfänger/Subprozessoren und etwaige Drittlandtransfers, tatsächliche Speicher- und Löschpraxis, Rechte-/Löschverfahren sowie gegebenenfalls datenschutzbeauftragte Ansprechstelle.
+
+### Öffentliche Vereinsquellen und bestehende Datenschutzseite (22.11.2026)
+
+- [SPORTUNION-Vereinseintrag ULC Linz Oberbank](https://sportunion.at/vereine/ulc-linz-oberbank/): aktueller öffentlich genannter Vereinssitz, allgemeine E-Mail und ZVR-Nr.; ergänzend [Vereinswebsite](https://www.ulc-linz.at/).
+- Die [bestehende Datenschutzerklärung der Vereinswebsite](https://www.ulc-linz.at/j/privacy) behandelt nach der heute öffentlich eingesehenen Fassung insbesondere **Google reCAPTCHA und Websiteanalyse**, nicht die Trainings-App, deren Cloudflare-/Neon-Flüsse und Athleten-/Anwesenheits-/Dokumentationsverarbeitung. Deshalb ersetzt sie **keine spezifische App-Betroffeneninformation**. Die bestehenden Website-Rechtsgrundlagen dürfen nicht ohne sachliche Prüfung auf die App übertragen werden.
+- Die öffentliche Kontaktinformation ist ein technischer Beleg; **keine neue Vereinsentscheidung oder rechtliche Aktivierung**. Nur die tatsächliche Datenschutzkontakt-Zuständigkeit und zweckbezogenen Rechtsgrundlagen bleiben beim Betreiber zur Bestätigung.
 
 ## C. Einmaliger Go-live-Entscheid statt mehrerer Mikrofreigaben
 
