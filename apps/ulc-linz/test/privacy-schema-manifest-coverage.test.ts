@@ -118,13 +118,13 @@ describe("ULC P01 declared-schema privacy inventory coverage (no DB writes)", ()
     expect(sort(inventory.persistentTables)).toEqual(sort(declarations));
   });
 
-  it("records the three newly published owner migrations and preserves the historical v10–v16 risk review", async () => {
+  it("records all four reviewed additions including the v7 guard, preserving historical v10–v16 risks", async () => {
     const inventory = await json<PrivacyInventory>(
       "../privacy/m5-data-inventory.json",
     );
     const review = inventory.repositorySchemaReview;
-    expect(review.newlyRecordedMigrations).toHaveLength(3);
-    expect(review.migrationChanges).toHaveLength(3);
+    expect(review.newlyRecordedMigrations).toHaveLength(4);
+    expect(review.migrationChanges).toHaveLength(4);
     expect(review.historyV16MigrationChanges).toHaveLength(7);
 
     for (const risk of review.migrationChanges) {
