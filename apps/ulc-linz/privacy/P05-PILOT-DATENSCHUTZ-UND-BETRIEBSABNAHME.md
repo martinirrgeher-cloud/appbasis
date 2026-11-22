@@ -2,7 +2,7 @@
 
 **Stand:** 22.11.2026 · **Nur Abstimmungs-/Prüfunterlage. Keine Datenschutzfreigabe, keine Aktivierung und kein Produktiv-Deploy.**
 
-**T02 App-Datenschutzinformation:** [vollständiger, noch nicht freigegebener Nutzer-/Eltern-/Trainerentwurf und Rechtsgrundlagenprüfung](./T02-APP-DATENSCHUTZINFORMATION-ENTWURF.md). Betreiberseitig ist `martin.irrgeher@gmail.com` als App-Datenschutzkontakt bestätigt; der bisherige vorläufige Vereinskontakt gilt nicht mehr für App-Anfragen. T02 erst nach fachlicher/rechtlicher Abnahme und Zustellnachweis als abgeschlossen markieren.
+**T02 App-Datenschutzinformation:** [vollständiger, noch nicht freigegebener Nutzer-/Eltern-/Trainerentwurf und Rechtsgrundlagenprüfung](./T02-APP-DATENSCHUTZINFORMATION-ENTWURF.md) sowie [verbindlich beschlossener Veröffentlichungs-/E-Mail-Informationsweg und Versandvorlage](./T02-INFORMATION-VEROEFFENTLICHUNG-UND-VERSAND.md). Betreiberseitig ist `martin.irrgeher@gmail.com` als App-Datenschutzkontakt bestätigt; der bisherige vorläufige Vereinskontakt gilt nicht mehr für App-Anfragen. Die dauerhaft in der App erreichbare Fassung und der einmalige E-Mail-Versand an Trainer/Eltern wurden als **Verfahren** am 22.11. bestätigt; **weder die App-Ansicht noch der Versand sind erfolgt**. T02 erst nach fachlicher/rechtlicher Abnahme, tatsächlicher Veröffentlichung und Zustellnachweis als abgeschlossen markieren.
 
 **P06 Neuinstallation/Restore (nur technischer vorbereiteter Stand):** [Vorwärtsmigration v19 und fail-closed Runbook](./P06-RESTORE-V19-CHECKLIST.md). Die neue Migration ist kein automatisches Restore-GO; bestehende 8-Owner-/Provider-/Datenschutzbedingungen bleiben maßgeblich.
 
