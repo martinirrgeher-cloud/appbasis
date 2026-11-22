@@ -136,16 +136,27 @@ export function evaluateUlcP02ParityInventory({ productionTables, previewTables 
  */
 export async function loadUlcP02ParityRehearsalPlan() {
   // This is intentionally a HISTORICAL 51→64→66→68 rehearsal.
-  // The canonical repository now publishes 46 files, including the new
+  // The canonical repository now publishes 47 files, including the new
   // training-block tombstone guard that was NOT part of that old snapshot.
   // Verify and remove only the exact post-41 published additions before
   // evaluating the original 41-file historical inventory.
   // Do not reinterpret the old catalog counts as today's production state.
   const latest = JSON.parse(await readFile(new URL(APP_MANIFEST, import.meta.url), "utf8"));
   // Fail closed against an unrecognized live manifest. Project exactly the
-  // appended v19 reconciliation back to the historic v18 publication before
+  // v6 catalog append and v19 reconciliation back to v18 before
   // deriving the older 41-file synthetic schema. Never execute that projection.
   const current = structuredClone(latest);
+  const v6Catalog = current.owners?.find(o=>o.id==="exercise-catalog");
+  const v6Guard = "modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql";
+  if (current?.owners?.flatMap(o=>o.migrations??[]).length!==47 ||
+      v6Catalog?.schemaVersion!==6 || v6Catalog?.migrations?.length!==6 ||
+      v6Catalog.migrations.at(-1)!==v6Guard) {
+    block("catalog v6 forward-security manifest drift");
+  }
+  // Reconcile exactly this security-only append into the prior v19/v5
+  // contract, then retain all historical v18 -> v16 -> 41 projections.
+  v6Catalog.migrations.pop();
+  v6Catalog.schemaVersion=5;
   const v19Owner = current.owners?.find(o=>o.id==="ulc-linz-lifecycle");
   const newest = "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql";
   if (current?.owners?.flatMap(o=>o.migrations??[]).length!==46 ||
