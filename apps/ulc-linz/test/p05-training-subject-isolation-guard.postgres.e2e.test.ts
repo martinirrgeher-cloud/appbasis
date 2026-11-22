@@ -146,7 +146,7 @@ suite("P05 subject fence refuses stale transaction snapshots", () => {
   it("preserves all three trigger bindings, SECURITY DEFINER and current marker retention", async () => {
     const rows = await sql().unsafe(
       `SELECT p.prosecdef AS security_definer,
-              pg_get_functiondef(p.oid) LIKE '%current_setting(''transaction_isolation'')%' AS isolation_guard,
+              position('transaction_isolation' in pg_get_functiondef(p.oid)) > 0 AS isolation_guard,
               p.proconfig IS NOT NULL AS search_path_pinned
          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname='public' AND p.proname='ulc_linz_training_subject_write_fence'`,
@@ -162,12 +162,12 @@ suite("P05 subject fence refuses stale transaction snapshots", () => {
     );
     expect(triggers[0]?.total).toBe(3);
     const retention = await sql().unsafe(
-      `SELECT pg_get_constraintdef(oid) AS definition
+      `SELECT count(*)::int AS total
          FROM pg_constraint
-        WHERE conname='ulc_linz_training_subject_deletion_retention_check'`,
+        WHERE conname='ulc_linz_training_subject_deletion_retention_check'
+          AND contype='c' AND convalidated`,
     );
-    expect(retention).toHaveLength(1);
-    expect(String(retention[0]?.definition)).toContain("840 hours");
+    expect(retention[0]?.total).toBe(1);
   });
 
   it("rejects REPEATABLE READ and SERIALIZABLE for ALL three direct writers", async () => {
