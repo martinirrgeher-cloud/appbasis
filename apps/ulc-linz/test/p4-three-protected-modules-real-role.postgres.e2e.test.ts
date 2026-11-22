@@ -164,6 +164,9 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
       ["INSERT, SELECT", "appbasis_training_block_usage_subject"],
       ["SELECT", "appbasis_training_block_usage_subject_deletion"],
       ["SELECT, INSERT", "appbasis_training_block_usage"],
+      // The verified writer resolves its block through INSERT ... SELECT;
+      // real production grants this exact read privilege to the app role.
+      ["SELECT", "appbasis_training_block"],
       ["SELECT", "appbasis_training_plan"],
       ["SELECT", "appbasis_training_plan_revision"],
       ["SELECT", "appbasis_training_plan_revision_item"],
