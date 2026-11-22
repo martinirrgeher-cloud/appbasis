@@ -15,7 +15,7 @@ import { PostgresUlcTrainingSubjectPrivacyInspector } from "../worker/training-s
 import { assessUlcP3CrossOwnerRestoreQuarantine } from "../worker/p3-cross-owner-restore-admission";
 
 /**
- * P3-C: real PostgreSQL 18, disposable isolated 46-migration/69-table schema.
+ * P3-C: real PostgreSQL 18, disposable isolated 47-migration/69-table schema.
  * This is NOT a live deletion, production grant, runtime handler or release
  * approval. The old P03 legacy-v16 vulnerability test remains untouched.
  */
@@ -96,9 +96,9 @@ if (!DATABASE_URL) {
       const manifest=JSON.parse(await readFile(new URL("../appbasis.database.json",import.meta.url),"utf8")) as
         {owners:readonly {migrations:readonly string[]}[]};
       const paths=manifest.owners.flatMap(o=>o.migrations);
-      if(paths.length!==46 || new Set(paths).size!==46 ||
+      if(paths.length!==47 || new Set(paths).size!==47 ||
         !paths.some(p=>p.endsWith("0017_ulc_linz_training_subject_write_fence.sql")))
-        throw new Error("P3-C needs the exact current 46-migration/69-table manifest");
+        throw new Error("P3-C needs the exact current 47-migration/69-table manifest");
       for(const path of paths){
         const sql=await readFile(new URL("../../../"+path,import.meta.url),"utf8");
         for(const statement of sql.split("--> statement-breakpoint")){
