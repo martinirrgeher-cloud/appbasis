@@ -210,6 +210,12 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
       "apps/ulc-linz/appbasis.database.json"), "utf8"));
     const owner = manifest.owners.find((entry) => entry.id === "ulc-linz-lifecycle");
     const catalog = manifest.owners.find((entry) => entry.id === "exercise-catalog");
+    const blocks = manifest.owners.find((entry) => entry.id === "training-blocks");
+    const laterGuard =
+      "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql";
+    assert.equal(blocks.schemaVersion, 7);
+    assert.equal(blocks.migrations.length, 7);
+    assert.equal(blocks.migrations.at(-1), laterGuard);
     assert.equal(owner.schemaVersion, 18);
     assert.equal(owner.migrations.length, 18);
     assert.equal(catalog.schemaVersion, 5);
@@ -219,7 +225,7 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
       "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
       "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
     ];
-    assert.equal(publishedPlan.length, 44);
+    assert.equal(publishedPlan.length, 45);
     assert.equal(catalog.migrations.at(-1), additions[0]);
     assert.deepEqual(owner.migrations.slice(-2), additions.slice(1));
     assert.deepEqual(
@@ -228,8 +234,10 @@ test("G-04.2f restores an actual v16 synthetic dump into a distinct empty Postgr
       additions,
     );
     // Synthetic historical v16 dump: run only the original 41 migration
-    // sources. The live v18/v5 manifest is never rewritten or downgraded.
-    const plan = publishedPlan.filter((p) => !additions.includes(p.relativePath));
+    // sources. The later v7 guard did not exist in this historical schema.
+    // The live v18/v5 and training-block v7 manifest is never downgraded.
+    const plan = publishedPlan.filter((p) =>
+      !additions.includes(p.relativePath) && p.relativePath !== laterGuard);
     assert.equal(plan.length, 41);
     assert.equal(plan.filter((p) => p.ownerId === "ulc-linz-lifecycle").length, 16);
     assert.equal(plan.filter((p) => p.ownerId === "exercise-catalog").length, 4);
