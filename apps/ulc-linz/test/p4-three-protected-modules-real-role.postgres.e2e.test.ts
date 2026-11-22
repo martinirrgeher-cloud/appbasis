@@ -239,6 +239,38 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
     )).rejects.toBeInstanceOf(UlcBlockErasureRoleNotReadyError);
   });
 
+  it("rejects partial INSERT grants on usage and attribution despite missing table grants", async () => {
+    const roleSql = adapter(erasureOwner());
+    const cases = [
+      ["appbasis_training_block_usage", "note"],
+      ["appbasis_training_block_usage_subject", "subject_id"],
+    ] as const;
+    for (const [table, column] of cases) {
+      const target = "public." + table;
+      await database().client.unsafe(
+        "GRANT INSERT (" + column + ") ON " + target + " TO " + erasureRole,
+      );
+      try {
+        const grants = await erasureOwner().client.unsafe(
+          "SELECT has_table_privilege(current_user,$1,'INSERT') AS full_table, " +
+          "has_any_column_privilege(current_user,$1,'INSERT') AS any_column",
+          [target],
+        );
+        expect(grants).toEqual([{ full_table: false, any_column: true }]);
+        await expect(assertUlcDedicatedBlockErasureRoleReady(
+          roleSql, "production",
+        )).rejects.toBeInstanceOf(UlcBlockErasureRoleNotReadyError);
+      } finally {
+        await database().client.unsafe(
+          "REVOKE INSERT (" + column + ") ON " + target + " FROM " + erasureRole,
+        );
+      }
+      await expect(assertUlcDedicatedBlockErasureRoleReady(
+        roleSql, "production",
+      )).resolves.toBeUndefined();
+    }
+  });
+
   it("denies excess column UPDATE and foreign-table writes for erasure user", async () => {
     const sql = adapter(erasureOwner());
     await database().client.unsafe(

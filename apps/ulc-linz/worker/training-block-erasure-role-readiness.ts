@@ -77,8 +77,10 @@ export async function assertUlcDedicatedBlockErasureRoleReady(
                has_table_privilege(current_user,
                  'public.appbasis_training_block_usage','DELETE')
                  AS can_delete_usage,
-               has_table_privilege(current_user,
+               (has_table_privilege(current_user,
                  'public.appbasis_training_block_usage','INSERT')
+                 OR has_any_column_privilege(current_user,
+                   'public.appbasis_training_block_usage','INSERT'))
                  AS can_insert_usage,
                (has_table_privilege(current_user,
                  'public.appbasis_training_block_usage','UPDATE')
@@ -91,8 +93,10 @@ export async function assertUlcDedicatedBlockErasureRoleReady(
                has_table_privilege(current_user,
                  'public.appbasis_training_block_usage_subject','SELECT')
                  AS can_select_attribution,
-               has_table_privilege(current_user,
+               (has_table_privilege(current_user,
                  'public.appbasis_training_block_usage_subject','INSERT')
+                 OR has_any_column_privilege(current_user,
+                   'public.appbasis_training_block_usage_subject','INSERT'))
                  AS can_insert_attribution,
                (has_table_privilege(current_user,
                  'public.appbasis_training_block_usage_subject','UPDATE')

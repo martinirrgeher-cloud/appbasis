@@ -70,6 +70,10 @@ describe("P02 dedicated erasure SQL role: offline control-plane proof", () => {
     expect(h.queries[1]).toContain("current_database()");
     expect(h.queries[1]).toContain("current_user");
     expect(h.queries[1]).toContain("has_any_column_privilege");
+    expect(h.queries[1]).toContain(
+      "'public.appbasis_training_block_usage','INSERT'");
+    expect(h.queries[1]).toContain(
+      "'public.appbasis_training_block_usage_subject','INSERT'");
     expect(h.queries[1]).toContain("other_writable_tables");
     const shape = h.queries[1]!.replace(/'(?:''|[^'])*'/g, "''");
     expect(shape).not.toMatch(/\b(?:GRANT|REVOKE|CREATE ROLE|INSERT INTO|DELETE FROM|UPDATE\s+public)\b/i);
