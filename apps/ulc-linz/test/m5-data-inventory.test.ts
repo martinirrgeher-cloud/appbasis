@@ -141,7 +141,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
 
     expect(inventory.schemaVersion).toBe(2);
     expect(inventory.application).toBe("ulc-linz");
-    expect(inventory.scope).toBe("repository-declared-schema-v18-review-not-runtime-evidence");
+    expect(inventory.scope).toBe("repository-declared-schema-v19-review-not-runtime-evidence");
     expect(databaseManifest.application).toBe(inventory.application);
     expect(appManifest.appId).toBe(inventory.application);
     expect(appManifest.modules).toEqual([
@@ -171,7 +171,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
     const inventoryOwners = sortedOwnerContracts(inventory.persistentOwners);
     const publishedOwners = sortedOwnerContracts(databaseManifest.owners);
     expect(publishedOwners).toEqual(inventoryOwners);
-    // The v18 inventory must retain lifecycle status and evidence notes
+    // The v19 inventory must retain lifecycle status and evidence notes
     // for every owner; copying only the migration manifest silently drops
     // the privacy contract even when the table count is correct.
     expect(inventory.persistentOwners).toHaveLength(8);
@@ -189,8 +189,8 @@ describe("ULC Linz M5 C/D data inventory", () => {
       owner.id === "ulc-linz-lifecycle"
     );
     expect(ulcOwner).toBeDefined();
-    expect(ulcOwner?.schemaVersion).toBe(18);
-    expect(ulcOwner?.migrations).toHaveLength(18);
+    expect(ulcOwner?.schemaVersion).toBe(19);
+    expect(ulcOwner?.migrations).toHaveLength(19);
     expect(ulcOwner?.migrations.slice(9)).toEqual([
       "apps/ulc-linz/migrations/0009_ulc_linz_functionary_role.sql",
       "apps/ulc-linz/migrations/0010_ulc_linz_registration_notes.sql",
@@ -201,6 +201,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
       "apps/ulc-linz/migrations/0015_ulc_linz_training_trainer_attendance.sql",
       "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
       "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
+      "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql",
     ]);
     expect(databaseManifest.owners.map((owner) => owner.id)).toEqual([
       "identity",
@@ -231,7 +232,7 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "ulc-linz-lifecycle",
       ),
     ).toMatchObject({
-      schemaVersion: 18,
+      schemaVersion: 19,
       lifecycleStatus: "training-and-catalog-data-lifecycle-pending",
       notes: expect.arrayContaining([
         "app-owned-training-session-and-attendance-lifecycle-pending",

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "application": "ulc-linz",
-  "scope": "repository-declared-schema-v18-review-not-runtime-evidence",
+  "scope": "repository-declared-schema-v19-review-not-runtime-evidence",
   "basis": {
     "databaseManifest": "apps/ulc-linz/appbasis.database.json",
     "appManifest": "apps/ulc-linz/appbasis.app.json",

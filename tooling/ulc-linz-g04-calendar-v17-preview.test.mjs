@@ -78,8 +78,8 @@ test("G-04.2c plan retains exact v17 DDL for canonical published v18", async () 
     root, "apps/ulc-linz/appbasis.database.json",
   ), "utf8"));
   const owner = manifest.owners.find((item) => item.id === "ulc-linz-lifecycle");
-  assert.equal(owner.schemaVersion, 18);
-  assert.equal(owner.migrations.length, 18);
+  assert.equal(owner.schemaVersion, 19);
+  assert.equal(owner.migrations.length, 19);
   assert.equal(owner.migrations[16], plan.migrationPath);
   for (const statement of plan.statements) {
     assert.doesNotMatch(statement, /\b(?:DROP|TRUNCATE|DELETE\s+FROM|ALTER\s+TABLE)\b/i);

@@ -57,13 +57,21 @@ export async function loadG04CalendarPreviewPlan({ repositoryRoot = process.cwd(
     owner.migrations[16] === FILE &&
     owner.migrations[17] ===
       "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql";
+  const publishedV19 = owner.schemaVersion === 19 &&
+    owner.migrations.length === 19 &&
+    owner.migrations[15] === PRIOR &&
+    owner.migrations[16] === FILE &&
+    owner.migrations[17] ===
+      "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql" &&
+    owner.migrations[18] ===
+      "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql";
   if (manifest.application !== "ulc-linz" ||
       manifest.manifestVersion !== 1 ||
       manifest.dialect !== "postgresql" ||
       matches?.length !== 1 ||
       JSON.stringify(matches[0]) !== JSON.stringify(owner) ||
-      !(originalV16 || publishedV18)) {
-    refuse("G-04 requires the exact v16 historical or published v18 calendar owner.");
+      !(originalV16 || publishedV18 || publishedV19)) {
+    refuse("G-04 requires the exact v16 historical or published v18/v19 calendar owner.");
   }
   const sql = await readFile(resolve(repositoryRoot, FILE), "utf8");
   const statements = sql.split("--> statement-breakpoint")
@@ -90,7 +98,7 @@ export async function loadG04CalendarPreviewPlan({ repositoryRoot = process.cwd(
     migrationRole: MIGRATION_ROLE,
     schemaVersion: 17,
     migrationPath: FILE,
-    canonicalPublished: publishedV18,
+    canonicalPublished: publishedV18 || publishedV19,
     statements: Object.freeze(statements),
     productionChanged: false,
   });
@@ -247,7 +255,7 @@ export async function migrateG04CalendarPreview(input, options = {}) {
   // is forbidden even if an operator passes the older approval switches.
   const checkedPlan = await loadG04CalendarPreviewPlan(options);
   if (checkedPlan.canonicalPublished) {
-    refuse("G-04 calendar migration is already registered in v18; no SQL replay.");
+    refuse("G-04 calendar migration is already registered in v18/v19; no SQL replay.");
   }
   // Never allow direct CLI or API apply to bypass the independent privacy,
   // backed-up restore and operator-authorization evidence gate. The canonical
