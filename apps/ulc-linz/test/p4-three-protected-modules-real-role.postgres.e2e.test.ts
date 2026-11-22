@@ -164,6 +164,9 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
       ["INSERT, SELECT", "appbasis_training_block_usage_subject"],
       ["SELECT", "appbasis_training_block_usage_subject_deletion"],
       ["SELECT, INSERT", "appbasis_training_block_usage"],
+      // The verified writer resolves its block through INSERT ... SELECT;
+      // real production grants this exact read privilege to the app role.
+      ["SELECT", "appbasis_training_block"],
       ["SELECT", "appbasis_training_plan"],
       ["SELECT", "appbasis_training_plan_revision"],
       ["SELECT", "appbasis_training_plan_revision_item"],
@@ -401,6 +404,106 @@ describeLocal("P4 protected production role admission on real disposable 69-tabl
       await expect(assertUlcVerifiedBlockUsageProductionReadiness(sql))
         .resolves.toBeUndefined();
     }
+  });
+
+  it("keeps protected verified-subject usage idempotent after real app ACL cutover", async () => {
+    const applicationSql = ordinaryApp().client;
+    // These are the actual production user/database names in an isolated
+    // localhost-only PostgreSQL DB. No elevated migration-owner connection
+    // is used by the writer, and UPDATE/DELETE are forbidden by real ACLs.
+    await expect(assertUlcLegacyBlockUsageRoleCutoverReady(
+      adapter(ordinaryApp()), "production",
+    )).resolves.toBeUndefined();
+    await expect(assertUlcVerifiedBlockUsageProductionReadiness(
+      adapter(ordinaryApp()),
+    )).resolves.toBeUndefined();
+
+    const organizationId = "p4-verified-post-cutover";
+    const blockId = "p4-post-cutover-block";
+    const subjectId = "p4-post-cutover-subject";
+    const usageId = "p4-post-cutover-usage";
+    await database().client.begin(async transaction => {
+      await transaction.unsafe(
+        "INSERT INTO public.appbasis_training_block(id,organization_id) VALUES ($1,$2)",
+        [blockId, organizationId],
+      );
+      await transaction.unsafe(
+        `INSERT INTO public.appbasis_training_block_revision
+          (organization_id,block_id,revision,name)
+          VALUES ($1,$2,1,'P4 synthetic post-cutover block')`,
+        [organizationId, blockId],
+      );
+    });
+
+    const usageWriter = new PostgresTrainingBlockRepository(applicationSql);
+    const event = {
+      organizationId, id: usageId, blockId,
+      occurredAt: "2026-11-22T12:00:00.000Z",
+      sourceKind: "training_plan" as const,
+      sourceRef: "p4-plan:p4-item", note: null,
+    };
+    const input = {
+      event, subjectId, sourcePlanId: "p4-plan", sourceItemId: "p4-item",
+    };
+    // First insert AND replay use the ordinary application SQL login:
+    // SELECT/INSERT allowed, UPDATE/DELETE (including SELECT FOR UPDATE) denied.
+    await expect(usageWriter.recordVerifiedSubjectUsageOnce(input))
+      .resolves.toEqual(event);
+    await expect(usageWriter.recordVerifiedSubjectUsageOnce(input))
+      .resolves.toEqual(event);
+    const beforeDeletion = await applicationSql.unsafe(
+      `SELECT count(*)::int AS count FROM public.appbasis_training_block_usage
+         WHERE organization_id=$1 AND id=$2`, [organizationId, usageId],
+    );
+    expect(beforeDeletion).toEqual([{count: 1}]);
+    const assigned = await applicationSql.unsafe(
+      `SELECT count(*)::int AS count FROM public.appbasis_training_block_usage_subject
+         WHERE organization_id=$1 AND usage_id=$2 AND subject_id=$3`,
+      [organizationId, usageId, subjectId],
+    );
+    expect(assigned).toEqual([{count: 1}]);
+
+    // The separate minimal erasure role (only a synthetic LOGIN in this
+    // disposable test, NOLOGIN in real production) atomically creates the
+    // tombstone and deletes attributed usage. The ordinary app cannot delete.
+    await expect(new PostgresTrainingBlockRepository(
+      erasureOwner().client,
+    ).markSubjectDeletedAndRemoveAttributedUsage(
+      organizationId, subjectId, new Date("2026-11-22T13:00:00.000Z"),
+    )).resolves.toEqual({markerInserted:true,deletedUsageEvents:1});
+    await expect(usageWriter.recordVerifiedSubjectUsageOnce(input))
+      .rejects.toThrow(/deletion marker/);
+
+    // A direct SQL replay by the otherwise INSERT-privileged app role must
+    // fail in the DB trigger, rolling back the legacy usage INSERT as well.
+    await expect(applicationSql.begin(async transaction => {
+      await transaction.unsafe(
+        `INSERT INTO public.appbasis_training_block_usage
+          (organization_id,id,block_id,occurred_at,source_kind,source_ref,note)
+          VALUES ($1,$2,$3,$4::timestamptz,'training_plan',$5,NULL)`,
+        [organizationId, "p4-post-cutover-replay", blockId, event.occurredAt, event.sourceRef],
+      );
+      await transaction.unsafe(
+        `INSERT INTO public.appbasis_training_block_usage_subject
+          (organization_id,usage_id,subject_id,source_plan_id,source_item_id)
+          VALUES ($1,$2,$3,'p4-plan','p4-item')`,
+        [organizationId, "p4-post-cutover-replay", subjectId],
+      );
+    })).rejects.toThrow(/deletion marker/);
+
+    const residue = await applicationSql.unsafe(
+      `SELECT (SELECT count(*)::int FROM public.appbasis_training_block_usage
+               WHERE organization_id=$1) AS usage_rows,
+              (SELECT count(*)::int FROM public.appbasis_training_block_usage_subject
+               WHERE organization_id=$1) AS attribution_rows,
+              (SELECT count(*)::int FROM public.appbasis_training_block_usage_subject_deletion
+               WHERE organization_id=$1 AND subject_id=$2) AS markers`,
+      [organizationId, subjectId],
+    );
+    expect(residue).toEqual([{usage_rows:0,attribution_rows:0,markers:1}]);
+    await expect(assertUlcLegacyBlockUsageRoleCutoverReady(
+      adapter(ordinaryApp()), "production",
+    )).resolves.toBeUndefined();
   });
 
   it("separates ordinary app INSERT from privileged legacy UPDATE and DELETE on real PostgreSQL", async () => {
