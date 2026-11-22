@@ -63,7 +63,12 @@ export async function loadUlcLifecycleRepairPlan() {
     count+(Array.isArray(owner?.migrations)?owner.migrations.length:0),0);
   const lifecycle=manifest?.owners?.find(owner=>owner.id==="ulc-linz-lifecycle");
   const catalog=manifest?.owners?.find(owner=>owner.id==="exercise-catalog");
-  const published=(migrationCount===44 && lifecycle?.schemaVersion===18 &&
+  const blocks=manifest?.owners?.find(owner=>owner.id==="training-blocks");
+  const published=(migrationCount===45 &&
+    blocks?.schemaVersion===7 &&
+    blocks?.migrations?.length===7 &&
+    blocks.migrations[6]==="modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql" &&
+    lifecycle?.schemaVersion===18 &&
     lifecycle?.migrations?.length===18 &&
     lifecycle.migrations[16]==="apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql" &&
     lifecycle.migrations[17]==="apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql" &&
@@ -72,7 +77,7 @@ export async function loadUlcLifecycleRepairPlan() {
     catalog.migrations[4]==="modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql");
   if (manifest.application !== "ulc-linz" || !Array.isArray(manifest.owners) ||
       !(migrationCount===41 || published)) {
-    fail("expected historical 41 or exact published 44-migration ULC owner manifest changed");
+    fail("expected historical 41 or exact published 45-migration ULC owner manifest changed");
   }
   requiredOwner(manifest, "training-blocks", ULC_LIFECYCLE_REPAIR_PATHS.slice(0, 2));
   requiredOwner(manifest, "training-documentation", ULC_LIFECYCLE_REPAIR_PATHS.slice(2));
