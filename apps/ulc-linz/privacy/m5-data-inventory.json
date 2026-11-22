@@ -77,12 +77,12 @@
         "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql",
         "modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql"
       ],
-      "lifecycleStatus": "repository-schema-v5-published-preview-69-privacy-activation-pending",
+      "lifecycleStatus": "repository-schema-v6-published-preview-v5-privacy-activation-pending",
       "notes": [
         "production-runtime-cutover-not-authorized",
         "exercise-catalog-configuration-not-personal",
         "exercise-favorite-lifecycle-pending",
-        "standard-module-target-schema-v5-published-in-repository",
+        "standard-module-target-schema-v6-published-in-repository",
         "ulc-preview-v5-schema-69-installed-runtime-abnahme-pending",
         "exercise-catalog-usage-subject-attribution-retention-pending"
       ]
