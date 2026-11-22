@@ -5,7 +5,7 @@
  * Tatsächliches Deployment/Erstinformation erfolgt erst mit separat
  * freigegebenem Release.
  */
-export const ULC_LINZ_PRIVACY_HTML = \`<!doctype html>
+export const ULC_LINZ_PRIVACY_HTML = `<!doctype html>
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
@@ -82,4 +82,4 @@ export const ULC_LINZ_PRIVACY_HTML = \`<!doctype html>
       </main>
     </div>
   </body>
-</html>\`;
+</html>`;
