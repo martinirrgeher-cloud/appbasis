@@ -3,6 +3,10 @@ import { readFile } from "node:fs/promises";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning";
+import {
+  PostgresExerciseCatalogRepository,
+  type ExerciseCatalogPostgresClient,
+} from "@appbasis/exercise-catalog";
 
 /**
  * T07: candidate SQL fence versus direct/legacy database writers.
@@ -177,6 +181,71 @@ suite("T07 catalog SQL erasure fence: disposable PostgreSQL only", () => {
     expect(await favorites(ORG, NEIGHBOR)).toBe(1);
     expect(await favorites()).toBe(0);
   });
+
+  it("keeps erasure deadlock-free when an old UPDATE already holds the favorite tuple", async () => {
+    await insertFavorite();
+
+    let rowLocked!: () => void;
+    let issueUpdate!: () => void;
+    let deleting!: () => void;
+    const locked = new Promise<void>(resolve => { rowLocked = resolve; });
+    const releaseUpdate = new Promise<void>(resolve => { issueUpdate = resolve; });
+    const reachedDelete = new Promise<void>(resolve => { deleting = resolve; });
+
+    // A legacy UPDATE has acquired PostgreSQL's tuple lock, then pauses.
+    const legacy = sql().begin(async tx => {
+      await tx.unsafe(
+        `SELECT 1 FROM appbasis_exercise_catalog_favorite
+         WHERE organization_id=$1 AND principal_id=$2 FOR UPDATE`,
+        [ORG, PERSON],
+      );
+      rowLocked();
+      await releaseUpdate;
+      await tx.unsafe(
+        `UPDATE appbasis_exercise_catalog_favorite
+         SET principal_id=$1 WHERE organization_id=$2 AND principal_id=$3`,
+        [NEIGHBOR, ORG, PERSON],
+      );
+    });
+    await locked;
+
+    // The REAL guarded repository obtains the advisory lock first. Signal
+    // just before it executes DELETE; that DELETE then awaits the tuple lock.
+    const adapter: ExerciseCatalogPostgresClient = {
+      unsafe(query, parameters) {
+        return sql().unsafe(query, parameters);
+      },
+      begin(callback) {
+        return sql().begin(async tx => callback({
+          async unsafe(query, parameters) {
+            if (query.includes("DELETE FROM appbasis_exercise_catalog_favorite")) {
+              deleting();
+            }
+            return tx.unsafe(query, parameters);
+          },
+        }));
+      },
+    };
+    const protectedRepository = new PostgresExerciseCatalogRepository(adapter, {
+      favoriteFenceMode: "require-catalog-erasure-marker",
+    });
+    const erasure = protectedRepository.markPrincipalDeletedAndDeleteFavorites(
+      ORG, PERSON, new Date(COMPLETED),
+    );
+    await reachedDelete;
+
+    // Previously a BEFORE UPDATE trigger tried the advisory lock while the
+    // erasure held it and was waiting for the tuple: a genuine 40P01 cycle.
+    // The candidate now rejects UPDATE before attempting that lock.
+    issueUpdate();
+    await expect(legacy).rejects.toMatchObject({ code: "23514" });
+    await expect(erasure).resolves.toMatchObject({
+      markerInserted: true,
+      deletedFavorites: 1,
+    });
+    expect(await favorites()).toBe(0);
+    await expect(insertFavorite()).rejects.toMatchObject({ code: "23514" });
+  }, 120_000);
 
   it("rejects stale verified-usage association atomically, not just the favorite", async () => {
     await insertUsageAndLink(ORG, "usage-before", PERSON);
