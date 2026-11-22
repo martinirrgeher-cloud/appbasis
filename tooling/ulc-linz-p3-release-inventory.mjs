@@ -44,9 +44,10 @@ export function evaluateUlcP3ReleaseInventory({
   const tables=inventory.persistentTables;
   const ids=tables.map(x=>x.id);
   required(ids.length===69&&unique(ids)&&
+    manifest.owners.flatMap(owner=>owner.migrations??[]).length===45&&
     inventory.repositorySchemaReview?.declaredTableCount===69&&
-    inventory.repositorySchemaReview?.declaredMigrationCount===44 &&
-    tables.every(x=>reviewedOwners.includes(x.owner)),"current 69-table/44-migration inventory");
+    inventory.repositorySchemaReview?.declaredMigrationCount===45 &&
+    tables.every(x=>reviewedOwners.includes(x.owner)),"current 69-table/45-migration inventory");
 
   const past=historicalP01.tableGroups.flatMap(g=>g.tables);
   required(historicalP01.baseline.tableCount===66&&past.length===66&&
@@ -99,7 +100,7 @@ export function evaluateUlcP3ReleaseInventory({
   return Object.freeze({
     application:"ulc-linz",
     declaredOwners:8,
-    declaredMigrations:44,
+    declaredMigrations:45,
     currentTables:69,
     historicalP01Tables:66,
     additionalSinceP01:Object.freeze(additionalSinceP01),

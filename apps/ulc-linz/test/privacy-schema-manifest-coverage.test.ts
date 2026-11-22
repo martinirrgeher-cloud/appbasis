@@ -58,7 +58,7 @@ async function json<T>(path: string): Promise<T> {
 }
 
 describe("ULC P01 declared-schema privacy inventory coverage (no DB writes)", () => {
-  it("matches all 44 manifest-owned migration paths and owner schema versions exactly", async () => {
+  it("matches all 45 manifest-owned migration paths and owner schema versions exactly", async () => {
     const manifest = await json<DatabaseManifest>("../appbasis.database.json");
     const inventory = await json<PrivacyInventory>(
       "../privacy/m5-data-inventory.json",
@@ -66,8 +66,8 @@ describe("ULC P01 declared-schema privacy inventory coverage (no DB writes)", ()
     const declared = manifest.owners.flatMap((owner) => owner.migrations);
     const recorded = inventory.persistentOwners.flatMap((owner) => owner.migrations);
 
-    expect(declared).toHaveLength(44);
-    expect(new Set(declared).size).toBe(44);
+    expect(declared).toHaveLength(45);
+    expect(new Set(declared).size).toBe(45);
     expect(recorded).toEqual(declared);
     const selectedFields = (owner: ManifestOwner) => ({
       id: owner.id,
@@ -79,7 +79,7 @@ describe("ULC P01 declared-schema privacy inventory coverage (no DB writes)", ()
     expect(inventory.scope).toContain("not-runtime-evidence");
     expect(inventory.repositorySchemaReview).toMatchObject({
       sourceManifest: "apps/ulc-linz/appbasis.database.json",
-      declaredMigrationCount: 44,
+      declaredMigrationCount: 45,
       declaredTableCount: 69,
       expectedLifecycleSchemaVersion: 18,
       previousRecordedMigrations: 41,
@@ -118,13 +118,13 @@ describe("ULC P01 declared-schema privacy inventory coverage (no DB writes)", ()
     expect(sort(inventory.persistentTables)).toEqual(sort(declarations));
   });
 
-  it("records the three newly published owner migrations and preserves the historical v10–v16 risk review", async () => {
+  it("records all four reviewed additions including the v7 guard, preserving historical v10–v16 risks", async () => {
     const inventory = await json<PrivacyInventory>(
       "../privacy/m5-data-inventory.json",
     );
     const review = inventory.repositorySchemaReview;
-    expect(review.newlyRecordedMigrations).toHaveLength(3);
-    expect(review.migrationChanges).toHaveLength(3);
+    expect(review.newlyRecordedMigrations).toHaveLength(4);
+    expect(review.migrationChanges).toHaveLength(4);
     expect(review.historyV16MigrationChanges).toHaveLength(7);
 
     for (const risk of review.migrationChanges) {

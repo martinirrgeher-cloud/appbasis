@@ -33,9 +33,14 @@ test("P04: three canonical lifecycle migrations reconcile an existing partial Pr
       "utf8",
     ));
     const migrations = manifest.owners.flatMap(owner => owner.migrations);
-    assert.equal(migrations.length, 44);
-    const omitted = new Set(ULC_LIFECYCLE_REPAIR_PATHS);
-    assert.equal(omitted.size, 3);
+    assert.equal(migrations.length, 45);
+    // The v7 attribution trigger depends on a subject table deliberately
+    // missing from this historical three-migration rehearsal baseline.
+    const laterGuard =
+      "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql";
+    assert.ok(migrations.includes(laterGuard));
+    const omitted = new Set([...ULC_LIFECYCLE_REPAIR_PATHS, laterGuard]);
+    assert.equal(omitted.size, 4);
 
     // Install every existing canonical migration except the three missing
     // ones: a realistic already-populated repository baseline.
@@ -85,6 +90,20 @@ test("P04: three canonical lifecycle migrations reconcile an existing partial Pr
     const after = await inspectUlcLifecycleSchema(database.client);
     assert.equal(after.state, "current");
     assert.deepEqual(after.requiredMigrations, []);
+    // The independent v7 tombstone-guard migration can only be applied
+    // after the deliberately missing v6 subject attribution table exists.
+    const guardSql = await readFile(
+      new URL("../" + laterGuard, import.meta.url), "utf8",
+    );
+    for (const statement of guardSql.split("--> statement-breakpoint")) {
+      if (statement.trim()) await database.client.unsafe(statement);
+    }
+    const guarded = await database.client.unsafe(
+      "SELECT count(*)::int AS count FROM pg_catalog.pg_trigger " +
+      "WHERE tgname='appbasis_training_block_usage_subject_tombstone_guard' AND tgenabled='O'",
+    );
+    assert.equal(guarded.length, 1);
+    assert.equal(guarded[0]?.count, 1);
     const retained = await database.client.unsafe(
       "SELECT first_name FROM appbasis_athlete WHERE id = 'p04-safe-neighbor'",
     );

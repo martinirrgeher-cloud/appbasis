@@ -79,8 +79,8 @@ test("P24: direct favorite SQL bypass before deadlock-safe candidate; both owner
       new URL("../apps/ulc-linz/appbasis.database.json", import.meta.url), "utf8",
     ));
     const paths = manifest.owners.flatMap(o => o.migrations);
-    assert.equal(paths.length, 44);
-    assert.equal(new Set(paths).size, 44);
+    assert.equal(paths.length, 45);
+    assert.equal(new Set(paths).size, 45);
     for (const path of paths) {
       const sql = await readFile(new URL("../" + path, import.meta.url), "utf8");
       for (const statement of split(sql)) await query(statement);

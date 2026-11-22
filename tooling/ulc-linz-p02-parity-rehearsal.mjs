@@ -135,20 +135,24 @@ export function evaluateUlcP02ParityInventory({ productionTables, previewTables 
  * intentionally NOT part of the app's release manifest.
  */
 export async function loadUlcP02ParityRehearsalPlan() {
-  // This is intentionally a HISTORICAL 51→64→66→68 rehearsal,
-  // while the canonical repository now publishes v18/v5 (44 files).
-  // Verify the three exact post-41 additions, then use only the original
-  // 41 source files for the legacy baseline. The 69er canonical fresh
-  // install remains independently tested by P02-J on PostgreSQL 18.
+  // This is intentionally a HISTORICAL 51→64→66→68 rehearsal.
+  // The canonical repository now publishes 45 files, including the new
+  // training-block tombstone guard that was NOT part of that old snapshot.
+  // Verify and remove only the exact post-41 published additions before
+  // evaluating the original 41-file historical inventory.
+  // Do not reinterpret the old catalog counts as today's production state.
   const current = JSON.parse(await readFile(new URL(APP_MANIFEST, import.meta.url), "utf8"));
   const currentCatalog = current.owners?.find(o=>o.id==="exercise-catalog");
+  const currentBlocks = current.owners?.find(o=>o.id==="training-blocks");
   const currentLifecycle = current.owners?.find(o=>o.id==="ulc-linz-lifecycle");
   const added = [
     "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql",
     CALENDAR_MIGRATION,
     "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
   ];
-  if (current?.owners?.flatMap(o=>o.migrations??[]).length!==44 ||
+  if (current?.owners?.flatMap(o=>o.migrations??[]).length!==45 ||
+      currentBlocks?.schemaVersion!==7 || currentBlocks?.migrations?.length!==7 ||
+      currentBlocks.migrations[6]!=="modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql" ||
       currentCatalog?.schemaVersion!==5 || currentCatalog?.migrations?.length!==5 ||
       currentCatalog.migrations[4]!==added[0] ||
       currentLifecycle?.schemaVersion!==18 || currentLifecycle?.migrations?.length!==18 ||
@@ -158,7 +162,11 @@ export async function loadUlcP02ParityRehearsalPlan() {
   }
   const manifest = structuredClone(current);
   const cat = manifest.owners.find(o=>o.id==="exercise-catalog");
+  const blocks = manifest.owners.find(o=>o.id==="training-blocks");
   const life = manifest.owners.find(o=>o.id==="ulc-linz-lifecycle");
+  // The DB-level replay fence did not exist in the historical 41-migration
+  // rehearsal; never silently apply its 2026 owner delta to legacy snapshots.
+  blocks.schemaVersion=6; blocks.migrations.pop();
   cat.schemaVersion=4; cat.migrations.pop();
   life.schemaVersion=16; life.migrations.splice(16,2);
   if (

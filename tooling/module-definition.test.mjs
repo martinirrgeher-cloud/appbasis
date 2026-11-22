@@ -152,7 +152,7 @@ test("pins the checked module inventory and database-owning contracts", async ()
     },
     capabilities: ["training-blocks:edit", "training-blocks:view"],
     database: {
-      schemaVersion: 6,
+      schemaVersion: 7,
       migrations: [
         "modules/training-blocks/migrations/0000_appbasis_training_blocks_foundation.sql",
         "modules/training-blocks/migrations/0001_appbasis_training_blocks_parity_metadata.sql",
@@ -160,6 +160,7 @@ test("pins the checked module inventory and database-owning contracts", async ()
         "modules/training-blocks/migrations/0003_appbasis_training_block_category.sql",
         "modules/training-blocks/migrations/0004_appbasis_training_block_favorite_deletion.sql",
         "modules/training-blocks/migrations/0005_appbasis_training_block_usage_subject.sql",
+        "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql",
       ],
     },
   });

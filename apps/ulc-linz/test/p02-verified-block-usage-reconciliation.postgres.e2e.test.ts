@@ -85,11 +85,14 @@ if (!DATABASE_URL || !url) {
       "../../../modules/training-blocks/migrations/0003_appbasis_training_block_category.sql",
       "../../../modules/training-blocks/migrations/0004_appbasis_training_block_favorite_deletion.sql",
       "../../../modules/training-blocks/migrations/0005_appbasis_training_block_usage_subject.sql",
+      "../../../modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql",
       "../../../modules/training-plans/migrations/0000_appbasis_training_plans_foundation.sql",
       "../../../modules/training-plans/migrations/0001_appbasis_training_plan_subject_deletion.sql",
     ]) {
       const migration = await readFile(new URL(file, import.meta.url), "utf8");
-      await db().client.unsafe(migration);
+      for (const statement of migration.split("--> statement-breakpoint")) {
+        if (statement.trim() !== "") await db().client.unsafe(statement);
+      }
     }
   });
 

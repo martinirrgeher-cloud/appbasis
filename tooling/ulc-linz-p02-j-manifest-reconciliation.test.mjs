@@ -45,7 +45,11 @@ test("P1 publishes 44 owner migrations while retaining original review candidate
   const appCandidate=await json("apps/ulc-linz/release/p02-j-appbasis.database.v18.candidate.json");
   const modCandidate=await json("apps/ulc-linz/release/p02-j-exercise-catalog.v5.candidate.json");
   const planned=await loadUlc69ManifestProposal();
-  assert.equal(manifest.owners.flatMap(owner=>owner.migrations).length,44);
+  assert.equal(manifest.owners.flatMap(owner=>owner.migrations).length,45);
+  const blocks=manifest.owners.find(owner=>owner.id==="training-blocks");
+  assert.equal(blocks.schemaVersion,7);
+  assert.equal(blocks.migrations.at(-1),
+    "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql");
   assert.equal(manifest.owners.find(owner=>owner.id==="ulc-linz-lifecycle").schemaVersion,18);
   assert.equal(manifest.owners.find(owner=>owner.id==="exercise-catalog").schemaVersion,5);
   assert.equal(module.database.schemaVersion,5);
@@ -58,8 +62,11 @@ test("P1 publishes 44 owner migrations while retaining original review candidate
   assert.equal(planned.mayApplyToExistingPreview,false);
   assert.equal(planned.providerWritesAllowed,false);
 
-  const originalFiles=manifest.owners.flatMap(owner=>owner.migrations);
+  const currentFiles=manifest.owners.flatMap(owner=>owner.migrations);
+  const originalFiles=planned.app.owners.flatMap(owner=>owner.migrations);
   const targetFiles=appCandidate.owners.flatMap(owner=>owner.migrations);
+  assert.equal(currentFiles.length,45);
+  assert.deepEqual(currentFiles.filter(path=>originalFiles.includes(path)),originalFiles);
   assert.deepEqual(targetFiles.filter(path=>originalFiles.includes(path)),originalFiles);
   assert.deepEqual(targetFiles,originalFiles);
   assert.deepEqual(targetFiles.filter(path=>Object.values(NEW_MIGRATIONS).includes(path)).sort(),
