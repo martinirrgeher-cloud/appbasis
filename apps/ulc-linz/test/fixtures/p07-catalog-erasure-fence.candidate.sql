@@ -11,6 +11,18 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $fence$
 BEGIN
+  -- Favorites and verified owner links are insert/delete-only: the current
+  -- repositories NEVER update these rows. PostgreSQL locks an existing tuple
+  -- *before* a BEFORE UPDATE row trigger. Taking our advisory lock during an
+  -- UPDATE would invert the mark-and-delete lock order and deadlock with the
+  -- erasure writer (40P01). Reject ALL legacy ownership UPDATEs immediately,
+  -- without attempting any advisory lock, even for unmarked principals.
+  IF TG_OP = 'UPDATE' THEN
+    RAISE EXCEPTION 'Exercise catalog personal ownership rows are immutable'
+      USING ERRCODE = '23514',
+        CONSTRAINT = 'appbasis_exercise_catalog_subject_owner_immutable';
+  END IF;
+
   -- A transaction with an older stable snapshot could acquire the lock
   -- after a deletion but still miss the committed marker. Deny such writers.
   IF pg_catalog.current_setting('transaction_isolation') <> 'read committed' THEN
