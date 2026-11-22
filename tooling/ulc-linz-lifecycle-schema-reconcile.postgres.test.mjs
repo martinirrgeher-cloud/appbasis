@@ -33,7 +33,7 @@ test("P04: three canonical lifecycle migrations reconcile an existing partial Pr
       "utf8",
     ));
     const migrations = manifest.owners.flatMap(owner => owner.migrations);
-    assert.equal(migrations.length, 46);
+    assert.equal(migrations.length, 47);
     // The v7 attribution trigger depends on a subject table deliberately
     // missing from this historical three-migration rehearsal baseline.
     const laterGuard =

@@ -24,10 +24,10 @@ async function fixtures(){
   const [manifest,inventory,historicalP01,app,provider,recovery]=sources;
   return {manifest,inventory,historicalP01,app,modules,provider,recovery};
 }
-test("P3-D current source gives exactly 69 tables, 46 migrations and eight owners, distinct from historic P01",async()=>{
+test("P3-D current source gives exactly 69 tables, 47 migrations and eight owners, distinct from historic P01",async()=>{
   const result=await evaluateUlcP3ReleaseFromRepository(root);
   assert.equal(result.currentTables,69);
-  assert.equal(result.declaredMigrations,46);
+  assert.equal(result.declaredMigrations,47);
   assert.equal(result.declaredOwners,8);
   assert.equal(result.historicalP01Tables,66);
   assert.deepEqual(result.additionalSinceP01,[
@@ -49,7 +49,7 @@ test("even an otherwise complete local report cannot issue deployment, productio
   assert.equal(Object.isFrozen(result),true);
   const text=formatUlcP3ReleaseInventory(result);
   assert.match(text,/historischer 66-Tabellen-Vorschlag/);
-  assert.match(text,/69 Tabellen \/ 8 Daten-Owner \/ 46 Migrationen/);
+  assert.match(text,/69 Tabellen \/ 8 Daten-Owner \/ 47 Migrationen/);
   assert.match(text,/App mit echten Personen-\/Kinderdaten \| \*\*BLOCKED\*\*/);
   assert.match(text,/ohne neue Echtdaten/);
   assert.doesNotMatch(text,/passwort|secret|password|token\s*=/i);

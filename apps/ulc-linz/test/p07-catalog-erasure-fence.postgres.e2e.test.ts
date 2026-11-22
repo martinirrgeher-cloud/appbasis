@@ -9,10 +9,10 @@ import {
 } from "@appbasis/exercise-catalog";
 
 /**
- * T07: candidate SQL fence versus direct/legacy database writers.
- * This fixture is intentionally NOT a published migration; the existing
- * production manifest, data, deployed Worker and operator gates stay intact.
- * Run only against a disposable local PostgreSQL CI instance.
+ * T07: PUBLISHED module-owner v6 SQL against direct/legacy database writers.
+ * This executes all six registered catalog migrations in a disposable local
+ * PostgreSQL CI database. It does NOT apply migration v6 to Neon/production,
+ * turn a blocked lifecycle gate ready or authorize a data/restore operation.
  */
 const inputUrl = process.env.DATABASE_URL;
 if (inputUrl) {
@@ -111,6 +111,7 @@ suite("T07 catalog SQL erasure fence: disposable PostgreSQL only", () => {
       "0002_appbasis_exercise_catalog_parity.sql",
       "0003_appbasis_exercise_catalog_private_media_delete_state.sql",
       "0004_appbasis_exercise_catalog_subject_lifecycle.sql",
+      "0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql",
     ]) {
       const ddl = await readFile(
         new URL("../../../modules/exercise-catalog/migrations/" + name, import.meta.url),
@@ -124,9 +125,17 @@ suite("T07 catalog SQL erasure fence: disposable PostgreSQL only", () => {
       new URL("./fixtures/p07-catalog-erasure-fence.candidate.sql", import.meta.url),
       "utf8",
     );
-    for (const statement of candidate.split("--> statement-breakpoint")) {
-      if (statement.trim()) await sql().unsafe(statement);
-    }
+    // The formerly tested candidate must match the PUBLISHED module migration
+    // exactly below the first CREATE FUNCTION (only comments may differ).
+    const published = await readFile(
+      new URL(
+        "../../../modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql",
+        import.meta.url,
+      ), "utf8",
+    );
+    const anchor = "CREATE FUNCTION appbasis_exercise_catalog_subject_deletion_write_fence()";
+    expect(candidate.slice(candidate.indexOf(anchor)))
+      .toBe(published.slice(published.indexOf(anchor)));
   }, 120_000);
 
   beforeEach(async () => {
@@ -274,7 +283,7 @@ suite("T07 catalog SQL erasure fence: disposable PostgreSQL only", () => {
     expect(await favorites(ORG, NEIGHBOR)).toBe(0);
   });
 
-  it("installs exactly two active guards while leaving the published manifest unchanged", async () => {
+  it("publishes exactly two active guards in the v6 manifest without authorizing production deployment", async () => {
     const rows = await sql().unsafe(
       `SELECT count(*)::int AS count
        FROM pg_catalog.pg_trigger
@@ -299,10 +308,10 @@ suite("T07 catalog SQL erasure fence: disposable PostgreSQL only", () => {
       new URL("../appbasis.database.json", import.meta.url), "utf8",
     )) as { owners: { id: string; migrations: string[] }[] };
     const catalog = manifest.owners.find(owner => owner.id === "exercise-catalog");
-    expect(catalog?.migrations).toHaveLength(5);
-    expect(catalog?.migrations.some(path => path.includes("p07-catalog-erasure-fence")))
-      .toBe(false);
-    expect(manifest.owners.flatMap(owner => owner.migrations)).toHaveLength(46);
-    // This SQL is only a tested fixture: no production release claim.
+    expect(catalog?.migrations).toHaveLength(6);
+    expect(catalog?.migrations.at(-1))
+      .toBe("modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql");
+    expect(manifest.owners.flatMap(owner => owner.migrations)).toHaveLength(47);
+    // Registered source is not proof of a completed Neon migration.
   });
 });

@@ -68,20 +68,21 @@
     {
       "id": "exercise-catalog",
       "root": "modules/exercise-catalog",
-      "schemaVersion": 5,
+      "schemaVersion": 6,
       "migrations": [
         "modules/exercise-catalog/migrations/0000_appbasis_exercise_catalog_foundation.sql",
         "modules/exercise-catalog/migrations/0001_appbasis_exercise_catalog_tenant_identity.sql",
         "modules/exercise-catalog/migrations/0002_appbasis_exercise_catalog_parity.sql",
         "modules/exercise-catalog/migrations/0003_appbasis_exercise_catalog_private_media_delete_state.sql",
-        "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql"
+        "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql",
+        "modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql"
       ],
-      "lifecycleStatus": "repository-schema-v5-published-preview-69-privacy-activation-pending",
+      "lifecycleStatus": "repository-schema-v6-published-preview-v5-privacy-activation-pending",
       "notes": [
         "production-runtime-cutover-not-authorized",
         "exercise-catalog-configuration-not-personal",
         "exercise-favorite-lifecycle-pending",
-        "standard-module-target-schema-v5-published-in-repository",
+        "standard-module-target-schema-v6-published-in-repository",
         "ulc-preview-v5-schema-69-installed-runtime-abnahme-pending",
         "exercise-catalog-usage-subject-attribution-retention-pending"
       ]
@@ -800,10 +801,10 @@
   },
   "repositorySchemaReview": {
     "reviewedAt": "2026-11-22",
-    "reviewKind": "repository-schema-v19-forward-reconciliation-inventory-no-legal-or-production-approval",
+    "reviewKind": "repository-schema-v19-catalog-v6-fence-no-legal-or-production-approval",
     "sourceManifest": "apps/ulc-linz/appbasis.database.json",
-    "sourceManifestBlobSha": "3884bf202ac8c239b2a63d0c7d52179a55b42070",
-    "declaredMigrationCount": 46,
+    "sourceManifestBlobSha": "773239e5e778a6aba25e6ee9570ee8f686cf907c",
+    "declaredMigrationCount": 47,
     "declaredTableCount": 69,
     "persistentTableInventoryCount": 69,
     "expectedLifecycleSchemaVersion": 19,
@@ -814,7 +815,8 @@
       "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
       "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql",
       "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql",
-      "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql"
+      "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql",
+      "modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql"
     ],
     "migrationChanges": [
       {
@@ -870,9 +872,20 @@
           "athlete_id"
         ],
         "dataRisk": "single-security-definer-write-fence-function-replacement-no-new-table-35-day-guard-and-restore-replay-approval-still-pending"
+      },
+      {
+        "migration": "modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql",
+        "tables": [
+          "appbasis_exercise_catalog_favorite",
+          "appbasis_exercise_catalog_usage_subject"
+        ],
+        "columns": [
+          "principal_id"
+        ],
+        "dataRisk": "module-owner additive SQL triggers deny resurrection of erased personal favorites and usage-subject links; operator-controlled production migration, historical free-text deletion and backup restore remain pending"
       }
     ],
-    "stillOpen": "privacy-and-retention-approval-cross-owner-lifecycle-freetext-revisions-live-no-resurrection-backup-restore",
+    "stillOpen": "privacy-and-retention-approval-cross-owner-lifecycle-freetext-revisions-real-sql-migration-apply-no-resurrection-backup-restore",
     "readiness": "blocked-do-not-interpret-as-operator-approval",
     "historyV16MigrationChanges": [
       {

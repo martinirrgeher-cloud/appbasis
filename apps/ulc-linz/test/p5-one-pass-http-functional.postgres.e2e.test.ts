@@ -118,8 +118,8 @@ suite("ULC P5 one-pass synthetic real-HTTP functional admission", () => {
       new URL("../appbasis.database.json", import.meta.url), "utf8",
     )) as {owners: readonly {migrations: readonly string[]}[]};
     const migrations = manifest.owners.flatMap(o => o.migrations);
-    if (migrations.length !== 46 || new Set(migrations).size !== 46) {
-      throw new Error("P5 requires the current exact 46 canonical migrations.");
+    if (migrations.length !== 47 || new Set(migrations).size !== 47) {
+      throw new Error("P5 requires the current exact 47 canonical migrations.");
     }
     for (const path of migrations) {
       const body = await readFile(new URL("../../../" + path, import.meta.url), "utf8");

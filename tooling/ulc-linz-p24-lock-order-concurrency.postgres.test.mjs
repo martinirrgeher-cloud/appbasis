@@ -73,9 +73,16 @@ test("P24: canonical athlete row and favorite advisory locks fail fast under dir
     const manifest=JSON.parse(await readFile(
       new URL("../apps/ulc-linz/appbasis.database.json",import.meta.url),"utf8",
     ));
-    const migrations=manifest.owners.flatMap(o=>o.migrations);
+    const current=manifest.owners.flatMap(o=>o.migrations);
     assert.equal(manifest.owners.length,8);
-    assert.equal(migrations.length, 46);
+    assert.equal(current.length,47);
+    // P24 intentionally evaluates the old 46-file schema plus its separate
+    // 55P03 candidate. The newly published catalog fence would reject UPDATE
+    // with 23514 first, invalidating this historical concurrency fixture.
+    const migration="modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql";
+    assert.equal(current.filter(path=>path===migration).length,1);
+    const migrations=current.filter(path=>path!==migration);
+    assert.equal(migrations.length,46);
     for(const path of migrations) {
       const sql=await readFile(new URL("../"+path,import.meta.url),"utf8");
       for(const stmt of split(sql)) await query(stmt);

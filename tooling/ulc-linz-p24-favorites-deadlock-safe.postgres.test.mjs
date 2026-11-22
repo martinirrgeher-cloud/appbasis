@@ -78,7 +78,13 @@ test("P24: direct favorite SQL bypass before deadlock-safe candidate; both owner
     const manifest = JSON.parse(await readFile(
       new URL("../apps/ulc-linz/appbasis.database.json", import.meta.url), "utf8",
     ));
-    const paths = manifest.owners.flatMap(o => o.migrations);
+    const current = manifest.owners.flatMap(o => o.migrations);
+    assert.equal(current.length, 47);
+    assert.equal(current.at(current.indexOf("modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql")), "modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql");
+    // Historical P24 compares pre-published catalog SQL with its own
+    // unregistered candidate. Remove ONLY the exact v6 append from the
+    // disposable database, never from the canonical production manifest.
+    const paths = current.filter(path => path !== "modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql");
     assert.equal(paths.length, 46);
     assert.equal(new Set(paths).size, 46);
     for (const path of paths) {

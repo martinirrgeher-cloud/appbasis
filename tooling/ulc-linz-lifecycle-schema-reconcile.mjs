@@ -84,10 +84,20 @@ export async function loadUlcLifecycleRepairPlan() {
     lifecycle.migrations[18]==="apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql" &&
     catalog?.schemaVersion===5 && catalog?.migrations?.length===5 &&
     catalog.migrations[4]==="modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql");
-  const published=publishedV18 || publishedV19;
+  const publishedV19CatalogV6=(migrationCount===47 &&
+    blocks?.schemaVersion===7 && blocks?.migrations?.length===7 &&
+    blocks.migrations[6]==="modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql" &&
+    lifecycle?.schemaVersion===19 && lifecycle?.migrations?.length===19 &&
+    lifecycle.migrations[16]==="apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql" &&
+    lifecycle.migrations[17]==="apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql" &&
+    lifecycle.migrations[18]==="apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql" &&
+    catalog?.schemaVersion===6 && catalog?.migrations?.length===6 &&
+    catalog.migrations[4]==="modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql" &&
+    catalog.migrations[5]==="modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql");
+  const published=publishedV18 || publishedV19 || publishedV19CatalogV6;
   if (manifest.application !== "ulc-linz" || !Array.isArray(manifest.owners) ||
       !(migrationCount===41 || published)) {
-    fail("expected historical 41 or exact published 45/46-migration ULC owner manifest changed");
+    fail("expected historical 41 or exact published 45/46/47-migration ULC owner manifest changed");
   }
   requiredOwner(manifest, "training-blocks", ULC_LIFECYCLE_REPAIR_PATHS.slice(0, 2));
   requiredOwner(manifest, "training-documentation", ULC_LIFECYCLE_REPAIR_PATHS.slice(2));

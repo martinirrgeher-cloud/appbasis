@@ -306,10 +306,10 @@ describe("ULC Linz M5 C/D data inventory", () => {
         (owner) => owner.id === "exercise-catalog",
       ),
     ).toMatchObject({
-      schemaVersion: 5,
-      lifecycleStatus: "repository-schema-v5-published-preview-69-privacy-activation-pending",
+      schemaVersion: 6,
+      lifecycleStatus: "repository-schema-v6-published-preview-v5-privacy-activation-pending",
       notes: expect.arrayContaining([
-        "standard-module-target-schema-v5-published-in-repository",
+        "standard-module-target-schema-v6-published-in-repository",
         "ulc-preview-v5-schema-69-installed-runtime-abnahme-pending",
         "production-runtime-cutover-not-authorized",
         "exercise-catalog-configuration-not-personal",
