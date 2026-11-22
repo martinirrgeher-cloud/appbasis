@@ -204,7 +204,7 @@ suite("T07 catalog SQL erasure fence: disposable PostgreSQL only", () => {
       await tx.unsafe(
         `UPDATE appbasis_exercise_catalog_favorite
          SET principal_id=$1 WHERE organization_id=$2 AND principal_id=$3`,
-        [NEIGHBOR, ORG, PERSON],
+        [PERSON, ORG, PERSON],
       );
     });
     await locked;
@@ -284,6 +284,17 @@ suite("T07 catalog SQL erasure fence: disposable PostgreSQL only", () => {
          )`,
     );
     expect(Number(rows[0]?.count)).toBe(2);
+    // Regression of the review failure: UPDATE must be rejected before
+    // acquiring any principal advisory lock. Matching NEW.principal_id to
+    // PERSON in the two-session test is essential for reproducing 40P01.
+    const candidate = await readFile(
+      new URL("./fixtures/p07-catalog-erasure-fence.candidate.sql", import.meta.url),
+      "utf8",
+    );
+    expect(candidate.indexOf("IF TG_OP = 'UPDATE'")).toBeGreaterThan(0);
+    expect(candidate.indexOf("IF TG_OP = 'UPDATE'"))
+      .toBeLessThan(candidate.indexOf("pg_catalog.pg_advisory_xact_lock("));
+
     const manifest = JSON.parse(await readFile(
       new URL("../appbasis.database.json", import.meta.url), "utf8",
     )) as { owners: { id: string; migrations: string[] }[] };
