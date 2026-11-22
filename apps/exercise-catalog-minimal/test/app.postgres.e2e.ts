@@ -162,6 +162,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   await requiredIsolatedConnection().client.unsafe(
     `TRUNCATE TABLE
+       appbasis_exercise_catalog_usage_subject,
+       appbasis_exercise_catalog_favorite_deletion,
        appbasis_exercise_catalog_private_media,
        appbasis_exercise_catalog_usage,
        appbasis_exercise_catalog_similarity,
