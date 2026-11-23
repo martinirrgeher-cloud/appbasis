@@ -4,7 +4,9 @@ import { principalId, roleId, type PermissionStore } from "@appbasis/permissions
 import type { UlcLinzCurrentIdentity } from "../worker/authorization";
 import {
   eraseUlcLinzAthleteTrainingHistoryOnFrozenStore,
+  eraseUlcLinzAthleteTrainingHistoryWithInstalledFences,
   type UlcLinzAthleteTrainingHistoryDeletionDependencies,
+  type UlcLinzAthleteTrainingHistoryProtectedDeletionDependencies,
 } from "../worker/lifecycle-service";
 
 const ORG = "org-attendance-cleanup";
@@ -85,6 +87,22 @@ function harness(options: {
       deletedRegistrationHistoryRows: 3,
     };
   });
+  const markSubjectDeletedAndEraseHistory = vi.fn(async () => {
+    calls.push("guarded-erase");
+    return {
+      markerInserted: true,
+      deletedAttendanceRows: 1,
+      deletedRegistrationRows: 2,
+      deletedRegistrationHistoryRows: 3,
+    };
+  });
+  const protectedDependencies: UlcLinzAthleteTrainingHistoryProtectedDeletionDependencies = {
+    permissions,
+    scopes: { resolveMembership, hasRelation },
+    athletes: { findCurrentAthleteDeletionMarker },
+    training: { markSubjectDeletedAndEraseHistory },
+    now: () => options.now ?? new Date(NOW),
+  };
   const dependencies: UlcLinzAthleteTrainingHistoryDeletionDependencies = {
     permissions,
     scopes: { resolveMembership, hasRelation },
@@ -96,6 +114,7 @@ function harness(options: {
   return {
     dependencies, calls, requireFrozenIsolatedStore,
     eraseSubjectHistoryOnFrozenStore, findCurrentAthleteDeletionMarker,
+    protectedDependencies, markSubjectDeletedAndEraseHistory,
   };
 }
 
@@ -175,5 +194,79 @@ describe("ULC frozen training history cleanup – strict app authorization", () 
     await expect(eraseUlcLinzAthleteTrainingHistoryOnFrozenStore(
       current(), h.dependencies, request,
     )).rejects.toThrow(/database unavailable/);
+  });
+});
+
+
+describe("ULC v19-protected app-owned training history authorization", () => {
+  it("authenticates canonical same-org admin and current athlete marker before protected owner write", async () => {
+    const h = harness();
+    const result = await eraseUlcLinzAthleteTrainingHistoryWithInstalledFences(
+      current(), h.protectedDependencies, request,
+    );
+    expect(result).toEqual({
+      organizationId: ORG, subjectId: SUBJECT, completedAt: COMPLETED,
+      markerInserted: true,
+      deletedAttendanceRows: 1,
+      deletedRegistrationRows: 2,
+      deletedRegistrationHistoryRows: 3,
+    });
+    expect(h.calls).toEqual([
+      "membership", "principal", "relation", "athlete-marker", "guarded-erase",
+    ]);
+    expect(h.markSubjectDeletedAndEraseHistory).toHaveBeenCalledWith(
+      ORG, SUBJECT, COMPLETED,
+    );
+    expect(h.requireFrozenIsolatedStore).not.toHaveBeenCalled();
+    expect(h.eraseSubjectHistoryOnFrozenStore).not.toHaveBeenCalled();
+    expect(Object.isFrozen(result)).toBe(true);
+  });
+
+  it("rejects untrusted actors and missing/mismatched source marker before ANY owner write", async () => {
+    const cases = [
+      { h: harness({ membership: "trainer" }), actor: current() },
+      { h: harness({ role: "ulc-linz:trainer" }), actor: current() },
+      { h: harness({ self: true }), actor: current() },
+      { h: harness(), actor: current("password-change-required") },
+      { h: harness({ marker: null }), actor: current() },
+      { h: harness({ marker: { ...originalMarker(), organizationId: "foreign" } }), actor: current() },
+      { h: harness({ marker: { ...originalMarker(), entityId: "wrong" } }), actor: current() },
+      { h: harness({ now: new Date(NaN) }), actor: current() },
+    ];
+    for (const { h, actor } of cases) {
+      await expect(eraseUlcLinzAthleteTrainingHistoryWithInstalledFences(
+        actor, h.protectedDependencies, request,
+      )).rejects.toThrow();
+      expect(h.markSubjectDeletedAndEraseHistory).not.toHaveBeenCalled();
+    }
+  });
+
+  it("rejects missing owner method, malformed counts and propagates transactional failure", async () => {
+    const absent = harness();
+    await expect(eraseUlcLinzAthleteTrainingHistoryWithInstalledFences(
+      current(),
+      { ...absent.protectedDependencies, training: {} } as never,
+      request,
+    )).rejects.toThrow();
+    expect(absent.findCurrentAthleteDeletionMarker).not.toHaveBeenCalled();
+
+    const malformed = harness();
+    malformed.markSubjectDeletedAndEraseHistory.mockResolvedValueOnce({
+      markerInserted: true,
+      deletedAttendanceRows: 1,
+      deletedRegistrationRows: -1,
+      deletedRegistrationHistoryRows: 0,
+    });
+    await expect(eraseUlcLinzAthleteTrainingHistoryWithInstalledFences(
+      current(), malformed.protectedDependencies, request,
+    )).rejects.toThrow();
+
+    const failed = harness();
+    failed.markSubjectDeletedAndEraseHistory.mockRejectedValueOnce(
+      new Error("protected owner transaction failed"),
+    );
+    await expect(eraseUlcLinzAthleteTrainingHistoryWithInstalledFences(
+      current(), failed.protectedDependencies, request,
+    )).rejects.toThrow(/transaction failed/);
   });
 });
