@@ -24,6 +24,8 @@ export interface UlcTrainingSubjectProtectedHistoryDeletionResult
 }
 
 export interface UlcTrainingSubjectProtectedHistoryDeletionRepository {
+  /** Read-only owner + exact v19 guard check before touching other owners. */
+  assertGuardReady(): Promise<void>;
   markSubjectDeletedAndEraseHistory(
     organizationId: string,
     subjectId: string,
@@ -38,6 +40,15 @@ export class PostgresUlcTrainingSubjectProtectedHistoryRepository
   implements UlcTrainingSubjectProtectedHistoryDeletionRepository
 {
   constructor(private readonly client: UlcTrainingSubjectHistoryTransactionClient) {}
+
+  async assertGuardReady(): Promise<void> {
+    await this.client.begin(async (tx) => {
+      // Never mutate in preflight; the actual write transaction rechecks.
+      await tx.unsafe("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      await tx.unsafe("SET TRANSACTION READ ONLY");
+      await assertInstalledGuard(tx);
+    });
+  }
 
   async markSubjectDeletedAndEraseHistory(
     organizationId: string,
@@ -61,42 +72,7 @@ export class PostgresUlcTrainingSubjectProtectedHistoryRepository
       // A stale snapshot may not see an already committed marker. Neither a
       // SERIALIZABLE nor REPEATABLE READ transaction is an adequate substitute.
       await tx.unsafe("SET TRANSACTION ISOLATION LEVEL READ COMMITTED");
-      const safety = await tx.unsafe(`SELECT
-          current_user AS executor,
-          session_user AS login_role,
-          (SELECT pg_get_userbyid(datdba) FROM pg_database
-             WHERE datname = current_database()) AS database_owner,
-          (SELECT count(*)::int
-             FROM (VALUES
-               ('ulc_linz_training_attendance', 'ulc_linz_training_attendance_subject_fence'),
-               ('ulc_linz_training_registration', 'ulc_linz_training_registration_subject_fence'),
-               ('ulc_linz_training_registration_change', 'ulc_linz_training_registration_change_subject_fence')
-             ) AS required(table_name, trigger_name)
-             JOIN pg_class c ON c.relname = required.table_name
-             JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
-             JOIN pg_trigger t ON t.tgrelid = c.oid
-               AND t.tgname = required.trigger_name AND t.tgenabled = 'O'
-               AND (t.tgtype & 23) = 23 -- BEFORE ROW INSERT+UPDATE
-             JOIN pg_proc p ON p.oid = t.tgfoid
-             WHERE p.proname = 'ulc_linz_training_subject_write_fence'
-               AND p.prosecdef = true
-               AND p.proconfig @> ARRAY['search_path=pg_catalog, pg_temp']::text[]
-               AND pg_get_userbyid(p.proowner) = (
-                 SELECT pg_get_userbyid(datdba) FROM pg_database
-                 WHERE datname = current_database()
-               )
-               -- Exact reconciled v19 function body, verified on production
-               -- under neondb_owner on 23.11.2026, not a name-only check.
-               AND md5(p.prosrc) = '3888773a981ccaf4a25f5a5ea1fa77c9'
-          ) AS guarded_tables`);
-      if (
-        safety.length !== 1 ||
-        safety[0]?.executor !== safety[0]?.database_owner ||
-        safety[0]?.login_role !== safety[0]?.executor ||
-        safety[0]?.guarded_tables !== 3
-      ) {
-        throw new Error("ULC protected training history requires owner and all three v19 fences.");
-      }
+      await assertInstalledGuard(tx);
 
       // Exact advisory key shared by every v19 INSERT/UPDATE writer. Marker
       // and deletion commit atomically; subsequent writes fail in DB triggers.
@@ -182,6 +158,49 @@ export class PostgresUlcTrainingSubjectProtectedHistoryRepository
       });
     });
   }
+}
+
+/** Same strict guard check for read-only preflight and final mutation. */
+async function assertInstalledGuard(
+  tx: UlcTrainingSubjectHistorySqlClient,
+): Promise<void> {
+  const safety = await tx.unsafe(`SELECT
+      current_user AS executor,
+      session_user AS login_role,
+      (SELECT pg_get_userbyid(datdba) FROM pg_database
+         WHERE datname = current_database()) AS database_owner,
+      (SELECT count(*)::int
+         FROM (VALUES
+           ('ulc_linz_training_attendance', 'ulc_linz_training_attendance_subject_fence'),
+           ('ulc_linz_training_registration', 'ulc_linz_training_registration_subject_fence'),
+           ('ulc_linz_training_registration_change', 'ulc_linz_training_registration_change_subject_fence')
+         ) AS required(table_name, trigger_name)
+         JOIN pg_class c ON c.relname = required.table_name
+         JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+         JOIN pg_trigger t ON t.tgrelid = c.oid
+           AND t.tgname = required.trigger_name AND t.tgenabled = 'O'
+           AND (t.tgtype & 23) = 23 -- BEFORE ROW INSERT+UPDATE
+         JOIN pg_proc p ON p.oid = t.tgfoid
+         WHERE p.proname = 'ulc_linz_training_subject_write_fence'
+           AND p.prosecdef = true
+           AND p.proconfig @> ARRAY['search_path=pg_catalog, pg_temp']::text[]
+           AND pg_get_userbyid(p.proowner) = (
+             SELECT pg_get_userbyid(datdba) FROM pg_database
+             WHERE datname = current_database()
+           )
+           -- Exact reconciled v19 function body, verified on production
+           -- under neondb_owner on 23.11.2026, not a name-only check.
+           AND md5(p.prosrc) = '3888773a981ccaf4a25f5a5ea1fa77c9'
+      ) AS guarded_tables`);
+  if (
+    safety.length !== 1 ||
+    safety[0]?.executor !== safety[0]?.database_owner ||
+    safety[0]?.login_role !== safety[0]?.executor ||
+    safety[0]?.guarded_tables !== 3
+  ) {
+    throw new Error("ULC protected training history requires owner and all three v19 fences.");
+  }
+
 }
 
 async function eraseRows(

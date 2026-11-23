@@ -96,11 +96,14 @@ function harness(options: {
       deletedRegistrationHistoryRows: 3,
     };
   });
+  const assertGuardReady = vi.fn(async () => {
+    calls.push("guard-preflight");
+  });
   const protectedDependencies: UlcLinzAthleteTrainingHistoryProtectedDeletionDependencies = {
     permissions,
     scopes: { resolveMembership, hasRelation },
     athletes: { findCurrentAthleteDeletionMarker },
-    training: { markSubjectDeletedAndEraseHistory },
+    training: { assertGuardReady, markSubjectDeletedAndEraseHistory },
     now: () => options.now ?? new Date(NOW),
   };
   const dependencies: UlcLinzAthleteTrainingHistoryDeletionDependencies = {
@@ -114,7 +117,7 @@ function harness(options: {
   return {
     dependencies, calls, requireFrozenIsolatedStore,
     eraseSubjectHistoryOnFrozenStore, findCurrentAthleteDeletionMarker,
-    protectedDependencies, markSubjectDeletedAndEraseHistory,
+    protectedDependencies, markSubjectDeletedAndEraseHistory, assertGuardReady,
   };
 }
 

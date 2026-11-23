@@ -4,6 +4,7 @@ import { principalId, roleId, type PermissionStore } from "@appbasis/permissions
 import {
   deleteUlcLinzAthleteSubjectDependentsAfterRetention,
   deleteUlcLinzAthleteSubjectDependentsIncludingDocumentationAfterRetention,
+  deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention,
   inspectUlcLinzAthleteSubjectDeletionFollowUp,
   type UlcLinzAthleteSubjectDeletionDependencies,
   type UlcLinzAthleteSubjectDeletionPreflightDependencies,
@@ -454,5 +455,172 @@ describe("ULC coordinated three-owner post-retention documentation deletion", ()
         current(), h.completeDependencies, request,
       )).rejects.toThrow();
     }
+  });
+});
+
+
+describe("ULC four downstream owner structured erasure – no production activation", () => {
+  function fourOwnerHarness(options: Parameters<typeof harness>[0] = {}) {
+    const h = harness(options);
+    const removeSubjectDataAfterVerifiedDeletion = vi.fn(async () => {
+      h.events.push("docs");
+      return {
+        markerInserted: true,
+        deletedDocuments: 2,
+        deletedRevisions: 3,
+        redactedOtherSubjectRevisions: 4,
+      };
+    });
+    const assertGuardReady = vi.fn(async () => {
+      h.events.push("guard-preflight");
+    });
+    const markSubjectDeletedAndEraseHistory = vi.fn(async () => {
+      h.events.push("app-history");
+      return {
+        markerInserted: true,
+        deletedAttendanceRows: 2,
+        deletedRegistrationRows: 3,
+        deletedRegistrationHistoryRows: 5,
+      };
+    });
+    const fourOwnerDependencies = {
+      ...h.dependencies,
+      documentation: { removeSubjectDataAfterVerifiedDeletion },
+      training: { assertGuardReady, markSubjectDeletedAndEraseHistory },
+    };
+    return {
+      ...h, fourOwnerDependencies, removeSubjectDataAfterVerifiedDeletion,
+      assertGuardReady, markSubjectDeletedAndEraseHistory,
+    };
+  }
+
+  it("authenticates before read-only preflight and coordinates ALL four owners", async () => {
+    const h = fourOwnerHarness();
+    const value = await deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention(
+      current(), h.fourOwnerDependencies, request,
+    );
+    expect(value).toEqual({
+      scope: "structured-owner-data-only",
+      organizationId: ORG, subjectId: SUBJECT, completedAt: COMPLETED,
+      deletedPlans: 2, deletedPlanRevisions: 3, deletedPlanItems: 4,
+      usageMarkerInserted: true, deletedAttributedUsageEvents: 5,
+      documentationMarkerInserted: true, deletedDocuments: 2,
+      deletedDocumentationRevisions: 3, redactedOtherSubjectRevisions: 4,
+      trainingHistoryMarkerInserted: true, deletedAttendanceRows: 2,
+      deletedRegistrationRows: 3, deletedRegistrationHistoryRows: 5,
+    });
+    expect(h.events).toEqual([
+      "membership", "principal", "relation", "marker", "guard-preflight",
+      "membership", "principal", "relation", "marker", "plans", "usage", "docs",
+      "membership", "principal", "relation", "marker", "app-history",
+    ]);
+    expect(Object.isFrozen(value)).toBe(true);
+    expect(h.assertGuardReady).toHaveBeenCalledTimes(1);
+    expect(h.deleteSubjectData).toHaveBeenCalledWith(ORG, SUBJECT, COMPLETED);
+    expect(h.markSubjectDeletedAndRemoveAttributedUsage).toHaveBeenCalledWith(
+      ORG, SUBJECT, COMPLETED,
+    );
+    expect(h.removeSubjectDataAfterVerifiedDeletion).toHaveBeenCalledWith(
+      ORG, SUBJECT, COMPLETED,
+    );
+    expect(h.markSubjectDeletedAndEraseHistory).toHaveBeenCalledWith(
+      ORG, SUBJECT, COMPLETED,
+    );
+  });
+
+  it("requires all downstream owner capabilities before any source reads or writes", async () => {
+    const h = fourOwnerHarness();
+    for (const broken of [
+      { ...h.fourOwnerDependencies, documentation: undefined },
+      { ...h.fourOwnerDependencies, training: undefined },
+      { ...h.fourOwnerDependencies,
+        training: { markSubjectDeletedAndEraseHistory: h.markSubjectDeletedAndEraseHistory } },
+      { ...h.fourOwnerDependencies, plans: undefined },
+      { ...h.fourOwnerDependencies, usage: undefined },
+    ]) {
+      await expect(deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention(
+        current(), broken as never, request,
+      )).rejects.toThrow();
+    }
+    expect(h.events).toEqual([]);
+    expect(h.assertGuardReady).not.toHaveBeenCalled();
+    expect(h.deleteSubjectData).not.toHaveBeenCalled();
+  });
+
+  it("refuses nonadmin, revoked, own, incomplete and missing/mismatched source without touching ANY owner", async () => {
+    const cases = [
+      { h: fourOwnerHarness({ sourceRole: "trainer" }), actor: current() },
+      { h: fourOwnerHarness({ principalRole: "ulc-linz:trainer" }), actor: current() },
+      { h: fourOwnerHarness({ principalGrants: ["ulc-linz:unexpected"] }), actor: current() },
+      { h: fourOwnerHarness({ relation: true }), actor: current() },
+      { h: fourOwnerHarness(), actor: current("password-change-required") },
+      { h: fourOwnerHarness({ marker: null }), actor: current() },
+      { h: fourOwnerHarness({ marker: { ...authoritativeMarker(), entityId: "wrong" } }), actor: current() },
+      { h: fourOwnerHarness({ now: new Date(NaN) }), actor: current() },
+    ];
+    for (const { h, actor } of cases) {
+      await expect(deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention(
+        actor, h.fourOwnerDependencies, request,
+      )).rejects.toThrow();
+      expect(h.assertGuardReady).not.toHaveBeenCalled();
+      expect(h.deleteSubjectData).not.toHaveBeenCalled();
+      expect(h.markSubjectDeletedAndRemoveAttributedUsage).not.toHaveBeenCalled();
+      expect(h.removeSubjectDataAfterVerifiedDeletion).not.toHaveBeenCalled();
+      expect(h.markSubjectDeletedAndEraseHistory).not.toHaveBeenCalled();
+    }
+  });
+
+  it("fails closed if read-only v19 fence/owner preflight cannot pass", async () => {
+    const h = fourOwnerHarness();
+    h.assertGuardReady.mockRejectedValueOnce(new Error("v19 fence missing"));
+    await expect(deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention(
+      current(), h.fourOwnerDependencies, request,
+    )).rejects.toThrow(/v19 fence missing/);
+    expect(h.deleteSubjectData).not.toHaveBeenCalled();
+    expect(h.markSubjectDeletedAndRemoveAttributedUsage).not.toHaveBeenCalled();
+    expect(h.removeSubjectDataAfterVerifiedDeletion).not.toHaveBeenCalled();
+    expect(h.markSubjectDeletedAndEraseHistory).not.toHaveBeenCalled();
+  });
+
+  it("a failed documentation or app-history owner never produces a false four-owner success; replay is explicit", async () => {
+    const docError = fourOwnerHarness();
+    docError.removeSubjectDataAfterVerifiedDeletion.mockRejectedValueOnce(
+      new Error("docs owner unavailable"),
+    );
+    await expect(deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention(
+      current(), docError.fourOwnerDependencies, request,
+    )).rejects.toThrow(/docs owner unavailable/);
+    expect(docError.markSubjectDeletedAndEraseHistory).not.toHaveBeenCalled();
+    await expect(deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention(
+      current(), docError.fourOwnerDependencies, request,
+    )).resolves.toMatchObject({ scope: "structured-owner-data-only" });
+    expect(docError.deleteSubjectData).toHaveBeenCalledTimes(2);
+
+    const appError = fourOwnerHarness();
+    appError.markSubjectDeletedAndEraseHistory.mockRejectedValueOnce(
+      new Error("app history owner unavailable"),
+    );
+    await expect(deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention(
+      current(), appError.fourOwnerDependencies, request,
+    )).rejects.toThrow(/app history owner unavailable/);
+    expect(appError.removeSubjectDataAfterVerifiedDeletion).toHaveBeenCalledTimes(1);
+    await expect(deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention(
+      current(), appError.fourOwnerDependencies, request,
+    )).resolves.toMatchObject({ trainingHistoryMarkerInserted: true });
+    expect(appError.deleteSubjectData).toHaveBeenCalledTimes(2);
+    expect(appError.markSubjectDeletedAndEraseHistory).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects invalid final owner counts and never claims 8-owner privacy readiness", async () => {
+    const h = fourOwnerHarness();
+    h.markSubjectDeletedAndEraseHistory.mockResolvedValueOnce({
+      markerInserted: true,
+      deletedAttendanceRows: -1,
+      deletedRegistrationRows: 0,
+      deletedRegistrationHistoryRows: 0,
+    });
+    await expect(deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention(
+      current(), h.fourOwnerDependencies, request,
+    )).rejects.toThrow();
   });
 });
