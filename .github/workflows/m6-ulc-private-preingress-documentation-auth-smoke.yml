@@ -108,7 +108,32 @@ jobs:
           if(secret.length<32||secret!==secret.trim())throw Error('T08 Better Auth secret contract invalid.');
           NODE
 
+      - name: Recheck synthetic pre-ingress user and grant baseline without writes
+        id: isolated
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node ./apps/ulc-linz/tooling/t08-private-preingress-auth-smoke.mjs preflight
+
+      - name: Derive existing deployed private auth-secret HMAC fingerprint
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          AUTH_SECRET_FINGERPRINT="$(node --input-type=module <<'NODE'
+          import { createHmac } from 'node:crypto';
+          process.stdout.write(createHmac('sha256', process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET).update('appbasis:ulc-linz:production:better-auth-secret:v1').digest('hex'));
+          NODE
+          )"
+          [[ "$AUTH_SECRET_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]] || exit 1
+          echo "::add-mask::$AUTH_SECRET_FINGERPRINT"
+          printf 'AUTH_SECRET_FINGERPRINT=%s\n' "$AUTH_SECRET_FINGERPRINT" >> "$GITHUB_ENV"
+
       - name: Verify exact active private Cloudflare runtime (read only)
+        id: deployed
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -121,7 +146,10 @@ jobs:
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/workers/$TARGET_WORKER/versions?page=1&per_page=100" > "$RUNNER_TEMP/t08-versions.json"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/scripts/$TARGET_WORKER/deployments" > "$RUNNER_TEMP/t08-deployments.json"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/scripts" > "$RUNNER_TEMP/t08-scripts.json"
-          node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs post-deploy-state "$RUNNER_TEMP/t08-worker.json" "$RUNNER_TEMP/t08-versions.json" "$RUNNER_TEMP/t08-deployments.json" "$RUNNER_TEMP/t08-scripts.json" > "$RUNNER_TEMP/t08-private-state.json"
+          node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs state "$RUNNER_TEMP/t08-worker.json" "$RUNNER_TEMP/t08-versions.json" "$RUNNER_TEMP/t08-deployments.json" "$RUNNER_TEMP/t08-scripts.json" > "$RUNNER_TEMP/t08-private-state.json"
+          deployed_version="$(jq -er '.deployedVersionId | select(type=="string" and length>0)' "$RUNNER_TEMP/t08-private-state.json")"
+          echo "::add-mask::$deployed_version"
+          printf 'version_id=%s\n' "$deployed_version" >> "$GITHUB_OUTPUT"
           curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/subdomain" > "$RUNNER_TEMP/t08-subdomain.json"
           jq -e '.success==true and (.result.subdomain|type=="string" and length>0)' "$RUNNER_TEMP/t08-subdomain.json" > /dev/null
 
@@ -140,6 +168,26 @@ jobs:
           echo "::add-mask::$app"
           echo "::add-mask::$security"
           printf 'APP_HYPERDRIVE_ID=%s\nSECURITY_HYPERDRIVE_ID=%s\n' "$app" "$security" >> "$GITHUB_ENV"
+
+      - name: Match the already deployed version's four bindings to existing canonical IDs
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VERSION_ID: ${{ steps.deployed.outputs.version_id }}
+        run: |
+          set -euo pipefail
+          test -n "$VERSION_ID"
+          detail="$RUNNER_TEMP/t08-deployed-version-detail.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$TARGET_WORKER/versions/$VERSION_ID" > "$detail"
+          ids="$(node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs binding-ids "$detail")"
+          jq -e --arg app "$APP_HYPERDRIVE_ID" --arg log "$SECURITY_HYPERDRIVE_ID" \
+            '.applicationHyperdriveId == $app and .securityLogHyperdriveId == $log' <<< "$ids" > /dev/null || {
+              echo "Private deployed version's Hyperdrive bindings differ from canonical ULC protected targets." >&2
+              exit 1
+            }
 
       - name: Render one token-guarded transient private remote test harness
         shell: bash
@@ -225,19 +273,24 @@ jobs:
             sleep 1
           done
           test "$ready" = true || { echo 'T08 remote worker unavailable.' >&2; exit 1; }
-          T08_SMOKE_PROBE_TOKEN="$probe_token" \
+          T08_CLEANUP_ARMED_FILE="$RUNNER_TEMP/t08-cleanup-armed" T08_SMOKE_PROBE_TOKEN="$probe_token" \
             node ./apps/ulc-linz/tooling/t08-private-preingress-auth-smoke.mjs run
           stop_remote
           trap - EXIT
 
-      - name: ALWAYS restore synthetic rights and independently verify zero persisted test data
-        if: always() && steps.prepare.outcome == 'success'
+      - name: ALWAYS restore armed synthetic rights, or inspect baseline read-only
+        if: always() && steps.isolated.outcome == 'success'
         shell: bash
         env:
           ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
         run: |
           set -euo pipefail
-          node ./apps/ulc-linz/tooling/t08-private-preingress-auth-smoke.mjs cleanup
+          if test -f "$RUNNER_TEMP/t08-cleanup-armed"; then
+            T08_CLEANUP_ARMED_FILE="$RUNNER_TEMP/t08-cleanup-armed" \
+              node ./apps/ulc-linz/tooling/t08-private-preingress-auth-smoke.mjs cleanup
+          else
+            node ./apps/ulc-linz/tooling/t08-private-preingress-auth-smoke.mjs preflight
+          fi
 
       - name: Report limited exact T08 proof without claiming full T06 or GO
         if: success()
