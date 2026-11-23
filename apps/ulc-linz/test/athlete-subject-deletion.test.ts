@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { principalId, roleId, type PermissionStore } from "@appbasis/permissions";
 import {
   deleteUlcLinzAthleteSubjectDependentsAfterRetention,
+  deleteUlcLinzAthleteSubjectDependentsIncludingDocumentationAfterRetention,
   inspectUlcLinzAthleteSubjectDeletionFollowUp,
   type UlcLinzAthleteSubjectDeletionDependencies,
   type UlcLinzAthleteSubjectDeletionPreflightDependencies,
@@ -343,4 +344,115 @@ describe("ULC canonically authorized post-retention athlete subject cleanup", ()
     expect(h.deleteSubjectData).not.toHaveBeenCalled();
   });
 
+});
+
+
+describe("ULC coordinated three-owner post-retention documentation deletion", () => {
+  function completeHarness(options: Parameters<typeof harness>[0] = {}) {
+    const h = harness(options);
+    const removeSubjectDataAfterVerifiedDeletion = vi.fn(async () => {
+      h.events.push("documentation");
+      return {
+        markerInserted: true,
+        deletedDocuments: 2,
+        deletedRevisions: 3,
+        redactedOtherSubjectRevisions: 4,
+      };
+    });
+    return {
+      ...h,
+      removeSubjectDataAfterVerifiedDeletion,
+      completeDependencies: {
+        ...h.dependencies,
+        documentation: { removeSubjectDataAfterVerifiedDeletion },
+      },
+    };
+  }
+
+  it("runs only after canonical authorization and valid athlete tombstone, passes the exact source marker", async () => {
+    const h = completeHarness();
+    const result = await deleteUlcLinzAthleteSubjectDependentsIncludingDocumentationAfterRetention(
+      current(), h.completeDependencies, request,
+    );
+    expect(result).toEqual({
+      organizationId: ORG, subjectId: SUBJECT, completedAt: COMPLETED,
+      deletedPlans: 2, deletedPlanRevisions: 3, deletedPlanItems: 4,
+      usageMarkerInserted: true, deletedAttributedUsageEvents: 5,
+      documentationMarkerInserted: true,
+      deletedDocuments: 2,
+      deletedDocumentationRevisions: 3,
+      redactedOtherSubjectRevisions: 4,
+    });
+    expect(h.events).toEqual([
+      "membership", "principal", "relation", "marker", "plans", "usage", "documentation",
+    ]);
+    expect(h.removeSubjectDataAfterVerifiedDeletion).toHaveBeenCalledTimes(1);
+    expect(h.removeSubjectDataAfterVerifiedDeletion).toHaveBeenCalledWith(
+      ORG, SUBJECT, COMPLETED,
+    );
+    expect(Object.isFrozen(result)).toBe(true);
+  });
+
+  it("refuses a missing documentation owner BEFORE any write; refuses admin/marker failures without touching documentation", async () => {
+    const noDocs = completeHarness();
+    await expect(deleteUlcLinzAthleteSubjectDependentsIncludingDocumentationAfterRetention(
+      current(),
+      { ...noDocs.completeDependencies, documentation: {} } as never,
+      request,
+    )).rejects.toThrow();
+    expect(noDocs.deleteSubjectData).not.toHaveBeenCalled();
+    expect(noDocs.markSubjectDeletedAndRemoveAttributedUsage).not.toHaveBeenCalled();
+
+    for (const options of [
+      { sourceRole: "trainer" },
+      { relation: true },
+      { marker: null },
+      { marker: { ...authoritativeMarker(), entityId: "another-athlete" } },
+    ]) {
+      const h = completeHarness(options);
+      await expect(deleteUlcLinzAthleteSubjectDependentsIncludingDocumentationAfterRetention(
+        current(), h.completeDependencies, request,
+      )).rejects.toThrow();
+      expect(h.deleteSubjectData).not.toHaveBeenCalled();
+      expect(h.markSubjectDeletedAndRemoveAttributedUsage).not.toHaveBeenCalled();
+      expect(h.removeSubjectDataAfterVerifiedDeletion).not.toHaveBeenCalled();
+    }
+  });
+
+  it("propagates the last owner's failure; replay is explicit and uses the same authoritative marker", async () => {
+    const h = completeHarness();
+    h.removeSubjectDataAfterVerifiedDeletion.mockRejectedValueOnce(
+      new Error("documentation owner unavailable"),
+    );
+    await expect(deleteUlcLinzAthleteSubjectDependentsIncludingDocumentationAfterRetention(
+      current(), h.completeDependencies, request,
+    )).rejects.toThrow(/documentation owner unavailable/);
+    expect(h.events).toContain("plans");
+    expect(h.events).toContain("usage");
+    expect(h.removeSubjectDataAfterVerifiedDeletion).toHaveBeenCalledTimes(1);
+    await expect(deleteUlcLinzAthleteSubjectDependentsIncludingDocumentationAfterRetention(
+      current(), h.completeDependencies, request,
+    )).resolves.toMatchObject({
+      documentationMarkerInserted: true, deletedDocuments: 2,
+    });
+    expect(h.deleteSubjectData).toHaveBeenCalledTimes(2);
+    expect(h.markSubjectDeletedAndRemoveAttributedUsage).toHaveBeenCalledTimes(2);
+    expect(h.removeSubjectDataAfterVerifiedDeletion).toHaveBeenCalledTimes(2);
+    expect(h.findCurrentAthleteDeletionMarker).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not label invalid documentation owner totals as successful", async () => {
+    for (const invalid of [
+      { markerInserted: true, deletedDocuments: -1, deletedRevisions: 1, redactedOtherSubjectRevisions: 0 },
+      { markerInserted: true, deletedDocuments: 2, deletedRevisions: 1, redactedOtherSubjectRevisions: 0 },
+      { markerInserted: "yes", deletedDocuments: 1, deletedRevisions: 1, redactedOtherSubjectRevisions: 0 },
+      { markerInserted: true, deletedDocuments: 1, deletedRevisions: 1, redactedOtherSubjectRevisions: -4 },
+    ]) {
+      const h = completeHarness();
+      h.removeSubjectDataAfterVerifiedDeletion.mockResolvedValueOnce(invalid as never);
+      await expect(deleteUlcLinzAthleteSubjectDependentsIncludingDocumentationAfterRetention(
+        current(), h.completeDependencies, request,
+      )).rejects.toThrow();
+    }
+  });
 });
