@@ -39,7 +39,7 @@ export function evaluateUlcT10PilotDecision(input) {
       "T10 module identity mismatch: " + moduleId);
     const req = module.requirements || {};
     const allVerified = Object.values(req).length > 0 &&
-      Object.values(req).every(value => value === "verified");
+      Object.values(req).every(value => value === "verified" || value === "not-applicable");
     add("module:" + moduleId, module.status === "ready" && allVerified,
       module.status === "ready" && allVerified
         ? "ready with verified module requirements"
