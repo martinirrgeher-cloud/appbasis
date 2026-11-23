@@ -144,6 +144,36 @@ if (!url || !url.trim()) {
       await admin.client.end();
     });
 
+    it("read-only preflight checks the actual installed v19 fences without changing any rows", async () => {
+      const subject = new PostgresUlcTrainingSubjectPrivacyInspector(db().client);
+      await repository().assertGuardReady();
+      await expect(subject.inspectSubjectPrivacy(ORG, SUBJECT)).resolves.toMatchObject({
+        attendanceRows: 1, registrationRows: 1, registrationHistoryRows: 2,
+      });
+      const before = await db().client.unsafe(
+        "SELECT count(*)::int AS total FROM ulc_linz_training_subject_deletion",
+      );
+      expect(before[0]?.total).toBe(0);
+    });
+
+    it("preflight fails closed on disabled v19 trigger before other owner mutations", async () => {
+      await db().client.unsafe(
+        "ALTER TABLE ulc_linz_training_registration DISABLE TRIGGER ulc_linz_training_registration_subject_fence",
+      );
+      try {
+        await expect(repository().assertGuardReady())
+          .rejects.toThrow(/all three v19 fences/);
+        const markerRows = await db().client.unsafe(
+          "SELECT count(*)::int AS total FROM ulc_linz_training_subject_deletion",
+        );
+        expect(markerRows[0]?.total).toBe(0);
+      } finally {
+        await db().client.unsafe(
+          "ALTER TABLE ulc_linz_training_registration ENABLE TRIGGER ulc_linz_training_registration_subject_fence",
+        );
+      }
+    });
+
     it("atomically marks and erases all three app-owned history tables and denies recreation", async () => {
       const inspect = new PostgresUlcTrainingSubjectPrivacyInspector(db().client);
       await expect(inspect.inspectSubjectPrivacy(ORG, SUBJECT)).resolves.toMatchObject({
