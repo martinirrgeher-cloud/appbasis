@@ -1,0 +1,246 @@
+name: M6 ULC T08 Private Pre-Ingress Documentation Auth Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type RUN-ULC-T08-PRIVATE-AUTH-SMOKE for the pre-approved isolated synthetic authorization test ONLY'
+        required: true
+        type: string
+      expected_head_sha:
+        description: 'Optional exact reviewed main SHA (must match when supplied)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m6-ulc-production-runtime-config
+  cancel-in-progress: false
+
+jobs:
+  preingress-auth:
+    name: Verify signed-in documentation authorization with no public ingress
+    if: github.ref == 'refs/heads/main'
+    environment: m4-dr
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TARGET_WORKER: appbasis-ulc-linz-production
+
+    steps:
+      - name: Require exact, first-attempt, explicitly approved synthetic test
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          EXPECTED_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_RUN_ATTEMPT" = 1 || { echo 'T08 reruns cannot reuse an earlier approval.' >&2; exit 1; }
+          test "$GITHUB_REF" = refs/heads/main
+          test "$CONFIRMATION" = RUN-ULC-T08-PRIVATE-AUTH-SMOKE || { echo 'Explicit single synthetic T08 test approval required.' >&2; exit 1; }
+          if test -n "$EXPECTED_SHA"; then
+            [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$GITHUB_SHA" = "$EXPECTED_SHA"
+          fi
+
+      - name: Checkout exact reviewed head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.21.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies without scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Confirm app is still blocked and test is not a release
+        shell: bash
+        run: |
+          set -euo pipefail
+          node ./tooling/production-contract.mjs ulc-linz > "$RUNNER_TEMP/t08-production-contract.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const gate=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/t08-production-contract.json','utf8'));
+          if (gate?.status!=='blocked'||gate?.compositionReady!==false||gate?.productionReleaseAuthorized!==false) {
+            throw Error('T08 refuses an unexpected release-state change.');
+          }
+          NODE
+          node --check ./apps/ulc-linz/tooling/t08-private-preingress-auth-smoke.mjs
+
+      - name: Validate, mask and bind the exact production test credentials
+        id: prepare
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_WRITE_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          ULC_LINZ_PRODUCTION_SMOKE_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN CLOUDFLARE_API_WRITE_TOKEN ULC_LINZ_PRODUCTION_DATABASE_URL ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET ULC_LINZ_PRODUCTION_SMOKE_PASSWORD; do
+            test -n "${!name:-}" || { echo "T08 missing protected prerequisite: $name." >&2; exit 1; }
+            echo "::add-mask::${!name}"
+          done
+          node --input-type=module <<'NODE'
+          import { parseUlcLinzProductionDatabaseUrl,parseUlcLinzSecurityLogIngestDatabaseUrl } from './tooling/ulc-linz-m6-production-hyperdrive.mjs';
+          const app=parseUlcLinzProductionDatabaseUrl(process.env.ULC_LINZ_PRODUCTION_DATABASE_URL);
+          const log=parseUlcLinzSecurityLogIngestDatabaseUrl(process.env.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL);
+          if(app.database!=='neondb'||app.user!=='ulc_linz_application'||app.host!==log.host||app.database!==log.database||app.user===log.user){
+            throw Error('T08 actual production app/log SQL roles or target differ from protected scope.');
+          }
+          const secret=process.env.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET;
+          if(secret.length<32||secret!==secret.trim())throw Error('T08 Better Auth secret contract invalid.');
+          NODE
+
+      - name: Verify exact active private Cloudflare runtime (read only)
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          base="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID"
+          auth=(-H "Authorization: Bearer $CLOUDFLARE_API_TOKEN")
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/workers/$TARGET_WORKER" > "$RUNNER_TEMP/t08-worker.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/workers/$TARGET_WORKER/versions?page=1&per_page=100" > "$RUNNER_TEMP/t08-versions.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/scripts/$TARGET_WORKER/deployments" > "$RUNNER_TEMP/t08-deployments.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/scripts" > "$RUNNER_TEMP/t08-scripts.json"
+          node ./tooling/ulc-linz-m6-private-runtime-refresh.mjs post-deploy-state "$RUNNER_TEMP/t08-worker.json" "$RUNNER_TEMP/t08-versions.json" "$RUNNER_TEMP/t08-deployments.json" "$RUNNER_TEMP/t08-scripts.json" > "$RUNNER_TEMP/t08-private-state.json"
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 "${auth[@]}" "$base/workers/subdomain" > "$RUNNER_TEMP/t08-subdomain.json"
+          jq -e '.success==true and (.result.subdomain|type=="string" and length>0)' "$RUNNER_TEMP/t08-subdomain.json" > /dev/null
+
+      - name: Resolve existing protected Hyperdrives, never provision a new binding
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL: ${{ secrets.ULC_LINZ_SECURITY_LOG_INGEST_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          app="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve)"
+          security="$(node ./tooling/ulc-linz-m6-production-hyperdrive.mjs resolve-security-log)"
+          test -n "$app" && test -n "$security" && test "$app" != "$security"
+          echo "::add-mask::$app"
+          echo "::add-mask::$security"
+          printf 'APP_HYPERDRIVE_ID=%s\nSECURITY_HYPERDRIVE_ID=%s\n' "$app" "$security" >> "$GITHUB_ENV"
+
+      - name: Render one token-guarded transient private remote test harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          HARNESS="$GITHUB_WORKSPACE/apps/ulc-linz/t08-private-smoke.generated.ts"
+          cat > "$HARNESS" <<'TS'
+          import { createProtectedUlcProductionWorker } from './worker/production-protected';
+          const worker = createProtectedUlcProductionWorker();
+          type PrivateEnv = { T08_SMOKE_PROBE_TOKEN?: unknown };
+          export default {
+            fetch(request: Request, env: PrivateEnv): Promise<Response> | Response {
+              const expected=env.T08_SMOKE_PROBE_TOKEN;
+              if (typeof expected!=='string'||expected.length<32||
+                  request.headers.get('x-appbasis-t08-smoke-token')!==expected) {
+                return new Response(null,{status:404});
+              }
+              return worker.fetch(request,env);
+            },
+          };
+          TS
+          CONFIG="$RUNNER_TEMP/t08-private-smoke.wrangler.json"
+          HARNESS="$HARNESS" CONFIG="$CONFIG" node --input-type=module <<'NODE'
+          import {writeFileSync,readFileSync} from 'node:fs';
+          import {renderGeneratedProductionWranglerConfig} from './tooling/generated-production-deploy-config.mjs';
+          const origin=readFileSync(process.env.RUNNER_TEMP+'/t08-subdomain.json','utf8');
+          const subdomain=JSON.parse(origin)?.result?.subdomain;
+          if(typeof subdomain!=='string'||! /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(subdomain)){
+            throw Error('No existing trusted workers.dev account subdomain.');
+          }
+          const baseURL='https://appbasis-ulc-linz-production.'+subdomain+'.workers.dev';
+          const canonical=renderGeneratedProductionWranglerConfig({
+            appId:'ulc-linz',hyperdriveId:process.env.APP_HYPERDRIVE_ID,
+            securityLogHyperdriveId:process.env.SECURITY_HYPERDRIVE_ID,
+            baseURL,entrypoint:'./t08-private-smoke.generated.ts'
+          });
+          const {secrets:_s,workers_dev:_w,preview_urls:_p,keep_vars:_k,...runtime}=canonical;
+          const testConfig={...runtime,name:'appbasis-ulc-linz-t08-private-auth-smoke',
+            main:process.env.HARNESS,dev:{ip:'127.0.0.1',port:8787}};
+          writeFileSync(process.env.CONFIG,JSON.stringify(testConfig)+'\n',{mode:0o600});
+          NODE
+          printf 'T08_WRANGLER_CONFIG=%s\n' "$CONFIG" >> "$GITHUB_ENV"
+
+      - name: Real signed-in remote-HTTP checks, restricted to dedicated synthetic org
+        id: remote
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+          ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
+          ULC_LINZ_PRODUCTION_SMOKE_PASSWORD: ${{ secrets.ULC_LINZ_PRODUCTION_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          probe_token="$(node --input-type=module -e "import {randomBytes} from 'node:crypto';process.stdout.write(randomBytes(32).toString('hex'))")"
+          echo "::add-mask::$probe_token"
+          log="$RUNNER_TEMP/t08-private-wrangler.log"
+          pnpm --dir apps/reference exec wrangler dev --remote \
+            --config "$T08_WRANGLER_CONFIG" \
+            --ip 127.0.0.1 --port 8787 \
+            --var "BETTER_AUTH_SECRET:$ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET" \
+            --var "T08_SMOKE_PROBE_TOKEN:$probe_token" > "$log" 2>&1 &
+          dev_pid=$!
+          stop_remote() { kill "$dev_pid" 2>/dev/null || true; wait "$dev_pid" 2>/dev/null || true; }
+          trap stop_remote EXIT
+          ready=false
+          for _ in $(seq 1 60); do
+            if curl --fail --silent --show-error --connect-timeout 1 --max-time 2 \
+                -H "x-appbasis-t08-smoke-token: $probe_token" \
+                http://127.0.0.1:8787/api/health >/dev/null 2>&1; then ready=true; break; fi
+            if ! kill -0 "$dev_pid" 2>/dev/null; then
+              echo 'T08 remote worker terminated before ready; redacted log not exported.' >&2; exit 1;
+            fi
+            sleep 1
+          done
+          test "$ready" = true || { echo 'T08 remote worker unavailable.' >&2; exit 1; }
+          T08_SMOKE_PROBE_TOKEN="$probe_token" \
+            node ./apps/ulc-linz/tooling/t08-private-preingress-auth-smoke.mjs run
+          stop_remote
+          trap - EXIT
+
+      - name: ALWAYS restore synthetic rights and independently verify zero persisted test data
+        if: always() && steps.prepare.outcome == 'success'
+        shell: bash
+        env:
+          ULC_LINZ_PRODUCTION_DATABASE_URL: ${{ secrets.ULC_LINZ_PRODUCTION_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          node ./apps/ulc-linz/tooling/t08-private-preingress-auth-smoke.mjs cleanup
+
+      - name: Report limited exact T08 proof without claiming full T06 or GO
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo '### ULC T08 private pre-ingress signed-in HTTP verification'
+            echo '- bounded existing synthetic org/account: PASS'
+            echo '- remote Cloudflare worker session, no canonical workers.dev ingress: PASS'
+            echo '- real login, documentation read and edit-authorized route validation: PASS'
+            echo '- cached session denied after live documentation capability revocation: PASS'
+            echo '- session sign-out and SQL capability restoration: PASS'
+            echo '- persisted documentation POST/GET: NOT TESTED (no elevated cleanup path)'
+            echo '- final production composition / privacy / pilot release: NOT AUTHORIZED'
+          } >> "$GITHUB_STEP_SUMMARY"
