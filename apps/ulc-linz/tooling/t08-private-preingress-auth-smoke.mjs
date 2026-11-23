@@ -38,6 +38,7 @@ export function assertT08SyntheticBaseline(rows) {
     row?.trainer_role_count !== 1 ||
     row?.revoke_count !== 2 ||
     row?.grant_count !== 0 ||
+    row?.active_session_count !== 0 ||
     row?.docs_count !== 0 ||
     row?.plans_count !== 0 ||
     row?.athletes_count !== 0
@@ -81,6 +82,8 @@ async function inspect(sql) {
         WHERE g.principal_id = u.id
           AND g.capability_id IN ('ulc-linz:module:training_documentation:view',
                                   'ulc-linz:module:training_documentation:edit')) AS grant_count,
+      (SELECT count(*)::int FROM session s
+        WHERE s.user_id = u.id AND s.expires_at > now()) AS active_session_count,
       (SELECT count(*)::int FROM appbasis_training_documentation d
         WHERE d.organization_id = $1) AS docs_count,
       (SELECT count(*)::int FROM appbasis_training_plan p
@@ -135,6 +138,12 @@ async function restoreDocumentationDenials(sql) {
       SELECT $1, c.capability_id FROM unnest($2::text[]) AS c(capability_id)
       ON CONFLICT DO NOTHING
     `, [identities[0].id,CAPABILITIES]);
+    // Only the dedicated synthetic identity is affected. Expired historical
+    // smoke sessions remain auditably retained; any live test session is
+    // invalidated even if the HTTP process crashed before calling sign-out.
+    await tx.unsafe(`
+      DELETE FROM session WHERE user_id=$1 AND expires_at > now()
+    `, [identities[0].id]);
   });
 }
 
@@ -159,7 +168,7 @@ function expectStatus(response, status, code) {
 function sessionCookie(response) {
   const raw = response.headers.get("set-cookie");
   const first = raw?.split(";")[0] ?? "";
-  if (!/^(?:__Secure-|__Host-)?better-auth\\.session_token=[^;]+$/.test(first)) {
+  if (!/^(?:__Secure-|__Host-)?better-auth\.session_token=[^;]+$/.test(first)) {
     throw new Error("T08 expected a real Better Auth session cookie.");
   }
   return first;
