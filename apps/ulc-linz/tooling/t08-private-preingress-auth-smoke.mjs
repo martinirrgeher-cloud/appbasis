@@ -1,3 +1,4 @@
+import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 import { createPostgresDatabase } from "@appbasis/database/node-runtime";
@@ -52,6 +53,30 @@ function required(value, name) {
     throw new Error("Missing or invalid " + name + ".");
   }
   return value;
+}
+
+function cleanupMarkerPath(env) {
+  const marker = required(env.T08_CLEANUP_ARMED_FILE, "T08_CLEANUP_ARMED_FILE");
+  if (!marker.startsWith("/") || marker.includes("\\0")) {
+    throw new Error("T08 cleanup marker must be an absolute runner-owned file path.");
+  }
+  return marker;
+}
+
+async function armCleanup(env) {
+  // Written only AFTER a verified unmodified synthetic baseline, and BEFORE
+  // the first committed SQL capability change. A cancelled runner may leave
+  // this on disk for the separate always() cleanup job step.
+  await writeFile(cleanupMarkerPath(env), "T08-armed\\n", {
+    encoding:"utf8", flag:"wx", mode:0o600,
+  });
+}
+
+async function requireArmedCleanup(env) {
+  const marker = await readFile(cleanupMarkerPath(env),"utf8");
+  if (marker !== "T08-armed\\n") {
+    throw new Error("T08 cleanup was not armed by a verified synthetic baseline.");
+  }
 }
 
 function createConnection(env) {
@@ -189,6 +214,7 @@ export async function runT08PrivatePreIngressSmoke(env=process.env) {
   try {
     await inspect(connection.client);
     expectStatus(await request("/api/auth/session",token),401,"anonymous-session");
+    await armCleanup(env);
     await setTemporaryDocumentationAccess(connection.client);
     switched=true;
     const login = await request("/api/auth/sign-in",token,{
@@ -240,7 +266,20 @@ export async function runT08PrivatePreIngressSmoke(env=process.env) {
   }
 }
 
+export async function inspectT08SyntheticDocumentationAccess(env=process.env) {
+  const connection=createConnection(env);
+  try {
+    await inspect(connection.client);
+    return true;
+  } finally {
+    await connection.client.end();
+  }
+}
+
 export async function cleanupT08SyntheticDocumentationAccess(env=process.env) {
+  // No fresh, scoped, previously verified marker means READ-ONLY only. This
+  // makes cancelled preflight runs incapable of altering pre-existing grants.
+  await requireArmedCleanup(env);
   const connection=createConnection(env);
   try {
     await restoreDocumentationDenials(connection.client);
@@ -260,8 +299,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     } else if (mode==="cleanup") {
       await cleanupT08SyntheticDocumentationAccess();
       console.log("T08 synthetic documentation grants removed; revokes, isolation and zero-data baseline verified.");
+    } else if (mode==="preflight") {
+      await inspectT08SyntheticDocumentationAccess();
+      console.log("T08 pre-ingress synthetic scope read-only preflight PASS; no mutation.");
     } else {
-      throw new Error("Usage: node t08-private-preingress-auth-smoke.mjs run|cleanup");
+      throw new Error("Usage: node t08-private-preingress-auth-smoke.mjs preflight|run|cleanup");
     }
   } catch {
     console.error("T08 private pre-ingress smoke failed closed. Inspect sanitized CI outcome; never print credentials.");
