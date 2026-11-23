@@ -2,6 +2,7 @@ import type { AthleteMasterdataDeletionMarker, PostgresAthleteMasterdataReposito
 import type { PostgresTrainingPlanRepository, TrainingPlanLifecycleRepository } from "@appbasis/training-plans";
 import type {
   TrainingDocumentationSubjectPrivacyInspectionReader,
+  TrainingDocumentationSubjectDeletionRepository,
 } from "@appbasis/training-documentation";
 import type {
   UlcTrainingSubjectPrivacyInspector,
@@ -280,6 +281,80 @@ export async function deleteUlcLinzAthleteSubjectDependentsAfterRetention(
     deletedPlanItems: plans.deletedItems,
     usageMarkerInserted: usage.markerInserted,
     deletedAttributedUsageEvents: usage.deletedUsageEvents,
+  });
+}
+
+/**
+ * PRIVILEGED, UNWIRED three-owner athlete cleanup (plans, block usage,
+ * documentation) after a VERIFIED canonical athlete deletion.
+ *
+ * This intentionally builds on the existing canonical admin + active
+ * 35-day athletes-owner deletion marker checks. A failed later owner does
+ * NOT roll back earlier independent owner transactions; all three owner
+ * operations are idempotent and must be retried from the same source marker.
+ *
+ * Documentation's owner-scoped revision erasure must run under its trusted
+ * SQL owner (the ordinary application role cannot DELETE revisions).
+ * There is no HTTP route, retention scheduler, automatic live invocation,
+ * cross-owner completion certificate or old-backup promotion here.
+ * App-owned training history and unstructured personal text are outside
+ * this three-owner result and remain separate lifecycle release blockers.
+ */
+export interface UlcLinzAthleteSubjectDeletionWithDocumentationDependencies
+  extends UlcLinzAthleteSubjectDeletionDependencies {
+  readonly documentation: Pick<
+    TrainingDocumentationSubjectDeletionRepository,
+    "removeSubjectDataAfterVerifiedDeletion"
+  >;
+}
+
+export interface UlcLinzAthleteSubjectDeletionWithDocumentationResult
+  extends UlcLinzAthleteSubjectDeletionFollowUpResult {
+  readonly documentationMarkerInserted: boolean;
+  readonly deletedDocuments: number;
+  readonly deletedDocumentationRevisions: number;
+  readonly redactedOtherSubjectRevisions: number;
+}
+
+export async function deleteUlcLinzAthleteSubjectDependentsIncludingDocumentationAfterRetention(
+  current: UlcLinzCurrentIdentity,
+  dependencies: UlcLinzAthleteSubjectDeletionWithDocumentationDependencies,
+  request: UlcLinzAthleteSubjectDeletionRequest,
+): Promise<UlcLinzAthleteSubjectDeletionWithDocumentationResult> {
+  // Validate presence before ANY owner mutation. The canonical flow below
+  // independently authenticates the real administrator and current source
+  // deletion marker before it changes the plans or block-usage owners.
+  if (
+    !dependencies ||
+    typeof dependencies.documentation?.removeSubjectDataAfterVerifiedDeletion !== "function"
+  ) blocked();
+
+  const base = await deleteUlcLinzAthleteSubjectDependentsAfterRetention(
+    current, dependencies, request,
+  );
+
+  // NEVER derive a deletion decision from a local Doku row, an inactive
+  // athlete, an expired marker or the returned counts from another owner.
+  const docs = await dependencies.documentation.removeSubjectDataAfterVerifiedDeletion(
+    base.organizationId,
+    base.subjectId,
+    new Date(base.completedAt.getTime()),
+  );
+  if (
+    !docs ||
+    typeof docs.markerInserted !== "boolean" ||
+    !validDeletionCount(docs.deletedDocuments) ||
+    !validDeletionCount(docs.deletedRevisions) ||
+    !validDeletionCount(docs.redactedOtherSubjectRevisions) ||
+    docs.deletedRevisions < docs.deletedDocuments
+  ) blocked();
+
+  return Object.freeze({
+    ...base,
+    documentationMarkerInserted: docs.markerInserted,
+    deletedDocuments: docs.deletedDocuments,
+    deletedDocumentationRevisions: docs.deletedRevisions,
+    redactedOtherSubjectRevisions: docs.redactedOtherSubjectRevisions,
   });
 }
 
