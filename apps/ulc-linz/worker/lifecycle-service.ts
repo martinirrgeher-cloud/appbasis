@@ -529,6 +529,102 @@ export async function eraseUlcLinzAthleteTrainingHistoryWithInstalledFences(
   });
 }
 
+/**
+ * PRIVILEGED AND UNWIRED four-downstream-owner structured athlete erasure.
+ * The actual source decision MUST already be completed by the athletes owner.
+ *
+ * Important: an administrative authorization, current 35-day source decision
+ * and read-only v19 SQL-owner/trigger preflight are required BEFORE any owner
+ * mutation. Every step also independently rechecks its own safety boundary.
+ * This coordinates FOUR SEPARATE owner transactions, NOT an atomic 8-owner
+ * lifecycle completion, free-text clearance or permission to promote backups.
+ *
+ * Re-run the WHOLE operation with the same unexpired source marker after any
+ * later-owner error. A partial result is never returned as success. Historical
+ * actor/trainer references, cross-subject note text and old recovery copies
+ * remain operator-review blockers. No HTTP, worker runtime or scheduler hook.
+ */
+export interface UlcLinzAthleteFourOwnerStructuredDeletionDependencies
+  extends UlcLinzAthleteSubjectDeletionWithDocumentationDependencies {
+  readonly training: UlcTrainingSubjectProtectedHistoryDeletionRepository;
+}
+
+export interface UlcLinzAthleteFourOwnerStructuredDeletionResult
+  extends UlcLinzAthleteSubjectDeletionWithDocumentationResult {
+  readonly scope: "structured-owner-data-only";
+  readonly trainingHistoryMarkerInserted: boolean;
+  readonly deletedAttendanceRows: number;
+  readonly deletedRegistrationRows: number;
+  readonly deletedRegistrationHistoryRows: number;
+}
+
+export async function deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention(
+  current: UlcLinzCurrentIdentity,
+  dependencies: UlcLinzAthleteFourOwnerStructuredDeletionDependencies,
+  request: UlcLinzAthleteSubjectDeletionRequest,
+): Promise<UlcLinzAthleteFourOwnerStructuredDeletionResult> {
+  if (
+    !dependencies ||
+    typeof dependencies.training?.assertGuardReady !== "function" ||
+    typeof dependencies.training?.markSubjectDeletedAndEraseHistory !== "function" ||
+    typeof dependencies.documentation?.removeSubjectDataAfterVerifiedDeletion !== "function" ||
+    typeof dependencies.plans?.deleteSubjectData !== "function" ||
+    typeof dependencies.usage?.markSubjectDeletedAndRemoveAttributedUsage !== "function" ||
+    typeof dependencies.athletes?.findCurrentAthleteDeletionMarker !== "function" ||
+    typeof dependencies.scopes?.hasRelation !== "function" ||
+    typeof dependencies.now !== "function"
+  ) blocked();
+
+  const organizationId = requiredIdentifier(request.organizationId);
+  const subjectId = requiredIdentifier(request.subjectId);
+  const { actorIdentityId } = await assertCanonicalLifecycleAdmin(
+    current, dependencies.permissions, dependencies.scopes, organizationId,
+  );
+  if (await dependencies.scopes.hasRelation({
+    identityId: actorIdentityId, organizationId, subjectId,
+    relationType: "self",
+  })) blocked();
+  const now = dependencies.now();
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) blocked();
+  const source = await dependencies.athletes.findCurrentAthleteDeletionMarker(
+    organizationId, subjectId, now,
+  );
+  const sourceCompleted = validateCanonicalAthleteDeletionMarker(
+    source, organizationId, subjectId, now,
+  );
+
+  // This is a READ-ONLY owner/guard check, never a claim that an earlier
+  // cross-owner transaction can be rolled back. Each owner still rechecks.
+  await dependencies.training.assertGuardReady();
+
+  const threeOwner = await deleteUlcLinzAthleteSubjectDependentsIncludingDocumentationAfterRetention(
+    current, dependencies, request,
+  );
+  if (
+    threeOwner.organizationId !== organizationId ||
+    threeOwner.subjectId !== subjectId ||
+    threeOwner.completedAt.getTime() !== sourceCompleted.getTime()
+  ) blocked();
+
+  const appHistory = await eraseUlcLinzAthleteTrainingHistoryWithInstalledFences(
+    current, dependencies, request,
+  );
+  if (
+    appHistory.organizationId !== organizationId ||
+    appHistory.subjectId !== subjectId ||
+    appHistory.completedAt.getTime() !== sourceCompleted.getTime()
+  ) blocked();
+
+  return Object.freeze({
+    ...threeOwner,
+    scope: "structured-owner-data-only" as const,
+    trainingHistoryMarkerInserted: appHistory.markerInserted,
+    deletedAttendanceRows: appHistory.deletedAttendanceRows,
+    deletedRegistrationRows: appHistory.deletedRegistrationRows,
+    deletedRegistrationHistoryRows: appHistory.deletedRegistrationHistoryRows,
+  });
+}
+
 function validateCanonicalAthleteDeletionMarker(
   marker: AthleteMasterdataDeletionMarker | null,
   organizationId: string,
