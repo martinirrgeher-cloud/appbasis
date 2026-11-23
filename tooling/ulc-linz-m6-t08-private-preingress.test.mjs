@@ -86,7 +86,7 @@ test("T08 private workflow only runs on fresh confirmed main, limits transient r
     "test \"$GITHUB_REF\" = refs/heads/main",
     "environment: m4-dr",
     "group: m6-ulc-production-runtime-config",
-    "m6-ulc-production-hyperdrive.mjs resolve",
+    "ulc-linz-m6-production-hyperdrive.mjs resolve",
     "ulc-linz-m6-private-runtime-refresh.mjs post-deploy-state",
     "createProtectedUlcProductionWorker",
     "GET /api/modules/training-documentation",
