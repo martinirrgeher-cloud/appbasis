@@ -11,6 +11,9 @@ import type {
   UlcTrainingSubjectFrozenHistoryDeletionRepository,
 } from "./training-subject-history-deletion-postgres";
 import type {
+  UlcTrainingSubjectProtectedHistoryDeletionRepository,
+} from "./training-subject-history-protected-postgres";
+import type {
   PostgresTrainingBlockRepository,
   TrainingBlockSubjectUsageLifecycleRepository,
 } from "@appbasis/training-blocks";
@@ -445,6 +448,84 @@ export async function eraseUlcLinzAthleteTrainingHistoryOnFrozenStore(
     deletedAttendanceRows: result.deletedAttendanceRows,
     deletedRegistrationRows: result.deletedRegistrationRows,
     deletedRegistrationHistoryRows: result.deletedRegistrationHistoryRows,
+  });
+}
+
+/**
+ * Unwired, privileged APP-OWNED training history erasure via the ALREADY
+ * DEPLOYED v19 3-table write fence. This is distinct from the legacy frozen
+ * quarantine primitive, which remains unchanged for historical v9 restores.
+ *
+ * The authenticated same-org admin and canonical completed athlete deletion
+ * marker are mandatory before the owner-only protected SQL transaction.
+ * This is one app-owner completion, not a combined 8-owner privacy release.
+ * Actor, coach, notes, audit, provider copies and old restore remain blocked.
+ */
+export interface UlcLinzAthleteTrainingHistoryProtectedDeletionDependencies {
+  readonly permissions: PermissionStore;
+  readonly scopes: Pick<
+    PostgresUlcLinzScopePersistence,
+    "resolveMembership" | "hasRelation"
+  >;
+  readonly athletes: Pick<
+    PostgresAthleteMasterdataRepository,
+    "findCurrentAthleteDeletionMarker"
+  >;
+  readonly training: UlcTrainingSubjectProtectedHistoryDeletionRepository;
+  readonly now: () => Date;
+}
+
+export interface UlcLinzAthleteTrainingHistoryProtectedDeletionResult
+  extends UlcLinzAthleteTrainingHistoryDeletionResult {
+  readonly markerInserted: boolean;
+}
+
+export async function eraseUlcLinzAthleteTrainingHistoryWithInstalledFences(
+  current: UlcLinzCurrentIdentity,
+  dependencies: UlcLinzAthleteTrainingHistoryProtectedDeletionDependencies,
+  request: UlcLinzAthleteSubjectDeletionRequest,
+): Promise<UlcLinzAthleteTrainingHistoryProtectedDeletionResult> {
+  if (
+    !dependencies ||
+    typeof dependencies.training?.markSubjectDeletedAndEraseHistory !== "function" ||
+    typeof dependencies.athletes?.findCurrentAthleteDeletionMarker !== "function" ||
+    typeof dependencies.scopes?.hasRelation !== "function" ||
+    typeof dependencies.now !== "function"
+  ) blocked();
+
+  const organizationId = requiredIdentifier(request.organizationId);
+  const subjectId = requiredIdentifier(request.subjectId);
+  const { actorIdentityId } = await assertCanonicalLifecycleAdmin(
+    current, dependencies.permissions, dependencies.scopes, organizationId,
+  );
+  if (await dependencies.scopes.hasRelation({
+    identityId: actorIdentityId, organizationId, subjectId,
+    relationType: "self",
+  })) blocked();
+  const now = dependencies.now();
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) blocked();
+  const source = await dependencies.athletes.findCurrentAthleteDeletionMarker(
+    organizationId, subjectId, now,
+  );
+  const completedAt = validateCanonicalAthleteDeletionMarker(
+    source, organizationId, subjectId, now,
+  );
+  const outcome = await dependencies.training.markSubjectDeletedAndEraseHistory(
+    organizationId, subjectId, new Date(completedAt.getTime()),
+  );
+  if (
+    !outcome ||
+    typeof outcome.markerInserted !== "boolean" ||
+    !validDeletionCount(outcome.deletedAttendanceRows) ||
+    !validDeletionCount(outcome.deletedRegistrationRows) ||
+    !validDeletionCount(outcome.deletedRegistrationHistoryRows)
+  ) blocked();
+  return Object.freeze({
+    organizationId, subjectId, completedAt,
+    markerInserted: outcome.markerInserted,
+    deletedAttendanceRows: outcome.deletedAttendanceRows,
+    deletedRegistrationRows: outcome.deletedRegistrationRows,
+    deletedRegistrationHistoryRows: outcome.deletedRegistrationHistoryRows,
   });
 }
 
