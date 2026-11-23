@@ -249,6 +249,9 @@ jobs:
       - name: Test ULC M6 refresh-chain regressions
         run: node --test ./tooling/ulc-linz-m6-refresh-chain-cancellation.test.mjs ./tooling/ulc-linz-m6-refresh-chain-dispatch-correlation.test.mjs ./tooling/ulc-linz-m6-refresh-chain-wall-clock.test.mjs ./tooling/ulc-linz-m6-pilot-runtime-smoke-workflow.test.mjs
 
+      - name: Test ULC T08 pre-ingress HTTP authorization and cleanup contract
+        run: node --test ./tooling/ulc-linz-m6-t08-private-preingress.test.mjs
+
       - name: Test M5 restore credential preflight
         run: node --test ./tooling/ulc-linz-m5-restore-credential-preflight.test.mjs
 
