@@ -15,7 +15,7 @@ const root = new URL("../../../", import.meta.url);
 const load = async (path: string) => readFile(new URL(path, root));
 
 describe("ULC P4 technical documentation evidence versus still blocked personal-data release", () => {
-  it("pins only real documentation PostgreSQL evidence and keeps runtime/erasure blocked", async () => {
+  it("pins real remote auth and PostgreSQL evidence while lifecycle/release remain blocked", async () => {
     const module = JSON.parse((await load(
       "modules/training-documentation/appbasis.production.json",
     )).toString()) as Module;
@@ -23,19 +23,25 @@ describe("ULC P4 technical documentation evidence versus still blocked personal-
     expect(module.moduleId).toBe("training-documentation");
     expect(module.status).toBe("blocked");
     expect(module.requirements).toEqual({
-      authorization: "blocked",
+      authorization: "verified",
       database: "verified",
       lifecycle: "blocked",
     });
-    expect(module.evidence.authorization).toEqual([]);
+    expect(module.evidence.authorization.map(x => x.path)).toEqual([
+      "modules/training-documentation/production-auth-evidence-20261123.md",
+    ]);
+    const authEvidence = (await load(module.evidence.authorization[0]!.path)).toString();
+    expect(authEvidence).toContain("45260339171");
+    expect(authEvidence).toContain("persistentDocWriteVerified=false");
+    expect(authEvidence).toContain("does not");
     expect(module.evidence.lifecycle).toEqual([]);
     expect(module.evidence.database.map(x => x.path)).toEqual([
       "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
       "modules/training-documentation/migrations/0001_appbasis_training_documentation_subject_deletion.sql",
       "modules/training-documentation/test/postgres-repository.postgres.e2e.ts",
     ]);
-    expect(module.blockers).toHaveLength(2);
-    for (const evidence of module.evidence.database) {
+    expect(module.blockers).toHaveLength(1);
+    for (const evidence of [...module.evidence.authorization, ...module.evidence.database]) {
       const data = await load(evidence.path);
       expect(createHash("sha1").update(`blob ${data.length}\0`).update(data).digest("hex"))
         .toBe(evidence.gitBlobSha);

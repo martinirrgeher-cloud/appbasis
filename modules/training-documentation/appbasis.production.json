@@ -3,12 +3,17 @@
   "moduleId": "training-documentation",
   "status": "blocked",
   "requirements": {
-    "authorization": "blocked",
+    "authorization": "verified",
     "database": "verified",
     "lifecycle": "blocked"
   },
   "evidence": {
-    "authorization": [],
+    "authorization": [
+      {
+        "path": "modules/training-documentation/production-auth-evidence-20261123.md",
+        "gitBlobSha": "822fa0f3a3acea397fa58ccd450354731031c2a1"
+      }
+    ],
     "database": [
       {
         "path": "modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
@@ -26,7 +31,6 @@
     "lifecycle": []
   },
   "blockers": [
-    "Production HTTP session authorization has not been verified end-to-end with real signed-in ULC users.",
     "Training documentation subject-lifecycle still needs reviewed free-text, historical revision and cross-owner restore evidence before personal-data release."
   ]
 }
