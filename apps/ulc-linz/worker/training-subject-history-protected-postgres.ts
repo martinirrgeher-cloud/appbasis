@@ -76,9 +76,18 @@ export class PostgresUlcTrainingSubjectProtectedHistoryRepository
              JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
              JOIN pg_trigger t ON t.tgrelid = c.oid
                AND t.tgname = required.trigger_name AND t.tgenabled = 'O'
+               AND (t.tgtype & 23) = 23 -- BEFORE ROW INSERT+UPDATE
              JOIN pg_proc p ON p.oid = t.tgfoid
              WHERE p.proname = 'ulc_linz_training_subject_write_fence'
-               AND position('transaction_isolation' IN p.prosrc) > 0
+               AND p.prosecdef = true
+               AND p.proconfig @> ARRAY['search_path=pg_catalog, pg_temp']::text[]
+               AND pg_get_userbyid(p.proowner) = (
+                 SELECT pg_get_userbyid(datdba) FROM pg_database
+                 WHERE datname = current_database()
+               )
+               -- Exact reconciled v19 function body, verified on production
+               -- under neondb_owner on 23.11.2026, not a name-only check.
+               AND md5(p.prosrc) = '3888773a981ccaf4a25f5a5ea1fa77c9'
           ) AS guarded_tables`);
       if (
         safety.length !== 1 ||
