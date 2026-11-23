@@ -63,8 +63,8 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install dependencies without scripts
-        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Confirm app is still blocked and test is not a release
         shell: bash
@@ -150,11 +150,20 @@ jobs:
           import { createProtectedUlcProductionWorker } from './worker/production-protected';
           const worker = createProtectedUlcProductionWorker();
           type PrivateEnv = { T08_SMOKE_PROBE_TOKEN?: unknown };
+          const allowed=new Set([
+            'GET /api/health',
+            'GET /api/auth/session',
+            'POST /api/auth/sign-in',
+            'POST /api/auth/sign-out',
+            'GET /api/modules/training-documentation',
+            'POST /api/modules/training-documentation/start',
+          ]);
           export default {
             fetch(request: Request, env: PrivateEnv): Promise<Response> | Response {
               const expected=env.T08_SMOKE_PROBE_TOKEN;
               if (typeof expected!=='string'||expected.length<32||
-                  request.headers.get('x-appbasis-t08-smoke-token')!==expected) {
+                  request.headers.get('x-appbasis-t08-smoke-token')!==expected ||
+                  !allowed.has(request.method+' '+new URL(request.url).pathname)) {
                 return new Response(null,{status:404});
               }
               return worker.fetch(request,env);
