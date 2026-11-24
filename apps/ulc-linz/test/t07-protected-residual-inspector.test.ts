@@ -57,7 +57,7 @@ describe("T07 count-only residual review never implies complete privacy", () => 
     await expect(inspector.inspect("ulc-linz", "\0")).rejects.toThrow(/scope/);
     expect(sql).not.toHaveBeenCalled();
     for (const invalid of [null, -1, Number.NaN, 3.5, Number.MAX_SAFE_INTEGER + 1, "0"]) {
-      sql.mockResolvedValueOnce([{ ...good, actor_audit_rows: invalid }]);
+      sql.mockResolvedValueOnce([{ ...good, actor_audit_rows: invalid as number }]);
       await expect(inspector.inspect("ulc-linz", "athlete-1")).rejects.toThrow(/count/);
     }
     sql.mockResolvedValueOnce([]);
