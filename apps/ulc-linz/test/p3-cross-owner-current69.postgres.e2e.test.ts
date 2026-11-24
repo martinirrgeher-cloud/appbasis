@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning";
+import { PostgresExerciseCatalogRepository } from "@appbasis/exercise-catalog";
+import { PostgresUlcT07CatalogOwnerFollowUp } from "../worker/t07-catalog-owner-follow-up";
 import {
   PostgresTrainingDocumentationRepository,
   TrainingDocumentationService,
@@ -14,6 +16,7 @@ import type { UlcTrainingSubjectHistoryTransactionClient } from "../worker/train
 import { PostgresUlcTrainingSubjectPrivacyInspector } from "../worker/training-subject-privacy-postgres";
 import { assessUlcP3CrossOwnerRestoreQuarantine } from "../worker/p3-cross-owner-restore-admission";
 import { PostgresUlcT07ResidualInspector } from "../worker/t07-protected-residual-inspector";
+import { PostgresUlcT07EightOwnerInspector } from "../worker/t07-eight-owner-reconciliation";
 
 /**
  * P3-C: real PostgreSQL 18, disposable isolated 47-migration/69-table schema.
@@ -217,6 +220,50 @@ if (!DATABASE_URL) {
       expect(stillBlocked.permitsPromotion).toBe(false);
     });
 
+    it("queries all eight physical owners on real v19 SQL while keeping source/recovery gates closed", async () => {
+      const inspector = new PostgresUlcT07EightOwnerInspector(required().client);
+      const row = await required().client.unsafe(
+        `SELECT completed_at FROM appbasis_athletes_deletion
+          WHERE entity_type = 'athlete' AND organization_id=$1 AND entity_id=$2`,
+        [ORG, TARGET]);
+      const completedAt = new Date(row[0]?.completed_at as string);
+      expect(Number.isFinite(completedAt.getTime())).toBe(true);
+      const report = await inspector.inspect(ORG, TARGET, completedAt);
+      expect(report.owners).toHaveLength(8);
+      expect(report.owners.map(x=>x.owner)).toEqual([
+        "identity", "permissions", "athletes", "exercise-catalog",
+        "training-blocks", "training-documentation", "training-plans",
+        "ulc-linz-lifecycle",
+      ]);
+      expect(report.owners.find(x=>x.owner==="identity")).toMatchObject({
+        status: "identity-link-unverified", remainingReferences: null,
+      });
+      expect(report.owners.find(x=>x.owner==="exercise-catalog")).toMatchObject({
+        status: "identity-link-unverified", remainingReferences: null,
+      });
+      expect(report.owners.find(x=>x.owner==="training-documentation")).toMatchObject({
+        status: "scoped-evidence-clear-manual-review-required", remainingReferences: 0,
+        markerPresent: true,
+      });
+      expect(report.owners.find(x=>x.owner==="ulc-linz-lifecycle")).toMatchObject({
+        status: "identity-link-unverified", remainingReferences: null,
+        markerPresent: null,
+      });
+      expect(report.owners.find(x=>x.owner==="training-plans")?.status)
+        .toBe("owner-marker-missing");
+      expect(report.actorAuditReferences).toBeNull();
+      expect(report.humanFreeTextReviewRequired).toBe(true);
+      expect(report.allEightOwnersProvenComplete).toBe(false);
+      expect(report.olderRestorePromotionAllowed).toBe(false);
+      expect(report.privacyReady).toBe(false);
+      const foreign = await inspector.inspect(FOREIGN, TARGET, completedAt);
+      expect(foreign.owners.find(x=>x.owner==="identity")?.status)
+        .toBe("identity-link-unverified");
+      expect(foreign.allEightOwnersProvenComplete).toBe(false);
+      expect(JSON.stringify(report)).not.toContain("Person P3");
+      expect(JSON.stringify(report)).not.toContain(TARGET);
+    });
+
     it("runs the real 69-table count-only T07 residual SQL after subject erasure", async () => {
       const inspector = new PostgresUlcT07ResidualInspector(required().client);
       const result = await inspector.inspect(ORG, TARGET);
@@ -240,5 +287,83 @@ if (!DATABASE_URL) {
       expect(JSON.stringify(result)).not.toContain(TARGET);
       expect(JSON.stringify(result)).not.toContain("Person P3");
     });
+    it("executes the real fifth catalogue owner on a unique deleted identity, without historical guesswork", async () => {
+      const identity = "p3-deleted-athlete-identity";
+      const exercise = "p3-catalog-exercise";
+      const point = new Date(Date.now() - 80_000);
+      const expiry = new Date(point.getTime() + 35 * 24 * 60 * 60 * 1000);
+      await required().client.unsafe(
+        `INSERT INTO ulc_linz_lifecycle_deletion
+          (identity_id,organization_id,subject_id,source_role,completed_at,purge_after)
+         VALUES ($1,$2,$3,'athlete',$4,$5)`,
+        [identity, ORG, TARGET, point.toISOString(), expiry.toISOString()],
+      );
+      await required().client.unsafe(
+        `INSERT INTO appbasis_exercise_catalog_item
+           (organization_id,id,name,category_key)
+         VALUES ($1,$2,'P3 Synthetic Exercise','jump')`,
+        [ORG, exercise],
+      );
+      await required().client.unsafe(
+        `INSERT INTO appbasis_exercise_catalog_favorite
+           (organization_id,principal_id,exercise_id) VALUES ($1,$2,$3)`,
+        [ORG, identity, exercise],
+      );
+      await required().client.unsafe(
+        `INSERT INTO appbasis_exercise_catalog_usage
+           (organization_id,id,exercise_id,occurred_at,source_kind,note)
+         VALUES ($1,'p3-catalog-usage',$2,now(),'manual','Explicit personal note')`,
+        [ORG, exercise],
+      );
+      await required().client.unsafe(
+        `INSERT INTO appbasis_exercise_catalog_usage_subject
+          (organization_id,usage_id,principal_id,verified_by)
+         VALUES ($1,'p3-catalog-usage',$2,'identity')`,
+        [ORG, identity],
+      );
+      const catalog = new PostgresExerciseCatalogRepository(required().client, {
+        favoriteFenceMode: "require-catalog-erasure-marker",
+        usageWriteMode: "require-explicit-subject",
+      });
+      const protectedStep = new PostgresUlcT07CatalogOwnerFollowUp(
+        required().client, catalog,
+      );
+      const first = await protectedStep.erase(ORG, TARGET, "ulc.admin");
+      expect(first).toMatchObject({
+        deletedFavorites: 1, deletedUsageEvents: 1,
+        markerInserted: true, providerMediaAbsenceVerified: false,
+        olderRestorePromotionAllowed: false,
+      });
+      const again = await protectedStep.erase(ORG, TARGET, "ulc.admin");
+      expect(again).toMatchObject({
+        deletedFavorites: 0, deletedUsageEvents: 0, markerInserted: false,
+      });
+      const eight = new PostgresUlcT07EightOwnerInspector(required().client);
+      const source = await required().client.unsafe(
+        `SELECT completed_at FROM appbasis_athletes_deletion
+          WHERE entity_type='athlete' AND organization_id=$1 AND entity_id=$2`,
+        [ORG, TARGET]);
+      const report = await eight.inspect(ORG, TARGET,
+        new Date(source[0]?.completed_at as string));
+      expect(report.owners.find(x=>x.owner==="exercise-catalog")).toMatchObject({
+        remainingReferences: 0, markerPresent: true,
+        status: "scoped-evidence-clear-manual-review-required",
+      });
+      expect(report.allEightOwnersProvenComplete).toBe(false);
+      await expect(required().client.unsafe(
+        `INSERT INTO appbasis_exercise_catalog_favorite
+          (organization_id,principal_id,exercise_id) VALUES ($1,$2,$3)`,
+        [ORG, identity, exercise],
+      )).rejects.toThrow(/deletion marker/i);
+      await expect(required().client.unsafe(
+        `INSERT INTO appbasis_exercise_catalog_usage_subject
+          (organization_id,usage_id,principal_id,verified_by)
+         VALUES ($1,'p3-catalog-usage-after',$2,'identity')`,
+        [ORG, identity],
+      )).rejects.toThrow();
+      await expect(protectedStep.erase(FOREIGN, TARGET, "ulc.admin"))
+        .rejects.toThrow(/exactly one/);
+    });
+
   });
 }

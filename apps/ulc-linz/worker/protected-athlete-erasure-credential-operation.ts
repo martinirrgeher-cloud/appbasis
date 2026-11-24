@@ -10,7 +10,8 @@ import type {
   UlcLinzAthleteSubjectDeletionRequest,
 } from "./lifecycle-service";
 
-export type UlcLinzProtectedAthleteErasureMode = "inspect" | "erase-structured-only";
+export type UlcLinzProtectedAthleteErasureMode =
+  "inspect" | "erase-structured-only" | "erase-catalog-owner-only";
 
 export interface UlcLinzProtectedAthleteErasureCredentialOptions {
   readonly connectionString: string;
@@ -55,14 +56,19 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
     options.administratorPassword.trim().length === 0
   ) throw new Error("ULC T07 protected credentials or production binding are invalid.");
 
-  if (mode !== "inspect" && mode !== "erase-structured-only") {
+  if (mode !== "inspect" && mode !== "erase-structured-only" &&
+      mode !== "erase-catalog-owner-only") {
     throw new Error("ULC T07 protected operation mode is invalid.");
   }
-  if (mode === "erase-structured-only" &&
+  if (mode !== "inspect" &&
     (!authorization ||
-      authorization.confirmation !== "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS" ||
+      authorization.confirmation !== (
+        mode === "erase-structured-only"
+          ? "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS"
+          : "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER"
+      ) ||
       typeof authorization.expectedSourceCompletedAt !== "string")
-  ) throw new Error("ULC T07 structured erasure has no explicit operator approval.");
+  ) throw new Error("ULC T07 owner deletion has no explicit operator approval.");
 
   const connection = createPostgresDatabase(options.connectionString);
   const backend = new BetterAuthIdentityBackend({
@@ -106,6 +112,17 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
         registrationRows: inspected.registrationRows,
         registrationHistoryRows: inspected.registrationHistoryRows,
         residualReview: inspected.residualReview,
+        eightOwnerReview: inspected.eightOwnerReview,
+        fullErasureAuthorized: false as const,
+        olderRestorePromotionAuthorized: false as const,
+      });
+    }
+    if (mode === "erase-catalog-owner-only") {
+      const finished = await operation.eraseCatalogOwnerOnly(request, authorization!);
+      return Object.freeze({
+        status: finished.status,
+        sourceDecisionAt: finished.verified.preflight.completedAt!.toISOString(),
+        catalogOwnerProofVerified: true as const,
         fullErasureAuthorized: false as const,
         olderRestorePromotionAuthorized: false as const,
       });

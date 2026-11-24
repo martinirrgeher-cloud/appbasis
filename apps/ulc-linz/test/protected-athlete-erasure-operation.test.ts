@@ -43,6 +43,25 @@ const fake = vi.hoisted(() => {
       registrationHistoryRows: 0,
     })),
     guard: vi.fn(async () => {}),
+    eight: vi.fn(async () => ({
+      owners: [
+        "identity", "permissions", "athletes", "exercise-catalog",
+        "training-blocks", "training-documentation", "training-plans",
+        "ulc-linz-lifecycle",
+      ].map(owner => ({
+        owner, remainingReferences: null, markerPresent: null,
+        status: "identity-link-unverified",
+      })),
+      linkedIdentityCount: 0,
+      actorAuditReferences: null,
+      organizationWidePrivateMediaCandidates: 0,
+      humanFreeTextReviewRequired: true,
+      auditRetentionDecisionRequired: true,
+      providerMediaAbsenceRequired: true,
+      allEightOwnersProvenComplete: false,
+      olderRestorePromotionAllowed: false,
+      privacyReady: false,
+    })),
     residual: vi.fn(async () => ({
       sourceIdentityLinks: 0,
       subjectScopedReferenceRows: 0,
@@ -56,6 +75,12 @@ const fake = vi.hoisted(() => {
       actorAuditReviewed: false,
       mediaProviderAbsenceVerified: false,
       fullPrivacyComplete: false,
+    })),
+    catalogErase: vi.fn(async () => ({
+      markerInserted: true, deletedFavorites: 1, deletedUsageEvents: 1,
+      scope: "catalogue-verified-identity-only",
+      humanTextReviewed: false, providerMediaAbsenceVerified: false,
+      olderRestorePromotionAllowed: false,
     })),
     erase: vi.fn(async () => ({
       organizationId: "ulc-linz", subjectId: "subject-1",
@@ -86,6 +111,14 @@ vi.mock("@appbasis/identity/server", () => ({
     service: { getCurrentIdentity: fake.current },
   }),
 }));
+vi.mock("@appbasis/exercise-catalog", () => ({
+  PostgresExerciseCatalogRepository: class {},
+}));
+vi.mock("../worker/t07-catalog-owner-follow-up", () => ({
+  PostgresUlcT07CatalogOwnerFollowUp: class {
+    erase = fake.catalogErase;
+  },
+}));
 vi.mock("@appbasis/permissions", () => ({
   PostgresPermissionStore: class {},
 }));
@@ -109,6 +142,11 @@ vi.mock("../worker/scope-persistence", () => ({
 vi.mock("../worker/training-subject-history-protected-postgres", () => ({
   PostgresUlcTrainingSubjectProtectedHistoryRepository: class {
     assertGuardReady = fake.guard;
+  },
+}));
+vi.mock("../worker/t07-eight-owner-reconciliation", () => ({
+  PostgresUlcT07EightOwnerInspector: class {
+    inspect = (...args: unknown[]) => fake.eight(...(args as []));
   },
 }));
 vi.mock("../worker/t07-protected-residual-inspector", () => ({
@@ -169,6 +207,9 @@ describe("T07 real protected owner composition, no live invocation", () => {
       fullPrivacyComplete: false,
     });
     expect(fake.residual).toHaveBeenCalledWith("ulc-linz", "subject-1");
+    expect(result.eightOwnerReview?.owners).toHaveLength(8);
+    expect(result.eightOwnerReview?.allEightOwnersProvenComplete).toBe(false);
+    expect(fake.eight).toHaveBeenCalledWith("ulc-linz", "subject-1", fake.completedAt);
     expect(result.allowsOlderRestorePromotion).toBe(false);
     expect(result.allowsFullPrivacyReady).toBe(false);
     expect(fake.current).toHaveBeenCalledWith("verified-session");
@@ -196,6 +237,7 @@ describe("T07 real protected owner composition, no live invocation", () => {
     expect(fake.docs).not.toHaveBeenCalled();
     expect(fake.history).not.toHaveBeenCalled();
     expect(fake.residual).not.toHaveBeenCalled();
+    expect(fake.eight).not.toHaveBeenCalled();
     await op.close();
   });
 
@@ -229,6 +271,44 @@ describe("T07 real protected owner composition, no live invocation", () => {
     expect(fake.inspect).toHaveBeenCalledTimes(2);
     expect(fake.guard).toHaveBeenCalledTimes(2);
     expect(fake.residual).toHaveBeenCalledTimes(2);
+    expect(fake.eight).toHaveBeenCalledTimes(2);
+    await op.close();
+  });
+
+  it("requires separate catalog approval, complete four-owner source and unique deleted identity", async () => {
+    const op = await createProtectedUlcLinzAthleteErasure(options);
+    const authorize = {
+      confirmation: "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER",
+      expectedSourceCompletedAt: fake.completedAt.toISOString(),
+    };
+    await expect(op.eraseCatalogOwnerOnly(request, {
+      ...authorize, confirmation: "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS",
+    })).rejects.toThrow(/explicit exact approval/);
+    await expect(op.eraseCatalogOwnerOnly(request, authorize))
+      .rejects.toThrow(/deleted identity\/permissions/);
+    expect(fake.catalogErase).not.toHaveBeenCalled();
+
+    const eligible = {
+      ...await fake.eight(),
+      linkedIdentityCount: 1,
+      owners: [
+        "identity","permissions","athletes","exercise-catalog","training-blocks",
+        "training-documentation","training-plans","ulc-linz-lifecycle",
+      ].map(owner=>({
+        owner,
+        remainingReferences: 0, markerPresent: owner === "exercise-catalog" ? true : null,
+        status: "scoped-evidence-clear-manual-review-required",
+      })),
+    };
+    fake.eight.mockResolvedValueOnce(eligible as never);
+    fake.eight.mockResolvedValueOnce(eligible as never);
+    const done = await op.eraseCatalogOwnerOnly(request, authorize);
+    expect(done.status).toBe("catalog-owner-complete-only");
+    expect(done.allowsFullPrivacyReady).toBe(false);
+    expect(done.freeTextAndAuditReviewed).toBe(false);
+    expect(done.allowsOlderRestorePromotion).toBe(false);
+    expect(fake.catalogErase).toHaveBeenCalledWith("ulc-linz", "subject-1", "admin-1");
+    expect(fake.erase).not.toHaveBeenCalled();
     await op.close();
   });
 
