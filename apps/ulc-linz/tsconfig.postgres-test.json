@@ -13,6 +13,7 @@
     "../../packages/database/src/client.ts",
     "test/protected-athlete-erasure-*.test.ts",
     "test/t07-protected-operator-harness.test.ts",
-    "test/t07-eight-owner-reconciliation.test.ts"
+    "test/t07-eight-owner-reconciliation.test.ts",
+    "test/t07-catalog-owner-follow-up.test.ts"
   ]
 }
