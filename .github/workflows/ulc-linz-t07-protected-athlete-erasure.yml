@@ -268,7 +268,8 @@ jobs:
           const safe = ['status', 'sourceDecisionAt', 'planMarkerPresent', 'usageMarkerPresent',
             'documentationMarkerPresent', 'historyMarkerPresent', 'documentationOwned',
             'documentationOtherRevisions', 'attendanceRows', 'registrationRows',
-            'registrationHistoryRows', 'residualReview', 'structuredOwnersVerified', 'fullErasureAuthorized',
+            'registrationHistoryRows', 'residualReview', 'eightOwnerReview',
+            'structuredOwnersVerified', 'fullErasureAuthorized',
             'olderRestorePromotionAuthorized'];
           if (Object.keys(response).some(key => !safe.includes(key))) {
             throw new Error('T07 operation returned non-whitelisted fields.');
@@ -280,8 +281,10 @@ jobs:
               throw new Error('T07 private inspection result malformed.');
             }
             const review = response.residualReview;
+            const eight = response.eightOwnerReview;
             if (response.status === 'source-unverifiable') {
-              if (review !== null) throw new Error('T07 cannot inspect without source authority.');
+              if (review !== null || eight !== null)
+                throw new Error('T07 cannot inspect owners without source authority.');
             } else {
               const expectedKeys = ['sourceIdentityLinks', 'subjectScopedReferenceRows',
                 'identityScopedReferenceRows', 'actorAndAuditReferenceRows',
@@ -305,6 +308,36 @@ jobs:
                   review.mediaProviderAbsenceVerified !== false ||
                   review.fullPrivacyComplete !== false) {
                 throw new Error('T07 operation must never certify full privacy or provider media absence.');
+              }
+              const ownerNames = ['identity', 'permissions', 'athletes', 'exercise-catalog',
+                'training-blocks', 'training-documentation', 'training-plans',
+                'ulc-linz-lifecycle'];
+              const allowedState = [
+                'identity-link-unverified', 'owner-marker-missing',
+                'explicit-references-remain',
+                'scoped-evidence-clear-manual-review-required'
+              ];
+              if (!eight || typeof eight !== 'object' || Array.isArray(eight) ||
+                  !Array.isArray(eight.owners) || eight.owners.length !== 8 ||
+                  eight.allEightOwnersProvenComplete !== false ||
+                  eight.olderRestorePromotionAllowed !== false ||
+                  eight.privacyReady !== false ||
+                  eight.humanFreeTextReviewRequired !== true ||
+                  eight.auditRetentionDecisionRequired !== true ||
+                  eight.providerMediaAbsenceRequired !== true ||
+                  !Number.isSafeInteger(eight.linkedIdentityCount) ||
+                  eight.linkedIdentityCount < 0 || eight.linkedIdentityCount > 1) {
+                throw new Error('T07 eight-owner proof is missing or unsafe.');
+              }
+              for (let idx = 0; idx < ownerNames.length; idx++) {
+                const item = eight.owners[idx];
+                if (!item || item.owner !== ownerNames[idx] ||
+                    !allowedState.includes(item.status) ||
+                    (item.remainingReferences !== null &&
+                      (!Number.isSafeInteger(item.remainingReferences) ||
+                       item.remainingReferences < 0))) {
+                  throw new Error('T07 eight-owner scope/row evidence is invalid.');
+                }
               }
             }
           } else if (response.status !== 'four-structured-owners-complete-only' ||
