@@ -80,8 +80,8 @@ describe("T07 protected fifth catalogue owner", () => {
   });
 
   it("supports exact same-marker retry, but never upgrades full privacy/restore", async () => {
-    const marker = { completed_at: completed, purge_after: expiry };
-    marker.mockResolvedValueOnce([marker]);
+    const currentMarker = { completed_at: completed, purge_after: expiry };
+    marker.mockResolvedValueOnce([currentMarker]);
     mark.mockResolvedValueOnce({
       markerInserted: false, deletedFavorites: 0, deletedUsageEvents: 0,
     });
