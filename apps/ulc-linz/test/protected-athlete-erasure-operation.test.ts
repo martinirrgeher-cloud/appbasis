@@ -10,7 +10,16 @@ const fake = vi.hoisted(() => {
     events,
     completedAt,
     current: vi.fn(async () => ({ identity: { identityId: "admin-1" }, access: "full" })),
-    db: vi.fn(async () => [{ database_name: "neondb" }]),
+    db: vi.fn(async (sql: string) => {
+      if (sql.includes("current_database()")) return [{ database_name: "neondb" }];
+      if (sql.includes("appbasis_training_documentation_subject_deletion")) return [
+        { owner: "documentation", completed_at: completedAt,
+          purge_after: new Date(completedAt.getTime() + 35 * 24 * 60 * 60 * 1000) },
+        { owner: "history", completed_at: completedAt,
+          purge_after: new Date(completedAt.getTime() + 35 * 24 * 60 * 60 * 1000) },
+      ];
+      throw new Error("unexpected T07 SQL");
+    }),
     close: vi.fn(async () => {}),
     inspect: vi.fn(async () => ({
       organizationId: "ulc-linz",
@@ -133,6 +142,8 @@ describe("T07 real protected owner composition, no live invocation", () => {
     const op = await createProtectedUlcLinzAthleteErasure(options);
     const result = await op.inspect(request);
     expect(result.status).toBe("structured-owner-markers-match");
+    expect(result.documentationMarkerPresent).toBe(true);
+    expect(result.historyMarkerPresent).toBe(true);
     expect(result.freeTextAndAuditReviewed).toBe(false);
     expect(result.allowsOlderRestorePromotion).toBe(false);
     expect(result.allowsFullPrivacyReady).toBe(false);
@@ -193,6 +204,32 @@ describe("T07 real protected owner composition, no live invocation", () => {
     expect(fake.inspect).toHaveBeenCalledTimes(2);
     expect(fake.guard).toHaveBeenCalledTimes(2);
     await op.close();
+  });
+
+  it("never claims successful four-owner completion without physical doc/history owner markers", async () => {
+    const op = await createProtectedUlcLinzAthleteErasure(options);
+    // SQL marker union on BEFORE inspection reports both markers present,
+    // but on postcheck only documentation. No false success.
+    const original = fake.db.getMockImplementation()!;
+    let markerQueries = 0;
+    fake.db.mockImplementation(async (sql: string) => {
+      if (sql.includes("appbasis_training_documentation_subject_deletion")) {
+        markerQueries++;
+        if (markerQueries === 2) return [{
+          owner: "documentation",
+          completed_at: fake.completedAt,
+          purge_after: new Date(fake.completedAt.getTime() + 35 * 24 * 60 * 60 * 1000),
+        }];
+      }
+      return original(sql);
+    });
+    await expect(op.eraseStructuredOnly(request, {
+      confirmation: "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS",
+      expectedSourceCompletedAt: fake.completedAt.toISOString(),
+    })).rejects.toThrow(/remains incomplete/);
+    expect(fake.erase).toHaveBeenCalledOnce();
+    await op.close();
+    fake.db.mockImplementation(original);
   });
 
   it("denies conflicting owner marker, failed SQL guard and partial later-owner failure", async () => {
