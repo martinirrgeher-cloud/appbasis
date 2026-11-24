@@ -175,9 +175,13 @@ export class PostgresUlcT07EightOwnerInspector {
       const fields = COLUMNS[owner];
       const remaining = count(row[fields.count]);
       const marker = fields.marker === null ? null : count(row[fields.marker]) === 1;
+      // Blocks have identity-keyed favourites in addition to subject usage.
+      // ULC owns actor/registration audit references beyond subject history.
+      // If the identity source is missing, neither may claim an all-clear.
       const identityDependent =
         owner === "identity" || owner === "permissions" ||
-        owner === "exercise-catalog";
+        owner === "exercise-catalog" || owner === "training-blocks" ||
+        owner === "ulc-linz-lifecycle";
       const unverified = linked === 0 && identityDependent;
       const status: UlcT07OwnerReviewState = unverified
         ? "identity-link-unverified"
