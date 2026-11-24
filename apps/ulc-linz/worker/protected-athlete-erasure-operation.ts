@@ -1,4 +1,5 @@
 import { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
+import { PostgresExerciseCatalogRepository } from "@appbasis/exercise-catalog";
 import { createPostgresDatabase } from "@appbasis/database";
 import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
 import { createIdentityRuntime } from "@appbasis/identity/server";
@@ -16,6 +17,10 @@ import {
 } from "./lifecycle-service";
 import { PostgresUlcLinzScopePersistence } from "./scope-persistence";
 import {
+  PostgresUlcT07CatalogOwnerFollowUp,
+  type UlcT07CatalogFollowUpResult,
+} from "./t07-catalog-owner-follow-up";
+import {
   PostgresUlcT07EightOwnerInspector,
   type UlcT07EightOwnerReview,
 } from "./t07-eight-owner-reconciliation";
@@ -29,6 +34,7 @@ import { PostgresUlcTrainingSubjectPrivacyInspector } from
   "./training-subject-privacy-postgres";
 
 const CONFIRMATION = "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS";
+const CATALOG_CONFIRMATION = "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER";
 
 /** Exact read-only SQL pinned by a real two-schema PostgreSQL E2E. */
 export const ULC_T07_FOUR_OWNER_MARKER_SQL = `
@@ -88,6 +94,17 @@ export interface ProtectedAthleteErasureOperation {
     allowsOlderRestorePromotion: false;
     allowsFullPrivacyReady: false;
   }>>;
+  eraseCatalogOwnerOnly(
+    request: UlcLinzAthleteSubjectDeletionRequest,
+    approval: Readonly<{ confirmation: string; expectedSourceCompletedAt: string }>,
+  ): Promise<Readonly<{
+    status: "catalog-owner-complete-only";
+    result: UlcT07CatalogFollowUpResult;
+    verified: ProtectedAthleteErasurePreflight;
+    freeTextAndAuditReviewed: false;
+    allowsOlderRestorePromotion: false;
+    allowsFullPrivacyReady: false;
+  }>>;
   close(): Promise<void>;
 }
 
@@ -133,6 +150,14 @@ export async function createProtectedUlcLinzAthleteErasure(
     const trainingPrivacy = new PostgresUlcTrainingSubjectPrivacyInspector(connection.client);
     const residualReview = new PostgresUlcT07ResidualInspector(connection.client);
     const eightOwners = new PostgresUlcT07EightOwnerInspector(connection.client);
+    const catalogOwner = new PostgresUlcT07CatalogOwnerFollowUp(
+      connection.client,
+      new PostgresExerciseCatalogRepository(connection.client, {
+        favoriteFenceMode: "require-catalog-erasure-marker",
+        usageWriteMode: "require-explicit-subject",
+      }),
+      now,
+    );
     const now = options.now ?? (() => new Date());
 
     async function currentAdmin() {
@@ -266,6 +291,50 @@ export async function createProtectedUlcLinzAthleteErasure(
         }
         return Object.freeze({
           status: "four-structured-owners-complete-only" as const,
+          result, verified,
+          freeTextAndAuditReviewed: false as const,
+          allowsOlderRestorePromotion: false as const,
+          allowsFullPrivacyReady: false as const,
+        });
+      },
+      async eraseCatalogOwnerOnly(
+        request: UlcLinzAthleteSubjectDeletionRequest,
+        approval: Readonly<{ confirmation: string; expectedSourceCompletedAt: string }>,
+      ) {
+        if (!approval || approval.confirmation !== CATALOG_CONFIRMATION ||
+            typeof approval.expectedSourceCompletedAt !== "string" ||
+            !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(
+              approval.expectedSourceCompletedAt,
+            )) {
+          throw new Error("T07 catalogue owner requires an explicit exact approval.");
+        }
+        const before = await inspect(request);
+        if (
+          before.status !== "structured-owner-markers-match" ||
+          before.preflight.completedAt?.toISOString() !== approval.expectedSourceCompletedAt ||
+          before.eightOwnerReview?.linkedIdentityCount !== 1
+        ) throw new Error("T07 catalogue owner requires four complete sources and unique identity.");
+
+        const current = await currentAdmin();
+        const result = await catalogOwner.erase(
+          before.preflight.organizationId,
+          before.preflight.subjectId,
+          current.identity.identityId,
+        );
+        const verified = await inspect(request);
+        const catalogProof = verified.eightOwnerReview?.owners.find(
+          row => row.owner === "exercise-catalog",
+        );
+        if (
+          verified.status !== "structured-owner-markers-match" ||
+          verified.preflight.completedAt?.getTime() !==
+            before.preflight.completedAt?.getTime() ||
+          catalogProof?.status !== "scoped-evidence-clear-manual-review-required" ||
+          catalogProof.markerPresent !== true ||
+          catalogProof.remainingReferences !== 0
+        ) throw new Error("T07 catalogue owner remains unverified after deletion.");
+        return Object.freeze({
+          status: "catalog-owner-complete-only" as const,
           result, verified,
           freeTextAndAuditReviewed: false as const,
           allowsOlderRestorePromotion: false as const,
