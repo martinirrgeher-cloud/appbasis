@@ -105,6 +105,7 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
         attendanceRows: inspected.attendanceRows,
         registrationRows: inspected.registrationRows,
         registrationHistoryRows: inspected.registrationHistoryRows,
+        residualReview: inspected.residualReview,
         fullErasureAuthorized: false as const,
         olderRestorePromotionAuthorized: false as const,
       });
