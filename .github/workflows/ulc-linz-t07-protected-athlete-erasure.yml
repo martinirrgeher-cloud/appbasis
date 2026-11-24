@@ -259,7 +259,7 @@ jobs:
             http://127.0.0.1:8787/__appbasis/t07/athlete-erasure)"
           test "$status" = 200 || { echo 'T07 operation failed; possible partial owner state requires separate review.' >&2; exit 1; }
           RESULT_PATH="$body" OPERATION="$OPERATION" node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
+          import { readFileSync, appendFileSync } from 'node:fs';
           const response = JSON.parse(readFileSync(process.env.RESULT_PATH, 'utf8'));
           if (response === null || typeof response !== 'object' || Array.isArray(response) ||
               response.fullErasureAuthorized !== false || response.olderRestorePromotionAuthorized !== false) {
@@ -311,7 +311,24 @@ jobs:
                      response.structuredOwnersVerified !== true) {
             throw new Error('T07 four-owner mutation verification incomplete.');
           }
-          // Never log the individual subject, session, or raw response data.
+          // The repo is PUBLIC. Preserve only the non-linkable operation
+          // status and broad manual-review flags. The exact source time,
+          // subject ID, numeric counts and free text stay off GitHub logs.
+          const summary = ['### T07 protected operator review',
+            '| Prüfbereich | Ergebnis |', '|---|---|'];
+          if (process.env.OPERATION === 'inspect') {
+            const review = response.residualReview;
+            summary.push('| Strukturierte Löschung | ' + response.status + ' |');
+            summary.push('| Identitätszuordnung | ' +
+              (review === null || review.identityMappingReviewRequired ? 'NICHT NACHGEWIESEN' : 'IDENTITY-LINK VORHANDEN') + ' |');
+            summary.push('| Freitext-/Trainer-/Actor-/Auditkontrolle | MANUELLE PRÜFUNG OFFEN |');
+            summary.push('| Private Medien / ältere Backups | PROVIDERNACHWEIS / RESTORE GESPERRT |');
+          } else {
+            summary.push('| Vier-Owner-Prüfung | TECHNISCH ABGESCHLOSSEN – KEIN 8-OWNER-PASS |');
+            summary.push('| Freitext / Actor / Audit | MANUELLE PRÜFUNG OFFEN |');
+            summary.push('| Alte Backups | WIEDERHERSTELLUNG GESPERRT |');
+          }
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary.join('\\n') + '\\n');
           NODE
           cleanup
           trap - EXIT
@@ -335,13 +352,3 @@ jobs:
           }
           NODE
 
-      - name: Record sanitized operator result, never personal identifiers
-        shell: bash
-        env:
-          OPERATION: ${{ inputs.operation }}
-        run: |
-          if test "$OPERATION" = inspect; then
-            echo 'ULC T07 protected read-only subject inspection executed through isolated remote harness. No owner deletion requested. Raw subject metadata suppressed.' >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'ULC T07 structured-only four-owner erasure completed with verified postcheck. This is NOT an 8-owner/privacy/backup-restore approval; legal, trainer, free-text and audit review remain separately required. No personal IDs logged.' >> "$GITHUB_STEP_SUMMARY"
-          fi
