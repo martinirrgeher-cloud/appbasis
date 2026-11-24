@@ -15,7 +15,7 @@ const membership = { identity_id: identity, source_role: "athlete",
 const deleted = { ...membership, record_source: "deleted",
   completed_at: new Date("2026-11-23T12:00:00.000Z"),
   purge_after: new Date("2026-12-28T12:00:00.000Z") };
-const sql = vi.fn(async (statement: string) =>
+const sql = vi.fn(async (statement: string): Promise<readonly Record<string, unknown>[]> =>
   statement === ULC_T07_LINKED_IDENTITY_SQL ? [membership] : []);
 
 describe("T07 canonical identity discovery and strict block favorite marker", () => {
