@@ -148,7 +148,7 @@ export async function createProtectedUlcLinzAthleteErasure(
          UNION ALL
          SELECT 'history' AS owner, completed_at, purge_after
          FROM ulc_linz_training_subject_deletion
-         WHERE organization_id = $1 AND subject_id = $2`,
+         WHERE organization_id = $1 AND athlete_id = $2`,
         [base.organizationId, base.subjectId],
       );
       if (markerRows.length > 2 || markerRows.some((row) =>
