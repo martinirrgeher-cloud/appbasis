@@ -57,6 +57,10 @@ describe("T07 isolated ephemeral operator ingress is token and approval gated", 
       req("inspect", { "x-appbasis-t07-source-completed-at": "2026-11-22T12:00:00.000Z" }),
       req("erase-structured-only"),
       req("erase-structured-only", { "x-appbasis-t07-source-completed-at": "invalid" }),
+      req("erase-catalog-owner-only"),
+      req("erase-catalog-owner-only", { "x-appbasis-t07-confirmation":
+        "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS",
+        "x-appbasis-t07-source-completed-at": "2026-11-22T12:00:00.000Z" }),
       req("delete-anything"),
     ];
     for (const request of attempts) {
@@ -91,6 +95,22 @@ describe("T07 isolated ephemeral operator ingress is token and approval gated", 
       "erase-structured-only",
       { confirmation: "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS",
         expectedSourceCompletedAt: completedAt },
+    );
+  });
+
+  it("only routes a separately authorized catalog owner request", async () => {
+    const date = "2026-11-22T12:00:00.000Z";
+    const response = await harness.fetch(req("erase-catalog-owner-only", {
+      "x-appbasis-t07-source-completed-at": date,
+      "x-appbasis-t07-confirmation": "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER",
+    }), env);
+    expect(response.status).toBe(200);
+    expect(mock.execute).toHaveBeenCalledWith(
+      expect.any(Object),
+      { organizationId: "ulc-linz", subjectId: "athlete-subject-1" },
+      "erase-catalog-owner-only",
+      { confirmation: "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER",
+        expectedSourceCompletedAt: date },
     );
   });
 
