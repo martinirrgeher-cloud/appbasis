@@ -328,7 +328,7 @@ jobs:
             summary.push('| Freitext / Actor / Audit | MANUELLE PRÜFUNG OFFEN |');
             summary.push('| Alte Backups | WIEDERHERSTELLUNG GESPERRT |');
           }
-          appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary.join('\\n') + '\\n');
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary.join('\n') + '\n');
           NODE
           cleanup
           trap - EXIT
