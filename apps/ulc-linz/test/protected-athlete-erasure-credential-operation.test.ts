@@ -41,6 +41,13 @@ const harness = vi.hoisted(() => ({
       olderRestorePromotionAllowed: false, privacyReady: false,
     },
   })),
+  identityOwner: vi.fn(async () => ({
+    status: "identity-block-favorites-owner-complete-only",
+    identityDeleted: true, blockFavoriteMarkerVerified: true,
+    verified: { preflight: {
+      completedAt: new Date("2026-11-23T12:00:00.000Z"),
+    } },
+  })),
   catalog: vi.fn(async () => ({
     status: "catalog-owner-complete-only",
     result: { deletedFavorites: 1, deletedUsageEvents: 1 },
@@ -75,6 +82,7 @@ vi.mock("../worker/protected-athlete-erasure-operation", () => ({
     inspect: harness.inspect,
     eraseStructuredOnly: harness.erase,
     eraseCatalogOwnerOnly: harness.catalog,
+    eraseIdentityOwnerOnly: harness.identityOwner,
     close: harness.closeOwner,
   })),
 }));
@@ -191,6 +199,34 @@ describe("T07 transient-credential four-owner operation is separately guarded", 
     });
     expect(harness.catalog).toHaveBeenCalledOnce();
     expect(harness.erase).not.toHaveBeenCalled();
+    expect(harness.logout).toHaveBeenCalledWith("signed-session");
+    expect(harness.closeDb).toHaveBeenCalledOnce();
+  });
+
+  it("separately authorizes canonical identity and block favorite deletion, returns only safe flags", async () => {
+    await expect(runProtectedUlcLinzAthleteErasureWithCredentials(
+      options, request, "erase-identity-owner-only",
+      { confirmation: "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER",
+        expectedSourceCompletedAt: "2026-11-23T12:00:00.000Z" },
+    )).rejects.toThrow(/explicit operator approval/);
+    expect(harness.login).not.toHaveBeenCalled();
+    const result = await runProtectedUlcLinzAthleteErasureWithCredentials(
+      options, request, "erase-identity-owner-only",
+      { confirmation: "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER",
+        expectedSourceCompletedAt: "2026-11-23T12:00:00.000Z" },
+    );
+    expect(result).toEqual({
+      status: "identity-block-favorites-owner-complete-only",
+      sourceDecisionAt: "2026-11-23T12:00:00.000Z",
+      identityOwnerProofVerified: true,
+      blockFavoriteMarkerVerified: true,
+      fullErasureAuthorized: false,
+      olderRestorePromotionAuthorized: false,
+    });
+    expect(JSON.stringify(result)).not.toContain("athlete-1");
+    expect(harness.identityOwner).toHaveBeenCalledOnce();
+    expect(harness.erase).not.toHaveBeenCalled();
+    expect(harness.catalog).not.toHaveBeenCalled();
     expect(harness.logout).toHaveBeenCalledWith("signed-session");
     expect(harness.closeDb).toHaveBeenCalledOnce();
   });

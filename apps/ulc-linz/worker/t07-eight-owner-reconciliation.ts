@@ -25,6 +25,15 @@ SELECT
   (SELECT count(*)::int FROM linked_identity) AS linked_identities,
   (
     (SELECT count(*) FROM "user" WHERE id IN (SELECT identity_id FROM linked_identity)) +
+    (SELECT count(*) FROM account WHERE user_id IN (SELECT identity_id FROM linked_identity)) +
+    (SELECT count(*) FROM session WHERE user_id IN (SELECT identity_id FROM linked_identity)) +
+    (SELECT count(*) FROM appbasis_identity_security_state
+      WHERE identity_id IN (SELECT identity_id FROM linked_identity)) +
+    (SELECT count(*) FROM appbasis_person
+      WHERE id IN (
+        SELECT person_id FROM appbasis_identity_security_state
+        WHERE identity_id IN (SELECT identity_id FROM linked_identity)
+      )) +
     (SELECT count(*) FROM ulc_linz_membership WHERE organization_id=$1 AND subject_id=$2)
   )::int AS identity_remaining,
   (
@@ -47,7 +56,9 @@ SELECT
     (SELECT count(*) FROM appbasis_exercise_catalog_favorite WHERE organization_id=$1 AND
       principal_id IN (SELECT identity_id FROM linked_identity)) +
     (SELECT count(*) FROM appbasis_exercise_catalog_usage_subject WHERE organization_id=$1 AND
-      principal_id IN (SELECT identity_id FROM linked_identity))
+      principal_id IN (SELECT identity_id FROM linked_identity)) +
+    (SELECT count(*) FROM ulc_linz_exercise_favorite WHERE organization_id=$1 AND
+      identity_id IN (SELECT identity_id FROM linked_identity))
   )::int AS catalog_remaining,
   (SELECT count(*)::int FROM appbasis_exercise_catalog_favorite_deletion WHERE
     organization_id=$1 AND principal_id IN (SELECT identity_id FROM linked_identity)

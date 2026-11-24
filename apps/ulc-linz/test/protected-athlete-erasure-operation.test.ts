@@ -9,9 +9,38 @@ const fake = vi.hoisted(() => {
   return {
     events,
     completedAt,
+    favoriteMarkerExists: false,
+    blockFavoriteDelete: vi.fn(async () => ({
+      markerInserted: true, deletedFavorites: 2,
+    })),
+    canonicalIdentity: vi.fn(async (_c: unknown, dependencies: {
+      favorites: { deletePrincipalFavorites: (org: string, id: string) => Promise<{
+        markerInserted: boolean; deletedFavorites: number }>; },
+    }, request: { organizationId: string; targetIdentityId: string }) => {
+      const outcome = await dependencies.favorites.deletePrincipalFavorites(
+        request.organizationId, request.targetIdentityId,
+      );
+      fake.favoriteMarkerExists = true;
+      return {
+        identityId: request.targetIdentityId,
+        identityDeleted: true, permissionPrincipalDeleted: true,
+        deletedTrainingBlockFavorites: outcome.deletedFavorites,
+      };
+    }),
     current: vi.fn(async () => ({ identity: { identityId: "admin-1" }, access: "full" })),
     db: vi.fn(async (sql: string) => {
       if (sql.includes("current_database()")) return [{ database_name: "neondb" }];
+      if (sql.includes("ulc_linz_lifecycle_deletion") && sql.includes("'live' AS record_source")) {
+        return [{ identity_id: "member-1", source_role: "athlete", record_source: "live",
+          completed_at: null, purge_after: null }];
+      }
+      if (sql.includes("appbasis_training_block_favorite_deletion") &&
+          sql.includes("principal_id=$2")) {
+        return fake.favoriteMarkerExists
+          ? [{ completed_at: completedAt,
+              purge_after: new Date(completedAt.getTime() + 35 * 86400_000) }]
+          : [];
+      }
       if (sql.includes("appbasis_training_documentation_subject_deletion")) return [
         { owner: "documentation", completed_at: completedAt,
           purge_after: new Date(completedAt.getTime() + 35 * 24 * 60 * 60 * 1000) },
@@ -106,6 +135,9 @@ vi.mock("@appbasis/database", () => ({
 vi.mock("@appbasis/identity/better-auth", () => ({
   createBetterAuthRuntime: () => ({}),
 }));
+vi.mock("@appbasis/identity/postgres-deletion", () => ({
+  PostgresIdentityDeletion: class {},
+}));
 vi.mock("@appbasis/identity/server", () => ({
   createIdentityRuntime: () => ({
     service: { getCurrentIdentity: fake.current },
@@ -121,6 +153,8 @@ vi.mock("../worker/t07-catalog-owner-follow-up", () => ({
 }));
 vi.mock("@appbasis/permissions", () => ({
   PostgresPermissionStore: class {},
+  PostgresPrincipalAccessAdministration: class {},
+  PostgresPrincipalLifecycleAdministration: class {},
 }));
 vi.mock("@appbasis/athletes", () => ({
   PostgresAthleteMasterdataRepository: class {},
@@ -129,7 +163,9 @@ vi.mock("@appbasis/training-plans", () => ({
   PostgresTrainingPlanRepository: class {},
 }));
 vi.mock("@appbasis/training-blocks", () => ({
-  PostgresTrainingBlockRepository: class {},
+  PostgresTrainingBlockRepository: class {
+    markPrincipalDeletedAndDeleteFavorites = fake.blockFavoriteDelete;
+  },
 }));
 vi.mock("@appbasis/training-documentation", () => ({
   PostgresTrainingDocumentationRepository: class {
@@ -160,6 +196,7 @@ vi.mock("../worker/training-subject-privacy-postgres", () => ({
   },
 }));
 vi.mock("../worker/lifecycle-service", () => ({
+  deleteUlcLinzIdentityWithCanonicalFavoriteDeletion: fake.canonicalIdentity,
   inspectUlcLinzAthleteSubjectDeletionFollowUp: (...args: unknown[]) =>
     fake.inspect(...(args as [])),
   deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention: (...args: unknown[]) =>
@@ -179,6 +216,7 @@ describe("T07 real protected owner composition, no live invocation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fake.events.length = 0;
+    fake.favoriteMarkerExists = false;
   });
 
   it("rejects malformed binding and foreign DB before any subject read/write", async () => {
@@ -309,6 +347,71 @@ describe("T07 real protected owner composition, no live invocation", () => {
     expect(done.allowsOlderRestorePromotion).toBe(false);
     expect(fake.catalogErase).toHaveBeenCalledWith("ulc-linz", "subject-1", "admin-1");
     expect(fake.erase).not.toHaveBeenCalled();
+    await op.close();
+  });
+
+  it("executes separately approved canonical identity/permissions plus marked block favorites", async () => {
+    const op = await createProtectedUlcLinzAthleteErasure(options);
+    const approval = {
+      confirmation: "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER",
+      expectedSourceCompletedAt: fake.completedAt.toISOString(),
+    };
+    await expect(op.eraseIdentityOwnerOnly(request, {
+      ...approval, confirmation: "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS",
+    })).rejects.toThrow(/exact authorization/);
+    expect(fake.canonicalIdentity).not.toHaveBeenCalled();
+
+    const validOwners = {
+      ...await fake.eight(),
+      linkedIdentityCount: 1,
+      owners: ["identity","permissions","athletes","exercise-catalog",
+        "training-blocks","training-documentation","training-plans",
+        "ulc-linz-lifecycle"].map(owner=>({
+          owner, status: "scoped-evidence-clear-manual-review-required",
+          remainingReferences: 0, markerPresent: null,
+        })),
+    };
+    // BEFORE deletion may still have a live identity and no durable link.
+    // AFTER deletion must read the newly persisted canonical link and zero
+    // physical Identity/Permissions/Block-Favorite references.
+    const beforeOwners = await fake.eight();
+    fake.eight.mockResolvedValueOnce(beforeOwners as never);
+    fake.eight.mockResolvedValueOnce(validOwners as never);
+    const done = await op.eraseIdentityOwnerOnly(request, approval);
+    expect(done.status).toBe("identity-block-favorites-owner-complete-only");
+    expect(done.identityDeleted).toBe(true);
+    expect(done.blockFavoriteMarkerVerified).toBe(true);
+    expect(done.deletedBlockFavorites).toBe(2);
+    expect(done.allowsFullPrivacyReady).toBe(false);
+    expect(done.freeTextAndAuditReviewed).toBe(false);
+    expect(done.allowsOlderRestorePromotion).toBe(false);
+    expect(fake.canonicalIdentity).toHaveBeenCalledOnce();
+    expect(fake.blockFavoriteDelete).toHaveBeenCalledWith(
+      "ulc-linz", "member-1", fake.completedAt,
+    );
+    expect(fake.catalogErase).not.toHaveBeenCalled();
+    await op.close();
+  });
+
+  it("never starts identity owner write on missing source, stale approval or absent identity link", async () => {
+    const op = await createProtectedUlcLinzAthleteErasure(options);
+    const approve = {
+      confirmation: "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER",
+      expectedSourceCompletedAt: fake.completedAt.toISOString(),
+    };
+    await expect(op.eraseIdentityOwnerOnly(request, {
+      ...approve, expectedSourceCompletedAt: "2026-11-19T12:00:00.000Z",
+    })).rejects.toThrow(/all four structured/);
+    const previous = fake.db.getMockImplementation()!;
+    fake.db.mockImplementation(async (query: string) => {
+      if (query.includes("ulc_linz_lifecycle_deletion") &&
+          query.includes("'live' AS record_source")) return [];
+      return previous(query);
+    });
+    await expect(op.eraseIdentityOwnerOnly(request, approve))
+      .rejects.toThrow(/one authoritative/);
+    expect(fake.canonicalIdentity).not.toHaveBeenCalled();
+    fake.db.mockImplementation(previous);
     await op.close();
   });
 

@@ -2,20 +2,30 @@ import { PostgresAthleteMasterdataRepository } from "@appbasis/athletes";
 import { PostgresExerciseCatalogRepository } from "@appbasis/exercise-catalog";
 import { createPostgresDatabase } from "@appbasis/database";
 import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
+import { PostgresIdentityDeletion } from "@appbasis/identity/postgres-deletion";
 import { createIdentityRuntime } from "@appbasis/identity/server";
-import { PostgresPermissionStore } from "@appbasis/permissions";
+import {
+  PostgresPermissionStore,
+  PostgresPrincipalAccessAdministration,
+  PostgresPrincipalLifecycleAdministration,
+} from "@appbasis/permissions";
 import { PostgresTrainingBlockRepository } from "@appbasis/training-blocks";
 import { PostgresTrainingDocumentationRepository } from "@appbasis/training-documentation";
 import { PostgresTrainingPlanRepository } from "@appbasis/training-plans";
 
 import {
   deleteUlcLinzAthleteFourOwnerStructuredDependentsAfterRetention,
+  deleteUlcLinzIdentityWithCanonicalFavoriteDeletion,
   inspectUlcLinzAthleteSubjectDeletionFollowUp,
   type UlcLinzAthleteFourOwnerStructuredDeletionResult,
   type UlcLinzAthleteSubjectDeletionPreflight,
   type UlcLinzAthleteSubjectDeletionRequest,
 } from "./lifecycle-service";
 import { PostgresUlcLinzScopePersistence } from "./scope-persistence";
+import {
+  requireUniqueUlcT07AthleteIdentity,
+  requireMatchingUlcT07BlockFavoriteMarker,
+} from "./t07-identity-owner-follow-up";
 import {
   PostgresUlcT07CatalogOwnerFollowUp,
   type UlcT07CatalogFollowUpResult,
@@ -35,6 +45,7 @@ import { PostgresUlcTrainingSubjectPrivacyInspector } from
 
 const CONFIRMATION = "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS";
 const CATALOG_CONFIRMATION = "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER";
+const IDENTITY_CONFIRMATION = "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER";
 
 /** Exact read-only SQL pinned by a real two-schema PostgreSQL E2E. */
 export const ULC_T07_FOUR_OWNER_MARKER_SQL = `
@@ -105,6 +116,20 @@ export interface ProtectedAthleteErasureOperation {
     allowsOlderRestorePromotion: false;
     allowsFullPrivacyReady: false;
   }>>;
+  eraseIdentityOwnerOnly(
+    request: UlcLinzAthleteSubjectDeletionRequest,
+    approval: Readonly<{ confirmation: string; expectedSourceCompletedAt: string }>,
+  ): Promise<Readonly<{
+    status: "identity-block-favorites-owner-complete-only";
+    identityDeleted: true;
+    permissionPrincipalDeleted: boolean;
+    blockFavoriteMarkerVerified: true;
+    deletedBlockFavorites: number;
+    verified: ProtectedAthleteErasurePreflight;
+    freeTextAndAuditReviewed: false;
+    allowsOlderRestorePromotion: false;
+    allowsFullPrivacyReady: false;
+  }>>;
   close(): Promise<void>;
 }
 
@@ -141,6 +166,9 @@ export async function createProtectedUlcLinzAthleteErasure(
       administrativeSessionToken: options.administrativeSessionToken,
     }).service;
     const permissions = new PostgresPermissionStore(connection.client);
+    const identityDeletion = new PostgresIdentityDeletion(connection.client);
+    const accessAdministration = new PostgresPrincipalAccessAdministration(connection.client);
+    const principalLifecycle = new PostgresPrincipalLifecycleAdministration(connection.client);
     const scopes = new PostgresUlcLinzScopePersistence(connection.client);
     const athletes = new PostgresAthleteMasterdataRepository(connection.client);
     const plans = new PostgresTrainingPlanRepository(connection.client);
@@ -343,6 +371,83 @@ export async function createProtectedUlcLinzAthleteErasure(
         return Object.freeze({
           status: "catalog-owner-complete-only" as const,
           result, verified,
+          freeTextAndAuditReviewed: false as const,
+          allowsOlderRestorePromotion: false as const,
+          allowsFullPrivacyReady: false as const,
+        });
+      },
+      async eraseIdentityOwnerOnly(
+        request: UlcLinzAthleteSubjectDeletionRequest,
+        approval: Readonly<{ confirmation: string; expectedSourceCompletedAt: string }>,
+      ) {
+        if (!approval || approval.confirmation !== IDENTITY_CONFIRMATION ||
+            typeof approval.expectedSourceCompletedAt !== "string" ||
+            !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(
+              approval.expectedSourceCompletedAt,
+            )) throw new Error("T07 identity owner has no explicit exact authorization.");
+        const before = await inspect(request);
+        if (
+          before.status !== "structured-owner-markers-match" ||
+          before.preflight.completedAt?.toISOString() !== approval.expectedSourceCompletedAt
+        ) throw new Error("T07 identity owner needs all four structured sources complete.");
+        const sourceCompletedAt = before.preflight.completedAt;
+        const current = await currentAdmin();
+        const target = await requireUniqueUlcT07AthleteIdentity(
+          connection.client, before.preflight.organizationId,
+          before.preflight.subjectId, sourceCompletedAt, now(),
+        );
+        if (target.identityId === current.identity.identityId) {
+          throw new Error("T07 cannot delete the acting administrator.");
+        }
+        await requireMatchingUlcT07BlockFavoriteMarker(
+          connection.client, before.preflight.organizationId,
+          target.identityId, sourceCompletedAt, now(),
+        );
+        // Canonical owner handles its own admin/same-org/target role checks,
+        // security quarantine, actual Identity and Permissions deletion,
+        // app membership removal and a separate app deletion tombstone.
+        const result = await deleteUlcLinzIdentityWithCanonicalFavoriteDeletion(
+          current,
+          {
+            identity, identityDeletion, permissions,
+            accessAdministration, principalLifecycle, scopes,
+            favorites: {
+              deletePrincipalFavorites: (organizationId, principalId) =>
+                usage.markPrincipalDeletedAndDeleteFavorites(
+                  organizationId, principalId, sourceCompletedAt,
+                ),
+            },
+          },
+          { organizationId: before.preflight.organizationId,
+            targetIdentityId: target.identityId },
+        );
+        if (result.identityId !== target.identityId || result.identityDeleted !== true) {
+          throw new Error("T07 canonical identity owner result did not match approved target.");
+        }
+        const markerVerified = await requireMatchingUlcT07BlockFavoriteMarker(
+          connection.client, before.preflight.organizationId,
+          target.identityId, sourceCompletedAt, now(),
+        );
+        const verified = await inspect(request);
+        const owner = verified.eightOwnerReview?.owners;
+        if (
+          !markerVerified ||
+          verified.status !== "structured-owner-markers-match" ||
+          verified.preflight.completedAt?.getTime() !== sourceCompletedAt.getTime() ||
+          verified.eightOwnerReview?.linkedIdentityCount !== 1 ||
+          owner?.find(x=>x.owner==="identity")?.remainingReferences !== 0 ||
+          owner?.find(x=>x.owner==="permissions")?.remainingReferences !== 0 ||
+          owner?.find(x=>x.owner==="training-blocks")?.remainingReferences !== 0
+        ) {
+          throw new Error("T07 canonical identity and block favorites remain unverified.");
+        }
+        return Object.freeze({
+          status: "identity-block-favorites-owner-complete-only" as const,
+          identityDeleted: true as const,
+          permissionPrincipalDeleted: result.permissionPrincipalDeleted,
+          blockFavoriteMarkerVerified: true as const,
+          deletedBlockFavorites: result.deletedTrainingBlockFavorites,
+          verified,
           freeTextAndAuditReviewed: false as const,
           allowsOlderRestorePromotion: false as const,
           allowsFullPrivacyReady: false as const,

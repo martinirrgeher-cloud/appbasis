@@ -58,6 +58,11 @@ describe("T07 isolated ephemeral operator ingress is token and approval gated", 
       req("erase-structured-only"),
       req("erase-structured-only", { "x-appbasis-t07-source-completed-at": "invalid" }),
       req("erase-catalog-owner-only"),
+      req("erase-identity-owner-only"),
+      req("erase-identity-owner-only", {
+        "x-appbasis-t07-confirmation": "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER",
+        "x-appbasis-t07-source-completed-at": "2026-11-22T12:00:00.000Z",
+      }),
       req("erase-catalog-owner-only", { "x-appbasis-t07-confirmation":
         "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS",
         "x-appbasis-t07-source-completed-at": "2026-11-22T12:00:00.000Z" }),
@@ -111,6 +116,22 @@ describe("T07 isolated ephemeral operator ingress is token and approval gated", 
       "erase-catalog-owner-only",
       { confirmation: "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER",
         expectedSourceCompletedAt: date },
+    );
+  });
+
+  it("only routes identity owner with its own confirmation, never grants full erasure", async () => {
+    const completedAt = "2026-11-22T12:00:00.000Z";
+    const response = await harness.fetch(req("erase-identity-owner-only", {
+      "x-appbasis-t07-source-completed-at": completedAt,
+      "x-appbasis-t07-confirmation": "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER",
+    }), env);
+    expect(response.status).toBe(200);
+    expect(mock.execute).toHaveBeenCalledWith(
+      expect.any(Object),
+      { organizationId: "ulc-linz", subjectId: "athlete-subject-1" },
+      "erase-identity-owner-only",
+      { confirmation: "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER",
+        expectedSourceCompletedAt: completedAt },
     );
   });
 
