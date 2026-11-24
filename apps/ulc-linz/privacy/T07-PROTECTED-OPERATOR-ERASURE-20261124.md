@@ -14,6 +14,25 @@ Personendaten-Löschfreigabe**.
   startet ein zeitlich begrenztes, tokengebundenes, **nicht dauerhaft
   deploytes** Cloudflare-Remote-Development-Harness unter derselben geschützten
   GitHub-Umgebung `m4-dr` wie der vorhandene M5-Lifecycle-Pfad.
+- Die Inspektion ermittelt seit dem aktuellen T07-Paket eine **Acht-Owner-
+  Reconciliation mit echter SQL-Abfrage** und allen acht einzelnen Statuswerten.
+  Fehlt die nachweisbare Identitätszuordnung, gelten Identity, Permissions und
+  Katalog als **nicht verifiziert**, selbst bei null Tabellenzeilen. Fehlende
+  Marker oder Restreferenzen sind eigenständige Stopps; auch eine einheitlich
+  grüne strukturierte Prüfung ist ohne Freitext-/Audit-/Medien-Review kein
+  vollständiger Datenschutzabschluss.
+- Für den fünften, bisher getrennten **Exercise-Catalog-Owner** steht ein
+  einzeln bestätigter `erase-catalog-owner-only`-Modus bereit. Er verlangt
+  **zuvor vollständig erledigte vier strukturierte Owner**, genau eine
+  aktuelle offizielle Athleten-Identitäts-Löschmarke sowie exakt zueinander
+  passende Katalog-/Identitäts-Löschzeitpunkte. Gelöscht werden ausschließlich
+  katalogeigene Favoriten und explizit dieser Identität zugeordnete
+  Usage-Events über den bereits geschützten Modul-Repository-Pfad. Alte
+  unklare `source_ref`-/Notiz-Texte und private Medien **bleiben bestehen**
+  bis zu eigener fachlicher Prüfung. Dieser Modus ist durch die gleiche
+  standardmäßig **nicht gesetzte** Variable
+  `ULC_T07_ERASURE_ENABLED` gesperrt; ein vierter Owner-Erfolg allein
+  stellt keine fünfte oder achte Freigabe dar.
 - Modus `inspect` ist nicht destruktiv. Es werden Quellmarker, Berechtigungen,
   vier Owner-Marker/-Restdaten und zusätzlich **nur aggregierte Zahlen** zu
   verbleibenden Identitäts-/Trainer-/Actor-/Auditbezügen, vereinweiten
@@ -69,7 +88,11 @@ Personendaten-Löschfreigabe**.
    ausführen und niemals ein Backupartefakt aus dem betroffenen Zeitraum
    ungeprüft promoten.
 5. Nur nach getrennter tatsächlicher, datensatzbezogener Freigabe kann
-   `erase-structured-only` verwendet werden. Hier zusätzlich
+   zunächst `erase-structured-only` verwendet werden. Für den getrennten
+   Katalog-Owner ist **nach** erfolgreicher Vier-Owner-Prüfung außerdem
+   `erase-catalog-owner-only` mit der exakten Bestätigung
+   `ERASE-ULC-T07-VERIFIED-CATALOG-OWNER` möglich; keine automatische
+   Ergänzung bei unbekanntem Identitätslink. Hier zusätzlich
    `ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS` im **nicht personenbezogenen**
    Workflow-Input angeben. Der exakte Quellmarker-Zeitpunkt wird **nur
    aus dem geschützten Secret** gelesen, nicht öffentlich eingetragen.
@@ -82,7 +105,11 @@ Personendaten-Löschfreigabe**.
 
 ## Was für T07-Gesamt-PASS noch tatsächlich nachzuweisen ist
 
-Die vier strukturierten Owner sind **nicht** alle acht persistenten Owner.
+Die vier strukturierten Owner plus der getrennt abgesicherte
+Katalog-Folgeowner sind **nicht** alle acht persistenten Owner. Die laufende
+Acht-Owner-Abfrage ist ein physischer Beleg für **noch vorhandene strukturierte
+Referenzen**, aber kein Ersatz für echte Identity-/Permissions-Owner-Löschungen,
+rechtlich erforderliche Logaufbewahrung oder menschliche Freitext-Entscheide.
 Zusätzliche Entscheidungen/Prüfungen betreffen:
 
 - **Identity, Permissions, Athletes, Exercise-Catalog:** abgeschlossene
@@ -106,7 +133,8 @@ Zusätzliche Entscheidungen/Prüfungen betreffen:
   Backup-/Exporthorizont wirklich geprüft sind.
 
 **Abnahmegrenze:** Ein erfolgreicher T07-Workflow darf nur
-`four-structured-owners-complete-only` liefern – **niemals**
+`four-structured-owners-complete-only` oder
+`catalog-owner-complete-only` liefern – **niemals**
 `privacy=verified`, Gesamt-T07-PASS, T10-GO, „vollständig gelöscht“ oder
 die Freigabe historischer Backups. Betreiberentscheidungen werden nicht durch
 einen grünen CI-Lauf ersetzt. Auch eine zwischenzeitlich leere Trainingsdatenbank
