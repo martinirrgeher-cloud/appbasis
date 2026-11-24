@@ -27,6 +27,8 @@ describe("T07 execution workflow protects the real ULC Worker", () => {
       "ULC_LINZ_PRODUCTION_ADMIN_PASSWORD",
       "LIFECYCLE_WRANGLER_CONFIG",
       "m6-ulc-production-runtime-config",
+      "ULC_T07_ERASURE_ENABLED",
+      'test "$T07_DESTRUCTIVE_ENABLED" = 1',
     ].filter(x => x !== "LIFECYCLE_WRANGLER_CONFIG")) {
       expect(source).toContain(anchor);
     }
