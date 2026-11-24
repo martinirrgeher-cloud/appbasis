@@ -41,6 +41,13 @@ const harness = vi.hoisted(() => ({
       olderRestorePromotionAllowed: false, privacyReady: false,
     },
   })),
+  catalog: vi.fn(async () => ({
+    status: "catalog-owner-complete-only",
+    result: { deletedFavorites: 1, deletedUsageEvents: 1 },
+    verified: {
+      preflight: { completedAt: new Date("2026-11-23T12:00:00.000Z") },
+    },
+  })),
   erase: vi.fn(async () => ({
     status: "four-structured-owners-complete-only",
     result: { completedAt: new Date("2026-11-23T12:00:00.000Z") },
@@ -67,6 +74,7 @@ vi.mock("../worker/protected-athlete-erasure-operation", () => ({
   createProtectedUlcLinzAthleteErasure: vi.fn(async () => ({
     inspect: harness.inspect,
     eraseStructuredOnly: harness.erase,
+    eraseCatalogOwnerOnly: harness.catalog,
     close: harness.closeOwner,
   })),
 }));
@@ -160,6 +168,31 @@ describe("T07 transient-credential four-owner operation is separately guarded", 
     expect(harness.erase).toHaveBeenCalledTimes(1);
     expect(harness.logout).toHaveBeenCalledTimes(1);
     expect(harness.closeDb).toHaveBeenCalledTimes(1);
+  });
+
+  it("has a separately confirmed fifth catalogue owner mode and no broader erasure certificate", async () => {
+    await expect(runProtectedUlcLinzAthleteErasureWithCredentials(
+      options, request, "erase-catalog-owner-only",
+      { confirmation: "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS",
+        expectedSourceCompletedAt: "2026-11-23T12:00:00.000Z" },
+    )).rejects.toThrow(/explicit operator approval/);
+    expect(harness.login).not.toHaveBeenCalled();
+    const result = await runProtectedUlcLinzAthleteErasureWithCredentials(
+      options, request, "erase-catalog-owner-only",
+      { confirmation: "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER",
+        expectedSourceCompletedAt: "2026-11-23T12:00:00.000Z" },
+    );
+    expect(result).toEqual({
+      status: "catalog-owner-complete-only",
+      sourceDecisionAt: "2026-11-23T12:00:00.000Z",
+      catalogOwnerProofVerified: true,
+      fullErasureAuthorized: false,
+      olderRestorePromotionAuthorized: false,
+    });
+    expect(harness.catalog).toHaveBeenCalledOnce();
+    expect(harness.erase).not.toHaveBeenCalled();
+    expect(harness.logout).toHaveBeenCalledWith("signed-session");
+    expect(harness.closeDb).toHaveBeenCalledOnce();
   });
 
   it("still ends temporary session and both connections after a partial owner failure", async () => {
