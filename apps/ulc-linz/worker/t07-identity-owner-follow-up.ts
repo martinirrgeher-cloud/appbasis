@@ -84,7 +84,7 @@ export async function requireMatchingUlcT07BlockFavoriteMarker(
   identityId: string,
   athleteSourceCompletedAt: Date,
   now: Date,
-): Promise<void> {
+): Promise<boolean> {
   if (![organizationId, identityId].every(validIdentifier) ||
       !(athleteSourceCompletedAt instanceof Date) ||
       !Number.isFinite(athleteSourceCompletedAt.getTime()) ||
@@ -95,7 +95,7 @@ export async function requireMatchingUlcT07BlockFavoriteMarker(
     organizationId, identityId,
   ]);
   if (rows.length > 1) throw new Error("T07 multiple favorite owner markers.");
-  if (rows.length === 0) return;
+  if (rows.length === 0) return false;
   const completed = parseDate(rows[0]?.completed_at);
   const expires = parseDate(rows[0]?.purge_after);
   if (
@@ -103,6 +103,7 @@ export async function requireMatchingUlcT07BlockFavoriteMarker(
     expires.getTime() - completed.getTime() !== WINDOW_MS ||
     expires.getTime() <= now.getTime()
   ) throw new Error("T07 block favorite marker conflicts with athlete source.");
+  return true;
 }
 
 function parseDate(value: unknown): Date {
