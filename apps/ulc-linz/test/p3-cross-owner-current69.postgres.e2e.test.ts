@@ -13,6 +13,7 @@ import {
 import type { UlcTrainingSubjectHistoryTransactionClient } from "../worker/training-subject-history-deletion-postgres";
 import { PostgresUlcTrainingSubjectPrivacyInspector } from "../worker/training-subject-privacy-postgres";
 import { assessUlcP3CrossOwnerRestoreQuarantine } from "../worker/p3-cross-owner-restore-admission";
+import { PostgresUlcT07ResidualInspector } from "../worker/t07-protected-residual-inspector";
 
 /**
  * P3-C: real PostgreSQL 18, disposable isolated 47-migration/69-table schema.
@@ -214,6 +215,30 @@ if (!DATABASE_URL) {
       expect(stillBlocked.risks).toContainEqual({owner:"training-documentation",code:"UNSTRUCTURED_REVIEW_OPEN"});
       expect(stillBlocked.risks).toContainEqual({owner:"exercise-catalog",code:"MISSING_OWNER"});
       expect(stillBlocked.permitsPromotion).toBe(false);
+    });
+
+    it("runs the real 69-table count-only T07 residual SQL after subject erasure", async () => {
+      const inspector = new PostgresUlcT07ResidualInspector(required().client);
+      const result = await inspector.inspect(ORG, TARGET);
+      // No identity deletion marker exists, so it must NOT report zero actor
+      // references as verified. Both real session and documentation notes
+      // are present and require a separate human privacy review.
+      expect(result).toMatchObject({
+        sourceIdentityLinks: 0,
+        identityScopedReferenceRows: null,
+        actorAndAuditReferenceRows: null,
+        identityMappingReviewRequired: true,
+        freeTextReviewed: false,
+        actorAuditReviewed: false,
+        mediaProviderAbsenceVerified: false,
+        fullPrivacyComplete: false,
+      });
+      expect(result.organizationWideFreeTextCandidates).toBeGreaterThanOrEqual(2);
+      expect(result.organizationWidePrivateMediaMetadata).toBe(0);
+      const foreign = await inspector.inspect(FOREIGN, TARGET);
+      expect(foreign.organizationWideFreeTextCandidates).toBeGreaterThanOrEqual(1);
+      expect(JSON.stringify(result)).not.toContain(TARGET);
+      expect(JSON.stringify(result)).not.toContain("Person P3");
     });
   });
 }
