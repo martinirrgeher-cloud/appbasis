@@ -20,6 +20,7 @@ export interface UlcLinzT07OperatorEnvironment {
 const PATH = "/__appbasis/t07/athlete-erasure";
 const INSPECT = "INSPECT-ULC-T07-STRUCTURED-OWNERS";
 const ERASE = "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS";
+const CATALOG = "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER";
 const SUBJECT_ID = /^[a-zA-Z0-9._:-]{1,200}$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -41,11 +42,13 @@ export default {
     const confirmation = request.headers.get("x-appbasis-t07-confirmation");
     const completedAt = request.headers.get("x-appbasis-t07-source-completed-at");
     if (
-      (mode !== "inspect" && mode !== "erase-structured-only") ||
+      (mode !== "inspect" && mode !== "erase-structured-only" &&
+        mode !== "erase-catalog-owner-only") ||
       !subjectId || !SUBJECT_ID.test(subjectId) ||
       (mode === "inspect" && (confirmation !== INSPECT || completedAt !== null)) ||
-      (mode === "erase-structured-only" &&
-        (confirmation !== ERASE || !completedAt || !ISO.test(completedAt)))
+      (mode !== "inspect" &&
+        (confirmation !== (mode === "erase-structured-only" ? ERASE : CATALOG) ||
+          !completedAt || !ISO.test(completedAt)))
     ) return new Response(null, { status: 404 });
 
     const connectionString = env.HYPERDRIVE?.connectionString;
@@ -70,8 +73,9 @@ export default {
         },
         { organizationId: "ulc-linz", subjectId },
         mode,
-        mode === "erase-structured-only"
-          ? { confirmation: ERASE, expectedSourceCompletedAt: completedAt! }
+        mode !== "inspect"
+          ? { confirmation: mode === "erase-structured-only" ? ERASE : CATALOG,
+            expectedSourceCompletedAt: completedAt! }
           : undefined,
       );
       // The credential layer already projects a strict, PII-free envelope.
