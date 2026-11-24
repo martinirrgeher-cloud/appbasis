@@ -14,6 +14,7 @@ import type { UlcTrainingSubjectHistoryTransactionClient } from "../worker/train
 import { PostgresUlcTrainingSubjectPrivacyInspector } from "../worker/training-subject-privacy-postgres";
 import { assessUlcP3CrossOwnerRestoreQuarantine } from "../worker/p3-cross-owner-restore-admission";
 import { PostgresUlcT07ResidualInspector } from "../worker/t07-protected-residual-inspector";
+import { PostgresUlcT07EightOwnerInspector } from "../worker/t07-eight-owner-reconciliation";
 
 /**
  * P3-C: real PostgreSQL 18, disposable isolated 47-migration/69-table schema.
@@ -215,6 +216,50 @@ if (!DATABASE_URL) {
       expect(stillBlocked.risks).toContainEqual({owner:"training-documentation",code:"UNSTRUCTURED_REVIEW_OPEN"});
       expect(stillBlocked.risks).toContainEqual({owner:"exercise-catalog",code:"MISSING_OWNER"});
       expect(stillBlocked.permitsPromotion).toBe(false);
+    });
+
+    it("queries all eight physical owners on real v19 SQL while keeping source/recovery gates closed", async () => {
+      const inspector = new PostgresUlcT07EightOwnerInspector(required().client);
+      const row = await required().client.unsafe(
+        `SELECT completed_at FROM appbasis_athletes_deletion
+          WHERE entity_type = 'athlete' AND organization_id=$1 AND entity_id=$2`,
+        [ORG, TARGET]);
+      const completedAt = new Date(row[0]?.completed_at as string);
+      expect(Number.isFinite(completedAt.getTime())).toBe(true);
+      const report = await inspector.inspect(ORG, TARGET, completedAt);
+      expect(report.owners).toHaveLength(8);
+      expect(report.owners.map(x=>x.owner)).toEqual([
+        "identity", "permissions", "athletes", "exercise-catalog",
+        "training-blocks", "training-documentation", "training-plans",
+        "ulc-linz-lifecycle",
+      ]);
+      expect(report.owners.find(x=>x.owner==="identity")).toMatchObject({
+        status: "identity-link-unverified", remainingReferences: null,
+      });
+      expect(report.owners.find(x=>x.owner==="exercise-catalog")).toMatchObject({
+        status: "identity-link-unverified", remainingReferences: null,
+      });
+      expect(report.owners.find(x=>x.owner==="training-documentation")).toMatchObject({
+        status: "scoped-evidence-clear-manual-review-required", remainingReferences: 0,
+        markerPresent: true,
+      });
+      expect(report.owners.find(x=>x.owner==="ulc-linz-lifecycle")).toMatchObject({
+        status: "scoped-evidence-clear-manual-review-required", remainingReferences: 0,
+        markerPresent: true,
+      });
+      expect(report.owners.find(x=>x.owner==="training-plans")?.status)
+        .toBe("owner-marker-missing");
+      expect(report.actorAuditReferences).toBeNull();
+      expect(report.humanFreeTextReviewRequired).toBe(true);
+      expect(report.allEightOwnersProvenComplete).toBe(false);
+      expect(report.olderRestorePromotionAllowed).toBe(false);
+      expect(report.privacyReady).toBe(false);
+      const foreign = await inspector.inspect(FOREIGN, TARGET, completedAt);
+      expect(foreign.owners.find(x=>x.owner==="identity")?.status)
+        .toBe("identity-link-unverified");
+      expect(foreign.allEightOwnersProvenComplete).toBe(false);
+      expect(JSON.stringify(report)).not.toContain("Person P3");
+      expect(JSON.stringify(report)).not.toContain(TARGET);
     });
 
     it("runs the real 69-table count-only T07 residual SQL after subject erasure", async () => {
