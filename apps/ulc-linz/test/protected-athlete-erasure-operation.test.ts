@@ -371,6 +371,11 @@ describe("T07 real protected owner composition, no live invocation", () => {
           remainingReferences: 0, markerPresent: null,
         })),
     };
+    // BEFORE deletion may still have a live identity and no durable link.
+    // AFTER deletion must read the newly persisted canonical link and zero
+    // physical Identity/Permissions/Block-Favorite references.
+    const beforeOwners = await fake.eight();
+    fake.eight.mockResolvedValueOnce(beforeOwners as never);
     fake.eight.mockResolvedValueOnce(validOwners as never);
     const done = await op.eraseIdentityOwnerOnly(request, approval);
     expect(done.status).toBe("identity-block-favorites-owner-complete-only");
