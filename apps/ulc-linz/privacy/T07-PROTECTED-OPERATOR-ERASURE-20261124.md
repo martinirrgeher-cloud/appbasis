@@ -22,6 +22,10 @@ Personendaten-Löschfreigabe**.
   nicht als Nullbestand ausgewiesen.
 - Modus `erase-structured-only` erfordert eine **eigene** exakte
   Bestätigung sowie das identische, nicht abgelaufene 35-Tage-Quellmarker-Zeitfeld.
+  Der Workflow blockiert diesen destruktiven Modus **zusätzlich standardmäßig**,
+  solange die geschützte GitHub-Environment-Variable
+  `ULC_T07_ERASURE_ENABLED` nicht nach einer **separaten** Freigabe auf
+  `1` gesetzt wurde. Diese Variable wird durch das Paket nicht gesetzt.
   Die vier getrennten Daten-Owner verwenden jeweils ihre eigenen geschützten
   Transaktionen; nachher werden die echten Datenbanklöschmarker und Restzeilen
   erneut geprüft. Teilfehler gelten **nicht** als Erfolg.
