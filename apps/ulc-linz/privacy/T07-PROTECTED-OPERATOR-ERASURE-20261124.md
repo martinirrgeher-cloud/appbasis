@@ -21,6 +21,32 @@ Personendaten-Löschfreigabe**.
   Marker oder Restreferenzen sind eigenständige Stopps; auch eine einheitlich
   grüne strukturierte Prüfung ist ohne Freitext-/Audit-/Medien-Review kein
   vollständiger Datenschutzabschluss.
+- **Identity, Permissions und personenbezogene Trainingsblock-Favoriten**
+  können über den neuen, separat bestätigten
+  `erase-identity-owner-only`-Modus aus dem bestehenden kanonischen
+  Identity-/Permissions-Löschpfad abgewickelt werden. Er verlangt
+  einen berechtigten, noch gültigen *Athleten-Quellmarker*, vier
+  bereits vollständig abgeschlossene strukturierte Owner, genau
+  eine nachweisbare ULC-Athleten-Mitgliedschaft bzw. echte
+  gelöschte Identity-Marke, die vollständige Admin-Autorisierung und
+  eine zusätzliche genaue Bestätigung
+  `ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER`. Ein alter oder mehrdeutiger
+  Identitätslink, unbekannte Block-Favoriten-Marker oder ein
+  aktives anderes Konto verhindern den Abschluss. Die echte
+  Identity-/Permissions-Owner-Kette wird verwendet und der Erfolg
+  nochmals physisch anhand User/Account/Session/Berechtigungen und
+  Block-Favoriten-Löschmarker geprüft. Keine Selbstlöschung,
+  kein Wiederherstellungs- oder Gesamt-Privacy-PASS.
+- **Wichtig zur Reihenfolge:** Nach dem echten Athleten-Quellentscheid
+  erst `erase-structured-only`, danach
+  `erase-identity-owner-only` und anschließend
+  `erase-catalog-owner-only` (jeweils mit getrennter Freigabe,
+  wenn tatsächlich erforderlich und rechtlich zulässig). Der
+  Quellmarker gilt nur **35 Tage**. Wird ein Konto schon davor
+  separat gelöscht und der Identitätslink ist abgelaufen, darf
+  die spätere Athletenlöschung **keinen Namen/Alttext raten**.
+  Dieser historische Ablauf ist weiter ein T07-Gate und
+  benötigt einen gesonderten genehmigten Korrekturpfad.
 - Für den fünften, bisher getrennten **Exercise-Catalog-Owner** steht ein
   einzeln bestätigter `erase-catalog-owner-only`-Modus bereit. Er verlangt
   **zuvor vollständig erledigte vier strukturierte Owner**, genau eine
@@ -87,7 +113,15 @@ Personendaten-Löschfreigabe**.
    Providerkopien → **STOP**. Nicht erneut nach Ablauf des Quellmarkers
    ausführen und niemals ein Backupartefakt aus dem betroffenen Zeitraum
    ungeprüft promoten.
-5. Nur nach getrennter tatsächlicher, datensatzbezogener Freigabe kann
+5. **Bei eindeutig identifiziertem betroffenem Benutzerkonto**:
+   Nach dem Vier-Owner-Schritt zunächst `erase-identity-owner-only`
+   mit `ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER` und dem exakten
+   separat gespeicherten Athleten-Quellzeitpunkt. Dies ist eine
+   eigenständige Personenlöschung; vier Owner oder ein fehlendes
+   Konto allein sind keine Berechtigung. Danach erst die
+   Katalog-Owner-Bereinigung. Mit fehlender oder mehrdeutiger
+   Verknüpfung gilt **STOP**.
+6. Nur nach getrennter tatsächlicher, datensatzbezogener Freigabe kann
    zunächst `erase-structured-only` verwendet werden. Für den getrennten
    Katalog-Owner ist **nach** erfolgreicher Vier-Owner-Prüfung außerdem
    `erase-catalog-owner-only` mit der exakten Bestätigung
@@ -98,10 +132,38 @@ Personendaten-Löschfreigabe**.
    aus dem geschützten Secret** gelesen, nicht öffentlich eingetragen.
    Vorhandene GitHub-Environment-Schutzregeln bleiben wirksam.
    **Kein Routine-/Cron-Einsatz**.
-6. Bei Fehler alle betroffenen Owner als **partiell/unverifiziert** behandeln,
+7. Bei Fehler alle betroffenen Owner als **partiell/unverifiziert** behandeln,
    nicht direkt in Datenbanktabellen löschen. Nur der identische noch gültige
    Quellentscheid darf wiederholt werden. Resultate und manuelle Freigaben
    datensparsam **intern** protokollieren.
+
+## Lesende Produktionsbasis am 24.11.2026 (Neon production / neondb)
+
+- PostgreSQL 18, 69 öffentliche Tabellen; Neon Region AWS `eu-central-1`.
+- Athleten, Athletenkontakte, Traineranwesenheit, Trainingssessions,
+  Registrierungen/-Änderungen, Pläne, Dokumentation, Block-/Katalog-Usage,
+  persönliche Favoriten und private Medien: **jeweils 0**.
+- Alle sieben geprüften Athleten-/Anwendungs-/Modul-Löschmarkerarten: **0**.
+  Folglich existiert kein tatsächlicher Betroffenenfall, bei dem eine
+  Löschkette auf Echtdaten durchgeführt werden dürfte.
+- `user` und `ulc_linz_membership`: **jeweils 3**;
+  Security-Audit **35** und Berechtigungs-Audit **16**; 0 bereits
+  fällige Security-, Trainer-, Lifecycle- oder Permissions-Auditlöschungen
+  nach den gegenwärtigen 12-Monats-Prüfbedingungen.
+- Vereinweite explizit geprüfte Session-/Registrierungs-/Block-/Katalog-
+  Notizen: **0**. Kein Hinweis auf private Medienmetadaten im aktuellen
+  Primärschema, aber **keine Cloudflare-Objektbestandsgarantie**.
+- Der Neon-Projektverlauf hatte bei der Messung ein
+  `history_retention_seconds` von **21.600 Sekunden (6 Stunden)**.
+  Das beweist **nicht**, dass separate historische Neon-Branches,
+  Exporte, R2-Objekte oder andere Kopien gelöscht sind.
+- Auf dem Neon-Projekt waren außerdem getrennte ältere
+  Backups/Restore-Rehearsal-Branches vorhanden. Diese sind
+  **nicht** als neues Production-Writer-Ziel zugelassen.
+
+**Dies ist eine aktuelle, rein lesende Nullbestands-/Fälligkeitskontrolle,
+keine Bestätigung des zukünftigen Löschwegs für echte Vereinsmitglieder,
+keine Backuplöschung und keine allgemeine Produktivfreigabe.**
 
 ## Was für T07-Gesamt-PASS noch tatsächlich nachzuweisen ist
 
