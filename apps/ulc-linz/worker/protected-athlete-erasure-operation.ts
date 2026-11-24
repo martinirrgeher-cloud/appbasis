@@ -310,11 +310,17 @@ export async function createProtectedUlcLinzAthleteErasure(
           throw new Error("T07 catalogue owner requires an explicit exact approval.");
         }
         const before = await inspect(request);
+        const identityProof = before.eightOwnerReview?.owners.find(row=>row.owner==="identity");
+        const permissionsProof = before.eightOwnerReview?.owners.find(row=>row.owner==="permissions");
         if (
           before.status !== "structured-owner-markers-match" ||
           before.preflight.completedAt?.toISOString() !== approval.expectedSourceCompletedAt ||
-          before.eightOwnerReview?.linkedIdentityCount !== 1
-        ) throw new Error("T07 catalogue owner requires four complete sources and unique identity.");
+          before.eightOwnerReview?.linkedIdentityCount !== 1 ||
+          identityProof?.status !== "scoped-evidence-clear-manual-review-required" ||
+          identityProof.remainingReferences !== 0 ||
+          permissionsProof?.status !== "scoped-evidence-clear-manual-review-required" ||
+          permissionsProof.remainingReferences !== 0
+        ) throw new Error("T07 catalogue owner requires all four sources and deleted identity/permissions.");
 
         const current = await currentAdmin();
         const result = await catalogOwner.erase(
