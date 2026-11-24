@@ -43,6 +43,8 @@ export interface ProtectedAthleteErasurePreflight {
   readonly status: "source-unverifiable" | "owner-marker-conflict" |
     "structured-follow-up-pending" | "structured-owner-markers-match";
   readonly preflight: UlcLinzAthleteSubjectDeletionPreflight;
+  readonly documentationMarkerPresent: boolean | null;
+  readonly historyMarkerPresent: boolean | null;
   readonly documentationOwned: number | null;
   readonly documentationOtherRevisions: number | null;
   readonly attendanceRows: number | null;
@@ -127,6 +129,7 @@ export async function createProtectedUlcLinzAthleteErasure(
       if (base.status === "source-unverifiable") {
         return Object.freeze({
           status: base.status, preflight: base,
+          documentationMarkerPresent: null, historyMarkerPresent: null,
           documentationOwned: null, documentationOtherRevisions: null,
           attendanceRows: null, registrationRows: null, registrationHistoryRows: null,
           freeTextAndAuditReviewed: false as const,
@@ -136,6 +139,30 @@ export async function createProtectedUlcLinzAthleteErasure(
       }
       // Real read-only v19 DB owner and trigger check. This is NOT a write.
       await training.assertGuardReady();
+      // The two remaining owner markers must exist after erasure, and may
+      // not disagree with the authoritative source before any owner write.
+      const markerRows = await connection.client.unsafe(
+        `SELECT 'documentation' AS owner, completed_at, purge_after
+         FROM appbasis_training_documentation_subject_deletion
+         WHERE organization_id = $1 AND subject_id = $2
+         UNION ALL
+         SELECT 'history' AS owner, completed_at, purge_after
+         FROM ulc_linz_training_subject_deletion
+         WHERE organization_id = $1 AND subject_id = $2`,
+        [base.organizationId, base.subjectId],
+      );
+      if (markerRows.length > 2 || markerRows.some((row) =>
+        row.owner !== "documentation" && row.owner !== "history"
+      )) throw new Error("ULC T07 owner marker inventory is invalid.");
+      const docMarker = markerRows.find((row) => row.owner === "documentation");
+      const historyMarker = markerRows.find((row) => row.owner === "history");
+      const sourceTime = base.completedAt!.getTime();
+      const expectedExpiry = sourceTime + 35 * 24 * 60 * 60 * 1000;
+      const markerMatches = (row: typeof docMarker) => !row || (
+        new Date(row.completed_at as string).getTime() === sourceTime &&
+        new Date(row.purge_after as string).getTime() === expectedExpiry
+      );
+      const markerConflict = !markerMatches(docMarker) || !markerMatches(historyMarker);
       const doc = await documentation.inspectSubjectPrivacy(
         base.organizationId, base.subjectId,
       );
@@ -150,16 +177,20 @@ export async function createProtectedUlcLinzAthleteErasure(
       ) throw new Error("ULC T07 subject privacy inventory scope mismatch.");
 
       const pending = base.status !== "owner-markers-match" ||
+        !docMarker || !historyMarker ||
         doc.ownedDocuments !== 0 || doc.ownedRevisions !== 0 ||
+        doc.otherSubjectDocumentsWithParticipant !== 0 ||
         doc.otherSubjectRevisionsWithParticipant !== 0 ||
         app.attendanceRows !== 0 || app.registrationRows !== 0 ||
         app.registrationHistoryRows !== 0;
       return Object.freeze({
-        status: base.status === "owner-marker-conflict"
+        status: base.status === "owner-marker-conflict" || markerConflict
           ? "owner-marker-conflict" as const
           : pending ? "structured-follow-up-pending" as const
           : "structured-owner-markers-match" as const,
         preflight: base,
+        documentationMarkerPresent: !!docMarker,
+        historyMarkerPresent: !!historyMarker,
         documentationOwned: doc.ownedDocuments,
         documentationOtherRevisions: doc.otherSubjectRevisionsWithParticipant,
         attendanceRows: app.attendanceRows,
