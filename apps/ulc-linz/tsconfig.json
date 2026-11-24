@@ -13,6 +13,10 @@
   "exclude": [
     "worker/protected-lifecycle-operations.ts",
     "worker/protected-lifecycle-credential-operation.ts",
-    "test/**/*.postgres.e2e.test.ts"
+    "test/**/*.postgres.e2e.test.ts",
+    "worker/protected-athlete-erasure-operation.ts",
+    "worker/protected-athlete-erasure-credential-operation.ts",
+    "test/protected-athlete-erasure-operation.test.ts",
+    "test/protected-athlete-erasure-credential-operation.test.ts"
   ]
 }
