@@ -45,12 +45,24 @@ Personendaten-Löschfreigabe**.
 2. Erst der Athleten-Owner muss den berechtigten **originalen** Löschentscheid
    samt 35-Tage-Quellmarker bereits abgeschlossen haben. Nicht aus
    Inaktivität, anderen Löschmarkern, alten Backups oder vermuteten Daten ableiten.
-3. GitHub Actions → `ULC T07 Protected Athlete Erasure` → `Run workflow`
-   auf exakt geprüftem `main`: zunächst `inspect` und
-   `INSPECT-ULC-T07-STRUCTURED-OWNERS`, technisches Administratorkonto,
-   **pseudonymisierte opaque Athlete-Subject-ID**, exakte Main-SHA. Kein
-   Menschenname im Action-Input. Das Risiko, dass eine ID indirekt zuordenbar
-   ist, verlangt restriktive Workflow- und Logzugriffsrechte.
+3. **Das GitHub-Repository ist öffentlich.** Betroffenen- bzw.
+   Subject-IDs und Quellmarkerzeitpunkte gehören **niemals** in
+   `workflow_dispatch`-Inputs, Actions-Logs oder Issue-/PR-Texte.
+   Stattdessen unter dem geschützten GitHub-Environment `m4-dr` vorab
+   das **Environment-Secret** `ULC_T07_TARGET_SUBJECT_ID` mit dem
+   intern autorisierten, exakt überprüften Athleten-Subject-Key setzen.
+   Für eine später gesondert freigegebene Löschung außerdem das Secret
+   `ULC_T07_SOURCE_COMPLETED_AT` mit dem exakten originalen, **privat
+   geprüften** UTC-Quellmarker-Zeitpunkt setzen. Die Secrets nicht in
+   einem normalen GitHub-Kommentar oder Workflow-Input wiederholen.
+   Danach GitHub Actions → `ULC T07 Protected Athlete Erasure` →
+   `Run workflow` auf geprüftem `main`: zunächst `inspect`,
+   `INSPECT-ULC-T07-STRUCTURED-OWNERS`, technisches Administratorkonto
+   und exakte Main-SHA. Ein fehlendes Target-Secret stoppt sicher.
+   **Nur nicht zuordenbare Statusmeldungen** erscheinen öffentlich in
+   der GitHub-Actions-Zusammenfassung, keine ID, kein Zeitstempel, keine
+   individuellen Datensatzmengen. Detailentscheidungen bleiben in der
+   **nichtöffentlichen Vereinsakte**.
 4. `source-unverifiable`, `owner-marker-conflict`, offener SQL-Guard,
    fehlende Berechtigung, nicht eindeutige Identitätsverknüpfung oder unbekannte
    Providerkopien → **STOP**. Nicht erneut nach Ablauf des Quellmarkers
@@ -58,9 +70,11 @@ Personendaten-Löschfreigabe**.
    ungeprüft promoten.
 5. Nur nach getrennter tatsächlicher, datensatzbezogener Freigabe kann
    `erase-structured-only` verwendet werden. Hier zusätzlich
-   `ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS` und den exakten
-   UTC-Quellmarker-Abschlusszeitpunkt eintragen. Vorhandene GitHub-Environment-
-   Schutzregeln bleiben wirksam. **Kein Routine-/Cron-Einsatz**.
+   `ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS` im **nicht personenbezogenen**
+   Workflow-Input angeben. Der exakte Quellmarker-Zeitpunkt wird **nur
+   aus dem geschützten Secret** gelesen, nicht öffentlich eingetragen.
+   Vorhandene GitHub-Environment-Schutzregeln bleiben wirksam.
+   **Kein Routine-/Cron-Einsatz**.
 6. Bei Fehler alle betroffenen Owner als **partiell/unverifiziert** behandeln,
    nicht direkt in Datenbanktabellen löschen. Nur der identische noch gültige
    Quellentscheid darf wiederholt werden. Resultate und manuelle Freigaben
