@@ -57,6 +57,7 @@ jobs:
           SUBJECT_ID: ${{ inputs.subject_id }}
           SOURCE_COMPLETED_AT: ${{ inputs.source_completed_at }}
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          T07_DESTRUCTIVE_ENABLED: ${{ vars.ULC_T07_ERASURE_ENABLED }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = 'refs/heads/main' || exit 1
@@ -71,6 +72,7 @@ jobs:
               test -z "$SOURCE_COMPLETED_AT" || exit 1
               ;;
             erase-structured-only)
+              test "$T07_DESTRUCTIVE_ENABLED" = 1 || { echo 'T07 erasure activation is not authorized in this protected environment.' >&2; exit 1; }
               test "$CONFIRMATION" = 'ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS' || exit 1
               [[ "$SOURCE_COMPLETED_AT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$ ]] || exit 1
               echo "::add-mask::$SOURCE_COMPLETED_AT"
