@@ -5,6 +5,10 @@ import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning
 import { PostgresExerciseCatalogRepository } from "@appbasis/exercise-catalog";
 import { PostgresUlcT07CatalogOwnerFollowUp } from "../worker/t07-catalog-owner-follow-up";
 import {
+  requireUniqueUlcT07AthleteIdentity,
+  requireMatchingUlcT07BlockFavoriteMarker,
+} from "../worker/t07-identity-owner-follow-up";
+import {
   PostgresTrainingDocumentationRepository,
   TrainingDocumentationService,
   type TrainingDocumentationPostgresClient,
@@ -343,8 +347,28 @@ if (!DATABASE_URL) {
         `SELECT completed_at FROM appbasis_athletes_deletion
           WHERE entity_type='athlete' AND organization_id=$1 AND entity_id=$2`,
         [ORG, TARGET]);
-      const report = await eight.inspect(ORG, TARGET,
-        new Date(source[0]?.completed_at as string));
+      const athleteSource = new Date(source[0]?.completed_at as string);
+      const verifiedLink = await requireUniqueUlcT07AthleteIdentity(
+        required().client, ORG, TARGET, athleteSource, new Date(),
+      );
+      expect(verifiedLink).toEqual({
+        identityId: identity, wasAlreadyDeleted: true,
+      });
+      const originalFavoriteMarker = await requireMatchingUlcT07BlockFavoriteMarker(
+        required().client, ORG, identity, athleteSource, new Date(),
+      );
+      expect(originalFavoriteMarker).toBe(false);
+      await required().client.unsafe(
+        `INSERT INTO appbasis_training_block_favorite_deletion
+           (organization_id, principal_id, completed_at, purge_after)
+         VALUES ($1, $2, $3, $4)`,
+        [ORG, identity, athleteSource.toISOString(),
+          new Date(athleteSource.getTime() + 35 * 86400_000).toISOString()],
+      );
+      expect(await requireMatchingUlcT07BlockFavoriteMarker(
+        required().client, ORG, identity, athleteSource, new Date(),
+      )).toBe(true);
+      const report = await eight.inspect(ORG, TARGET, athleteSource);
       expect(report.owners.find(x=>x.owner==="exercise-catalog")).toMatchObject({
         remainingReferences: 0, markerPresent: true,
         status: "scoped-evidence-clear-manual-review-required",
