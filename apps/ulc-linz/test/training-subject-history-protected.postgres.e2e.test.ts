@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ULC_T07_FOUR_OWNER_MARKER_SQL } from "../worker/protected-athlete-erasure-operation";
 import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresDatabase } from "@appbasis/database/postgres-provisioning";
@@ -78,12 +79,15 @@ if (!url || !url.trim()) {
         "../migrations/0008_ulc_linz_session_registration.sql",
         "../migrations/0017_ulc_linz_training_subject_write_fence.sql",
         "../migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql",
+        "../../../modules/training-documentation/migrations/0000_appbasis_training_documentation_foundation.sql",
+        "../../../modules/training-documentation/migrations/0001_appbasis_training_documentation_subject_deletion.sql",
       ]) await applyMigration(migration);
     });
 
     beforeEach(async () => {
       await db().client.unsafe(
-        `TRUNCATE ulc_linz_training_subject_deletion,
+        `TRUNCATE appbasis_training_documentation_subject_deletion,
+          ulc_linz_training_subject_deletion,
           ulc_linz_training_registration_change,
           ulc_linz_training_registration,
           ulc_linz_training_attendance,
@@ -154,6 +158,34 @@ if (!url || !url.trim()) {
         "SELECT count(*)::int AS total FROM ulc_linz_training_subject_deletion",
       );
       expect(before[0]?.total).toBe(0);
+    });
+
+    it("executes EXACT T07 cross-owner marker query on real v19 + documentation PG schemas", async () => {
+      const expiry = new Date(sourceAt.getTime() + 35 * 24 * 60 * 60 * 1000);
+      await repository().markSubjectDeletedAndEraseHistory(ORG, SUBJECT, sourceAt);
+      await db().client.unsafe(
+        `INSERT INTO appbasis_training_documentation_subject_deletion
+           (organization_id, subject_id, completed_at, purge_after)
+         VALUES ($1, $2, $3, $4)`,
+        [ORG, SUBJECT, sourceAt.toISOString(), expiry.toISOString()],
+      );
+      const markers = await db().client.unsafe(
+        ULC_T07_FOUR_OWNER_MARKER_SQL,
+        [ORG, SUBJECT],
+      );
+      expect(markers).toHaveLength(2);
+      expect(markers.map(r => r.owner).sort()).toEqual(["documentation", "history"]);
+      for (const row of markers) {
+        expect(new Date(row.completed_at as string).getTime()).toBe(sourceAt.getTime());
+        expect(new Date(row.purge_after as string).getTime()).toBe(expiry.getTime());
+      }
+      // Organization isolation is part of the same exact query, not implied by
+      // the absence of personal data in a synthetic fixture.
+      const other = await db().client.unsafe(
+        ULC_T07_FOUR_OWNER_MARKER_SQL,
+        [OTHER_ORG, SUBJECT],
+      );
+      expect(other).toHaveLength(0);
     });
 
     it("preflight fails closed on disabled v19 trigger before other owner mutations", async () => {
