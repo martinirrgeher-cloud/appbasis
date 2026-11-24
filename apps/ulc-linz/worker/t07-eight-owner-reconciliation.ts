@@ -30,7 +30,10 @@ SELECT
     (SELECT count(*) FROM appbasis_identity_security_state
       WHERE identity_id IN (SELECT identity_id FROM linked_identity)) +
     (SELECT count(*) FROM appbasis_person
-      WHERE identity_id IN (SELECT identity_id FROM linked_identity)) +
+      WHERE id IN (
+        SELECT person_id FROM appbasis_identity_security_state
+        WHERE identity_id IN (SELECT identity_id FROM linked_identity)
+      )) +
     (SELECT count(*) FROM ulc_linz_membership WHERE organization_id=$1 AND subject_id=$2)
   )::int AS identity_remaining,
   (
