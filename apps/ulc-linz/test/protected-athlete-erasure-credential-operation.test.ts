@@ -26,6 +26,7 @@ const harness = vi.hoisted(() => ({
     attendanceRows: 3,
     registrationRows: 4,
     registrationHistoryRows: 5,
+    residualReview: { sourceIdentityLinks: 0, identityScopedReferenceRows: null, actorAndAuditReferenceRows: null, fullPrivacyComplete: false },
   })),
   erase: vi.fn(async () => ({
     status: "four-structured-owners-complete-only",
@@ -85,6 +86,7 @@ describe("T07 transient-credential four-owner operation is separately guarded", 
       attendanceRows: 3,
       registrationRows: 4,
       registrationHistoryRows: 5,
+      residualReview: { sourceIdentityLinks: 0, identityScopedReferenceRows: null, actorAndAuditReferenceRows: null, fullPrivacyComplete: false },
       fullErasureAuthorized: false,
       olderRestorePromotionAuthorized: false,
     });
