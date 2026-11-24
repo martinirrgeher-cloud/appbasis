@@ -61,7 +61,7 @@ const fake = vi.hoisted(() => {
 vi.mock("@appbasis/database", () => ({
   createPostgresDatabase: () => ({
     database: {},
-    client: { unsafe: (...args: unknown[]) => fake.db(...(args as [])), end: fake.close },
+    client: { unsafe: (sql: string) => fake.db(sql), end: fake.close },
   }),
 }));
 vi.mock("@appbasis/identity/better-auth", () => ({
