@@ -16,6 +16,10 @@ import {
 } from "./lifecycle-service";
 import { PostgresUlcLinzScopePersistence } from "./scope-persistence";
 import {
+  PostgresUlcT07EightOwnerInspector,
+  type UlcT07EightOwnerReview,
+} from "./t07-eight-owner-reconciliation";
+import {
   PostgresUlcT07ResidualInspector,
   type UlcT07ResidualReview,
 } from "./t07-protected-residual-inspector";
@@ -65,6 +69,7 @@ export interface ProtectedAthleteErasurePreflight {
   readonly registrationRows: number | null;
   readonly registrationHistoryRows: number | null;
   readonly residualReview: UlcT07ResidualReview | null;
+  readonly eightOwnerReview: UlcT07EightOwnerReview | null;
   readonly freeTextAndAuditReviewed: false;
   readonly allowsOlderRestorePromotion: false;
   readonly allowsFullPrivacyReady: false;
@@ -127,6 +132,7 @@ export async function createProtectedUlcLinzAthleteErasure(
     const training = new PostgresUlcTrainingSubjectProtectedHistoryRepository(connection.client);
     const trainingPrivacy = new PostgresUlcTrainingSubjectPrivacyInspector(connection.client);
     const residualReview = new PostgresUlcT07ResidualInspector(connection.client);
+    const eightOwners = new PostgresUlcT07EightOwnerInspector(connection.client);
     const now = options.now ?? (() => new Date());
 
     async function currentAdmin() {
@@ -149,6 +155,7 @@ export async function createProtectedUlcLinzAthleteErasure(
           documentationOwned: null, documentationOtherRevisions: null,
           attendanceRows: null, registrationRows: null, registrationHistoryRows: null,
           residualReview: null,
+          eightOwnerReview: null,
           freeTextAndAuditReviewed: false as const,
           allowsOlderRestorePromotion: false as const,
           allowsFullPrivacyReady: false as const,
@@ -208,6 +215,9 @@ export async function createProtectedUlcLinzAthleteErasure(
         registrationRows: app.registrationRows,
         registrationHistoryRows: app.registrationHistoryRows,
         residualReview: await residualReview.inspect(base.organizationId, base.subjectId),
+        eightOwnerReview: await eightOwners.inspect(
+          base.organizationId, base.subjectId, base.completedAt!,
+        ),
         freeTextAndAuditReviewed: false as const,
         allowsOlderRestorePromotion: false as const,
         allowsFullPrivacyReady: false as const,
