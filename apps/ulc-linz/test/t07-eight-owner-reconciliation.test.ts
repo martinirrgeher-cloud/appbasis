@@ -50,7 +50,10 @@ describe("T07 real eight-owner read-only reconciliation", () => {
       catalog_markers: 0, actor_audit_remaining: 0 }]);
     const result = await new PostgresUlcT07EightOwnerInspector({ unsafe: sql })
       .inspect("ulc-linz", "athlete-1", source);
-    for (const owner of ["identity", "permissions", "exercise-catalog"]) {
+    for (const owner of [
+      "identity", "permissions", "exercise-catalog", "training-blocks",
+      "ulc-linz-lifecycle",
+    ]) {
       const item = result.owners.find(o => o.owner === owner);
       expect(item?.status).toBe("identity-link-unverified");
       expect(item?.remainingReferences).toBeNull();
