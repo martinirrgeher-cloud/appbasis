@@ -11,6 +11,22 @@ import type {
  * already have physically deleted the account and published the canonical
  * app-owned identity deletion marker, still within its original 35 days.
  */
+export const ULC_T07_CATALOG_FENCE_SQL = `
+SELECT count(*)::int AS active_fences
+FROM pg_catalog.pg_trigger AS trigger
+JOIN pg_catalog.pg_class AS relation ON relation.oid=trigger.tgrelid
+JOIN pg_catalog.pg_namespace AS ns ON ns.oid=relation.relnamespace
+WHERE ns.nspname='public' AND NOT trigger.tgisinternal
+  AND trigger.tgenabled IN ('O','A')
+  AND trigger.tgfoid=
+    to_regprocedure('public.appbasis_exercise_catalog_subject_deletion_write_fence()')
+  AND (relation.relname, trigger.tgname) IN (
+    ('appbasis_exercise_catalog_favorite',
+      'appbasis_exercise_catalog_favorite_deletion_write_fence'),
+    ('appbasis_exercise_catalog_usage_subject',
+      'appbasis_exercise_catalog_usage_subject_deletion_write_fence')
+  )`;
+
 export interface UlcT07CatalogSqlClient {
   unsafe(
     query: string,
@@ -54,6 +70,12 @@ export class PostgresUlcT07CatalogOwnerFollowUp {
     const timestamp = this.now();
     if (!(timestamp instanceof Date) || !Number.isFinite(timestamp.getTime())) {
       throw new Error("T07 catalog clock invalid.");
+    }
+    // Protected module flags alone do not prove the real database installed
+    // the two write fences. Never erase before confirming the live catalog.
+    const fence = await this.sql.unsafe(ULC_T07_CATALOG_FENCE_SQL);
+    if (fence.length !== 1 || fence[0]?.active_fences !== 2) {
+      throw new Error("T07 catalogue v6 SQL write fences are not both active.");
     }
     const links = await this.sql.unsafe(
       `SELECT identity_id, completed_at, purge_after
