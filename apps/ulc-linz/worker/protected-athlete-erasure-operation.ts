@@ -150,6 +150,7 @@ export async function createProtectedUlcLinzAthleteErasure(
     const trainingPrivacy = new PostgresUlcTrainingSubjectPrivacyInspector(connection.client);
     const residualReview = new PostgresUlcT07ResidualInspector(connection.client);
     const eightOwners = new PostgresUlcT07EightOwnerInspector(connection.client);
+    const now = options.now ?? (() => new Date());
     const catalogOwner = new PostgresUlcT07CatalogOwnerFollowUp(
       connection.client,
       new PostgresExerciseCatalogRepository(connection.client, {
@@ -158,7 +159,7 @@ export async function createProtectedUlcLinzAthleteErasure(
       }),
       now,
     );
-    const now = options.now ?? (() => new Date());
+
 
     async function currentAdmin() {
       const current = await identity.getCurrentIdentity(options.administrativeSessionToken);
@@ -303,7 +304,7 @@ export async function createProtectedUlcLinzAthleteErasure(
       ) {
         if (!approval || approval.confirmation !== CATALOG_CONFIRMATION ||
             typeof approval.expectedSourceCompletedAt !== "string" ||
-            !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(
+            !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(
               approval.expectedSourceCompletedAt,
             )) {
           throw new Error("T07 catalogue owner requires an explicit exact approval.");
