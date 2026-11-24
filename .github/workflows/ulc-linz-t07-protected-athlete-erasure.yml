@@ -269,7 +269,7 @@ jobs:
           const safe = ['status', 'sourceDecisionAt', 'planMarkerPresent', 'usageMarkerPresent',
             'documentationMarkerPresent', 'historyMarkerPresent', 'documentationOwned',
             'documentationOtherRevisions', 'attendanceRows', 'registrationRows',
-            'registrationHistoryRows', 'structuredOwnersVerified', 'fullErasureAuthorized',
+            'registrationHistoryRows', 'residualReview', 'structuredOwnersVerified', 'fullErasureAuthorized',
             'olderRestorePromotionAuthorized'];
           if (Object.keys(response).some(key => !safe.includes(key))) {
             throw new Error('T07 operation returned non-whitelisted fields.');
@@ -279,6 +279,34 @@ jobs:
               'structured-follow-up-pending', 'structured-owner-markers-match'];
             if (!allowed.includes(response.status) || 'structuredOwnersVerified' in response) {
               throw new Error('T07 private inspection result malformed.');
+            }
+            const review = response.residualReview;
+            if (response.status === 'source-unverifiable') {
+              if (review !== null) throw new Error('T07 cannot inspect without source authority.');
+            } else {
+              const expectedKeys = ['sourceIdentityLinks', 'subjectScopedReferenceRows',
+                'identityScopedReferenceRows', 'actorAndAuditReferenceRows',
+                'organizationWideFreeTextCandidates',
+                'organizationWideAmbiguousUsageCandidates',
+                'organizationWidePrivateMediaMetadata', 'identityMappingReviewRequired',
+                'freeTextReviewed', 'actorAuditReviewed',
+                'mediaProviderAbsenceVerified', 'fullPrivacyComplete'];
+              if (review === null || typeof review !== 'object' || Array.isArray(review) ||
+                  Object.keys(review).length !== expectedKeys.length ||
+                  Object.keys(review).some(key => !expectedKeys.includes(key))) {
+                throw new Error('T07 privacy residual review is missing or unexpected.');
+              }
+              for (const key of expectedKeys.slice(0, 7)) {
+                const v = review[key];
+                if (v !== null && (!Number.isSafeInteger(v) || v < 0)) {
+                  throw new Error('T07 privacy residual count is invalid.');
+                }
+              }
+              if (review.freeTextReviewed !== false || review.actorAuditReviewed !== false ||
+                  review.mediaProviderAbsenceVerified !== false ||
+                  review.fullPrivacyComplete !== false) {
+                throw new Error('T07 operation must never certify full privacy or provider media absence.');
+              }
             }
           } else if (response.status !== 'four-structured-owners-complete-only' ||
                      response.structuredOwnersVerified !== true) {
