@@ -11,10 +11,15 @@ const identityLink = {
   completed_at: completed,
   purge_after: expiry,
 };
+const link = vi.fn(async () => [identityLink]);
+const marker = vi.fn(async () => [] as Record<string, unknown>[]);
+const fence = vi.fn(async () => [{ active_fences: 2 }]);
 const sql = vi.fn(async (query: string) =>
-  query.includes("ulc_linz_lifecycle_deletion")
-    ? [identityLink]
-    : []);
+  query.includes("pg_catalog.pg_trigger")
+    ? fence()
+    : query.includes("ulc_linz_lifecycle_deletion")
+      ? link()
+      : marker());
 const mark = vi.fn(async () => ({
   markerInserted: true, deletedFavorites: 2, deletedUsageEvents: 3,
 }));
@@ -46,7 +51,7 @@ describe("T07 protected fifth catalogue owner", () => {
       [], [identityLink, { ...identityLink, identity_id: "other" }],
       [{ ...identityLink, purge_after: new Date("2026-11-23T20:00:00Z") }],
     ]) {
-      sql.mockResolvedValueOnce(links);
+      link.mockResolvedValueOnce(links as never);
       await expect(executor().erase("ulc-linz", "athlete-subject", "ulc.admin"))
         .rejects.toThrow();
     }
@@ -57,8 +62,7 @@ describe("T07 protected fifth catalogue owner", () => {
   });
 
   it("denies a pre-existing unrelated catalog deletion marker before any write", async () => {
-    sql.mockResolvedValueOnce([identityLink]);
-    sql.mockResolvedValueOnce([{
+    marker.mockResolvedValueOnce([{
       completed_at: new Date("2026-11-21T08:00:00.000Z"),
       purge_after: new Date("2026-12-26T08:00:00.000Z"),
     }]);
@@ -67,10 +71,17 @@ describe("T07 protected fifth catalogue owner", () => {
     expect(mark).not.toHaveBeenCalled();
   });
 
+  it("denies erasure when any v6 catalog protection trigger is absent", async () => {
+    fence.mockResolvedValueOnce([{ active_fences: 1 }]);
+    await expect(executor().erase("ulc-linz", "athlete-subject", "ulc.admin"))
+      .rejects.toThrow(/fences/);
+    expect(link).not.toHaveBeenCalled();
+    expect(mark).not.toHaveBeenCalled();
+  });
+
   it("supports exact same-marker retry, but never upgrades full privacy/restore", async () => {
     const marker = { completed_at: completed, purge_after: expiry };
-    sql.mockResolvedValueOnce([identityLink]);
-    sql.mockResolvedValueOnce([marker]);
+    marker.mockResolvedValueOnce([marker]);
     mark.mockResolvedValueOnce({
       markerInserted: false, deletedFavorites: 0, deletedUsageEvents: 0,
     });
