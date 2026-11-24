@@ -22,6 +22,16 @@ import { PostgresUlcTrainingSubjectPrivacyInspector } from
 
 const CONFIRMATION = "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS";
 
+/** Exact read-only SQL pinned by a real two-schema PostgreSQL E2E. */
+export const ULC_T07_FOUR_OWNER_MARKER_SQL = `
+  SELECT 'documentation' AS owner, completed_at, purge_after
+  FROM appbasis_training_documentation_subject_deletion
+  WHERE organization_id = $1 AND subject_id = $2
+  UNION ALL
+  SELECT 'history' AS owner, completed_at, purge_after
+  FROM ulc_linz_training_subject_deletion
+  WHERE organization_id = $1 AND athlete_id = $2`;
+
 /**
  * Explicit owner-connection control-plane operation. Nothing imports this from
  * the public Worker, scheduler or existing destructive identity retention.
@@ -142,13 +152,7 @@ export async function createProtectedUlcLinzAthleteErasure(
       // The two remaining owner markers must exist after erasure, and may
       // not disagree with the authoritative source before any owner write.
       const markerRows = await connection.client.unsafe(
-        `SELECT 'documentation' AS owner, completed_at, purge_after
-         FROM appbasis_training_documentation_subject_deletion
-         WHERE organization_id = $1 AND subject_id = $2
-         UNION ALL
-         SELECT 'history' AS owner, completed_at, purge_after
-         FROM ulc_linz_training_subject_deletion
-         WHERE organization_id = $1 AND athlete_id = $2`,
+        ULC_T07_FOUR_OWNER_MARKER_SQL,
         [base.organizationId, base.subjectId],
       );
       if (markerRows.length > 2 || markerRows.some((row) =>
