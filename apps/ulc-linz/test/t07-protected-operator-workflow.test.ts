@@ -28,10 +28,15 @@ describe("T07 execution workflow protects the real ULC Worker", () => {
       "LIFECYCLE_WRANGLER_CONFIG",
       "m6-ulc-production-runtime-config",
       "ULC_T07_ERASURE_ENABLED",
+      "secrets.ULC_T07_TARGET_SUBJECT_ID",
+      "secrets.ULC_T07_SOURCE_COMPLETED_AT",
+      "summary.join(",
       'test "$T07_DESTRUCTIVE_ENABLED" = 1',
     ].filter(x => x !== "LIFECYCLE_WRANGLER_CONFIG")) {
       expect(source).toContain(anchor);
     }
+    expect(source).not.toContain("inputs.subject_id");
+    expect(source).not.toContain("inputs.source_completed_at");
     expect(source).not.toContain("schedule:");
     expect(source).not.toMatch(/\n  push:/);
     expect(source).not.toContain("wrangler deploy");
