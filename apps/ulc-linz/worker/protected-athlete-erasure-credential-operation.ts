@@ -11,7 +11,8 @@ import type {
 } from "./lifecycle-service";
 
 export type UlcLinzProtectedAthleteErasureMode =
-  "inspect" | "erase-structured-only" | "erase-catalog-owner-only";
+  "inspect" | "erase-structured-only" | "erase-catalog-owner-only" |
+  "erase-identity-owner-only";
 
 export interface UlcLinzProtectedAthleteErasureCredentialOptions {
   readonly connectionString: string;
@@ -57,7 +58,8 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
   ) throw new Error("ULC T07 protected credentials or production binding are invalid.");
 
   if (mode !== "inspect" && mode !== "erase-structured-only" &&
-      mode !== "erase-catalog-owner-only") {
+      mode !== "erase-catalog-owner-only" &&
+      mode !== "erase-identity-owner-only") {
     throw new Error("ULC T07 protected operation mode is invalid.");
   }
   if (mode !== "inspect" &&
@@ -65,7 +67,9 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
       authorization.confirmation !== (
         mode === "erase-structured-only"
           ? "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS"
-          : "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER"
+          : mode === "erase-catalog-owner-only"
+            ? "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER"
+            : "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER"
       ) ||
       typeof authorization.expectedSourceCompletedAt !== "string")
   ) throw new Error("ULC T07 owner deletion has no explicit operator approval.");
@@ -113,6 +117,17 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
         registrationHistoryRows: inspected.registrationHistoryRows,
         residualReview: inspected.residualReview,
         eightOwnerReview: inspected.eightOwnerReview,
+        fullErasureAuthorized: false as const,
+        olderRestorePromotionAuthorized: false as const,
+      });
+    }
+    if (mode === "erase-identity-owner-only") {
+      const finished = await operation.eraseIdentityOwnerOnly(request, authorization!);
+      return Object.freeze({
+        status: finished.status,
+        sourceDecisionAt: finished.verified.preflight.completedAt!.toISOString(),
+        identityOwnerProofVerified: true as const,
+        blockFavoriteMarkerVerified: true as const,
         fullErasureAuthorized: false as const,
         olderRestorePromotionAuthorized: false as const,
       });
