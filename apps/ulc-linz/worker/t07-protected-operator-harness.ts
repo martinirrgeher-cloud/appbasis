@@ -21,6 +21,7 @@ const PATH = "/__appbasis/t07/athlete-erasure";
 const INSPECT = "INSPECT-ULC-T07-STRUCTURED-OWNERS";
 const ERASE = "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS";
 const CATALOG = "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER";
+const IDENTITY = "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER";
 const SUBJECT_ID = /^[a-zA-Z0-9._:-]{1,200}$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -43,11 +44,13 @@ export default {
     const completedAt = request.headers.get("x-appbasis-t07-source-completed-at");
     if (
       (mode !== "inspect" && mode !== "erase-structured-only" &&
-        mode !== "erase-catalog-owner-only") ||
+        mode !== "erase-catalog-owner-only" &&
+        mode !== "erase-identity-owner-only") ||
       !subjectId || !SUBJECT_ID.test(subjectId) ||
       (mode === "inspect" && (confirmation !== INSPECT || completedAt !== null)) ||
       (mode !== "inspect" &&
-        (confirmation !== (mode === "erase-structured-only" ? ERASE : CATALOG) ||
+        (confirmation !== (mode === "erase-structured-only"
+          ? ERASE : mode === "erase-catalog-owner-only" ? CATALOG : IDENTITY) ||
           !completedAt || !ISO.test(completedAt)))
     ) return new Response(null, { status: 404 });
 
@@ -74,7 +77,8 @@ export default {
         { organizationId: "ulc-linz", subjectId },
         mode,
         mode !== "inspect"
-          ? { confirmation: mode === "erase-structured-only" ? ERASE : CATALOG,
+          ? { confirmation: mode === "erase-structured-only"
+              ? ERASE : mode === "erase-catalog-owner-only" ? CATALOG : IDENTITY,
             expectedSourceCompletedAt: completedAt! }
           : undefined,
       );
