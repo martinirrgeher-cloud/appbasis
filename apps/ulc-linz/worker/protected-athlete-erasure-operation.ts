@@ -211,7 +211,7 @@ export async function createProtectedUlcLinzAthleteErasure(
         if (!authorization ||
             authorization.confirmation !== CONFIRMATION ||
             typeof authorization.expectedSourceCompletedAt !== "string" ||
-            !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(
+            !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(
               authorization.expectedSourceCompletedAt,
             )) {
           throw new Error("ULC T07 exact structured-only erasure approval is missing.");
