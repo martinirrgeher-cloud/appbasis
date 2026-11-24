@@ -17,6 +17,8 @@
     "worker/protected-athlete-erasure-operation.ts",
     "worker/protected-athlete-erasure-credential-operation.ts",
     "test/protected-athlete-erasure-operation.test.ts",
-    "test/protected-athlete-erasure-credential-operation.test.ts"
+    "test/protected-athlete-erasure-credential-operation.test.ts",
+    "worker/t07-protected-operator-harness.ts",
+    "test/t07-protected-operator-harness.test.ts"
   ]
 }

@@ -15,6 +15,10 @@ import {
   type UlcLinzAthleteSubjectDeletionRequest,
 } from "./lifecycle-service";
 import { PostgresUlcLinzScopePersistence } from "./scope-persistence";
+import {
+  PostgresUlcT07ResidualInspector,
+  type UlcT07ResidualReview,
+} from "./t07-protected-residual-inspector";
 import { PostgresUlcTrainingSubjectProtectedHistoryRepository } from
   "./training-subject-history-protected-postgres";
 import { PostgresUlcTrainingSubjectPrivacyInspector } from
@@ -60,6 +64,7 @@ export interface ProtectedAthleteErasurePreflight {
   readonly attendanceRows: number | null;
   readonly registrationRows: number | null;
   readonly registrationHistoryRows: number | null;
+  readonly residualReview: UlcT07ResidualReview | null;
   readonly freeTextAndAuditReviewed: false;
   readonly allowsOlderRestorePromotion: false;
   readonly allowsFullPrivacyReady: false;
@@ -121,6 +126,7 @@ export async function createProtectedUlcLinzAthleteErasure(
     const documentation = new PostgresTrainingDocumentationRepository(connection.client);
     const training = new PostgresUlcTrainingSubjectProtectedHistoryRepository(connection.client);
     const trainingPrivacy = new PostgresUlcTrainingSubjectPrivacyInspector(connection.client);
+    const residualReview = new PostgresUlcT07ResidualInspector(connection.client);
     const now = options.now ?? (() => new Date());
 
     async function currentAdmin() {
@@ -142,6 +148,7 @@ export async function createProtectedUlcLinzAthleteErasure(
           documentationMarkerPresent: null, historyMarkerPresent: null,
           documentationOwned: null, documentationOtherRevisions: null,
           attendanceRows: null, registrationRows: null, registrationHistoryRows: null,
+          residualReview: null,
           freeTextAndAuditReviewed: false as const,
           allowsOlderRestorePromotion: false as const,
           allowsFullPrivacyReady: false as const,
@@ -200,6 +207,7 @@ export async function createProtectedUlcLinzAthleteErasure(
         attendanceRows: app.attendanceRows,
         registrationRows: app.registrationRows,
         registrationHistoryRows: app.registrationHistoryRows,
+        residualReview: await residualReview.inspect(base.organizationId, base.subjectId),
         freeTextAndAuditReviewed: false as const,
         allowsOlderRestorePromotion: false as const,
         allowsFullPrivacyReady: false as const,
