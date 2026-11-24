@@ -52,11 +52,14 @@ export async function requireUniqueUlcT07AthleteIdentity(
   const rows = await sql.unsafe(ULC_T07_LINKED_IDENTITY_SQL, [
     organizationId, subjectId,
   ]);
-  if (rows.length !== 1 || !rows[0] || !validIdentifier(rows[0].identity_id) ||
-      rows[0].source_role !== "athlete") {
+  if (rows.length !== 1 || !rows[0] || rows[0].source_role !== "athlete") {
     throw new Error("T07 identity owner requires one authoritative athlete-linked account.");
   }
   const row = rows[0];
+  const identityId = row.identity_id;
+  if (!validIdentifier(identityId)) {
+    throw new Error("T07 identity owner requires a valid authenticated identity ID.");
+  }
   if (row.record_source === "live") {
     if (row.completed_at !== null || row.purge_after !== null) {
       throw new Error("T07 live identity source has conflicting deletion metadata.");
@@ -73,7 +76,7 @@ export async function requireUniqueUlcT07AthleteIdentity(
     throw new Error("T07 linked identity source is invalid.");
   }
   return Object.freeze({
-    identityId: row.identity_id,
+    identityId,
     wasAlreadyDeleted: row.record_source === "deleted",
   });
 }
