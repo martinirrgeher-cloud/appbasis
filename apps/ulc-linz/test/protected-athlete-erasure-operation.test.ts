@@ -285,7 +285,7 @@ describe("T07 real protected owner composition, no live invocation", () => {
       ...authorize, confirmation: "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS",
     })).rejects.toThrow(/explicit exact approval/);
     await expect(op.eraseCatalogOwnerOnly(request, authorize))
-      .rejects.toThrow(/unique identity/);
+      .rejects.toThrow(/deleted identity\/permissions/);
     expect(fake.catalogErase).not.toHaveBeenCalled();
 
     const eligible = {
