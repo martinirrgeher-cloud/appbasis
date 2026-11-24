@@ -246,8 +246,8 @@ if (!DATABASE_URL) {
         markerPresent: true,
       });
       expect(report.owners.find(x=>x.owner==="ulc-linz-lifecycle")).toMatchObject({
-        status: "scoped-evidence-clear-manual-review-required", remainingReferences: 0,
-        markerPresent: true,
+        status: "identity-link-unverified", remainingReferences: null,
+        markerPresent: null,
       });
       expect(report.owners.find(x=>x.owner==="training-plans")?.status)
         .toBe("owner-marker-missing");
