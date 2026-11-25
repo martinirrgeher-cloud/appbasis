@@ -83,13 +83,19 @@ SELECT
   )::int AS actor_audit_rows,
   (
     (SELECT count(*) FROM ulc_linz_training_session WHERE organization_id=$1 AND
-      (nullif(btrim(note),'') IS NOT NULL OR cardinality(training_content_titles)>0)) +
+      (nullif(btrim(note),'') IS NOT NULL OR cardinality(training_content_titles)>0 OR
+       (training_content_items IS NOT NULL AND training_content_items <> '[]'::jsonb AND
+        training_content_items <> '{}'::jsonb AND training_content_items <> 'null'::jsonb))) +
     (SELECT count(*) FROM ulc_linz_training_registration WHERE organization_id=$1 AND
       nullif(btrim(note),'') IS NOT NULL) +
     (SELECT count(*) FROM ulc_linz_training_registration_change WHERE organization_id=$1 AND
       nullif(btrim(note),'') IS NOT NULL) +
     (SELECT count(*) FROM appbasis_training_documentation_revision WHERE organization_id=$1
-      AND nullif(btrim(note),'') IS NOT NULL) +
+      AND (nullif(btrim(note),'') IS NOT NULL OR
+       (items_json IS NOT NULL AND items_json <> '[]'::jsonb AND
+        items_json <> '{}'::jsonb AND items_json <> 'null'::jsonb) OR
+       (attendance_json IS NOT NULL AND attendance_json <> '[]'::jsonb AND
+        attendance_json <> '{}'::jsonb AND attendance_json <> 'null'::jsonb))) +
     (SELECT count(*) FROM appbasis_training_plan_revision WHERE organization_id=$1 AND
       nullif(btrim(note),'') IS NOT NULL) +
     (SELECT count(*) FROM appbasis_training_plan_revision_item WHERE organization_id=$1 AND
@@ -97,15 +103,7 @@ SELECT
     (SELECT count(*) FROM appbasis_training_block_revision WHERE organization_id=$1 AND
       nullif(btrim(note),'') IS NOT NULL) +
     (SELECT count(*) FROM appbasis_training_block_revision_item WHERE organization_id=$1 AND
-      nullif(btrim(note),'') IS NOT NULL) +
-    (SELECT count(*) FROM ulc_linz_training_session WHERE organization_id=$1 AND
-      training_content_items IS NOT NULL AND training_content_items <> '[]'::jsonb AND
-       training_content_items <> '{}'::jsonb AND training_content_items <> 'null'::jsonb) +
-    (SELECT count(*) FROM appbasis_training_documentation_revision WHERE organization_id=$1 AND
-      ((items_json IS NOT NULL AND items_json <> '[]'::jsonb AND
-       items_json <> '{}'::jsonb AND items_json <> 'null'::jsonb) OR
-       (attendance_json IS NOT NULL AND attendance_json <> '[]'::jsonb AND
-       attendance_json <> '{}'::jsonb AND attendance_json <> 'null'::jsonb)))
+      nullif(btrim(note),'') IS NOT NULL)
   )::int AS free_text_candidates,
   (
     (SELECT count(*) FROM appbasis_training_block_usage WHERE organization_id=$1 AND

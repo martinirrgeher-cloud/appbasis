@@ -28,6 +28,13 @@ describe("T07 count-only residual review never implies complete privacy", () => 
       );
     }
     expect(ULC_T07_RESIDUAL_INVENTORY_SQL).toContain("organization_id=$1");
+    // A session/revision with both note and nested JSON must count only once.
+    expect(ULC_T07_RESIDUAL_INVENTORY_SQL.match(
+      /FROM ulc_linz_training_session WHERE organization_id=\$1/g,
+    )).toHaveLength(1);
+    expect(ULC_T07_RESIDUAL_INVENTORY_SQL.match(
+      /FROM appbasis_training_documentation_revision WHERE organization_id=\$1/g,
+    )).toHaveLength(1);
   });
 
   it("uses bound organization+subject SQL and returns only counts and explicit open reviews", async () => {
