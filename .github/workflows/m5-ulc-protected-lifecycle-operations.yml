@@ -263,7 +263,8 @@ jobs:
                   return Response.json({ status: 'verified' });
                 }
                 return Response.json({
-                  status: 'completed',
+                  status: result.status,
+                  deferredAthleteCount: result.result.deferredAthleteIdentityIds.length,
                   deletedCount: result.result.deletedIdentityIds.length,
                   exceptionCount: result.result.exceptionIdentityIds.length,
                   purgedAppDeletionMarkers: result.result.purgedAppDeletionMarkers,
@@ -348,14 +349,23 @@ jobs:
             exit 1
           }
           RESULT_PATH="$body" OPERATION="$OPERATION" node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
+          import { readFileSync, appendFileSync } from 'node:fs';
           const value = JSON.parse(readFileSync(process.env.RESULT_PATH, 'utf8'));
           if (process.env.OPERATION === 'preflight') {
             if (value?.status !== 'verified' || Object.keys(value).length !== 1) throw new Error('Lifecycle preflight result is invalid.');
           } else {
             const fields = ['deletedCount', 'exceptionCount', 'purgedAppDeletionMarkers', 'purgedIdentityDeletionTombstones', 'purgedLifecycleAuditEvents'];
-            if (value?.status !== 'completed' || fields.some((field) => !Number.isSafeInteger(value[field]) || value[field] < 0)) {
+            if (!['completed', 'partial-needs-review'].includes(value?.status) ||
+                !Number.isSafeInteger(value.deferredAthleteCount) || value.deferredAthleteCount < 0 ||
+                (value.status === 'completed' && value.deferredAthleteCount !== 0) ||
+                (value.status === 'partial-needs-review' && value.deferredAthleteCount === 0) ||
+                fields.some((field) => !Number.isSafeInteger(value[field]) || value[field] < 0)) {
               throw new Error('Lifecycle retention result is invalid.');
+            }
+            if (value.status === 'partial-needs-review') {
+              process.stdout.write('::warning::T07 athlete deletion deferred; manual review required.\\n');
+              appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+                'ULC retention PARTIAL: Athlete erasure is pending separately authorized T07 review.\\n');
             }
           }
           NODE
@@ -389,5 +399,5 @@ jobs:
           if test "$OPERATION" = "preflight"; then
             echo 'ULC protected lifecycle binding preflight passed through an isolated Cloudflare remote harness with a transient technical administrator session that was removed before completion. No retention or deletion write was requested.' >> "$GITHUB_STEP_SUMMARY"
           else
-            echo 'ULC protected production retention completed through the canonical app-owned lifecycle executor. The transient technical administrator session was removed before completion. Result details remain intentionally omitted from the workflow summary.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'ULC protected retention executor completed independent eligible owners. If PARTIAL is marked above, athlete erasure remains pending T07 manual review; this is not full privacy clearance.' >> "$GITHUB_STEP_SUMMARY"
           fi

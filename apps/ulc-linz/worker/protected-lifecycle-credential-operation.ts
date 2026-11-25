@@ -65,7 +65,11 @@ export async function runUlcLinzProtectedLifecycleWithAdministratorCredentials(
       return Object.freeze({ status: "verified" as const });
     }
     const result = await lifecycle.runRetention();
-    return Object.freeze({ status: "completed" as const, result });
+    return Object.freeze({
+      status: result.deferredAthleteIdentityIds.length > 0
+        ? "partial-needs-review" as const : "completed" as const,
+      result,
+    });
   } catch (error) {
     primaryError = error;
     throw error;

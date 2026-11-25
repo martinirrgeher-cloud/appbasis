@@ -34,6 +34,8 @@ export interface UlcLinzRetentionDependencies
 export interface UlcLinzRetentionRunResult {
   readonly deletedIdentityIds: readonly string[];
   readonly exceptionIdentityIds: readonly string[];
+  /** Due athletes awaiting separately authorized eight-owner T07 erasure. */
+  readonly deferredAthleteIdentityIds: readonly string[];
   readonly purgedAppDeletionMarkers: number;
   readonly purgedIdentityDeletionTombstones: number;
   readonly purgedLifecycleAuditEvents: number;
@@ -50,18 +52,9 @@ export async function runUlcLinzRetention(
 ): Promise<UlcLinzRetentionRunResult> {
   const states = await dependencies.scopes.evaluateRetention();
 
-  // The legacy retention executor only owns Identity/Permissions/ULC scopes.
-  // It cannot prove the separate athlete + training/documentation + catalog
-  // erasure chain. Deleting an athlete identity here would remove the live
-  // source link needed by T07's eight-owner reconciliation. Fail before ANY
-  // owner write or marker purge until a complete, independently verified T07
-  // athlete pathway is wired into this executor. Never infer permission from
-  // an elapsed 12-month membership-retention date.
-  if (states.some(state => state.status === "due" &&
-      state.target.sourceRole === "athlete")) {
-    throw new UlcLinzLifecycleBlockedError("ADMIN_LIFECYCLE_SCOPE_UNBOUND");
-  }
-
+  // Retention does not own all eight T07 athlete repositories. Only defer
+  // the athlete identity; unrelated due members must still be processed.
+  const deferredAthleteIdentityIds: string[] = [];
   const deletedIdentityIds: string[] = [];
   const exceptionIdentityIds: string[] = [];
 
@@ -71,6 +64,10 @@ export async function runUlcLinzRetention(
       continue;
     }
     if (state.status !== "due") continue;
+    if (state.target.sourceRole === "athlete") {
+      deferredAthleteIdentityIds.push(state.target.identityId);
+      continue;
+    }
 
     const sourceRole = deletableSourceRole(state);
     const targetIdentityId = state.target.identityId;
@@ -110,6 +107,7 @@ export async function runUlcLinzRetention(
   return Object.freeze({
     deletedIdentityIds: Object.freeze(deletedIdentityIds),
     exceptionIdentityIds: Object.freeze(exceptionIdentityIds),
+    deferredAthleteIdentityIds: Object.freeze(deferredAthleteIdentityIds),
     purgedAppDeletionMarkers,
     purgedIdentityDeletionTombstones,
     purgedLifecycleAuditEvents,
