@@ -24,8 +24,6 @@ export interface UlcT07ResidualReview {
   readonly actorAndAuditReferenceRows: number | null;
   /** Review candidates across the whole organization, not proven subject links. */
   readonly organizationWideFreeTextCandidates: number;
-  /** Rows with nonempty nested session/documentation JSON; review only, not confirmed PII. */
-  readonly organizationWideNestedContentReviewCandidates: number;
   readonly organizationWideAmbiguousUsageCandidates: number;
   readonly organizationWidePrivateMediaMetadata: number;
   readonly identityMappingReviewRequired: boolean;
@@ -99,9 +97,7 @@ SELECT
     (SELECT count(*) FROM appbasis_training_block_revision WHERE organization_id=$1 AND
       nullif(btrim(note),'') IS NOT NULL) +
     (SELECT count(*) FROM appbasis_training_block_revision_item WHERE organization_id=$1 AND
-      nullif(btrim(note),'') IS NOT NULL)
-  )::int AS free_text_candidates,
-  (
+      nullif(btrim(note),'') IS NOT NULL) +
     (SELECT count(*) FROM ulc_linz_training_session WHERE organization_id=$1 AND
       training_content_items IS NOT NULL AND training_content_items <> '[]'::jsonb AND
        training_content_items <> '{}'::jsonb AND training_content_items <> 'null'::jsonb) +
@@ -110,7 +106,7 @@ SELECT
        items_json <> '{}'::jsonb AND items_json <> 'null'::jsonb) OR
        (attendance_json IS NOT NULL AND attendance_json <> '[]'::jsonb AND
        attendance_json <> '{}'::jsonb AND attendance_json <> 'null'::jsonb)))
-  )::int AS nested_content_candidates,
+  )::int AS free_text_candidates,
   (
     (SELECT count(*) FROM appbasis_training_block_usage WHERE organization_id=$1 AND
       (nullif(btrim(source_ref),'') IS NOT NULL OR nullif(btrim(note),'') IS NOT NULL)) +
@@ -143,7 +139,6 @@ export class PostgresUlcT07ResidualInspector {
       identityScopedReferenceRows: links > 0 ? identityRows : null,
       actorAndAuditReferenceRows: links > 0 ? actorRows : null,
       organizationWideFreeTextCandidates: count(row.free_text_candidates),
-      organizationWideNestedContentReviewCandidates: count(row.nested_content_candidates),
       organizationWideAmbiguousUsageCandidates: count(row.ambiguous_usage_candidates),
       organizationWidePrivateMediaMetadata: count(row.private_media_metadata),
       identityMappingReviewRequired: links === 0,

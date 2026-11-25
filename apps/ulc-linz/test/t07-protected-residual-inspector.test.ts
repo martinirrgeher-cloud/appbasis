@@ -9,8 +9,7 @@ const good = {
   subject_rows: 0,
   identity_rows: 2,
   actor_audit_rows: 5,
-  free_text_candidates: 7,
-  nested_content_candidates: 4,
+  free_text_candidates: 11,
   ambiguous_usage_candidates: 3,
   private_media_metadata: 0,
 };
@@ -19,7 +18,7 @@ describe("T07 count-only residual review never implies complete privacy", () => 
   beforeEach(() => vi.clearAllMocks());
 
   it("also inventories nonempty nested session and documentation JSON as REVIEW candidates", () => {
-    expect(ULC_T07_RESIDUAL_INVENTORY_SQL).toContain("AS nested_content_candidates");
+    expect(ULC_T07_RESIDUAL_INVENTORY_SQL).toContain("AS free_text_candidates");
     for (const name of ["training_content_items", "items_json", "attendance_json"]) {
       expect(ULC_T07_RESIDUAL_INVENTORY_SQL).toContain(
         `${name} <> '[]'::jsonb`,
@@ -43,8 +42,7 @@ describe("T07 count-only residual review never implies complete privacy", () => 
       subjectScopedReferenceRows: 0,
       identityScopedReferenceRows: 2,
       actorAndAuditReferenceRows: 5,
-      organizationWideFreeTextCandidates: 7,
-      organizationWideNestedContentReviewCandidates: 4,
+      organizationWideFreeTextCandidates: 11,
       organizationWideAmbiguousUsageCandidates: 3,
       organizationWidePrivateMediaMetadata: 0,
       identityMappingReviewRequired: false,
@@ -75,7 +73,7 @@ describe("T07 count-only residual review never implies complete privacy", () => 
       sql.mockResolvedValueOnce([{ ...good, actor_audit_rows: invalid as number }]);
       await expect(inspector.inspect("ulc-linz", "athlete-1")).rejects.toThrow(/count/);
     }
-    sql.mockResolvedValueOnce([{ ...good, nested_content_candidates: -1 }]);
+    sql.mockResolvedValueOnce([{ ...good, free_text_candidates: -1 }]);
     await expect(inspector.inspect("ulc-linz", "athlete-1")).rejects.toThrow(/count/);
     sql.mockResolvedValueOnce([]);
     await expect(inspector.inspect("ulc-linz", "athlete-1")).rejects.toThrow(/invalid result/);
