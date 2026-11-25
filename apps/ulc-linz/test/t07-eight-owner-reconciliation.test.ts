@@ -20,6 +20,17 @@ const sql = vi.fn(async () => [sample]);
 describe("T07 real eight-owner read-only reconciliation", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("counts permission-administration actor and principal-target audits by verified identity only", () => {
+    expect(ULC_T07_EIGHT_OWNER_SQL).toContain("FROM appbasis_permission_administration_audit");
+    expect(ULC_T07_EIGHT_OWNER_SQL).toContain(
+      "actor_principal_id IN (SELECT identity_id FROM linked_identity)",
+    );
+    expect(ULC_T07_EIGHT_OWNER_SQL).toContain(
+      "target_type='principal' AND target_id IN (SELECT identity_id FROM linked_identity)",
+    );
+    expect(ULC_T07_EIGHT_OWNER_SQL).toContain("AS actor_audit_remaining");
+  });
+
   it("requires exactly eight owner statuses from ONE bound SQL read and never asserts complete privacy", async () => {
     const report = await new PostgresUlcT07EightOwnerInspector({ unsafe: sql })
       .inspect("ulc-linz", "athlete-1", source);

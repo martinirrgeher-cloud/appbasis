@@ -201,3 +201,24 @@ Zusätzliche Entscheidungen/Prüfungen betreffen:
 die Freigabe historischer Backups. Betreiberentscheidungen werden nicht durch
 einen grünen CI-Lauf ersetzt. Auch eine zwischenzeitlich leere Trainingsdatenbank
 beweist keinen sicheren künftigen Acht-Owner-Löschprozess.
+
+## Ergänzung Restdatenprüfung – 25.11.2026 (PR nach CI/Review noch separat abnehmen)
+
+Der read-only Acht-Owner-Bericht zählt künftig auch identitätsgebundene
+Berechtigungs-Auditeinträge (Akteur **oder** Ziel-Principals).
+Die T07-Residualprüfung weist außerdem nichtleere verschachtelte
+Trainingsinhalte (`training_content_items`) und Dokumentationsrevisionen
+(`items_json`, `attendance_json`) als **organisationsweite
+Prüfkandidaten** aus. Diese Zahlen beweisen weder einen Personenbezug noch
+eine Verknüpfung zum einzelnen Athleten. Keine Namen, Texte, IDs oder
+JSON-Inhalte werden ausgegeben.
+
+Bei Kandidaten entscheidet die Vereinsadministration in einer nichtöffentlichen
+Akte anhand von Zweck, Berechtigung, eventuell nötiger Aufbewahrung und
+tatsächlichen Revisionen über Entfernung, Redigierung oder begründete
+Beibehaltung. Die 90-Tage-Zielregel ersetzt keine Einzelprüfung und erlaubt
+keine automatische Blindlöschung.
+
+**Unverändert gesperrt:** Gesamt-Erasure-PASS, Datenschutz-/Lifecycle-READY,
+alte Restore-Promotion, produktive Löschungen und neue private Medien, bis
+die eigenständigen Owner-/Provider-/Backup-Nachweise erfüllt sind.
