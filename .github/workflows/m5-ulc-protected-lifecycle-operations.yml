@@ -363,9 +363,9 @@ jobs:
               throw new Error('Lifecycle retention result is invalid.');
             }
             if (value.status === 'partial-needs-review') {
-              process.stdout.write('::warning::T07 athlete deletion deferred; manual review required.\\n');
+              process.stdout.write('::warning::T07 athlete deletion deferred; manual review required.\n');
               appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-                'ULC retention PARTIAL: Athlete erasure is pending separately authorized T07 review.\\n');
+                'ULC retention PARTIAL: Athlete erasure is pending separately authorized T07 review.\n');
             }
           }
           NODE
