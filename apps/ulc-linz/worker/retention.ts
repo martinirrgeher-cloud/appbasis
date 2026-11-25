@@ -49,6 +49,19 @@ export async function runUlcLinzRetention(
   dependencies: UlcLinzRetentionDependencies,
 ): Promise<UlcLinzRetentionRunResult> {
   const states = await dependencies.scopes.evaluateRetention();
+
+  // The legacy retention executor only owns Identity/Permissions/ULC scopes.
+  // It cannot prove the separate athlete + training/documentation + catalog
+  // erasure chain. Deleting an athlete identity here would remove the live
+  // source link needed by T07's eight-owner reconciliation. Fail before ANY
+  // owner write or marker purge until a complete, independently verified T07
+  // athlete pathway is wired into this executor. Never infer permission from
+  // an elapsed 12-month membership-retention date.
+  if (states.some(state => state.status === "due" &&
+      state.target.sourceRole === "athlete")) {
+    throw new UlcLinzLifecycleBlockedError("ADMIN_LIFECYCLE_SCOPE_UNBOUND");
+  }
+
   const deletedIdentityIds: string[] = [];
   const exceptionIdentityIds: string[] = [];
 
