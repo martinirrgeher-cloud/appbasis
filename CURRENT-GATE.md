@@ -1,5 +1,24 @@
 # AppBasis – Current Gate
 
+## AKTUELL: ULC Linz – T07 abschließen, danach einmaliges T10-GO/NO-GO (25.11.2026)
+
+**Verbindliche operative To-do-Liste:** [Issue #716](https://github.com/martinirrgeher-cloud/appbasis/issues/716). Die frühere [#607](https://github.com/martinirrgeher-cloud/appbasis/issues/607), P00–P06 und das unten stehende historische A10-/N-/M-Backlog sind **Nachweisquellen, keine neu zu startenden Sprints**. Vor jeder Arbeit den aktuellen `main`-, PR-, CI- und Code-Review-Stand live bei GitHub prüfen. Keine alten PASS-Pakete und bestätigten Handytests wiederholen. Technischer Fortschritt gehört kompakt nach #716, nicht in neue parallele Masterlisten.
+
+**Einziger aktiver Vertikal-Slice:** die sichere und verhältnismäßige T07-Lösch-/Privacy-Betriebsfähigkeit für die bereits vorhandene ULC-Linz-App, einschließlich aller sechs Zielmodule. Vorhandene geschützte Vier-Owner-/Katalog-/Identity-Operationen, achtfache Restdatenabfragen, Retention-Isolation, Berechtigungs-/Freitext-Inventare und deren Main-CI-Belege gelten als erbrachte **technische Teilschritte** (exakte Nachweise siehe #716). Nicht von leeren Produktionsdaten oder erfolgreicher CI auf vollständige App-Löschung schließen. **T07 als Gesamtpaket und T10 bleiben bis zur tatsächlich belegten Abnahme offen.**
+
+**Jetzt noch fachlich und technisch zu schließen – gemeinsam statt Mikro-PRs:**
+
+1. **Freitext, Trainer, Actor, Audit:** Für personenbezogene Notizen und historische Revisionen alle eigentlichen Owner/Verweise behandeln. P01 sieht 90 Tage als Review-/Entfernungsziel, **nicht** als pauschale automatische Blindlöschung. Für Auditdaten und gesetzlich gebotene Nachweise gesonderte Zwecke/Fristen entscheiden; nur datensatzbezogen legitimierte Löschungen. Der read-only Kandidatenzähler enthält keine Personenzuordnung.
+2. **Acht-Owner-Quellentscheidung:** Nur der tatsächlich autorisierte, noch gültige 35-Tage-Athleten-Quellmarker berechtigt die getrennten geschützten Owner-Schritte; unvollständige, mehrdeutige oder abgelaufene Identitätslinks bleiben STOP. Isolierte PostgreSQL-Synthetiktests, negative Rechte-/Frist-/Wiederanlage-Prüfungen und unternehmensinterne Betreiberabläufe heranziehen. Bei 0 echten Athleten **keine künstliche produktive Personenlöschung** als Vorab-Gate erfinden; erster berechtigter Realfall erhält eine betroffene Betriebsnachkontrolle.
+3. **Kopien und Provider:** Das erfolgreiche 30-Tage-EU-R2-Backup ist kein Nachweis für alle Neon-Branches, Snapshots, manuellen Exporte oder Providerobjekte. Alte Restore-Promotion **absolut STOP**, auch bei eingeschränktem Pilotstart. Nur writer-isolierte Quarantäne, unabhängige neuere Löschquelle, vollständiger Acht-Owner-Re-Deletion-Nachweis und separate Genehmigung könnten die Sperre später aufheben. Die bestehende terminierten Branch-TTL-Aufgaben nicht duplizieren.
+4. **Einmalige echte Betreiber-/Release-Abnahme:** Nichtöffentlich kontospezifische Cloudflare-/Neon-DPA-/Verarbeitungsevidenz, Rechtsgrundlagen einschließlich Eltern, vollständige und veröffentlichte App-Datenschutzinformation samt einmaligem Trainer-/Elternhinweis, drei Modul-Lifecycle-Gates sowie App-`applicationLifecycle/privacy` und tatsächliches `--require-ready`. **Keine fiktiven `verified`-Werte**. [T10-Entscheidungsblatt](apps/ulc-linz/release/T10-EINMALENTSCHEID-20261123.md) bündelt den einzigen anschließenden GO/NO-GO-Beschluss. Erst nach hinreichender tatsächlicher Freigabe folgt T11 mit separat genehmigtem privatem Deploy/Ingress und einem echten normalen POST/GET-Nachweis.
+
+**Autonomiegrenze:** Rein technische PR-Merges sind unter der bereits am 21.11. bestätigten Delegation nach exaktem HEAD, vollständigem CI/Review-PASS und nachgewiesen fehlenden produktiven Merge-/Push-Nebeneffekten ohne neue Einzelrückfrage erlaubt (siehe `AGENTS.md`). Nicht delegiert sind **jede** Änderung an echten Daten, Cloudflare-/Neon-/R2-/Secrets-/Rollen-/Retention-/Privacy-Einstellungen, Deploy/Worker-Upload, Ingress, Kosten, Echtdatenstart, Restore oder Löschung. Bei solchen Entscheidungen mit einem konkreten konsolidierten Vorschlag an den Betreiber herantreten. Keine zusätzlichen Providerchecks verlangen, die bestehende Werkzeuge nicht tatsächlich ausführen können.
+
+---
+
+## Archivierter früherer Gate-Kontext (ab 13.11.2026; nicht die aktive Priorität)
+
 Stand: 2026-11-13 (Prioritätsentscheidung; historische nachfolgende ULC-Funktionspläne sind archivierter Kontext)
 
 ## Operative ULC-Linz-Priorität ab 13.11.2026
