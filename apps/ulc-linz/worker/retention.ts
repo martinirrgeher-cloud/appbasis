@@ -34,6 +34,8 @@ export interface UlcLinzRetentionDependencies
 export interface UlcLinzRetentionRunResult {
   readonly deletedIdentityIds: readonly string[];
   readonly exceptionIdentityIds: readonly string[];
+  /** Due athletes awaiting separately authorized eight-owner T07 erasure. */
+  readonly deferredAthleteIdentityIds: readonly string[];
   readonly purgedAppDeletionMarkers: number;
   readonly purgedIdentityDeletionTombstones: number;
   readonly purgedLifecycleAuditEvents: number;
@@ -49,6 +51,10 @@ export async function runUlcLinzRetention(
   dependencies: UlcLinzRetentionDependencies,
 ): Promise<UlcLinzRetentionRunResult> {
   const states = await dependencies.scopes.evaluateRetention();
+
+  // Retention does not own all eight T07 athlete repositories. Only defer
+  // the athlete identity; unrelated due members must still be processed.
+  const deferredAthleteIdentityIds: string[] = [];
   const deletedIdentityIds: string[] = [];
   const exceptionIdentityIds: string[] = [];
 
@@ -58,6 +64,10 @@ export async function runUlcLinzRetention(
       continue;
     }
     if (state.status !== "due") continue;
+    if (state.target.sourceRole === "athlete") {
+      deferredAthleteIdentityIds.push(state.target.identityId);
+      continue;
+    }
 
     const sourceRole = deletableSourceRole(state);
     const targetIdentityId = state.target.identityId;
@@ -97,6 +107,7 @@ export async function runUlcLinzRetention(
   return Object.freeze({
     deletedIdentityIds: Object.freeze(deletedIdentityIds),
     exceptionIdentityIds: Object.freeze(exceptionIdentityIds),
+    deferredAthleteIdentityIds: Object.freeze(deferredAthleteIdentityIds),
     purgedAppDeletionMarkers,
     purgedIdentityDeletionTombstones,
     purgedLifecycleAuditEvents,

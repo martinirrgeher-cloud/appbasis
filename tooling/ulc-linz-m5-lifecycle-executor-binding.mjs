@@ -11,10 +11,10 @@ const EXECUTOR_PATH = "apps/ulc-linz/worker/protected-lifecycle-operations.ts";
 const CREDENTIAL_ADAPTER_PATH =
   "apps/ulc-linz/worker/protected-lifecycle-credential-operation.ts";
 const PUBLIC_ENTRYPOINT_PATH = "apps/ulc-linz/worker/index.ts";
-const WORKFLOW_GIT_BLOB_SHA = "fa7351cb60976a59cf20d496516050a54862a243";
+const WORKFLOW_GIT_BLOB_SHA = "9bf25c73146a00c56760d30f19b1119b6348820f";
 const EXECUTOR_GIT_BLOB_SHA = "ba3e24784f52ccdfceda3cce5b694f912785ea2a";
 const CREDENTIAL_ADAPTER_GIT_BLOB_SHA =
-  "6f71345941deaf23a5c73770132b965e379176a5";
+  "3a43e548119cf2ada4c4150fdab110f774b29da8";
 const GITHUB_API_BASE_URL = "https://api.github.com";
 const GITHUB_REPOSITORY = "martinirrgeher-cloud/appbasis";
 const GITHUB_EVIDENCE_TIMEOUT_MS = 10000;
@@ -61,6 +61,9 @@ const REQUIRED_WORKFLOW_ANCHORS = Object.freeze([
   "x-appbasis-lifecycle-token",
   "x-appbasis-lifecycle-operation",
   "dev: { ip: '127.0.0.1', port: 8787 }",
+  "partial-needs-review",
+  "deferredAthleteCount",
+  "manual review required",
   "transient technical administrator session that was removed before completion",
 ]);
 
@@ -99,6 +102,8 @@ const REQUIRED_CREDENTIAL_ADAPTER_ANCHORS = Object.freeze([
   "createUlcLinzProtectedLifecycleOperations({",
   "await lifecycle.verifyBinding();",
   "await lifecycle.runRetention();",
+  "result.deferredAthleteIdentityIds.length > 0",
+  '"partial-needs-review" as const',
   "await backend.endSession(sessionToken);",
   "await backend.getSession(sessionToken)",
   "transient administrator session cleanup failed",
