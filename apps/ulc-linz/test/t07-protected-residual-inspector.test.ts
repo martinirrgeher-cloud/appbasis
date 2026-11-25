@@ -10,12 +10,26 @@ const good = {
   identity_rows: 2,
   actor_audit_rows: 5,
   free_text_candidates: 7,
+  nested_content_candidates: 4,
   ambiguous_usage_candidates: 3,
   private_media_metadata: 0,
 };
 const sql = vi.fn(async () => [good]);
 describe("T07 count-only residual review never implies complete privacy", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("also inventories nonempty nested session and documentation JSON as REVIEW candidates", () => {
+    expect(ULC_T07_RESIDUAL_INVENTORY_SQL).toContain("AS nested_content_candidates");
+    for (const name of ["training_content_items", "items_json", "attendance_json"]) {
+      expect(ULC_T07_RESIDUAL_INVENTORY_SQL).toContain(
+        `${name} <> '[]'::jsonb`,
+      );
+      expect(ULC_T07_RESIDUAL_INVENTORY_SQL).toContain(
+        `${name} <> '{}'::jsonb`,
+      );
+    }
+    expect(ULC_T07_RESIDUAL_INVENTORY_SQL).toContain("organization_id=$1");
+  });
 
   it("uses bound organization+subject SQL and returns only counts and explicit open reviews", async () => {
     const inspector = new PostgresUlcT07ResidualInspector({ unsafe: sql });
@@ -30,6 +44,7 @@ describe("T07 count-only residual review never implies complete privacy", () => 
       identityScopedReferenceRows: 2,
       actorAndAuditReferenceRows: 5,
       organizationWideFreeTextCandidates: 7,
+      organizationWideNestedContentReviewCandidates: 4,
       organizationWideAmbiguousUsageCandidates: 3,
       organizationWidePrivateMediaMetadata: 0,
       identityMappingReviewRequired: false,
@@ -60,6 +75,8 @@ describe("T07 count-only residual review never implies complete privacy", () => 
       sql.mockResolvedValueOnce([{ ...good, actor_audit_rows: invalid as number }]);
       await expect(inspector.inspect("ulc-linz", "athlete-1")).rejects.toThrow(/count/);
     }
+    sql.mockResolvedValueOnce([{ ...good, nested_content_candidates: -1 }]);
+    await expect(inspector.inspect("ulc-linz", "athlete-1")).rejects.toThrow(/count/);
     sql.mockResolvedValueOnce([]);
     await expect(inspector.inspect("ulc-linz", "athlete-1")).rejects.toThrow(/invalid result/);
   });

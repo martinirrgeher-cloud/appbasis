@@ -112,7 +112,10 @@ SELECT
       AND (actor_principal_id IN (SELECT identity_id FROM linked_identity) OR
         target_identity_id IN (SELECT identity_id FROM linked_identity))) +
     (SELECT count(*) FROM ulc_linz_security_event_log WHERE organization_id=$1
-      AND (target_id=$2 OR actor_principal_id IN (SELECT identity_id FROM linked_identity)))
+      AND (target_id=$2 OR actor_principal_id IN (SELECT identity_id FROM linked_identity))) +
+    (SELECT count(*) FROM appbasis_permission_administration_audit WHERE
+      actor_principal_id IN (SELECT identity_id FROM linked_identity) OR
+      (target_type='principal' AND target_id IN (SELECT identity_id FROM linked_identity)))
   )::int AS actor_audit_remaining,
   (SELECT count(*)::int FROM appbasis_exercise_catalog_private_media
     WHERE organization_id=$1) AS org_media_candidates
