@@ -22,6 +22,7 @@ const INSPECT = "INSPECT-ULC-T07-STRUCTURED-OWNERS";
 const ERASE = "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS";
 const CATALOG = "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER";
 const IDENTITY = "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER";
+const NOTE = "REDACT-ULC-T07-EXACT-SESSION-NOTE";
 const SUBJECT_ID = /^[a-zA-Z0-9._:-]{1,200}$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -42,15 +43,25 @@ export default {
     const subjectId = request.headers.get("x-appbasis-t07-subject-id");
     const confirmation = request.headers.get("x-appbasis-t07-confirmation");
     const completedAt = request.headers.get("x-appbasis-t07-source-completed-at");
+    const sessionId = request.headers.get("x-appbasis-t07-session-id");
+    const sessionDay = request.headers.get("x-appbasis-t07-session-date");
+    const noteSha = request.headers.get("x-appbasis-t07-session-note-sha256");
     if (
       (mode !== "inspect" && mode !== "erase-structured-only" &&
         mode !== "erase-catalog-owner-only" &&
-        mode !== "erase-identity-owner-only") ||
+        mode !== "erase-identity-owner-only" &&
+        mode !== "redact-session-note-only") ||
       !subjectId || !SUBJECT_ID.test(subjectId) ||
+      (mode === "redact-session-note-only"
+        ? (!sessionId || !SUBJECT_ID.test(sessionId) ||
+           !sessionDay || !/^\\d{4}-\\d{2}-\\d{2}$/.test(sessionDay) ||
+           !noteSha || !/^[a-f0-9]{64}$/.test(noteSha))
+        : (sessionId !== null || sessionDay !== null || noteSha !== null)) ||
       (mode === "inspect" && (confirmation !== INSPECT || completedAt !== null)) ||
       (mode !== "inspect" &&
         (confirmation !== (mode === "erase-structured-only"
-          ? ERASE : mode === "erase-catalog-owner-only" ? CATALOG : IDENTITY) ||
+          ? ERASE : mode === "erase-catalog-owner-only" ? CATALOG :
+            mode === "erase-identity-owner-only" ? IDENTITY : NOTE) ||
           !completedAt || !ISO.test(completedAt)))
     ) return new Response(null, { status: 404 });
 
@@ -78,8 +89,13 @@ export default {
         mode,
         mode !== "inspect"
           ? { confirmation: mode === "erase-structured-only"
-              ? ERASE : mode === "erase-catalog-owner-only" ? CATALOG : IDENTITY,
-            expectedSourceCompletedAt: completedAt! }
+              ? ERASE : mode === "erase-catalog-owner-only" ? CATALOG :
+                mode === "erase-identity-owner-only" ? IDENTITY : NOTE,
+            expectedSourceCompletedAt: completedAt!,
+            ...(mode === "redact-session-note-only" ? {
+              sessionId: sessionId!, expectedSessionDate: sessionDay!,
+              expectedNoteSha256: noteSha!,
+            } : {}) }
           : undefined,
       );
       // The credential layer already projects a strict, PII-free envelope.
