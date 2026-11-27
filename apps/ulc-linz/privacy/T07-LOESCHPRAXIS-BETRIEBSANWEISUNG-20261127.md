@@ -1,6 +1,6 @@
-# T07 – Manuelle Löschpraxis und Nachkontrolle (Betriebsanweisung, Entwurf)
+# T07 – Manuelle Löschpraxis und Nachkontrolle (fachlich freigegebene Betriebsanweisung)
 
-**Stand 27.11.2026 | Technisch/fachlich vorbereitete Arbeitsanweisung, noch keine produktive Löschfreigabe.** Gilt nur für die private ULC-Linz-Mitglieder-App. **Keine automatische Retention, keine SQL-Ausführung, kein Restore-GO.** Zentrale Aufgabenliste: [#716](https://github.com/martinirrgeher-cloud/appbasis/issues/716). Rechts-/Fristgrundlage ist die am 14.11. bestätigte **fachliche Zielvorgabe** in [p01-operator-retention-candidate.json](./p01-operator-retention-candidate.json), deren `legalApproval=false` und `runtimeActive=false` ausdrücklich unverändert bleiben.
+**Fachliche Betreiberfreigabe am 27.11.2026 ausdrücklich erteilt: bestehendes manuelles Löschverfahren als verbindliche Betriebsanweisung für ULC Linz; keine Freigabe zur produktiven Datenlöschung, zur Aktivierung technischer Retention oder zum Echtbetrieb.** Gilt nur für die private ULC-Linz-Mitglieder-App. **Keine automatische Retention, keine SQL-Ausführung, kein Restore-GO.** Zentrale Aufgabenliste: [#716](https://github.com/martinirrgeher-cloud/appbasis/issues/716). Rechts-/Fristgrundlage ist die am 14.11. bestätigte **fachliche Zielvorgabe** in [p01-operator-retention-candidate.json](./p01-operator-retention-candidate.json), deren `legalApproval=false` und `runtimeActive=false` ausdrücklich unverändert bleiben.
 
 ## 1. Verantwortung, Eingang und Entscheidung
 
@@ -88,4 +88,4 @@ Restkontrolle, Datum, verantwortliche Person:
 Antwort an betroffene Person + Datum: [privat]
 ```
 
-**Gate:** Verfahren als **Dokument-Entwurf PASS**, tatsächliche personenbezogene Betriebsausführung und rechtliche Zustimmung **OFFEN**. Kein Umschalten von `privacy`, `applicationLifecycle`, Modul-Lifecycles oder `legalApproval` durch diese Datei.
+**Gate:** Fachliche Betreiberabnahme der **manuellen Betriebsanweisung PASS am 27.11.2026** (Bestätigung im Gespräch, in Issue #716 dokumentiert). Umsetzung ist an individuelle Betroffenenprüfung und bestehende Owner-/Berechtigungsgrenzen gebunden; **keine** pauschale Einzelfall- oder gesetzliche Rechtsfreigabe, kein produktiver Erasure-Run und keine neue Mitarbeiter-/Vertretungsbefugnis. Ausführung außerhalb der nachweislich geschützten Technik bleibt **STOP bis zum Einzelfall-Nachweis**. T07-Gesamtgate bleibt bis zur Erfüllung seiner separaten technischen Voraussetzungen offen. Kein Umschalten von `privacy`, `applicationLifecycle`, Modul-Lifecycles oder `legalApproval` durch diese Datei.
