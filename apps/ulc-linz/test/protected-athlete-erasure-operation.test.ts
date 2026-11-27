@@ -28,6 +28,10 @@ const fake = vi.hoisted(() => {
       };
     }),
     current: vi.fn(async () => ({ identity: { identityId: "admin-1" }, access: "full" })),
+    redactNote: vi.fn(async () => ({
+      status: "one-shared-session-note-redacted-only", redacted: true,
+      fullPrivacyComplete: false, olderRestorePromotionAllowed: false,
+    })),
     db: vi.fn(async (sql: string) => {
       if (sql.includes("current_database()")) return [{ database_name: "neondb" }];
       if (sql.includes("ulc_linz_lifecycle_deletion") && sql.includes("'live' AS record_source")) {
@@ -145,6 +149,11 @@ vi.mock("@appbasis/identity/server", () => ({
 }));
 vi.mock("@appbasis/exercise-catalog", () => ({
   PostgresExerciseCatalogRepository: class {},
+}));
+vi.mock("../worker/t07-exact-session-note-redaction", () => ({
+  PostgresUlcT07ExactSessionNoteRedactor: class {
+    redact = fake.redactNote;
+  },
 }));
 vi.mock("../worker/t07-catalog-owner-follow-up", () => ({
   PostgresUlcT07CatalogOwnerFollowUp: class {
@@ -396,6 +405,40 @@ describe("T07 real protected owner composition, no live invocation", () => {
       "ulc-linz", "member-1", fake.completedAt,
     );
     expect(fake.catalogErase).not.toHaveBeenCalled();
+    await op.close();
+  });
+
+  it("redacts only an exact approved shared session note after canonical source and admin checks", async () => {
+    const op = await createProtectedUlcLinzAthleteErasure(options);
+    const approval = {
+      confirmation: "REDACT-ULC-T07-EXACT-SESSION-NOTE",
+      expectedSourceCompletedAt: fake.completedAt.toISOString(),
+      sessionId: "session-1", expectedSessionDate: "2026-11-15",
+      expectedNoteSha256: "a".repeat(64),
+    };
+    await expect(op.redactSessionNoteOnly(request, {
+      ...approval, confirmation: "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS",
+    })).rejects.toThrow(/exact private operator approval/);
+    expect(fake.redactNote).not.toHaveBeenCalled();
+    await expect(op.redactSessionNoteOnly(request, approval))
+      .rejects.toThrow(/valid canonical source identity/);
+    expect(fake.redactNote).not.toHaveBeenCalled();
+    fake.eight.mockResolvedValueOnce({
+      ...await fake.eight(), linkedIdentityCount: 1,
+    } as never);
+    const done = await op.redactSessionNoteOnly(request, approval);
+    expect(done).toEqual({
+      status: "one-shared-session-note-redacted-only", redacted: true,
+      freeTextAndAuditReviewed: false,
+      allowsOlderRestorePromotion: false, allowsFullPrivacyReady: false,
+    });
+    expect(fake.redactNote).toHaveBeenCalledWith({
+      organizationId: "ulc-linz", sessionId: "session-1",
+      expectedSessionDate: "2026-11-15",
+      expectedNoteSha256: "a".repeat(64),
+    });
+    expect(fake.current).toHaveBeenCalled();
+    expect(fake.erase).not.toHaveBeenCalled();
     await op.close();
   });
 

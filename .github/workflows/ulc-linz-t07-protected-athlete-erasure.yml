@@ -15,8 +15,9 @@ on:
           - erase-structured-only
           - erase-catalog-owner-only
           - erase-identity-owner-only
+          - redact-session-note-only
       confirmation:
-        description: 'Exact INSPECT, ERASE-FOUR, ERASE-VERIFIED-IDENTITY, or ERASE-VERIFIED-CATALOG token'
+        description: 'Exact INSPECT, ERASE-FOUR, ERASE-VERIFIED-IDENTITY/CATALOG, or REDACT-EXACT-SESSION-NOTE token'
         required: true
         type: string
       administrator_username:
@@ -56,6 +57,9 @@ jobs:
           CONFIRMATION: ${{ inputs.confirmation }}
           SUBJECT_ID: ${{ secrets.ULC_T07_TARGET_SUBJECT_ID }}
           SOURCE_COMPLETED_AT: ${{ secrets.ULC_T07_SOURCE_COMPLETED_AT }}
+          SESSION_ID: ${{ secrets.ULC_T07_TARGET_SESSION_ID }}
+          SESSION_DATE: ${{ secrets.ULC_T07_TARGET_SESSION_DATE }}
+          SESSION_NOTE_SHA256: ${{ secrets.ULC_T07_TARGET_SESSION_NOTE_SHA256 }}
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
           T07_DESTRUCTIVE_ENABLED: ${{ vars.ULC_T07_ERASURE_ENABLED }}
         run: |
@@ -70,12 +74,20 @@ jobs:
             inspect)
               test "$CONFIRMATION" = 'INSPECT-ULC-T07-STRUCTURED-OWNERS' || exit 1
               ;;
-            erase-structured-only|erase-catalog-owner-only|erase-identity-owner-only)
+            erase-structured-only|erase-catalog-owner-only|erase-identity-owner-only|redact-session-note-only)
               test "$T07_DESTRUCTIVE_ENABLED" = 1 || { echo 'T07 erasure activation is not authorized in this protected environment.' >&2; exit 1; }
               if test "$OPERATION" = 'erase-catalog-owner-only'; then
                 test "$CONFIRMATION" = 'ERASE-ULC-T07-VERIFIED-CATALOG-OWNER' || exit 1
               elif test "$OPERATION" = 'erase-identity-owner-only'; then
                 test "$CONFIRMATION" = 'ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER' || exit 1
+              elif test "$OPERATION" = 'redact-session-note-only'; then
+                test "$CONFIRMATION" = 'REDACT-ULC-T07-EXACT-SESSION-NOTE' || exit 1
+                [[ "$SESSION_ID" =~ ^[a-zA-Z0-9._:-]{1,200}$ ]] || exit 1
+                [[ "$SESSION_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || exit 1
+                [[ "$SESSION_NOTE_SHA256" =~ ^[a-f0-9]{64}$ ]] || exit 1
+                echo "::add-mask::$SESSION_ID"
+                echo "::add-mask::$SESSION_DATE"
+                echo "::add-mask::$SESSION_NOTE_SHA256"
               else
                 test "$CONFIRMATION" = 'ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS' || exit 1
               fi
@@ -220,6 +232,9 @@ jobs:
           CONFIRMATION: ${{ inputs.confirmation }}
           SUBJECT_ID: ${{ secrets.ULC_T07_TARGET_SUBJECT_ID }}
           SOURCE_COMPLETED_AT: ${{ secrets.ULC_T07_SOURCE_COMPLETED_AT }}
+          SESSION_ID: ${{ secrets.ULC_T07_TARGET_SESSION_ID }}
+          SESSION_DATE: ${{ secrets.ULC_T07_TARGET_SESSION_DATE }}
+          SESSION_NOTE_SHA256: ${{ secrets.ULC_T07_TARGET_SESSION_NOTE_SHA256 }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
           ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
           ULC_LINZ_PRODUCTION_ADMIN_USERNAME: ${{ inputs.administrator_username }}
@@ -257,6 +272,11 @@ jobs:
           if test "$OPERATION" != 'inspect'; then
             extra+=( -H "x-appbasis-t07-source-completed-at: $SOURCE_COMPLETED_AT" )
           fi
+          if test "$OPERATION" = 'redact-session-note-only'; then
+            extra+=( -H "x-appbasis-t07-session-id: $SESSION_ID"
+                     -H "x-appbasis-t07-session-date: $SESSION_DATE"
+                     -H "x-appbasis-t07-session-note-sha256: $SESSION_NOTE_SHA256" )
+          fi
           status="$(curl --silent --show-error --connect-timeout 5 --max-time 120 \
             -o "$body" -w '%{http_code}' -X POST \
             -H "x-appbasis-t07-token: $operation_token" \
@@ -279,6 +299,7 @@ jobs:
             'registrationHistoryRows', 'residualReview', 'eightOwnerReview',
             'structuredOwnersVerified', 'catalogOwnerProofVerified',
             'identityOwnerProofVerified', 'blockFavoriteMarkerVerified',
+            'sessionNoteProofVerified',
             'fullErasureAuthorized',
             'olderRestorePromotionAuthorized'];
           if (Object.keys(response).some(key => !safe.includes(key))) {
@@ -361,6 +382,11 @@ jobs:
                 response.catalogOwnerProofVerified !== true) {
               throw new Error('T07 catalogue owner deletion verification incomplete.');
             }
+          } else if (process.env.OPERATION === 'redact-session-note-only') {
+            if (response.status !== 'one-shared-session-note-redacted-only' ||
+                response.sessionNoteProofVerified !== true) {
+              throw new Error('T07 exact private session note redaction verification incomplete.');
+            }
           } else if (
             response.status !== 'identity-block-favorites-owner-complete-only' ||
             response.identityOwnerProofVerified !== true ||
@@ -387,6 +413,10 @@ jobs:
           } else if (process.env.OPERATION === 'erase-catalog-owner-only') {
             summary.push('| Katalog-Owner | TECHNISCH ABGESCHLOSSEN – KEIN 8-OWNER-PASS |');
             summary.push('| Freitext / Actor / Audit | MANUELLE PRÜFUNG OFFEN |');
+            summary.push('| Alte Backups | WIEDERHERSTELLUNG GESPERRT |');
+          } else if (process.env.OPERATION === 'redact-session-note-only') {
+            summary.push('| Exakte gemeinsame Trainingsnotiz | EINMALIG REDIGIERT – KEIN FREITEXT- ODER 8-OWNER-GESAMT-PASS |');
+            summary.push('| Trainer / Actor / Audit | MANUELLE PRÜFUNG OFFEN |');
             summary.push('| Alte Backups | WIEDERHERSTELLUNG GESPERRT |');
           } else {
             summary.push('| Identity/Permissions/Block-Favoriten | TECHNISCH ABGESCHLOSSEN – KEIN 8-OWNER-PASS |');

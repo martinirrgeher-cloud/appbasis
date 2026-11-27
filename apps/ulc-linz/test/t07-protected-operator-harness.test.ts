@@ -135,6 +135,38 @@ describe("T07 isolated ephemeral operator ingress is token and approval gated", 
     );
   });
 
+  it("requires separately approved private exact note scope for a redaction", async () => {
+    const completedAt = "2026-11-22T12:00:00.000Z";
+    const exact = {
+      "x-appbasis-t07-source-completed-at": completedAt,
+      "x-appbasis-t07-confirmation": "REDACT-ULC-T07-EXACT-SESSION-NOTE",
+      "x-appbasis-t07-session-id": "training-1",
+      "x-appbasis-t07-session-date": "2026-11-15",
+      "x-appbasis-t07-session-note-sha256": "a".repeat(64),
+    };
+    expect((await harness.fetch(req("redact-session-note-only", {
+      ...exact, "x-appbasis-t07-session-note-sha256": "not-a-hash",
+    }), env)).status).toBe(404);
+    expect((await harness.fetch(req("redact-session-note-only", {
+      ...exact, "x-appbasis-t07-confirmation": "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS",
+    }), env)).status).toBe(404);
+    expect((await harness.fetch(req("inspect", {
+      "x-appbasis-t07-session-id": "training-1",
+    }), env)).status).toBe(404);
+    expect(mock.execute).not.toHaveBeenCalled();
+    const response = await harness.fetch(req("redact-session-note-only", exact), env);
+    expect(response.status).toBe(200);
+    expect(mock.execute).toHaveBeenCalledWith(
+      expect.any(Object), { organizationId: "ulc-linz", subjectId: "athlete-subject-1" },
+      "redact-session-note-only", {
+        confirmation: "REDACT-ULC-T07-EXACT-SESSION-NOTE",
+        expectedSourceCompletedAt: completedAt,
+        sessionId: "training-1", expectedSessionDate: "2026-11-15",
+        expectedNoteSha256: "a".repeat(64),
+      },
+    );
+  });
+
   it("does not leak SQL exceptions or private metadata from failed operator execution", async () => {
     mock.execute.mockRejectedValueOnce(new Error("Database username, private subject and sensitive SQL"));
     const response = await harness.fetch(req("inspect"), env);
