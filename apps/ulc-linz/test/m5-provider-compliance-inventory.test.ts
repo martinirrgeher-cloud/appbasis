@@ -10,18 +10,31 @@ type EvidenceReceipt = {
   reference: string;
   accountBindingReference: string;
 };
+function currentUtc(value: unknown): value is string {
+  if (typeof value !== "string" || value.length !== 24 || !value.endsWith("Z")) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString() === value;
+}
+function sourceUrl(value: unknown) {
+  if (typeof value !== "string" || value.length > 2048) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.includes(".") &&
+      url.username === "" && url.password === "" && url.pathname.length > 1;
+  } catch {
+    return false;
+  }
+}
 function hasCurrentEvidence(records: readonly EvidenceReceipt[] | undefined) {
   if (!Array.isArray(records) || records.length === 0) return false;
   const now = Date.now();
   return records.every(record => {
-    const observed = Date.parse(record.observedAt);
-    const end = Date.parse(record.validUntilOrReviewAt);
-    return record.appEnvironment === "ulc-linz-production" &&
-      typeof record.reference === "string" && record.reference.startsWith("https://") &&
-      typeof record.accountBindingReference === "string" &&
-      record.accountBindingReference.startsWith("https://") &&
-      Number.isFinite(observed) && observed <= now &&
-      Number.isFinite(end) && end > now && end > observed;
+    if (!record || record.appEnvironment !== "ulc-linz-production" ||
+        !sourceUrl(record.reference) || !sourceUrl(record.accountBindingReference) ||
+        !currentUtc(record.observedAt) || !currentUtc(record.validUntilOrReviewAt)) return false;
+    const observed = new Date(record.observedAt).getTime();
+    const end = new Date(record.validUntilOrReviewAt).getTime();
+    return observed <= now && end > now && end > observed;
   });
 }
 
