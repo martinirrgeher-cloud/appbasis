@@ -28,6 +28,11 @@ const fake = vi.hoisted(() => {
       };
     }),
     current: vi.fn(async () => ({ identity: { identityId: "admin-1" }, access: "full" })),
+    redactOwnerText: vi.fn(async () => ({
+      status: "one-exact-owner-text-cell-redacted-only", redacted: true,
+      freeTextAndAuditReviewed: false, fullPrivacyComplete: false,
+      olderRestorePromotionAllowed: false,
+    })),
     redactNote: vi.fn(async () => ({
       status: "one-shared-session-note-redacted-only", redacted: true,
       fullPrivacyComplete: false, olderRestorePromotionAllowed: false,
@@ -149,6 +154,11 @@ vi.mock("@appbasis/identity/server", () => ({
 }));
 vi.mock("@appbasis/exercise-catalog", () => ({
   PostgresExerciseCatalogRepository: class {},
+}));
+vi.mock("../worker/t07-exact-owner-text-redaction", () => ({
+  PostgresUlcT07ExactOwnerTextRedactor: class {
+    redact = fake.redactOwnerText;
+  },
 }));
 vi.mock("../worker/t07-exact-session-note-redaction", () => ({
   PostgresUlcT07ExactSessionNoteRedactor: class {
@@ -437,6 +447,37 @@ describe("T07 real protected owner composition, no live invocation", () => {
       expectedSessionDate: "2026-11-15",
       expectedNoteSha256: "a".repeat(64),
     });
+    expect(fake.current).toHaveBeenCalled();
+    expect(fake.erase).not.toHaveBeenCalled();
+    await op.close();
+  });
+
+  it("requires canonical subject and authenticated admin before exact owner text mutation", async () => {
+    const op = await createProtectedUlcLinzAthleteErasure(options);
+    const approval = {
+      confirmation: "REDACT-ULC-T07-EXACT-OWNER-TEXT",
+      organizationId: "ulc-linz", subjectId: "subject-1",
+      expectedSourceCompletedAt: fake.completedAt.toISOString(),
+      target: "training-plan-item-comment" as const,
+      keys: ["plan-1","2","item-1"],
+      expectedValueSha256: "a".repeat(64),
+    };
+    await expect(op.redactExactOwnerTextOnly(request, {
+      ...approval, organizationId: "another-club",
+    })).rejects.toThrow(/canonical scope/);
+    await expect(op.redactExactOwnerTextOnly(request, approval))
+      .rejects.toThrow(/canonical subject source/);
+    expect(fake.redactOwnerText).not.toHaveBeenCalled();
+    fake.eight.mockResolvedValueOnce({
+      ...await fake.eight(), linkedIdentityCount: 1,
+    } as never);
+    const completed = await op.redactExactOwnerTextOnly(request, approval);
+    expect(completed).toEqual({
+      status: "one-exact-owner-text-cell-redacted-only", redacted: true,
+      freeTextAndAuditReviewed: false, allowsOlderRestorePromotion: false,
+      allowsFullPrivacyReady: false,
+    });
+    expect(fake.redactOwnerText).toHaveBeenCalledWith(approval);
     expect(fake.current).toHaveBeenCalled();
     expect(fake.erase).not.toHaveBeenCalled();
     await op.close();
