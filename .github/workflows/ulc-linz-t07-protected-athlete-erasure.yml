@@ -16,6 +16,7 @@ on:
           - erase-catalog-owner-only
           - erase-identity-owner-only
           - redact-session-note-only
+          - redact-exact-owner-text-only
       confirmation:
         description: 'Exact INSPECT, ERASE-FOUR, ERASE-VERIFIED-IDENTITY/CATALOG, or REDACT-EXACT-SESSION-NOTE token'
         required: true
@@ -60,6 +61,11 @@ jobs:
           SESSION_ID: ${{ secrets.ULC_T07_TARGET_SESSION_ID }}
           SESSION_DATE: ${{ secrets.ULC_T07_TARGET_SESSION_DATE }}
           SESSION_NOTE_SHA256: ${{ secrets.ULC_T07_TARGET_SESSION_NOTE_SHA256 }}
+          TEXT_TARGET: ${{ secrets.ULC_T07_TEXT_TARGET }}
+          TEXT_KEY_1: ${{ secrets.ULC_T07_TEXT_KEY_1 }}
+          TEXT_KEY_2: ${{ secrets.ULC_T07_TEXT_KEY_2 }}
+          TEXT_KEY_3: ${{ secrets.ULC_T07_TEXT_KEY_3 }}
+          TEXT_SHA256: ${{ secrets.ULC_T07_TEXT_SHA256 }}
           EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
           T07_DESTRUCTIVE_ENABLED: ${{ vars.ULC_T07_ERASURE_ENABLED }}
         run: |
@@ -74,7 +80,7 @@ jobs:
             inspect)
               test "$CONFIRMATION" = 'INSPECT-ULC-T07-STRUCTURED-OWNERS' || exit 1
               ;;
-            erase-structured-only|erase-catalog-owner-only|erase-identity-owner-only|redact-session-note-only)
+            erase-structured-only|erase-catalog-owner-only|erase-identity-owner-only|redact-session-note-only|redact-exact-owner-text-only)
               test "$T07_DESTRUCTIVE_ENABLED" = 1 || { echo 'T07 erasure activation is not authorized in this protected environment.' >&2; exit 1; }
               if test "$OPERATION" = 'erase-catalog-owner-only'; then
                 test "$CONFIRMATION" = 'ERASE-ULC-T07-VERIFIED-CATALOG-OWNER' || exit 1
@@ -88,6 +94,28 @@ jobs:
                 echo "::add-mask::$SESSION_ID"
                 echo "::add-mask::$SESSION_DATE"
                 echo "::add-mask::$SESSION_NOTE_SHA256"
+              elif test "$OPERATION" = 'redact-exact-owner-text-only'; then
+                test "$CONFIRMATION" = 'REDACT-ULC-T07-EXACT-OWNER-TEXT' || exit 1
+                case "$TEXT_TARGET" in
+                  registration-note|registration-change-note|documentation-revision-note|\
+                  training-plan-revision-note|training-plan-item-note|training-plan-item-comment|\
+                  training-block-revision-note|training-block-item-note|\
+                  training-block-usage-note|training-block-usage-source-ref|\
+                  exercise-catalog-usage-note|exercise-catalog-usage-source-ref) ;;
+                  *) echo 'Unknown exact owner field.' >&2; exit 1 ;;
+                esac
+                [[ "$TEXT_KEY_1" =~ ^[a-zA-Z0-9._:-]{1,200}$ ]] || exit 1
+                if test -n "$TEXT_KEY_2"; then
+                  [[ "$TEXT_KEY_2" =~ ^[a-zA-Z0-9._:-]{1,200}$ ]] || exit 1
+                fi
+                if test -n "$TEXT_KEY_3"; then
+                  test -n "$TEXT_KEY_2" || exit 1
+                  [[ "$TEXT_KEY_3" =~ ^[a-zA-Z0-9._:-]{1,200}$ ]] || exit 1
+                fi
+                [[ "$TEXT_SHA256" =~ ^[0-9a-f]{64}$ ]] || exit 1
+                for sensitive in "$TEXT_TARGET" "$TEXT_KEY_1" "$TEXT_KEY_2" "$TEXT_KEY_3" "$TEXT_SHA256"; do
+                  if test -n "$sensitive"; then echo "::add-mask::$sensitive"; fi
+                done
               else
                 test "$CONFIRMATION" = 'ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS' || exit 1
               fi
@@ -277,6 +305,17 @@ jobs:
                      -H "x-appbasis-t07-session-date: $SESSION_DATE"
                      -H "x-appbasis-t07-session-note-sha256: $SESSION_NOTE_SHA256" )
           fi
+          if test "$OPERATION" = 'redact-exact-owner-text-only'; then
+            extra+=( -H "x-appbasis-t07-text-target: $TEXT_TARGET"
+                     -H "x-appbasis-t07-text-key-1: $TEXT_KEY_1"
+                     -H "x-appbasis-t07-text-sha256: $TEXT_SHA256" )
+            if test -n "$TEXT_KEY_2"; then
+              extra+=( -H "x-appbasis-t07-text-key-2: $TEXT_KEY_2" )
+            fi
+            if test -n "$TEXT_KEY_3"; then
+              extra+=( -H "x-appbasis-t07-text-key-3: $TEXT_KEY_3" )
+            fi
+          fi
           status="$(curl --silent --show-error --connect-timeout 5 --max-time 120 \
             -o "$body" -w '%{http_code}' -X POST \
             -H "x-appbasis-t07-token: $operation_token" \
@@ -299,7 +338,7 @@ jobs:
             'registrationHistoryRows', 'residualReview', 'eightOwnerReview',
             'structuredOwnersVerified', 'catalogOwnerProofVerified',
             'identityOwnerProofVerified', 'blockFavoriteMarkerVerified',
-            'sessionNoteProofVerified',
+            'sessionNoteProofVerified', 'exactOwnerTextProofVerified',
             'fullErasureAuthorized',
             'olderRestorePromotionAuthorized'];
           if (Object.keys(response).some(key => !safe.includes(key))) {
@@ -387,6 +426,11 @@ jobs:
                 response.sessionNoteProofVerified !== true) {
               throw new Error('T07 exact private session note redaction verification incomplete.');
             }
+          } else if (process.env.OPERATION === 'redact-exact-owner-text-only') {
+            if (response.status !== 'one-exact-owner-text-cell-redacted-only' ||
+                response.exactOwnerTextProofVerified !== true) {
+              throw new Error('T07 exact owner text redaction verification incomplete.');
+            }
           } else if (
             response.status !== 'identity-block-favorites-owner-complete-only' ||
             response.identityOwnerProofVerified !== true ||
@@ -416,6 +460,10 @@ jobs:
             summary.push('| Alte Backups | WIEDERHERSTELLUNG GESPERRT |');
           } else if (process.env.OPERATION === 'redact-session-note-only') {
             summary.push('| Exakte gemeinsame Trainingsnotiz | EINMALIG REDIGIERT – KEIN FREITEXT- ODER 8-OWNER-GESAMT-PASS |');
+            summary.push('| Trainer / Actor / Audit | MANUELLE PRÜFUNG OFFEN |');
+            summary.push('| Alte Backups | WIEDERHERSTELLUNG GESPERRT |');
+          } else if (process.env.OPERATION === 'redact-exact-owner-text-only') {
+            summary.push('| Exakte Owner-Freitextzelle | EINMALIG REDIGIERT – KEIN FREITEXT- ODER 8-OWNER-GESAMT-PASS |');
             summary.push('| Trainer / Actor / Audit | MANUELLE PRÜFUNG OFFEN |');
             summary.push('| Alte Backups | WIEDERHERSTELLUNG GESPERRT |');
           } else {
