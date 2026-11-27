@@ -12,7 +12,7 @@ import type {
 
 export type UlcLinzProtectedAthleteErasureMode =
   "inspect" | "erase-structured-only" | "erase-catalog-owner-only" |
-  "erase-identity-owner-only";
+  "erase-identity-owner-only" | "redact-session-note-only";
 
 export interface UlcLinzProtectedAthleteErasureCredentialOptions {
   readonly connectionString: string;
@@ -38,6 +38,9 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
   authorization?: Readonly<{
     confirmation: string;
     expectedSourceCompletedAt: string;
+    sessionId?: string;
+    expectedSessionDate?: string;
+    expectedNoteSha256?: string;
   }>,
 ) {
   if (
@@ -59,7 +62,8 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
 
   if (mode !== "inspect" && mode !== "erase-structured-only" &&
       mode !== "erase-catalog-owner-only" &&
-      mode !== "erase-identity-owner-only") {
+      mode !== "erase-identity-owner-only" &&
+      mode !== "redact-session-note-only") {
     throw new Error("ULC T07 protected operation mode is invalid.");
   }
   if (mode !== "inspect" &&
@@ -69,7 +73,9 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
           ? "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS"
           : mode === "erase-catalog-owner-only"
             ? "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER"
-            : "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER"
+            : mode === "erase-identity-owner-only"
+              ? "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER"
+              : "REDACT-ULC-T07-EXACT-SESSION-NOTE"
       ) ||
       typeof authorization.expectedSourceCompletedAt !== "string")
   ) throw new Error("ULC T07 owner deletion has no explicit operator approval.");
@@ -117,6 +123,26 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
         registrationHistoryRows: inspected.registrationHistoryRows,
         residualReview: inspected.residualReview,
         eightOwnerReview: inspected.eightOwnerReview,
+        fullErasureAuthorized: false as const,
+        olderRestorePromotionAuthorized: false as const,
+      });
+    }
+    if (mode === "redact-session-note-only") {
+      if (!authorization || typeof authorization.sessionId !== "string" ||
+          typeof authorization.expectedSessionDate !== "string" ||
+          typeof authorization.expectedNoteSha256 !== "string") {
+        throw new Error("T07 exact session note approval metadata is missing.");
+      }
+      const finished = await operation.redactSessionNoteOnly(request, {
+        confirmation: authorization.confirmation,
+        expectedSourceCompletedAt: authorization.expectedSourceCompletedAt,
+        sessionId: authorization.sessionId,
+        expectedSessionDate: authorization.expectedSessionDate,
+        expectedNoteSha256: authorization.expectedNoteSha256,
+      });
+      return Object.freeze({
+        status: finished.status,
+        sessionNoteProofVerified: true as const,
         fullErasureAuthorized: false as const,
         olderRestorePromotionAuthorized: false as const,
       });
