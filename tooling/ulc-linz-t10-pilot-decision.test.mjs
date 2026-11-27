@@ -103,6 +103,12 @@ test("provider verification never passes with bare flags, stale or unbound proof
   assert.equal(hasCurrentUlcProductionEvidence([{...proof,
     validUntilOrReviewAt: new Date(Date.now()-1_000).toISOString()}]), false);
   assert.equal(hasCurrentUlcProductionEvidence([{...proof, accountBindingReference: ""}]), false);
+  assert.equal(hasCurrentUlcProductionEvidence([{...proof, reference: "https://"}]), false);
+  assert.equal(hasCurrentUlcProductionEvidence([{...proof, accountBindingReference: "https://"}]), false);
+  assert.equal(hasCurrentUlcProductionEvidence([{...proof,
+    validUntilOrReviewAt: "2027-02-29T00:00:00.000Z"}]), false);
+  assert.equal(hasCurrentUlcProductionEvidence([{...proof,
+    observedAt: "2026-11-27T14:00:00"}]), false);
 });
 
 test("denies mismatched selected modules, foreign app and provider scope drift", () => {
