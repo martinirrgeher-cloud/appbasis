@@ -77,10 +77,14 @@ if (!databaseUrl) {
           (organization_id,plan_id,revision,item_id,comment,note)
         VALUES ('ulc-linz','plan-old',2,'item-1',$1,'Preserve note'),
                ('ulc-linz','plan-old',2,'item-2','Other participant',NULL),
-               ('other-club','plan-old',2,'item-1',$1,NULL);
+               ('other-club','plan-old',2,'item-1',$1,NULL)
+      `, [content]);
+      await required().client.unsafe(`
         INSERT INTO appbasis_training_documentation_revision
           (organization_id,documentation_id,revision,note)
-        VALUES ('ulc-linz','doc-old',1,$1), ('other-club','doc-old',1,$1);
+        VALUES ('ulc-linz','doc-old',1,$1), ('other-club','doc-old',1,$1)
+      `, [content]);
+      await required().client.unsafe(`
         INSERT INTO appbasis_training_block_usage
           (organization_id,id,note,source_ref)
         VALUES ('ulc-linz','usage-old',$1,'Do not remove this ref')
