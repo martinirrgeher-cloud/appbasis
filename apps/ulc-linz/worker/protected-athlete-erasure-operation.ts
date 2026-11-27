@@ -393,7 +393,10 @@ export async function createProtectedUlcLinzAthleteErasure(
           allowsFullPrivacyReady: false as const,
         });
       },
-      async redactSessionNoteOnly(request, approval) {
+      async redactSessionNoteOnly(
+        request: UlcLinzAthleteSubjectDeletionRequest,
+        approval: Parameters<ProtectedAthleteErasureOperation["redactSessionNoteOnly"]>[1],
+      ) {
         if (!approval || approval.confirmation !== NOTE_CONFIRMATION ||
           typeof approval.expectedSourceCompletedAt !== "string" ||
           !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(
