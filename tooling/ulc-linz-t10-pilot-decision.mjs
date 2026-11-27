@@ -9,6 +9,27 @@ const MODULES = Object.freeze([
   "training-plans", "training-documentation",
 ]);
 
+function validCanonicalUtc(value) {
+  if (typeof value !== "string" || value.length !== 24 || !value.endsWith("Z")) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString() === value;
+}
+function validHttpsDocumentReference(value) {
+  if (typeof value !== "string" || value.length > 2048) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.includes(".") &&
+      url.username === "" && url.password === "" && url.pathname.length > 1;
+  } catch {
+    return false;
+  }
+}
+function validDateOnly(value) {
+  if (typeof value !== "string" || value.length !== 10) return false;
+  const date = new Date(value + "T00:00:00.000Z");
+  return Number.isFinite(date.getTime()) &&
+    date.toISOString().slice(0, 10) === value;
+}
 // Production provider evidence is not an "open" → "verified" checkbox.
 // M5 has always required date, source, app/account binding and next review.
 export function hasCurrentUlcProductionEvidence(receipts, now = new Date()) {
@@ -17,14 +38,13 @@ export function hasCurrentUlcProductionEvidence(receipts, now = new Date()) {
   return receipts.every(receipt => {
     if (!receipt || typeof receipt !== "object") return false;
     if (receipt.appEnvironment !== "ulc-linz-production" ||
-        typeof receipt.reference !== "string" ||
-        !receipt.reference.startsWith("https://") ||
-        typeof receipt.accountBindingReference !== "string" ||
-        !receipt.accountBindingReference.startsWith("https://")) return false;
-    const observed = Date.parse(receipt.observedAt);
-    const validUntil = Date.parse(receipt.validUntilOrReviewAt);
-    return Number.isFinite(observed) && Number.isFinite(validUntil) &&
-      observed <= now.getTime() && validUntil > now.getTime() &&
+        !validHttpsDocumentReference(receipt.reference) ||
+        !validHttpsDocumentReference(receipt.accountBindingReference) ||
+        !validCanonicalUtc(receipt.observedAt) ||
+        !validCanonicalUtc(receipt.validUntilOrReviewAt)) return false;
+    const observed = new Date(receipt.observedAt).getTime();
+    const validUntil = new Date(receipt.validUntilOrReviewAt).getTime();
+    return observed <= now.getTime() && validUntil > now.getTime() &&
       validUntil > observed;
   });
 }
@@ -86,8 +106,7 @@ export function evaluateUlcT10PilotDecision(input) {
     legal.privateRecordReference.length > 12 &&
     typeof legal.responsibleRole === "string" &&
     legal.responsibleRole.length > 4 &&
-    typeof legal.decidedOn === "string" &&
-    /^\\d{4}-\\d{2}-\\d{2}$/.test(legal.decidedOn) &&
+    validDateOnly(legal.decidedOn) &&
     Array.isArray(legal.coveredPurposes) && legal.coveredPurposes.length >= 4 &&
     legal.includesMinorsAndParents === true &&
     legal.approvedPilotScope === retention.scope;
