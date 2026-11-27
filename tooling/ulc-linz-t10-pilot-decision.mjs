@@ -44,8 +44,13 @@ export function evaluateUlcT10PilotDecision(input) {
     "T10 selected six-module app contract changed; review required.");
   checked(modules && typeof modules === "object" && !Array.isArray(modules),
     "T10 module contracts unavailable.");
-  checked(retention?.application === "ulc-linz",
-    "T10 retention source mismatch.");
+  checked(retention?.application === "ulc-linz" &&
+    retention?.schemaVersion === 1 &&
+    retention?.documentType === "t10-current-production-legal-decision" &&
+    retention?.currentSchemaTableCount === 69 &&
+    retention?.environment === "production" &&
+    retention?.scope === "private-members-only-six-module-pilot-no-private-minor-media",
+    "T10 current 69-table legal decision source mismatch.");
   checked(provider?.application === "ulc-linz",
     "T10 provider source mismatch.");
 
@@ -75,8 +80,19 @@ export function evaluateUlcT10PilotDecision(input) {
     "app crossCutting.privacy");
   add("app:composition", app.status === "ready",
     "app production composition contract status");
-  add("retention:legal", retention.legalApproval === true,
-    "operator-approved retention legality is separately required");
+  const legal = retention.decision;
+  const validDecision = legal && typeof legal === "object" &&
+    typeof legal.privateRecordReference === "string" &&
+    legal.privateRecordReference.length > 12 &&
+    typeof legal.responsibleRole === "string" &&
+    legal.responsibleRole.length > 4 &&
+    typeof legal.decidedOn === "string" &&
+    /^\\d{4}-\\d{2}-\\d{2}$/.test(legal.decidedOn) &&
+    Array.isArray(legal.coveredPurposes) && legal.coveredPurposes.length >= 4 &&
+    legal.includesMinorsAndParents === true &&
+    legal.approvedPilotScope === retention.scope;
+  add("retention:legal", retention.legalApproval === true && !!validDecision,
+    "current 69-table operator legal decision with private scope/date/role evidence required");
 
   // runtimeActive must be FALSE before deployment. Do not use its absence
   // as a circular pre-launch blocker or falsely label it as operating.
@@ -132,7 +148,7 @@ export async function readCurrentUlcT10PilotDecision(root = new URL("../", impor
   const modules = Object.fromEntries(await Promise.all(
     MODULES.map(async id => [id, await json("modules/" + id + "/appbasis.production.json")]),
   ));
-  const retention = await json("apps/ulc-linz/privacy/p01-operator-retention-candidate.json");
+  const retention = await json("apps/ulc-linz/privacy/t10-current-production-legal-decision.json");
   const provider = await json("apps/ulc-linz/privacy/m5-provider-compliance-inventory.json");
   return evaluateUlcT10PilotDecision({app, modules, retention, provider});
 }
