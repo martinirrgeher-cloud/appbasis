@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "application": "ulc-linz",
+  "documentType": "t10-current-production-legal-decision",
+  "environment": "production",
+  "currentSchemaTableCount": 69,
+  "scope": "private-members-only-six-module-pilot-no-private-minor-media",
+  "legalApproval": false,
+  "runtimeActive": false,
+  "decision": null,
+  "sourceReferences": [
+    "apps/ulc-linz/privacy/p01-operator-retention-candidate.json",
+    "apps/ulc-linz/privacy/p05-production-69-table-coverage-delta.json",
+    "apps/ulc-linz/privacy/T02-APP-DATENSCHUTZINFORMATION-ENTWURF.md",
+    "apps/ulc-linz/privacy/T07-LOESCHPRAXIS-BETRIEBSANWEISUNG-20261127.md"
+  ],
+  "note": "Historical P01 (66 tables) remains an unapproved target snapshot. Only this separate 69-table T10 decision may carry a later explicit legal operator signoff, after actual scope, parent/child notice, account DPA and provider transfers are accepted. Current T07 pilot manually handles cases with STOP; not a universal deletion or live-purge grant."
+}
