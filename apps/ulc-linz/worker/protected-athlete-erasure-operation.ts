@@ -396,7 +396,7 @@ export async function createProtectedUlcLinzAthleteErasure(
       async redactSessionNoteOnly(request, approval) {
         if (!approval || approval.confirmation !== NOTE_CONFIRMATION ||
           typeof approval.expectedSourceCompletedAt !== "string" ||
-          !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(
+          !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(
             approval.expectedSourceCompletedAt,
           )) throw new Error("T07 session note has no exact private operator approval.");
         // Existing protected preflight checks current signed admin session,
