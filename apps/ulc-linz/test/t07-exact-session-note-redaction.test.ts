@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 
-import { PostgresUlcT07ExactSessionNoteRedactor } from
-  "../worker/t07-exact-session-note-redaction";
+import {
+  PostgresUlcT07ExactSessionNoteRedactor,
+  type UlcT07NoteRedactionSqlPort,
+  type UlcT07NoteRedactionSqlTransaction,
+} from "../worker/t07-exact-session-note-redaction";
 
 const org = "ulc-linz";
 const session = "session-27";
@@ -36,9 +39,17 @@ function fixture(
     }
     throw new Error("Unexpected T07 SQL statement.");
   });
-  const begin = vi.fn(async <T>(callback: (tx: { unsafe: typeof unsafe }) => Promise<T>) =>
-    callback({ unsafe }));
-  return { begin, unsafe, statements, port: { begin } };
+  // Keep the generic transaction signature intact: vi.fn(<T>) erases the
+  // generic result into unknown and would break the app's strict typecheck.
+  const observedBegin = vi.fn();
+  const begin = async <T>(
+    callback: (tx: UlcT07NoteRedactionSqlTransaction) => Promise<T>,
+  ): Promise<T> => {
+    observedBegin();
+    return callback({ unsafe });
+  };
+  const port: UlcT07NoteRedactionSqlPort = { begin };
+  return { begin: observedBegin, unsafe, statements, port };
 }
 
 describe("T07 protected manual redaction of a single shared session note", () => {
