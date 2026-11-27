@@ -36,6 +36,7 @@ describe("T07 execution workflow protects the real ULC Worker", () => {
       "identity-block-favorites-owner-complete-only",
       "identityOwnerProofVerified",
       "catalogOwnerProofVerified",
+      "'actor-audit-review-required'",
       "secrets.ULC_T07_TARGET_SUBJECT_ID",
       "secrets.ULC_T07_SOURCE_COMPLETED_AT",
       "summary.join(",

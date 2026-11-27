@@ -346,7 +346,8 @@ export async function createProtectedUlcLinzAthleteErasure(
           before.eightOwnerReview?.linkedIdentityCount !== 1 ||
           identityProof?.status !== "scoped-evidence-clear-manual-review-required" ||
           identityProof.remainingReferences !== 0 ||
-          permissionsProof?.status !== "scoped-evidence-clear-manual-review-required" ||
+          (permissionsProof?.status !== "scoped-evidence-clear-manual-review-required" &&
+            permissionsProof?.status !== "actor-audit-review-required") ||
           permissionsProof.remainingReferences !== 0
         ) throw new Error("T07 catalogue owner requires all four sources and deleted identity/permissions.");
 

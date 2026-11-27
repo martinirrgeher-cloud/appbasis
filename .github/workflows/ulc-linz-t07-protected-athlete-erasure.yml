@@ -325,6 +325,7 @@ jobs:
               const allowedState = [
                 'identity-link-unverified', 'owner-marker-missing',
                 'explicit-references-remain',
+                'actor-audit-review-required',
                 'scoped-evidence-clear-manual-review-required'
               ];
               if (!eight || typeof eight !== 'object' || Array.isArray(eight) ||

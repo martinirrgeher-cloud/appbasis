@@ -136,6 +136,7 @@ export type UlcT07OwnerReviewState =
   | "identity-link-unverified"
   | "owner-marker-missing"
   | "explicit-references-remain"
+  | "actor-audit-review-required"
   | "scoped-evidence-clear-manual-review-required";
 
 export interface UlcT07OwnerReview {
@@ -185,6 +186,7 @@ export class PostgresUlcT07EightOwnerInspector {
       // purpose and allowed erasure cannot be inferred from this one marker.
       throw new Error("ULC T07 multiple identity links need individual legal review.");
     }
+    const actorAudit = linked === 0 ? null : count(row.actor_audit_remaining);
     const owners = ULC_P3_PERSISTENT_OWNERS.map(owner => {
       const fields = COLUMNS[owner];
       const remaining = count(row[fields.count]);
@@ -197,13 +199,21 @@ export class PostgresUlcT07EightOwnerInspector {
         owner === "exercise-catalog" || owner === "training-blocks" ||
         owner === "ulc-linz-lifecycle";
       const unverified = linked === 0 && identityDependent;
+      // A zero direct-reference count is NOT clear while person-linked actor/audit
+      // records survive. They need a separate lawful retention/redaction decision.
+      // Block the two administrative owners without falsely attributing those
+      // audit rows to a particular table or claiming they may be deleted.
+      const auditReviewPending = actorAudit !== null && actorAudit > 0 &&
+        (owner === "permissions" || owner === "ulc-linz-lifecycle");
       const status: UlcT07OwnerReviewState = unverified
         ? "identity-link-unverified"
         : marker === false
           ? "owner-marker-missing"
           : remaining > 0
             ? "explicit-references-remain"
-            : "scoped-evidence-clear-manual-review-required";
+            : auditReviewPending
+              ? "actor-audit-review-required"
+              : "scoped-evidence-clear-manual-review-required";
       return Object.freeze({
         owner,
         remainingReferences: unverified ? null : remaining,
@@ -214,7 +224,7 @@ export class PostgresUlcT07EightOwnerInspector {
     return Object.freeze({
       owners: Object.freeze(owners),
       linkedIdentityCount: linked,
-      actorAuditReferences: linked === 0 ? null : count(row.actor_audit_remaining),
+      actorAuditReferences: actorAudit,
       organizationWidePrivateMediaCandidates: count(row.org_media_candidates),
       humanFreeTextReviewRequired: true as const,
       auditRetentionDecisionRequired: true as const,

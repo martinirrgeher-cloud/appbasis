@@ -42,8 +42,10 @@ describe("T07 real eight-owner read-only reconciliation", () => {
       "training-blocks", "training-documentation", "training-plans",
       "ulc-linz-lifecycle",
     ]);
-    expect(report.owners.every(x =>
-      x.status === "scoped-evidence-clear-manual-review-required")).toBe(true);
+    expect(report.owners.filter(x => x.status === "actor-audit-review-required")
+      .map(x => x.owner)).toEqual(["permissions", "ulc-linz-lifecycle"]);
+    expect(report.owners.filter(x =>
+      x.status === "scoped-evidence-clear-manual-review-required").length).toBe(6);
     expect(report.actorAuditReferences).toBe(2);
     expect(report.organizationWidePrivateMediaCandidates).toBe(1);
     expect(report.humanFreeTextReviewRequired).toBe(true);
@@ -53,6 +55,17 @@ describe("T07 real eight-owner read-only reconciliation", () => {
     expect(report.olderRestorePromotionAllowed).toBe(false);
     expect(report.privacyReady).toBe(false);
     expect(JSON.stringify(report)).not.toContain("athlete-1");
+  });
+
+  it("permits scoped-only clear on zero actor/audit references, never full privacy", async () => {
+    sql.mockResolvedValueOnce([{ ...sample, actor_audit_remaining: 0 }]);
+    const report = await new PostgresUlcT07EightOwnerInspector({ unsafe: sql })
+      .inspect("ulc-linz", "athlete-1", source);
+    expect(report.owners.every(x =>
+      x.status === "scoped-evidence-clear-manual-review-required")).toBe(true);
+    expect(report.actorAuditReferences).toBe(0);
+    expect(report.allEightOwnersProvenComplete).toBe(false);
+    expect(report.privacyReady).toBe(false);
   });
 
   it("no unique identity deletion link is UNKNOWN, not proof of no actor, catalog or permissions", async () => {

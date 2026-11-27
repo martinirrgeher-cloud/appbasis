@@ -338,9 +338,15 @@ describe("T07 real protected owner composition, no live invocation", () => {
         status: "scoped-evidence-clear-manual-review-required",
       })),
     };
+    // A lawful permissions-audit retention review must not block the
+    // already authorized STRUCTURED catalog erasure. Full privacy remains false.
+    eligible.owners.find((x: {owner: string}) => x.owner === "permissions")!.status =
+      "actor-audit-review-required";
     fake.eight.mockResolvedValueOnce(eligible as never);
     fake.eight.mockResolvedValueOnce(eligible as never);
     const done = await op.eraseCatalogOwnerOnly(request, authorize);
+    expect(done.verified.eightOwnerReview?.owners.find(x=>x.owner==="permissions")?.status)
+      .toBe("actor-audit-review-required");
     expect(done.status).toBe("catalog-owner-complete-only");
     expect(done.allowsFullPrivacyReady).toBe(false);
     expect(done.freeTextAndAuditReviewed).toBe(false);
