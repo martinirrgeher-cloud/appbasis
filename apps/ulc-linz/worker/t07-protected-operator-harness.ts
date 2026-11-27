@@ -54,7 +54,7 @@ export default {
       !subjectId || !SUBJECT_ID.test(subjectId) ||
       (mode === "redact-session-note-only"
         ? (!sessionId || !SUBJECT_ID.test(sessionId) ||
-           !sessionDay || !/^\\d{4}-\\d{2}-\\d{2}$/.test(sessionDay) ||
+           !sessionDay || !/^\d{4}-\d{2}-\d{2}$/.test(sessionDay) ||
            !noteSha || !/^[a-f0-9]{64}$/.test(noteSha))
         : (sessionId !== null || sessionDay !== null || noteSha !== null)) ||
       (mode === "inspect" && (confirmation !== INSPECT || completedAt !== null)) ||
