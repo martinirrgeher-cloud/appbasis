@@ -31,6 +31,16 @@ describe("T07 execution workflow protects the real ULC Worker", () => {
       "erase-catalog-owner-only",
       "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER",
       "catalog-owner-complete-only",
+      "redact-exact-owner-text-only",
+      "REDACT-ULC-T07-EXACT-OWNER-TEXT",
+      "secrets.ULC_T07_TEXT_TARGET",
+      "secrets.ULC_T07_TEXT_KEY_1",
+      "secrets.ULC_T07_TEXT_KEY_2",
+      "secrets.ULC_T07_TEXT_KEY_3",
+      "secrets.ULC_T07_TEXT_SHA256",
+      "x-appbasis-t07-text-sha256",
+      "exactOwnerTextProofVerified",
+      "one-exact-owner-text-cell-redacted-only",
       "redact-session-note-only",
       "REDACT-ULC-T07-EXACT-SESSION-NOTE",
       "secrets.ULC_T07_TARGET_SESSION_ID",
@@ -51,6 +61,15 @@ describe("T07 execution workflow protects the real ULC Worker", () => {
       'test "$T07_DESTRUCTIVE_ENABLED" = 1',
     ].filter(x => x !== "LIFECYCLE_WRANGLER_CONFIG")) {
       expect(source).toContain(anchor);
+    }
+    // Credentials provided to validation do not carry into execution-step env.
+    // Every protected owner-text secret must appear in BOTH isolated job steps.
+    for (const secret of [
+      "ULC_T07_TEXT_TARGET", "ULC_T07_TEXT_KEY_1",
+      "ULC_T07_TEXT_KEY_2", "ULC_T07_TEXT_KEY_3",
+      "ULC_T07_TEXT_SHA256",
+    ]) {
+      expect(source.split(`secrets.${secret}`)).toHaveLength(3);
     }
     expect(source).not.toContain("inputs.subject_id");
     expect(source).not.toContain("inputs.source_completed_at");

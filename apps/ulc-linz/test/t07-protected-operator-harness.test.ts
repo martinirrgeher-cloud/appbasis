@@ -167,6 +167,41 @@ describe("T07 isolated ephemeral operator ingress is token and approval gated", 
     );
   });
 
+  it("requires exact allowlisted private owner text scope and distinct approval", async () => {
+    const exact = {
+      "x-appbasis-t07-source-completed-at": "2026-11-22T12:00:00.000Z",
+      "x-appbasis-t07-confirmation": "REDACT-ULC-T07-EXACT-OWNER-TEXT",
+      "x-appbasis-t07-text-target": "training-plan-item-comment",
+      "x-appbasis-t07-text-key-1": "plan-1",
+      "x-appbasis-t07-text-key-2": "2",
+      "x-appbasis-t07-text-key-3": "item-1",
+      "x-appbasis-t07-text-sha256": "a".repeat(64),
+    };
+    for (const override of [
+      { "x-appbasis-t07-text-target": "unknown-target" },
+      { "x-appbasis-t07-text-key-1": "with spaces" },
+      { "x-appbasis-t07-text-key-2": "" },
+      { "x-appbasis-t07-text-sha256": "wrong" },
+      { "x-appbasis-t07-confirmation": "REDACT-ULC-T07-EXACT-SESSION-NOTE" },
+    ]) {
+      expect((await harness.fetch(req("redact-exact-owner-text-only",
+        { ...exact, ...override }), env)).status).toBe(404);
+    }
+    expect(mock.execute).not.toHaveBeenCalled();
+    const response = await harness.fetch(req("redact-exact-owner-text-only", exact), env);
+    expect(response.status).toBe(200);
+    expect(mock.execute).toHaveBeenCalledWith(
+      expect.any(Object), { organizationId: "ulc-linz", subjectId: "athlete-subject-1" },
+      "redact-exact-owner-text-only", {
+        confirmation: "REDACT-ULC-T07-EXACT-OWNER-TEXT",
+        expectedSourceCompletedAt: "2026-11-22T12:00:00.000Z",
+        textTarget: "training-plan-item-comment",
+        textKeys: ["plan-1","2","item-1"],
+        expectedValueSha256: "a".repeat(64),
+      },
+    );
+  });
+
   it("does not leak SQL exceptions or private metadata from failed operator execution", async () => {
     mock.execute.mockRejectedValueOnce(new Error("Database username, private subject and sensitive SQL"));
     const response = await harness.fetch(req("inspect"), env);

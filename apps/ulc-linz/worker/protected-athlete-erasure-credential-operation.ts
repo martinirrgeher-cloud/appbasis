@@ -12,7 +12,8 @@ import type {
 
 export type UlcLinzProtectedAthleteErasureMode =
   "inspect" | "erase-structured-only" | "erase-catalog-owner-only" |
-  "erase-identity-owner-only" | "redact-session-note-only";
+  "erase-identity-owner-only" | "redact-session-note-only" |
+  "redact-exact-owner-text-only";
 
 export interface UlcLinzProtectedAthleteErasureCredentialOptions {
   readonly connectionString: string;
@@ -41,6 +42,9 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
     sessionId?: string;
     expectedSessionDate?: string;
     expectedNoteSha256?: string;
+    textTarget?: string;
+    textKeys?: readonly string[];
+    expectedValueSha256?: string;
   }>,
 ) {
   if (
@@ -63,7 +67,8 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
   if (mode !== "inspect" && mode !== "erase-structured-only" &&
       mode !== "erase-catalog-owner-only" &&
       mode !== "erase-identity-owner-only" &&
-      mode !== "redact-session-note-only") {
+      mode !== "redact-session-note-only" &&
+      mode !== "redact-exact-owner-text-only") {
     throw new Error("ULC T07 protected operation mode is invalid.");
   }
   if (mode !== "inspect" &&
@@ -75,7 +80,9 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
             ? "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER"
             : mode === "erase-identity-owner-only"
               ? "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER"
-              : "REDACT-ULC-T07-EXACT-SESSION-NOTE"
+              : mode === "redact-session-note-only"
+                ? "REDACT-ULC-T07-EXACT-SESSION-NOTE"
+                : "REDACT-ULC-T07-EXACT-OWNER-TEXT"
       ) ||
       typeof authorization.expectedSourceCompletedAt !== "string")
   ) throw new Error("ULC T07 owner deletion has no explicit operator approval.");
@@ -123,6 +130,28 @@ export async function runProtectedUlcLinzAthleteErasureWithCredentials(
         registrationHistoryRows: inspected.registrationHistoryRows,
         residualReview: inspected.residualReview,
         eightOwnerReview: inspected.eightOwnerReview,
+        fullErasureAuthorized: false as const,
+        olderRestorePromotionAuthorized: false as const,
+      });
+    }
+    if (mode === "redact-exact-owner-text-only") {
+      if (!authorization || typeof authorization.textTarget !== "string" ||
+          !Array.isArray(authorization.textKeys) ||
+          typeof authorization.expectedValueSha256 !== "string") {
+        throw new Error("T07 exact multi-owner text approval is missing.");
+      }
+      const finished = await operation.redactExactOwnerTextOnly(request, {
+        confirmation: authorization.confirmation,
+        organizationId: request.organizationId,
+        subjectId: request.subjectId,
+        expectedSourceCompletedAt: authorization.expectedSourceCompletedAt,
+        target: authorization.textTarget as Parameters<ProtectedAthleteErasureOperation["redactExactOwnerTextOnly"]>[1]["target"],
+        keys: authorization.textKeys,
+        expectedValueSha256: authorization.expectedValueSha256,
+      });
+      return Object.freeze({
+        status: finished.status,
+        exactOwnerTextProofVerified: true as const,
         fullErasureAuthorized: false as const,
         olderRestorePromotionAuthorized: false as const,
       });

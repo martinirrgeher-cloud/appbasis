@@ -121,6 +121,53 @@ nicht garantiert verhindert; Nachkontrolle und gegebenenfalls zusätzliche
 Schreibsperren bleiben fallbezogen notwendig. Bei aktuell fehlendem
 Athleten-Quellentscheid ist der Modus nicht ausführbar.
 
+## Geschützter Redaktionsweg für historische Owner-Notizen und Kommentare
+
+Der einmalige operatorgeschützte Modus `redact-exact-owner-text-only`
+unterstützt **zwölf fest vorgegebene Freitextfelder** aus Trainings-Anmeldung
+und Änderungsverlauf, historischer Trainingsdokumentation, Trainingsplan-/
+Trainingsblock-Revisionen und -Items sowie Katalog-/Block-Nutzungsdaten.
+Er ergänzt `redact-session-note-only`, **ohne** den öffentlichen Worker,
+die Anwesenheit, das Autosave oder bestehende Datensätze automatisch zu verändern.
+
+Jeder Aufruf verlangt eine **zusätzliche individuelle Entscheidung** des
+Verantwortlichen über *genau diese* Zelle und ihren vollständigen Wert.
+Eine Namenssuche ist kein Identitätsnachweis: Vor Freigabe muss die Person
+anhand des kanonischen Athleten-Quellmarkers, die Organisation, der Datensatz,
+sein exakter unveränderter UTF-8-Zellinhalt, die Rechtsgrundlage und das Fehlen
+einer Aufbewahrungsausnahme in der **nichtöffentlichen** Einzelfallakte geklärt
+werden. Der Quellmarker muss noch innerhalb der 35-Tage-Schutzfrist gelten.
+Wenn der Text auch rechtmäßig benötigte Angaben zu anderen Personen enthält,
+ist die vollständige Zellenentfernung **nicht zulässig**; dann muss ein
+separat geprüfter partieller Redaktionsweg erstellt werden.
+
+Ausschließlich über geschützte GitHub-Environment-Secrets in `m4-dr`:
+- `ULC_T07_TEXT_TARGET`: einer der zwölf im Code erlaubten Feldtypen;
+- `ULC_T07_TEXT_KEY_1`: der Hauptschlüssel der historischen Zeile;
+- `ULC_T07_TEXT_KEY_2`: falls benötigt, Revision oder Athleten-ID;
+- `ULC_T07_TEXT_KEY_3`: nur für Revision-Items erforderliche Item-ID;
+- `ULC_T07_TEXT_SHA256`: SHA-256 des vollständigen, exakt begutachteten
+  UTF-8-Zellinhalts; niemals eine zu erratende Personennamen-Prüfsumme.
+
+Darüber hinaus gelten unverändert die individuellen Geheimnisse
+`ULC_T07_TARGET_SUBJECT_ID`, `ULC_T07_SOURCE_COMPLETED_AT`,
+Administrator-Zugang, exakter 40-Zeichen-Main-HEAD, geschütztes Environment
+und der **standardmäßig deaktivierte** destructive-Schalter
+`ULC_T07_ERASURE_ENABLED`. Für diesen einen Modus muss die
+separate Bestätigung `REDACT-ULC-T07-EXACT-OWNER-TEXT` benutzt werden.
+Alle Geheimnisse bleiben aus öffentlichen Workflow-Inputs, Logs und
+GitHub-Issues heraus. Der SQL-Owner verifiziert Originalquelle, Row-Lock,
+Mandant, konkreten Zeilenschlüssel, SHA256, exakt **eine** NULL-Änderung
+und Readback in einer Transaktion. Bei Abweichung keine Erfolgsbescheinigung.
+
+Die Operation ist **keine** automatische personenbezogene Freitext-
+Vollprüfung, keine Revision aller JSON-Nutzdaten und kein Audit-Retention-Purge;
+sie erzeugt **niemals** `privacyReady`, `fullErasureAuthorized` oder eine
+Restore-Freigabe. Besonders Trainer- und Actor-/Auditdatensätze benötigen
+weiterhin eine **gesonderte** rechtmäßige, fällige
+Löschung oder dokumentierte gesperrte Ausnahme. Kein Blindlöschen und
+kein Vorziehen einer einjährigen Audit-Aufbewahrung.
+
 ## Vorgehen für die später freigegebene einzelne Löschung
 
 1. In der **nichtöffentlichen Vereinsakte** rechtliche Löschentscheidung,
