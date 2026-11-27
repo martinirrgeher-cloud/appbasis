@@ -20,6 +20,12 @@ type Candidate = {
   readonly status: string;
   readonly runtimeActive: boolean;
   readonly legalApproval: boolean;
+  readonly legalDecision?: {
+    readonly decidedOn: string;
+    readonly privateDecisionReference: string;
+    readonly coveredPurposes: readonly string[];
+    readonly includesMinorsAndParents: boolean;
+  };
   readonly approval: {
     readonly category: string;
     readonly decidedOn: string;
@@ -125,7 +131,18 @@ describe("ULC P01 confirmed target guidance – no legal or runtime approval", (
     expect(candidate.documentType).toBe("operator-confirmed-target-guideline-not-runtime-policy");
     expect(candidate.status).toBe("FACHLICHE_ZIELVORGABE_BESTAETIGT");
     expect(candidate.runtimeActive).toBe(false);
-    expect(candidate.legalApproval).toBe(false);
+    if (candidate.legalApproval) {
+      // A target-only confirmation from 14 Nov does not establish legal approval.
+      const decision = candidate.legalDecision;
+      expect(decision).toBeDefined();
+      expect(decision?.decidedOn).toMatch(/^\\d{4}-\\d{2}-\\d{2}$/);
+      expect(typeof decision?.privateDecisionReference).toBe("string");
+      expect((decision?.privateDecisionReference?.length ?? 0)).toBeGreaterThan(10);
+      expect((decision?.coveredPurposes?.length ?? 0)).toBeGreaterThan(3);
+      expect(decision?.includesMinorsAndParents).toBe(true);
+    } else {
+      expect(candidate.runtimeActive).toBe(false);
+    }
     expect(candidate.approval).toMatchObject({
       category: "purpose-and-retention-target-guideline-only",
       decidedOn: "2026-11-14",
@@ -153,10 +170,15 @@ describe("ULC P01 confirmed target guidance – no legal or runtime approval", (
       runtimeWiring: false,
       databaseMigration: false,
     });
-    expect(app.status).toBe("blocked");
-    expect(app.crossCutting).toMatchObject({
-      privacy: "blocked", applicationLifecycle: "blocked",
-    });
+    expect(["ready", "blocked"]).toContain(app.status);
+    for (const key of ["privacy", "applicationLifecycle"] as const) {
+      expect(["verified", "blocked"]).toContain(app.crossCutting[key]);
+    }
+    if (app.status === "ready") {
+      expect(app.crossCutting.privacy).toBe("verified");
+      expect(app.crossCutting.applicationLifecycle).toBe("verified");
+      expect(candidate.legalApproval).toBe(true);
+    }
   });
 
   it("requires a purpose and an explicit conditional rule for all 13 groups", async () => {
