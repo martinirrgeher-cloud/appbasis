@@ -104,6 +104,21 @@ describe("ULC P04-A closed pilot – no production actions", () => {
     expect(provider.m5.baselineIsProductionEvidence).toBe(false);
   });
 
+  it("requires current T10 legal and provider readiness before short-lived M6 composition", async () => {
+    const workflow = await file(".github/workflows/m6-ulc-production-composition-gate.yml");
+    const composition = workflow.indexOf("- name: Evaluate selected module composition");
+    const t10 = workflow.indexOf("- name: Require real T10 legal and provider evidence");
+    const gate = workflow.indexOf("- name: Create authoritative short-lived composition gate");
+    expect(composition).toBeGreaterThan(0);
+    expect(t10).toBeGreaterThan(composition);
+    expect(gate).toBeGreaterThan(t10);
+    expect(workflow).toContain("ulc-linz-t10-pilot-decision.mjs --require-repository-ready");
+    expect(workflow).toContain('result?.openChecks?.length !== 0');
+    expect(workflow).toContain("result?.operatorApproved !== false");
+    expect(workflow).toContain("result?.deploymentAuthorized !== false");
+    expect(workflow).toContain("result?.historicalRestorePromotionAuthorized !== false");
+  });
+
   it("requires a fresh, manual, main-only production approval for each of the eight steps", async () => {
     const workflow = await file(".github/workflows/m6-ulc-production-refresh-chain.yml");
     const head = workflow.slice(0, workflow.indexOf("\npermissions:"));
