@@ -41,6 +41,11 @@ const harness = vi.hoisted(() => ({
       olderRestorePromotionAllowed: false, privacyReady: false,
     },
   })),
+  text: vi.fn(async () => ({
+    status: "one-exact-owner-text-cell-redacted-only", redacted: true,
+    freeTextAndAuditReviewed: false,
+    allowsFullPrivacyReady: false, allowsOlderRestorePromotion: false,
+  })),
   note: vi.fn(async () => ({
     status: "one-shared-session-note-redacted-only", redacted: true,
     freeTextAndAuditReviewed: false, allowsFullPrivacyReady: false,
@@ -89,6 +94,7 @@ vi.mock("../worker/protected-athlete-erasure-operation", () => ({
     eraseCatalogOwnerOnly: harness.catalog,
     eraseIdentityOwnerOnly: harness.identityOwner,
     redactSessionNoteOnly: harness.note,
+    redactExactOwnerTextOnly: harness.text,
     close: harness.closeOwner,
   })),
 }));
@@ -262,6 +268,40 @@ describe("T07 transient-credential four-owner operation is separately guarded", 
     expect(harness.note).toHaveBeenCalledWith(request, auth);
     expect(harness.logout).toHaveBeenCalledWith("signed-session");
     expect(harness.closeOwner).toHaveBeenCalledOnce();
+  });
+
+  it("requires a distinct exact-owner-cell approval and returns no personal field IDs", async () => {
+    const approval = {
+      confirmation: "REDACT-ULC-T07-EXACT-OWNER-TEXT",
+      expectedSourceCompletedAt: "2026-11-23T12:00:00.000Z",
+      textTarget: "training-plan-item-comment",
+      textKeys: ["plan-1","2","item-1"],
+      expectedValueSha256: "a".repeat(64),
+    };
+    await expect(runProtectedUlcLinzAthleteErasureWithCredentials(
+      options, request, "redact-exact-owner-text-only",
+      { ...approval, confirmation: "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS" },
+    )).rejects.toThrow(/explicit operator approval/);
+    expect(harness.login).not.toHaveBeenCalled();
+    const output = await runProtectedUlcLinzAthleteErasureWithCredentials(
+      options, request, "redact-exact-owner-text-only", approval,
+    );
+    expect(output).toEqual({
+      status: "one-exact-owner-text-cell-redacted-only",
+      exactOwnerTextProofVerified: true, fullErasureAuthorized: false,
+      olderRestorePromotionAuthorized: false,
+    });
+    expect(JSON.stringify(output)).not.toContain("plan-1");
+    expect(JSON.stringify(output)).not.toContain("item-1");
+    expect(JSON.stringify(output)).not.toContain(approval.expectedValueSha256);
+    expect(harness.text).toHaveBeenCalledWith(request, {
+      organizationId: "ulc-linz", subjectId: "athlete-1",
+      expectedSourceCompletedAt: approval.expectedSourceCompletedAt,
+      confirmation: approval.confirmation, target: approval.textTarget,
+      keys: approval.textKeys, expectedValueSha256: approval.expectedValueSha256,
+    });
+    expect(harness.logout).toHaveBeenCalledOnce();
+    expect(harness.closeDb).toHaveBeenCalledOnce();
   });
 
   it("still ends temporary session and both connections after a partial owner failure", async () => {
