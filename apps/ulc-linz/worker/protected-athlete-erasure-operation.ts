@@ -32,6 +32,10 @@ import {
 } from "./t07-catalog-owner-follow-up";
 import { PostgresUlcT07ExactSessionNoteRedactor } from "./t07-exact-session-note-redaction";
 import {
+  PostgresUlcT07ExactOwnerTextRedactor,
+  type UlcT07ExactTextDecision,
+} from "./t07-exact-owner-text-redaction";
+import {
   PostgresUlcT07EightOwnerInspector,
   type UlcT07EightOwnerReview,
 } from "./t07-eight-owner-reconciliation";
@@ -48,6 +52,7 @@ const CONFIRMATION = "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS";
 const CATALOG_CONFIRMATION = "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER";
 const IDENTITY_CONFIRMATION = "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER";
 const NOTE_CONFIRMATION = "REDACT-ULC-T07-EXACT-SESSION-NOTE";
+const TEXT_CONFIRMATION = "REDACT-ULC-T07-EXACT-OWNER-TEXT";
 
 /** Exact read-only SQL pinned by a real two-schema PostgreSQL E2E. */
 export const ULC_T07_FOUR_OWNER_MARKER_SQL = `
@@ -96,6 +101,16 @@ export interface ProtectedAthleteErasurePreflight {
 
 export interface ProtectedAthleteErasureOperation {
   inspect(request: UlcLinzAthleteSubjectDeletionRequest): Promise<ProtectedAthleteErasurePreflight>;
+  redactExactOwnerTextOnly(
+    request: UlcLinzAthleteSubjectDeletionRequest,
+    approval: UlcT07ExactTextDecision & Readonly<{ confirmation: string }>,
+  ): Promise<Readonly<{
+    status: "one-exact-owner-text-cell-redacted-only";
+    redacted: true;
+    freeTextAndAuditReviewed: false;
+    allowsOlderRestorePromotion: false;
+    allowsFullPrivacyReady: false;
+  }>>;
   redactSessionNoteOnly(
     request: UlcLinzAthleteSubjectDeletionRequest,
     approval: Readonly<{
@@ -194,6 +209,7 @@ export async function createProtectedUlcLinzAthleteErasure(
     const residualReview = new PostgresUlcT07ResidualInspector(connection.client);
     const eightOwners = new PostgresUlcT07EightOwnerInspector(connection.client);
     const noteRedactor = new PostgresUlcT07ExactSessionNoteRedactor(connection.client);
+    const textRedactor = new PostgresUlcT07ExactOwnerTextRedactor(connection.client);
     const now = options.now ?? (() => new Date());
     const catalogOwner = new PostgresUlcT07CatalogOwnerFollowUp(
       connection.client,
@@ -388,6 +404,34 @@ export async function createProtectedUlcLinzAthleteErasure(
         return Object.freeze({
           status: "catalog-owner-complete-only" as const,
           result, verified,
+          freeTextAndAuditReviewed: false as const,
+          allowsOlderRestorePromotion: false as const,
+          allowsFullPrivacyReady: false as const,
+        });
+      },
+      async redactExactOwnerTextOnly(
+        request: UlcLinzAthleteSubjectDeletionRequest,
+        approval: Parameters<ProtectedAthleteErasureOperation["redactExactOwnerTextOnly"]>[1],
+      ) {
+        if (!approval || approval.confirmation !== TEXT_CONFIRMATION ||
+            approval.organizationId !== request.organizationId ||
+            approval.subjectId !== request.subjectId) {
+          throw new Error("T07 exact owner text has no approved canonical scope.");
+        }
+        const before = await inspect(request);
+        if (before.status === "source-unverifiable" ||
+            before.status === "owner-marker-conflict" ||
+            before.preflight.completedAt?.toISOString() !== approval.expectedSourceCompletedAt ||
+            before.eightOwnerReview?.linkedIdentityCount !== 1) {
+          throw new Error("T07 exact owner text lacks a current canonical subject source.");
+        }
+        // Existing inspection authenticates an active same-tenant administrator.
+        // The write transaction independently rechecks source freshness.
+        await currentAdmin();
+        const result = await textRedactor.redact(approval);
+        return Object.freeze({
+          status: result.status,
+          redacted: true as const,
           freeTextAndAuditReviewed: false as const,
           allowsOlderRestorePromotion: false as const,
           allowsFullPrivacyReady: false as const,
