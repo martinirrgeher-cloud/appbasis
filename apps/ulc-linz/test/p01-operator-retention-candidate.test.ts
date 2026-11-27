@@ -135,7 +135,7 @@ describe("ULC P01 confirmed target guidance – no legal or runtime approval", (
       // A target-only confirmation from 14 Nov does not establish legal approval.
       const decision = candidate.legalDecision;
       expect(decision).toBeDefined();
-      expect(decision?.decidedOn).toMatch(/^\\d{4}-\\d{2}-\\d{2}$/);
+      expect(decision?.decidedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(typeof decision?.privateDecisionReference).toBe("string");
       expect((decision?.privateDecisionReference?.length ?? 0)).toBeGreaterThan(10);
       expect((decision?.coveredPurposes?.length ?? 0)).toBeGreaterThan(3);
