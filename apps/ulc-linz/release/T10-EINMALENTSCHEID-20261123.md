@@ -5,6 +5,10 @@
 
 **Einzige operative To-do-Liste:** [GitHub #716](https://github.com/martinirrgeher-cloud/appbasis/issues/716). Technischer ausführlicher Stand: [#607](https://github.com/martinirrgeher-cloud/appbasis/issues/607). Für die tatsächliche Code-/Vertragskonstellation **jeweils den neuesten main-Commit** erneut nachweisen, nicht die hier gedruckte alte SHA verwenden.
 
+## Klarstellung vom 27.11.2026: Vorstart vs. Erstbetrieb
+
+**T06/T08 sind als Vorstart-Auth-/Rollenentzug-/Cleanup-Prüfungen abgeschlossen.** Der beabsichtigte reguläre erste Dokumentations-201/GET wird **ausschließlich in T11 nach T10-GO** geprüft; das Ergebnis darf vorher nicht erfunden oder als zusätzlicher T10-Vorab-Blocker verwendet werden. Dagegen bleiben echte Erasure-/Lifecycle-/Privacy-/DPA-Nachweise **vor** produktiver Verarbeitung erforderlich. Die komplette Arbeitsreihenfolge und noch offenen Gates stehen nur in [Issue #716](https://github.com/martinirrgeher-cloud/appbasis/issues/716). Keine neue Rechts-, Lösch- oder Deployfreigabe durch diese Klarstellung.
+
 ## Bereits abgeschlossen – NICHT wiederholen
 
 - Sechs Zielmodule definiert, drei vollständig `ready` (Countdown, Athleten, Trainingspläne). Für Katalog, Trainingsblöcke und Dokumentation sind Autorisierung + Datenbank **verified**, aber Lifecycle und damit Modulstatus noch **blocked**.
