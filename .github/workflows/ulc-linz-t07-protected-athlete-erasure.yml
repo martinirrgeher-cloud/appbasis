@@ -263,6 +263,11 @@ jobs:
           SESSION_ID: ${{ secrets.ULC_T07_TARGET_SESSION_ID }}
           SESSION_DATE: ${{ secrets.ULC_T07_TARGET_SESSION_DATE }}
           SESSION_NOTE_SHA256: ${{ secrets.ULC_T07_TARGET_SESSION_NOTE_SHA256 }}
+          TEXT_TARGET: ${{ secrets.ULC_T07_TEXT_TARGET }}
+          TEXT_KEY_1: ${{ secrets.ULC_T07_TEXT_KEY_1 }}
+          TEXT_KEY_2: ${{ secrets.ULC_T07_TEXT_KEY_2 }}
+          TEXT_KEY_3: ${{ secrets.ULC_T07_TEXT_KEY_3 }}
+          TEXT_SHA256: ${{ secrets.ULC_T07_TEXT_SHA256 }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_WRITE_TOKEN }}
           ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET: ${{ secrets.ULC_LINZ_PRODUCTION_BETTER_AUTH_SECRET }}
           ULC_LINZ_PRODUCTION_ADMIN_USERNAME: ${{ inputs.administrator_username }}
