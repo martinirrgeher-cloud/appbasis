@@ -137,6 +137,31 @@ jobs:
           }
           NODE
 
+      - name: Require real T10 legal and provider evidence before issuing composition gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT="$RUNNER_TEMP/ulc-t10-repository-readiness.json"
+          # No synthetic approvals. Only reads the exact checked-out Git contracts.
+          node ./tooling/ulc-linz-t10-pilot-decision.mjs --require-repository-ready > "$REPORT"
+          REPORT="$REPORT" node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+          const result = JSON.parse(await readFile(process.env.REPORT, "utf8"));
+          if (
+            result?.application !== "ulc-linz" ||
+            result?.source !== "git-working-tree-only" ||
+            result?.readyForOperatorReview !== true ||
+            result?.evidenceStatus !== "repository-prerequisites-verified" ||
+            result?.openChecks?.length !== 0 ||
+            result?.operatorApproved !== false ||
+            result?.deploymentAuthorized !== false ||
+            result?.personalDataActivationAuthorized !== false ||
+            result?.historicalRestorePromotionAuthorized !== false
+          ) {
+            throw new Error("T10 legal/provider readiness or separate approval boundary failed.");
+          }
+          NODE
+
       - name: Create authoritative short-lived composition gate
         shell: bash
         env:
