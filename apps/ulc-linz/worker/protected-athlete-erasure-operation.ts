@@ -30,6 +30,7 @@ import {
   PostgresUlcT07CatalogOwnerFollowUp,
   type UlcT07CatalogFollowUpResult,
 } from "./t07-catalog-owner-follow-up";
+import { PostgresUlcT07ExactSessionNoteRedactor } from "./t07-exact-session-note-redaction";
 import {
   PostgresUlcT07EightOwnerInspector,
   type UlcT07EightOwnerReview,
@@ -46,6 +47,7 @@ import { PostgresUlcTrainingSubjectPrivacyInspector } from
 const CONFIRMATION = "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS";
 const CATALOG_CONFIRMATION = "ERASE-ULC-T07-VERIFIED-CATALOG-OWNER";
 const IDENTITY_CONFIRMATION = "ERASE-ULC-T07-VERIFIED-IDENTITY-OWNER";
+const NOTE_CONFIRMATION = "REDACT-ULC-T07-EXACT-SESSION-NOTE";
 
 /** Exact read-only SQL pinned by a real two-schema PostgreSQL E2E. */
 export const ULC_T07_FOUR_OWNER_MARKER_SQL = `
@@ -94,6 +96,19 @@ export interface ProtectedAthleteErasurePreflight {
 
 export interface ProtectedAthleteErasureOperation {
   inspect(request: UlcLinzAthleteSubjectDeletionRequest): Promise<ProtectedAthleteErasurePreflight>;
+  redactSessionNoteOnly(
+    request: UlcLinzAthleteSubjectDeletionRequest,
+    approval: Readonly<{
+      confirmation: string; expectedSourceCompletedAt: string;
+      sessionId: string; expectedSessionDate: string; expectedNoteSha256: string;
+    }>,
+  ): Promise<Readonly<{
+    status: "one-shared-session-note-redacted-only";
+    redacted: true;
+    freeTextAndAuditReviewed: false;
+    allowsOlderRestorePromotion: false;
+    allowsFullPrivacyReady: false;
+  }>>;
   eraseStructuredOnly(
     request: UlcLinzAthleteSubjectDeletionRequest,
     authorization: Readonly<{ confirmation: string; expectedSourceCompletedAt: string }>,
@@ -178,6 +193,7 @@ export async function createProtectedUlcLinzAthleteErasure(
     const trainingPrivacy = new PostgresUlcTrainingSubjectPrivacyInspector(connection.client);
     const residualReview = new PostgresUlcT07ResidualInspector(connection.client);
     const eightOwners = new PostgresUlcT07EightOwnerInspector(connection.client);
+    const noteRedactor = new PostgresUlcT07ExactSessionNoteRedactor(connection.client);
     const now = options.now ?? (() => new Date());
     const catalogOwner = new PostgresUlcT07CatalogOwnerFollowUp(
       connection.client,
@@ -372,6 +388,35 @@ export async function createProtectedUlcLinzAthleteErasure(
         return Object.freeze({
           status: "catalog-owner-complete-only" as const,
           result, verified,
+          freeTextAndAuditReviewed: false as const,
+          allowsOlderRestorePromotion: false as const,
+          allowsFullPrivacyReady: false as const,
+        });
+      },
+      async redactSessionNoteOnly(request, approval) {
+        if (!approval || approval.confirmation !== NOTE_CONFIRMATION ||
+          typeof approval.expectedSourceCompletedAt !== "string" ||
+          !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(
+            approval.expectedSourceCompletedAt,
+          )) throw new Error("T07 session note has no exact private operator approval.");
+        // Existing protected preflight checks current signed admin session,
+        // same organization, original deletion authority and owner guards.
+        const before = await inspect(request);
+        if (
+          before.status === "source-unverifiable" ||
+          before.status === "owner-marker-conflict" ||
+          before.preflight.completedAt?.toISOString() !== approval.expectedSourceCompletedAt ||
+          before.eightOwnerReview?.linkedIdentityCount !== 1
+        ) throw new Error("T07 session note has no valid canonical source identity.");
+        await currentAdmin();
+        const exact = await noteRedactor.redact({
+          organizationId: before.preflight.organizationId,
+          sessionId: approval.sessionId,
+          expectedSessionDate: approval.expectedSessionDate,
+          expectedNoteSha256: approval.expectedNoteSha256,
+        });
+        return Object.freeze({
+          status: exact.status, redacted: true as const,
           freeTextAndAuditReviewed: false as const,
           allowsOlderRestorePromotion: false as const,
           allowsFullPrivacyReady: false as const,
