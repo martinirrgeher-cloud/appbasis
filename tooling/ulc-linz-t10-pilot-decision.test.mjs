@@ -26,6 +26,23 @@ test("actual ULC T10 checks may become evidenced without authorizing production"
   assert.equal(result.finalStatus, "NO-GO-until-separate-documented-T10-approval");
 });
 
+function t10LegalDecision(legalApproval) {
+  const scope = "private-members-only-six-module-pilot-no-private-minor-media";
+  return {
+    schemaVersion: 1, application: "ulc-linz", environment: "production",
+    documentType: "t10-current-production-legal-decision",
+    currentSchemaTableCount: 69, scope, legalApproval, runtimeActive: false,
+    decision: legalApproval ? {
+      privateRecordReference: "private:ulc-linz/t10-formal-controller-signoff",
+      responsibleRole: "authorised-club-privacy-controller",
+      decidedOn: "2026-11-27",
+      coveredPurposes: ["members", "parents", "training", "security"],
+      includesMinorsAndParents: true,
+      approvedPilotScope: scope,
+    } : null,
+  };
+}
+
 function currentReceipt() {
   return {
     appEnvironment: "ulc-linz-production",
@@ -52,7 +69,7 @@ test("even fully synthetic ready contracts do not confer operator deployment app
         lifecycle: id === "countdown" ? "not-applicable" : "verified",
       },
     }])),
-    retention: { application: "ulc-linz", legalApproval: true, runtimeActive: false },
+    retention: t10LegalDecision(true),
     provider: {
       application: "ulc-linz",
       providerScope: ["cloudflare","neon-postgresql"].map(id => ({
@@ -102,7 +119,7 @@ test("denies mismatched selected modules, foreign app and provider scope drift",
           moduleId: id, status: "blocked", requirements: { lifecycle: "blocked" },
         }]),
     ),
-    retention: { application: "ulc-linz", legalApproval: false, runtimeActive: false },
+    retention: t10LegalDecision(false),
     provider: {
       application: "ulc-linz",
       providerScope: [
@@ -117,7 +134,7 @@ test("denies mismatched selected modules, foreign app and provider scope drift",
   }), /six-module/);
   assert.throws(() => evaluateUlcT10PilotDecision({
     ...valid, retention: {...valid.retention, application: "other"},
-  }), /retention source mismatch/);
+  }), /legal decision source mismatch/);
   assert.throws(() => evaluateUlcT10PilotDecision({
     ...valid, provider: {...valid.provider, providerScope: valid.provider.providerScope.slice(1)},
   }), /provider list changed/);
