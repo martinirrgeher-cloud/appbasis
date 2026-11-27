@@ -1,0 +1,32 @@
+# T07 – Sicherungs-, Export- und Restore-Horizont (Inventar / Sperren)
+
+**Stand 27.11.2026 | Quellen sind dokumentierte Betreiber-Screenshots und technische frühere Nachweise, kein neuer Live-API-Readback.** Keine personenbezogenen Kontokennungen, Schlüssel, Screenshots oder privaten Exporte in diesem öffentlichen Dokument. Zentral [Issue #716](https://github.com/martinirrgeher-cloud/appbasis/issues/716), insbesondere Providerkommentare #7220882117, #7220919708, #7220942153, #7220996997. Stand ist **Inventur/Verfahrensvorschlag**, keine vollständige Löschhorizon-Freigabe.
+
+| Kopie / Ablage | Sichtbar belegte Ist-Konfiguration | Unabhängig zu klärender Endzustand | Freigabegrenze |
+| --- | --- | --- | --- |
+| **Cloudflare R2** `ulc-linz-k2-backups` | EU-Jurisdiktion; aktiver Lifecycle `ULC-Linz-Daily-30d`, **30 Days**, Präfix `appbasis/ulc-linz/pilot/db/neondb/daily/`; keine Bucket-Locks; keine öffentliche Standard-Bucket-URL. AES-GCM-Tagesbackup T09 erfolgreich | Ob tatsächlich alle relevanten Tagesobjekte unter diesem Präfix liegen; Frist-/Löschvollzug nicht allein aus Dashboard-Regel beweisbar | **Konfigurations- und Backup-Test PASS**, kein Beleg für andere Exporte |
+| **Neon production** | Produktionsbranch `production` ohne Ablaufdatum; Frankfurt, 6h History; Default-Branch | Ist laufende Datenquelle, **keine** stillschweigend zu löschende Backupkopie; History-/Providerpolitik, Lösch-/Restorezugriff prüfen | Produktionsbranch nicht befristen/löschen |
+| **Neon Snapshot** | `ulc-p2-production-verified-identical-recovery-20261120`, 1 Snapshot, kein Schedule; Dashboard 27.11. „In 8 days“; frühere genaue Quellenangabe Endzeit **05.12.2026 23:00 UTC** | Nach Ablauf anhand Provideranzeige ohne neue Wiederherstellung prüfen; relative Dashboardzeit nicht in exakten Termin umdeuten | Kein Restore-Promotion |
+| **Neon Erasure-Testbranch** | `ulc-p02-erasure-isolated-rehearsal-20261122`; zuvor TTL **19.12.2026 23:00 UTC**, 27.11. „22 days“ | Frist/Abhängigkeiten am Ablauf lesend prüfen | Kein Writer-/Ingress-Anschluss |
+| **Neon Recovery-Kindbranch** | `ulc-p2-51to69-final-rehearsal-20261120`; zuvor TTL **19.12.2026 23:00 UTC**, 27.11. „22 days“ | Tatsächliche Bereinigung nach Ablauf prüfen; Kind-Abhängigkeit zum Parent beachten | Keine Alt-Restore-Promotion |
+| **Neon Recovery-Parent** | `ulc-p2-production-current-backup-20261120`; am 27.11. Ablauf „–“; hängt vom Kind ab | **OFFEN**: existierender konditionierter Einmalauftrag für 20.12.2026 setzt nach Kindablauf Parent-TTL, keine Duplizierung/vorgezogene Löschung. Ergebnis danach nachkontrollieren | Kein vollständiger endlicher Branch-Horizont bis geprüft |
+| **Lokale Exporte/Downloads** | Noch keine vollständige Betreiberaussage zu sämtlichen Kopien in privaten Geräten/Drive/Lokalordnern/GitHub-Artefakten | Einmalige nichtöffentliche Inventur: nur Speicherort-Kategorie, Verantwortliche, Zweck, Verschlüsselung/Zugriff, Löschfrist, Aufbewahrungsausnahme, Abschlussbeleg; keine Dateiinhalte/Personenidentitäten im öffentlichen Repo | **UNBEKANNT**, nicht als `keine Exporte` deklarieren |
+| **Medienobjekte / andere R2-Präfixe** | Private erkennbare Minderjährigenmedien im geprüften Worker deaktiviert; DB-Medien-Metadatenbestand null in alter Inventur | Andere Providerobjekte nur mit autorisierter Inventur nachweisen; Objekt- und Metadatenlöschung müssen getrennt nachweisbar sein | OFFEN für Altbestände/Providerkopien |
+| **Provider-interne Backups / Subprozessoren / Support** | Öffentliche DPA-/Subprozessorenquellen von Cloudflare, Neon/Databricks; Frankfurt-Region beweist nicht EU-only sämtlicher Dienste | Auf Vertrags-/Dokumentationsbasis Endfristen, Wiederherstellbarkeit, Supportzugriffe und Drittlandbedingungen einordnen; keine erfundenen maximalen Löschfristen | OFFEN soweit öffentlich/individuell nicht belegbar |
+
+## Einheitliche Nachkontrolle (manuell, keine neue Routine oder Automation)
+
+1. Nach Snapshot-/Branchfrist **nur lesend** kontrollieren, ob die konkreten Objekte/Branches tatsächlich nicht mehr vorhanden sind. Einen Ablaufzeitpunkt **nicht** als schon vollzogene Löschung behaupten.
+2. Für den historischen Parent bleibt der bereits terminierte, eng begrenzte **20.12.2026**-Folgeauftrag bestehen. Keine zweite Automation, kein eigener sofortiger TTL-Write.
+3. Verantwortliche Vereinsfunktion erfasst in einer **nichtöffentlichen** Sicherungsliste mögliche Exporte nach Speicherortkategorie (nicht zwingend Originaldateinamen oder personenbezogene Details im GitHub), Zweck, Umfang, Zugang, Löschfrist und Ausnahme.
+4. Vor einem individuellen Löschabschluss unterscheidet die Akte **aktive Live-Daten**, **technisch wiederherstellbare historische Kopien**, **manuelle Exporte** und **Providerinterne Kopien**. 35-Tage-Quellmarker unverändert; Backupdauer kann die Markerautorität überschreiten → **kein** allgemeines Re-Deletion-GO.
+5. Bei Restorebedarf: **STOP** für alten produktiven Restore. Nur gesondert autorisierte writer-isolierte Quarantäne mit nachweislich **neuerer, unabhängiger** autoritativer Löschquelle, reproduziertem aktuellen SQL-Fence/ACL/Trigger-Stand, acht Ownern, Freitext-/Medienbehandlung, Restdatennachkontrolle und finalem Operatorentscheid. Ohne alle Belege keine Promotion.
+6. Aufbewahrungspflichtige Kopie oder nicht nachweisbare physische Providerlöschung: Risiko und dokumentierte Zugriffs-/Restore-Sperre statt fälschlicher `vollständig gelöscht`-Erklärung; an Betroffenenkommunikation und Freigabeentscheidung koppeln.
+
+## Noch benötigte nichtöffentliche Nachweise / Entscheidung
+
+- **Export-Erklärung des verantwortlichen Betreibers**, ob und wo zusätzlich zur hier belegten R2-/Neon-Konfiguration manuelle Datenbank-/Medien-/Testexporte aufbewahrt werden. Kein erneutes Sammeln aller bereits geprüften Konfigurationsscreenshots.
+- Einordnung der **konkret gebundenen** Neon-/Cloudflare-Verträge und etwaiger Sondervereinbarung. Öffentlich nachgewiesene DPA-Einbeziehung allein enthält keine vollständige kontospezifische Backupinventur.
+- Nachkontrolle der **zukünftigen** Branch-/Snapshotabläufe und Providerkopien unter Beibehaltung des alten Restore-STOP. Historische vollständige Acht-Owner-Promotion wird **nicht** als T07-Test nachgestellt, solange es keine unabhängige gültige Löschquelle und gesonderte Autorisierung gibt.
+
+**Status:** EU-R2-Backup und 30-Tage-Regel PASS; Neon-Konfigurationsinventar PASS; **vollständiger Backup-/Export-/Restore-Horizont OFFEN**. Nicht identisch mit dem erfolgreichen T09-Backup-Test.
