@@ -202,7 +202,7 @@ describe("T07 isolated ephemeral operator ingress is token and approval gated", 
     );
   });
 
-  it("does not leak SQL exceptions or private metadata from failed operator execution", async () {
+  it("does not leak SQL exceptions or private metadata from failed operator execution", async () => {
     mock.execute.mockRejectedValueOnce(new Error("Database username, private subject and sensitive SQL"));
     const response = await harness.fetch(req("inspect"), env);
     expect(response.status).toBe(503);
