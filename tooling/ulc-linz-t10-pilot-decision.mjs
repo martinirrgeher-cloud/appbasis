@@ -9,6 +9,26 @@ const MODULES = Object.freeze([
   "training-plans", "training-documentation",
 ]);
 
+// Production provider evidence is not an "open" → "verified" checkbox.
+// M5 has always required date, source, app/account binding and next review.
+export function hasCurrentUlcProductionEvidence(receipts, now = new Date()) {
+  if (!Array.isArray(receipts) || receipts.length === 0 ||
+      !(now instanceof Date) || !Number.isFinite(now.getTime())) return false;
+  return receipts.every(receipt => {
+    if (!receipt || typeof receipt !== "object") return false;
+    if (receipt.appEnvironment !== "ulc-linz-production" ||
+        typeof receipt.reference !== "string" ||
+        !receipt.reference.startsWith("https://") ||
+        typeof receipt.accountBindingReference !== "string" ||
+        !receipt.accountBindingReference.startsWith("https://")) return false;
+    const observed = Date.parse(receipt.observedAt);
+    const validUntil = Date.parse(receipt.validUntilOrReviewAt);
+    return Number.isFinite(observed) && Number.isFinite(validUntil) &&
+      observed <= now.getTime() && validUntil > now.getTime() &&
+      validUntil > observed;
+  });
+}
+
 function checked(value, message) {
   if (!value) throw new Error(message);
 }
@@ -68,17 +88,21 @@ export function evaluateUlcT10PilotDecision(input) {
   checked(Array.isArray(ids) && JSON.stringify(ids) === JSON.stringify(requiredProviderIds),
     "T10 provider list changed; explicit audit required.");
   for (const item of provider.providerScope) {
-    add("provider:" + item.id, item.appSpecificProductionEvidence === "verified",
-      "app-specific provider/account evidence; not a legal confirmation");
+    add("provider:" + item.id,
+      item.appSpecificProductionEvidence === "verified" &&
+      hasCurrentUlcProductionEvidence(item.evidence),
+      "fresh account-bound app production evidence required; not a legal confirmation");
   }
   checked(Array.isArray(provider.dataFlows) && provider.dataFlows.length > 0,
     "T10 provider data-flow inventory missing.");
   add("provider:data-flows",
-    provider.dataFlows.every(flow => flow.evidenceStatus === "verified"),
-    "all declared app-specific data flows need evidence");
+    provider.dataFlows.every(flow => flow.evidenceStatus === "verified" &&
+      hasCurrentUlcProductionEvidence(flow.evidence)),
+    "all declared app-specific data flows need fresh account-bound evidence");
   for (const key of ["dataRegion","dpa","encryption","subprocessors"]) {
-    add("provider:" + key, provider.m5?.[key] === "verified",
-      "app-specific " + key + " proof required");
+    add("provider:" + key, provider.m5?.[key] === "verified" &&
+      hasCurrentUlcProductionEvidence(provider.productionEvidence?.[key]),
+      "app-specific fresh account-bound " + key + " proof required");
   }
 
   const open = Object.freeze(checks.filter(x => x.status === "open").map(x => x.id));
