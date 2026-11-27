@@ -80,6 +80,47 @@ Personendaten-Löschfreigabe**.
   Die Sitzung wird beendet, sensible Daten werden nicht im Workflowbericht
   ausgegeben. Es wird **kein** neuer öffentlicher App-Endpunkt freigeschaltet.
 
+## Zusätzliche punktgenaue Redigierung einer gemeinsamen Trainingsnotiz (PR #737)
+
+Ein von einer betroffenen Person legitimierter T07-Löschfall kann in der
+**gemeinsamen** Trainingssession eine personenbezogene `note` enthalten.
+Der getrennte Modus `redact-session-note-only` darf ausschließlich diese
+eine manuell geprüfte Note entfernen, **nicht** das ganze Training oder fremde
+Athletenbezüge. Seine Freigabe ersetzt weder eine 90-Tage-Sammellöschung noch
+die Prüfung historischer Revisionen, Actor-/Auditdaten und anderer Freitexte.
+
+**Vor jeder Ausführung in privater Vereinsakte:** tatsächlichen Personenbezug,
+exakte Session und Organisation, Zweck/Retention-Ausnahme und die individuelle
+Entscheidung dokumentieren. Die vom Verantwortlichen geprüfte vorhandene Notiz
+muss als UTF-8-Text über SHA-256 exakt fingerprinted sein. Ausschließlich über
+geschützte Environment-Secrets `m4-dr` konfigurieren:
+
+- `ULC_T07_TARGET_SUBJECT_ID`: kanonischer Athleten-Subject-Key;
+- `ULC_T07_SOURCE_COMPLETED_AT`: originaler noch gültiger
+  35-Tage-Quellentscheid;
+- `ULC_T07_TARGET_SESSION_ID`: exakte freigegebene Trainingssession;
+- `ULC_T07_TARGET_SESSION_DATE`: Datum `YYYY-MM-DD`;
+- `ULC_T07_TARGET_SESSION_NOTE_SHA256`: SHA-256 der exakt
+  freigegebenen Notiz, 64 kleine Hexzeichen.
+
+Keines dieser Felder, auch nicht der Digest, gehört in öffentliche Actions-
+Inputs, Logs oder Issues. Für genau diesen Fall im **bereits bestehenden**
+geschützten Workflow `redact-session-note-only` auswählen und als
+nichtpersonenbezogenen Bestätigungstext
+`REDACT-ULC-T07-EXACT-SESSION-NOTE` verwenden. Gültige
+Admin-Authentifizierung, exakter HEAD und `ULC_T07_ERASURE_ENABLED=1`
+sind zusätzliche Sperren und werden durch diesen PR **nicht** aktiviert.
+
+Die SQL-Transaktion sperrt die Session-Zeile, prüft Organisation, ID,
+Datum und Hash, setzt **nur** `note=NULL` und verifiziert es im selben
+Commitpfad. Jede Abweichung führt zum Abbruch. Der Status
+`one-shared-session-note-redacted-only` ist **kein**
+allgemeiner Lösch-/Freitext-/Audit-/Restore-/Privacy-PASS. Spätere
+Wiederanlage durch neue reguläre Sessionschreibvorgänge ist damit allein
+nicht garantiert verhindert; Nachkontrolle und gegebenenfalls zusätzliche
+Schreibsperren bleiben fallbezogen notwendig. Bei aktuell fehlendem
+Athleten-Quellentscheid ist der Modus nicht ausführbar.
+
 ## Vorgehen für die später freigegebene einzelne Löschung
 
 1. In der **nichtöffentlichen Vereinsakte** rechtliche Löschentscheidung,
