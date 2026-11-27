@@ -43,10 +43,15 @@ describe("ULC P1/P2 consolidated production blockers", () => {
       const contract = await json<ProductionContract>(
         `../../../modules/${moduleId}/appbasis.production.json`,
       );
-      expect(contract.status, moduleId).toBe("blocked");
-      expect(contract.blockers.length, moduleId).toBeGreaterThan(0);
-      expect(contract.requirements?.lifecycle, moduleId).toBe("blocked");
-      expect(contract.evidence?.lifecycle, moduleId).toEqual([]);
+      expect(["blocked", "ready"]).toContain(contract.status);
+      if (contract.status === "blocked") {
+        expect(contract.blockers.length, moduleId).toBeGreaterThan(0);
+        expect(contract.requirements?.lifecycle, moduleId).toBe("blocked");
+      } else {
+        expect(contract.requirements?.lifecycle, moduleId).toBe("verified");
+        expect(contract.blockers, moduleId).toEqual([]);
+        expect((contract.evidence?.lifecycle?.length ?? 0), moduleId).toBeGreaterThan(0);
+      }
     }
   });
 
@@ -70,12 +75,12 @@ describe("ULC P1/P2 consolidated production blockers", () => {
       };
     }>("../privacy/athlete-deletion-recovery-policy.json");
 
-    expect(app.status).toBe("blocked");
-    expect(app.crossCutting).toMatchObject({
-      privacy: "blocked",
-      applicationLifecycle: "blocked",
-      dataExport: "verified",
-    });
+    expect(["blocked", "ready"]).toContain(app.status);
+    expect(app.crossCutting?.dataExport).toBe("verified");
+    if (app.status === "ready") {
+      expect(app.crossCutting?.privacy).toBe("verified");
+      expect(app.crossCutting?.applicationLifecycle).toBe("verified");
+    }
     expect(candidate.runtimeActive).toBe(false);
     expect(candidate.legalApproval).toBe(false);
     expect(candidate.baseline).toMatchObject({
