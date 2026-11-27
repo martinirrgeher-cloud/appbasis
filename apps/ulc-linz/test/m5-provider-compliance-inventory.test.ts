@@ -2,7 +2,41 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-type ProviderEvidenceStatus = "open";
+type ProviderEvidenceStatus = "open" | "verified";
+type EvidenceReceipt = {
+  observedAt: string;
+  validUntilOrReviewAt: string;
+  appEnvironment: "ulc-linz-production";
+  reference: string;
+  accountBindingReference: string;
+};
+function currentUtc(value: unknown): value is string {
+  if (typeof value !== "string" || value.length !== 24 || !value.endsWith("Z")) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString() === value;
+}
+function sourceUrl(value: unknown) {
+  if (typeof value !== "string" || value.length > 2048) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.includes(".") &&
+      url.username === "" && url.password === "" && url.pathname.length > 1;
+  } catch {
+    return false;
+  }
+}
+function hasCurrentEvidence(records: readonly EvidenceReceipt[] | undefined) {
+  if (!Array.isArray(records) || records.length === 0) return false;
+  const now = Date.now();
+  return records.every(record => {
+    if (!record || record.appEnvironment !== "ulc-linz-production" ||
+        !sourceUrl(record.reference) || !sourceUrl(record.accountBindingReference) ||
+        !currentUtc(record.observedAt) || !currentUtc(record.validUntilOrReviewAt)) return false;
+    const observed = new Date(record.observedAt).getTime();
+    const end = new Date(record.validUntilOrReviewAt).getTime();
+    return observed <= now && end > now && end > observed;
+  });
+}
 
 type ProviderInventory = {
   schemaVersion: number;
@@ -12,13 +46,16 @@ type ProviderInventory = {
     responsibilities: string[];
     productionDatabaseRegionTarget?: string;
     appSpecificProductionEvidence: ProviderEvidenceStatus;
+    evidence?: EvidenceReceipt[];
   }>;
   dataFlows: Array<{
     from: string;
     to: string;
     purpose: string;
     evidenceStatus: ProviderEvidenceStatus;
+    evidence?: EvidenceReceipt[];
   }>;
+  productionEvidence?: Partial<Record<"dataRegion" | "dpa" | "encryption" | "subprocessors", EvidenceReceipt[]>>;
   freshnessPolicy: {
     observedAtRequired: boolean;
     documentOrConfigurationReferenceRequired: boolean;
@@ -27,10 +64,10 @@ type ProviderInventory = {
     staleEvidence: "fail-closed";
   };
   m5: {
-    dataRegion: "open";
-    dpa: "open";
-    encryption: "open";
-    subprocessors: "open";
+    dataRegion: ProviderEvidenceStatus;
+    dpa: ProviderEvidenceStatus;
+    encryption: ProviderEvidenceStatus;
+    subprocessors: ProviderEvidenceStatus;
     providerScope: "cloudflare-and-neon-postgresql-only";
     unknownProvider: "fail-closed";
     missingEvidence: "fail-closed";
@@ -94,20 +131,28 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
     expect(inventory.m5.unknownProvider).toBe("fail-closed");
   });
 
-  it("keeps provider baseline information separate from production readiness evidence", async () => {
+  it("permits production verified only with fresh, app-bound private evidence references", async () => {
     const inventory = await readJson<ProviderInventory>(inventoryUrl);
 
-    expect(
-      inventory.providerScope.every(
-        (provider) => provider.appSpecificProductionEvidence === "open",
-      ),
-    ).toBe(true);
-    expect(inventory.dataFlows.every((flow) => flow.evidenceStatus === "open")).toBe(true);
+    for (const provider of inventory.providerScope) {
+      expect(["open", "verified"]).toContain(provider.appSpecificProductionEvidence);
+      if (provider.appSpecificProductionEvidence === "verified") {
+        expect(hasCurrentEvidence(provider.evidence), provider.id).toBe(true);
+      }
+    }
+    for (const flow of inventory.dataFlows) {
+      expect(["open", "verified"]).toContain(flow.evidenceStatus);
+      if (flow.evidenceStatus === "verified") {
+        expect(hasCurrentEvidence(flow.evidence), flow.purpose).toBe(true);
+      }
+    }
+    for (const key of ["dataRegion", "dpa", "encryption", "subprocessors"] as const) {
+      expect(["open", "verified"]).toContain(inventory.m5[key]);
+      if (inventory.m5[key] === "verified") {
+        expect(hasCurrentEvidence(inventory.productionEvidence?.[key]), key).toBe(true);
+      }
+    }
     expect(inventory.m5).toMatchObject({
-      dataRegion: "open",
-      dpa: "open",
-      encryption: "open",
-      subprocessors: "open",
       missingEvidence: "fail-closed",
       foreignEnvironmentEvidence: "fail-closed",
       baselineIsProductionEvidence: false,
@@ -127,50 +172,21 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
     expect(targetPolicySource).toContain(
       'productionDatabaseRegionTarget: "EU / Frankfurt"',
     );
-    expect(inventory.m5.dataRegion).toBe("open");
+    expect(["open", "verified"]).toContain(inventory.m5.dataRegion);
   });
 
   it("defines the complete current M5-G operational data-flow inventory and freshness fields", async () => {
     const inventory = await readJson<ProviderInventory>(inventoryUrl);
 
-    expect(inventory.dataFlows).toEqual([
-      {
-        from: "ulc-linz-user",
-        to: "cloudflare",
-        purpose: "application-request-processing",
-        evidenceStatus: "open",
-      },
-      {
-        from: "cloudflare",
-        to: "neon-postgresql",
-        purpose: "application-persistence",
-        evidenceStatus: "open",
-      },
-      {
-        from: "cloudflare",
-        to: "neon-postgresql",
-        purpose: "security-log-persistence",
-        evidenceStatus: "open",
-      },
-      {
-        from: "appbasis-control-plane",
-        to: "cloudflare",
-        purpose: "provider-evidence-read",
-        evidenceStatus: "open",
-      },
-      {
-        from: "appbasis-control-plane",
-        to: "neon-postgresql",
-        purpose: "provider-evidence-read",
-        evidenceStatus: "open",
-      },
-      {
-        from: "neon-postgresql",
-        to: "neon-postgresql",
-        purpose: "managed-backup-recovery",
-        evidenceStatus: "open",
-      },
-    ]);
+    expect(inventory.dataFlows.map(({ from, to, purpose }) => ({ from, to, purpose })))
+      .toEqual([
+        { from: "ulc-linz-user", to: "cloudflare", purpose: "application-request-processing" },
+        { from: "cloudflare", to: "neon-postgresql", purpose: "application-persistence" },
+        { from: "cloudflare", to: "neon-postgresql", purpose: "security-log-persistence" },
+        { from: "appbasis-control-plane", to: "cloudflare", purpose: "provider-evidence-read" },
+        { from: "appbasis-control-plane", to: "neon-postgresql", purpose: "provider-evidence-read" },
+        { from: "neon-postgresql", to: "neon-postgresql", purpose: "managed-backup-recovery" },
+      ]);
     expect(inventory.freshnessPolicy).toEqual({
       observedAtRequired: true,
       documentOrConfigurationReferenceRequired: true,

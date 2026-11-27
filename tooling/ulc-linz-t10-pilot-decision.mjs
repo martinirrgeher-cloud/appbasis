@@ -9,6 +9,46 @@ const MODULES = Object.freeze([
   "training-plans", "training-documentation",
 ]);
 
+function validCanonicalUtc(value) {
+  if (typeof value !== "string" || value.length !== 24 || !value.endsWith("Z")) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString() === value;
+}
+function validHttpsDocumentReference(value) {
+  if (typeof value !== "string" || value.length > 2048) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.includes(".") &&
+      url.username === "" && url.password === "" && url.pathname.length > 1;
+  } catch {
+    return false;
+  }
+}
+function validDateOnly(value) {
+  if (typeof value !== "string" || value.length !== 10) return false;
+  const date = new Date(value + "T00:00:00.000Z");
+  return Number.isFinite(date.getTime()) &&
+    date.toISOString().slice(0, 10) === value;
+}
+// Production provider evidence is not an "open" → "verified" checkbox.
+// M5 has always required date, source, app/account binding and next review.
+export function hasCurrentUlcProductionEvidence(receipts, now = new Date()) {
+  if (!Array.isArray(receipts) || receipts.length === 0 ||
+      !(now instanceof Date) || !Number.isFinite(now.getTime())) return false;
+  return receipts.every(receipt => {
+    if (!receipt || typeof receipt !== "object") return false;
+    if (receipt.appEnvironment !== "ulc-linz-production" ||
+        !validHttpsDocumentReference(receipt.reference) ||
+        !validHttpsDocumentReference(receipt.accountBindingReference) ||
+        !validCanonicalUtc(receipt.observedAt) ||
+        !validCanonicalUtc(receipt.validUntilOrReviewAt)) return false;
+    const observed = new Date(receipt.observedAt).getTime();
+    const validUntil = new Date(receipt.validUntilOrReviewAt).getTime();
+    return observed <= now.getTime() && validUntil > now.getTime() &&
+      validUntil > observed;
+  });
+}
+
 function checked(value, message) {
   if (!value) throw new Error(message);
 }
@@ -24,8 +64,13 @@ export function evaluateUlcT10PilotDecision(input) {
     "T10 selected six-module app contract changed; review required.");
   checked(modules && typeof modules === "object" && !Array.isArray(modules),
     "T10 module contracts unavailable.");
-  checked(retention?.application === "ulc-linz",
-    "T10 retention source mismatch.");
+  checked(retention?.application === "ulc-linz" &&
+    retention?.schemaVersion === 1 &&
+    retention?.documentType === "t10-current-production-legal-decision" &&
+    retention?.currentSchemaTableCount === 69 &&
+    retention?.environment === "production" &&
+    retention?.scope === "private-members-only-six-module-pilot-no-private-minor-media",
+    "T10 current 69-table legal decision source mismatch.");
   checked(provider?.application === "ulc-linz",
     "T10 provider source mismatch.");
 
@@ -55,8 +100,18 @@ export function evaluateUlcT10PilotDecision(input) {
     "app crossCutting.privacy");
   add("app:composition", app.status === "ready",
     "app production composition contract status");
-  add("retention:legal", retention.legalApproval === true,
-    "operator-approved retention legality is separately required");
+  const legal = retention.decision;
+  const validDecision = legal && typeof legal === "object" &&
+    typeof legal.privateRecordReference === "string" &&
+    legal.privateRecordReference.length > 12 &&
+    typeof legal.responsibleRole === "string" &&
+    legal.responsibleRole.length > 4 &&
+    validDateOnly(legal.decidedOn) &&
+    Array.isArray(legal.coveredPurposes) && legal.coveredPurposes.length >= 4 &&
+    legal.includesMinorsAndParents === true &&
+    legal.approvedPilotScope === retention.scope;
+  add("retention:legal", retention.legalApproval === true && !!validDecision,
+    "current 69-table operator legal decision with private scope/date/role evidence required");
 
   // runtimeActive must be FALSE before deployment. Do not use its absence
   // as a circular pre-launch blocker or falsely label it as operating.
@@ -68,17 +123,21 @@ export function evaluateUlcT10PilotDecision(input) {
   checked(Array.isArray(ids) && JSON.stringify(ids) === JSON.stringify(requiredProviderIds),
     "T10 provider list changed; explicit audit required.");
   for (const item of provider.providerScope) {
-    add("provider:" + item.id, item.appSpecificProductionEvidence === "verified",
-      "app-specific provider/account evidence; not a legal confirmation");
+    add("provider:" + item.id,
+      item.appSpecificProductionEvidence === "verified" &&
+      hasCurrentUlcProductionEvidence(item.evidence),
+      "fresh account-bound app production evidence required; not a legal confirmation");
   }
   checked(Array.isArray(provider.dataFlows) && provider.dataFlows.length > 0,
     "T10 provider data-flow inventory missing.");
   add("provider:data-flows",
-    provider.dataFlows.every(flow => flow.evidenceStatus === "verified"),
-    "all declared app-specific data flows need evidence");
+    provider.dataFlows.every(flow => flow.evidenceStatus === "verified" &&
+      hasCurrentUlcProductionEvidence(flow.evidence)),
+    "all declared app-specific data flows need fresh account-bound evidence");
   for (const key of ["dataRegion","dpa","encryption","subprocessors"]) {
-    add("provider:" + key, provider.m5?.[key] === "verified",
-      "app-specific " + key + " proof required");
+    add("provider:" + key, provider.m5?.[key] === "verified" &&
+      hasCurrentUlcProductionEvidence(provider.productionEvidence?.[key]),
+      "app-specific fresh account-bound " + key + " proof required");
   }
 
   const open = Object.freeze(checks.filter(x => x.status === "open").map(x => x.id));
@@ -108,7 +167,7 @@ export async function readCurrentUlcT10PilotDecision(root = new URL("../", impor
   const modules = Object.fromEntries(await Promise.all(
     MODULES.map(async id => [id, await json("modules/" + id + "/appbasis.production.json")]),
   ));
-  const retention = await json("apps/ulc-linz/privacy/p01-operator-retention-candidate.json");
+  const retention = await json("apps/ulc-linz/privacy/t10-current-production-legal-decision.json");
   const provider = await json("apps/ulc-linz/privacy/m5-provider-compliance-inventory.json");
   return evaluateUlcT10PilotDecision({app, modules, retention, provider});
 }

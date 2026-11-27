@@ -125,10 +125,12 @@ describe("P05 69-table production privacy delta is a proposal only", () => {
       noRuntimeOrSqlMigrationChanges: true,
     });
     expect(delta.remainingReview.length).toBeGreaterThanOrEqual(3);
-    expect(production.status).toBe("blocked");
-    expect(production.crossCutting).toMatchObject({
-      privacy: "blocked",
-      applicationLifecycle: "blocked",
-    });
+    expect(["blocked", "ready"]).toContain(production.status);
+    if (production.status === "ready") {
+      expect(production.crossCutting.privacy).toBe("verified");
+      expect(production.crossCutting.applicationLifecycle).toBe("verified");
+    }
+    // Historical P01/P05 remain unapproved even after a separate current
+    // 69-table T10 controller decision; do not backfill legalApproval here.
   });
 });

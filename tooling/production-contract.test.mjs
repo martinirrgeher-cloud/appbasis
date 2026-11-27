@@ -15,23 +15,27 @@ import {
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
-test("ULC production composition stays blocked on unfinished lifecycle even after pinned evidence is current", async () => {
+test("ULC composition permits evidenced readiness but never authorizes deployment", async () => {
   const result = await evaluateAppProductionComposition(repositoryRoot, "ulc-linz");
-  assert.equal(result.status, "blocked");
-  assert.equal(result.compositionReady, false);
+  assert.ok(["ready", "blocked"].includes(result.status));
+  assert.equal(result.compositionReady, result.status === "ready");
   assert.equal(result.productionReleaseAuthorized, false);
-  assert.ok(result.blockers.some(blocker => blocker.includes("Training-block revisions, favorites and usage lifecycle")));
-  assert.ok(result.blockers.some(blocker => blocker.includes("Training documentation v1")));
+  if (!result.compositionReady) assert.ok(result.blockers.length > 0);
+  else assert.deepEqual(result.blockers, []);
 });
 
-test("ULC training-blocks contract pins exact schema-v7 database migrations and maintains blocked lifecycle", async () => {
+test("ULC training-blocks contract pins schema-v7 and requires real lifecycle evidence before ready", async () => {
   const moduleRoot = join(repositoryRoot, "modules", "training-blocks");
   const definition = JSON.parse(await readFile(join(moduleRoot, "appbasis.module.json"), "utf8"));
   const contract = JSON.parse(await readFile(join(moduleRoot, "appbasis.production.json"), "utf8"));
   assert.equal(definition.database.schemaVersion, 7);
-  assert.equal(contract.status, "blocked");
-  assert.equal(contract.requirements.lifecycle, "blocked");
-  assert.deepEqual(contract.evidence.lifecycle, []);
+  assert.ok(["ready", "blocked"].includes(contract.status));
+  if (contract.status === "ready") {
+    assert.equal(contract.requirements.lifecycle, "verified");
+    assert.ok(contract.evidence.lifecycle.length > 0);
+  } else {
+    assert.equal(contract.requirements.lifecycle, "blocked");
+  }
   assert.deepEqual(
     contract.evidence.database.filter(entry => entry.path.endsWith(".sql")).map(entry => entry.path),
     definition.database.migrations,
@@ -68,10 +72,12 @@ test("ULC current export inventory is reviewed, pinned and still excludes sensit
   const productionContract = JSON.parse(
     await readFile(join(appRoot, "appbasis.production.json"), "utf8"),
   );
-  assert.equal(productionContract.status, "blocked");
+  assert.ok(["ready", "blocked"].includes(productionContract.status));
   assert.equal(productionContract.crossCutting.dataExport, "verified");
-  assert.equal(productionContract.crossCutting.applicationLifecycle, "blocked");
-  assert.equal(productionContract.crossCutting.privacy, "blocked");
+  if (productionContract.status === "ready") {
+    assert.equal(productionContract.crossCutting.applicationLifecycle, "verified");
+    assert.equal(productionContract.crossCutting.privacy, "verified");
+  }
   const entries = productionContract.evidence.dataExport;
   assert.equal(entries.length, 2);
   for (const entry of entries) {

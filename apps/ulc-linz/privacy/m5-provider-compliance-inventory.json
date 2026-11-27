@@ -10,7 +10,17 @@
         "tls-termination",
         "worker-execution"
       ],
-      "appSpecificProductionEvidence": "open"
+      "appSpecificProductionEvidence": "verified",
+      "evidence": [
+        {
+          "observedAt": "2026-11-27T14:23:32.000Z",
+          "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+          "appEnvironment": "ulc-linz-production",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216",
+          "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+        }
+      ],
+      "evidenceScope": "Production Worker/account association from operator-authenticated screenshots only. Does not approve DPA validity, actual live traffic, data transfers or subcontractors."
     },
     {
       "id": "neon-postgresql",
@@ -18,7 +28,17 @@
         "primary-postgresql"
       ],
       "productionDatabaseRegionTarget": "EU / Frankfurt",
-      "appSpecificProductionEvidence": "open"
+      "appSpecificProductionEvidence": "verified",
+      "evidence": [
+        {
+          "observedAt": "2026-11-27T14:36:26.000Z",
+          "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+          "appEnvironment": "ulc-linz-production",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220919708",
+          "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+        }
+      ],
+      "evidenceScope": "Named production project, organization admin association and Frankfurt project region corroborated by read-only connected Neon project. Not evidence of individual DPA acceptance or Cloudflare runtime binding."
     }
   ],
   "dataFlows": [
