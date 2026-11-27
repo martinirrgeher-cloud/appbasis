@@ -41,6 +41,11 @@ const harness = vi.hoisted(() => ({
       olderRestorePromotionAllowed: false, privacyReady: false,
     },
   })),
+  note: vi.fn(async () => ({
+    status: "one-shared-session-note-redacted-only", redacted: true,
+    freeTextAndAuditReviewed: false, allowsFullPrivacyReady: false,
+    allowsOlderRestorePromotion: false,
+  })),
   identityOwner: vi.fn(async () => ({
     status: "identity-block-favorites-owner-complete-only",
     identityDeleted: true, blockFavoriteMarkerVerified: true,
@@ -83,6 +88,7 @@ vi.mock("../worker/protected-athlete-erasure-operation", () => ({
     eraseStructuredOnly: harness.erase,
     eraseCatalogOwnerOnly: harness.catalog,
     eraseIdentityOwnerOnly: harness.identityOwner,
+    redactSessionNoteOnly: harness.note,
     close: harness.closeOwner,
   })),
 }));
@@ -229,6 +235,33 @@ describe("T07 transient-credential four-owner operation is separately guarded", 
     expect(harness.catalog).not.toHaveBeenCalled();
     expect(harness.logout).toHaveBeenCalledWith("signed-session");
     expect(harness.closeDb).toHaveBeenCalledOnce();
+  });
+
+  it("requires a distinct exact-note approval and never exports session fields", async () => {
+    const auth = {
+      confirmation: "REDACT-ULC-T07-EXACT-SESSION-NOTE",
+      expectedSourceCompletedAt: "2026-11-23T12:00:00.000Z",
+      sessionId: "session-1", expectedSessionDate: "2026-11-15",
+      expectedNoteSha256: "a".repeat(64),
+    };
+    await expect(runProtectedUlcLinzAthleteErasureWithCredentials(
+      options, request, "redact-session-note-only",
+      { ...auth, confirmation: "ERASE-ULC-T07-FOUR-STRUCTURED-OWNERS" },
+    )).rejects.toThrow(/explicit operator approval/);
+    expect(harness.login).not.toHaveBeenCalled();
+    const result = await runProtectedUlcLinzAthleteErasureWithCredentials(
+      options, request, "redact-session-note-only", auth,
+    );
+    expect(result).toEqual({
+      status: "one-shared-session-note-redacted-only",
+      sessionNoteProofVerified: true, fullErasureAuthorized: false,
+      olderRestorePromotionAuthorized: false,
+    });
+    expect(JSON.stringify(result)).not.toContain("session-1");
+    expect(JSON.stringify(result)).not.toContain(auth.expectedNoteSha256);
+    expect(harness.note).toHaveBeenCalledWith(request, auth);
+    expect(harness.logout).toHaveBeenCalledWith("signed-session");
+    expect(harness.closeOwner).toHaveBeenCalledOnce();
   });
 
   it("still ends temporary session and both connections after a partial owner failure", async () => {
