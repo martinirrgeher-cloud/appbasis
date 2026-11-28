@@ -90,7 +90,9 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
       const prior = await tx.unsafe(
         "SELECT operation_id, expires_at FROM ulc_linz_operations.club_admin_recovery_audit " +
           "WHERE organization_id=$1 AND target_identity_id=$2 " +
-          // Target user, security state and membership are already row-locked.\n          // The audit table deliberately grants SELECT+INSERT only, not UPDATE.\n          "ORDER BY created_at DESC, operation_id DESC LIMIT 1",
+          // Existing FOR UPDATE OF u,s,m,a serializes concurrent recovery on this identity.
+          // Keep the audit table append-only: the app role has SELECT+INSERT, not UPDATE.
+          "ORDER BY created_at DESC, operation_id DESC LIMIT 1",
         ["ulc-linz", target.identity_id],
       );
       if (prior.length > 0 && new Date(prior[0].expires_at).getTime() > Date.now()) {
