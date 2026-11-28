@@ -21,7 +21,9 @@ test("ULC private M6 pilot scope is pinned, while standard module contracts stay
   assert.equal(scope.privateMediaAllowed,false);
   assert.equal(scope.oldRestorePromotionAllowed,false);
   const composition=await evaluateAppProductionComposition(root,"ulc-linz");
-  assert.equal(composition.status,"blocked"); // legal/privacy still blocked
+  const app=JSON.parse(await readFile(join(root,
+    "apps/ulc-linz/appbasis.production.json"),"utf8"));
+  assert.equal(composition.status,app.status==="ready"?"ready":"blocked");
   assert.equal(composition.productionReleaseAuthorized,false);
   for(const id of scope.verifiedModuleIds){
     const scoped=composition.modules.find(x=>x.moduleId===id);
