@@ -63,6 +63,7 @@ describe("ULC P04-A closed pilot – no production actions", () => {
       "training-plans", "training-documentation",
     ];
     let ready = 0;
+    const globallyBlocked: string[] = [];
     for (const moduleId of modules) {
       const contract = await json<Contract>(
         "modules/" + moduleId + "/appbasis.production.json",
@@ -77,10 +78,52 @@ describe("ULC P04-A closed pilot – no production actions", () => {
         ready++;
         expect(Object.values(requirements).every(value =>
           value === "verified" || value === "not-applicable"), moduleId).toBe(true);
+      } else {
+        globallyBlocked.push(moduleId);
+        // Global standard modules remain unsafe for unprotected other apps.
+        expect(requirements.authorization, moduleId).toBe("verified");
+        expect(requirements.database, moduleId).toBe("verified");
+        expect(requirements.lifecycle, moduleId).toBe("blocked");
       }
     }
     const app = await json<Contract>("apps/ulc-linz/appbasis.production.json");
-    if (app.status === "ready") expect(ready).toBe(modules.length);
+    if (app.status === "ready") {
+      const restricted = [
+        "exercise-catalog", "training-blocks", "training-documentation",
+      ];
+      expect(ready).toBe(modules.length - restricted.length);
+      expect(globallyBlocked).toEqual(restricted);
+      const scoped = await json<{
+        appId: string;
+        scope: string;
+        scopeLimitations: {
+          privateMedia: string;
+          unverifiedHistoricalRestore: string;
+          ambiguousFreeText: string;
+          actorAndAudit: string;
+        };
+        productionEntrypoint: { path: string; gitBlobSha: string };
+        moduleLifecycle: readonly {
+          moduleId: string;
+          evidence: readonly { path: string; gitBlobSha: string }[];
+        }[];
+      }>("apps/ulc-linz/production-scoped-module-lifecycle.json");
+      expect(scoped.appId).toBe("ulc-linz");
+      expect(scoped.scope).toBe("private-members-only-six-module-pilot-no-private-minor-media");
+      expect(scoped.scopeLimitations).toEqual({
+        privateMedia: "disabled",
+        unverifiedHistoricalRestore: "promotion-denied",
+        ambiguousFreeText: "manual-stop",
+        actorAndAudit: "manual-stop",
+      });
+      expect(scoped.productionEntrypoint.path)
+        .toBe("apps/ulc-linz/worker/production-protected.ts");
+      expect(hasBlobEvidence([scoped.productionEntrypoint])).toBe(true);
+      expect(scoped.moduleLifecycle.map(entry => entry.moduleId)).toEqual(restricted);
+      for (const entry of scoped.moduleLifecycle) {
+        expect(hasBlobEvidence(entry.evidence), entry.moduleId).toBe(true);
+      }
+    }
   });
 
   it("keeps app-provider evidence open and all unknown providers fail-closed", async () => {
