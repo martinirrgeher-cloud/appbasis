@@ -46,37 +46,135 @@
       "from": "ulc-linz-user",
       "to": "cloudflare",
       "purpose": "application-request-processing",
-      "evidenceStatus": "open"
+      "evidenceStatus": "open",
+      "predeployment": {
+        "evidenceStatus": "verified",
+        "operationalDisposition": "t11-first-live",
+        "scope": "Protected Worker architecture is source/SHA verified; actual authorised user HTTP ingress must be observed only in T11, not presumed now.",
+        "evidence": [
+          {
+            "observedAt": "2026-11-27T14:23:32.000Z",
+            "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+            "appEnvironment": "ulc-linz-production",
+            "reference": "https://github.com/martinirrgeher-cloud/appbasis/pull/740",
+            "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+          }
+        ]
+      }
     },
     {
       "from": "cloudflare",
       "to": "neon-postgresql",
       "purpose": "application-persistence",
-      "evidenceStatus": "open"
+      "evidenceStatus": "open",
+      "predeployment": {
+        "evidenceStatus": "verified",
+        "operationalDisposition": "t11-first-live",
+        "scope": "Protected PostgreSQL persistence and Cloudflare/Neon account bindings source-verified; first authorised production record remains T11.",
+        "evidence": [
+          {
+            "observedAt": "2026-11-27T14:23:32.000Z",
+            "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+            "appEnvironment": "ulc-linz-production",
+            "reference": "https://github.com/martinirrgeher-cloud/appbasis/pull/740",
+            "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+          },
+          {
+            "observedAt": "2026-11-27T14:36:26.000Z",
+            "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+            "appEnvironment": "ulc-linz-production",
+            "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220919708",
+            "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+          }
+        ]
+      }
     },
     {
       "from": "cloudflare",
       "to": "neon-postgresql",
       "purpose": "security-log-persistence",
-      "evidenceStatus": "open"
+      "evidenceStatus": "open",
+      "predeployment": {
+        "evidenceStatus": "verified",
+        "operationalDisposition": "t11-first-live",
+        "scope": "Security-log database connection exists in protected runtime by source tests; real log persistence requires T11 authorised request.",
+        "evidence": [
+          {
+            "observedAt": "2026-11-27T14:23:32.000Z",
+            "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+            "appEnvironment": "ulc-linz-production",
+            "reference": "https://github.com/martinirrgeher-cloud/appbasis/pull/740",
+            "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+          },
+          {
+            "observedAt": "2026-11-27T14:36:26.000Z",
+            "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+            "appEnvironment": "ulc-linz-production",
+            "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220919708",
+            "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+          }
+        ]
+      }
     },
     {
       "from": "appbasis-control-plane",
       "to": "cloudflare",
       "purpose": "provider-evidence-read",
-      "evidenceStatus": "open"
+      "evidenceStatus": "open",
+      "predeployment": {
+        "evidenceStatus": "verified",
+        "operationalDisposition": "out-of-app-runtime-read-only-source",
+        "scope": "Operator-authenticated Cloudflare console screenshots were read for account evidence; AppBasis control-plane production traffic is NOT claimed or enabled.",
+        "evidence": [
+          {
+            "observedAt": "2026-11-27T14:23:32.000Z",
+            "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+            "appEnvironment": "ulc-linz-production",
+            "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216",
+            "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+          }
+        ]
+      }
     },
     {
       "from": "appbasis-control-plane",
       "to": "neon-postgresql",
       "purpose": "provider-evidence-read",
-      "evidenceStatus": "open"
+      "evidenceStatus": "open",
+      "predeployment": {
+        "evidenceStatus": "verified",
+        "operationalDisposition": "out-of-app-runtime-read-only-source",
+        "scope": "Read-only Neon account/project/branch evidence was observed separately from the ULC production app; no AppBasis control-plane live traffic is claimed.",
+        "evidence": [
+          {
+            "observedAt": "2026-11-27T14:36:26.000Z",
+            "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+            "appEnvironment": "ulc-linz-production",
+            "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220919708",
+            "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+          }
+        ]
+      }
     },
     {
       "from": "neon-postgresql",
       "to": "neon-postgresql",
       "purpose": "managed-backup-recovery",
-      "evidenceStatus": "open"
+      "evidenceStatus": "open",
+      "predeployment": {
+        "evidenceStatus": "verified",
+        "operationalDisposition": "quarantine-no-promotion",
+        "scope": "Existing Neon history/branch/snapshot inventory reviewed; unmanaged old backup parent has no expiry and restore promotion into any live writer is strictly prohibited.",
+        "evidence": [
+          {
+            "observedAt": "2026-11-27T14:36:26.000Z",
+            "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+            "appEnvironment": "ulc-linz-production",
+            "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220942153",
+            "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+          }
+        ]
+      }
     }
   ],
   "freshnessPolicy": {
@@ -88,9 +186,9 @@
   },
   "m5": {
     "dataRegion": "open",
-    "dpa": "open",
-    "encryption": "open",
-    "subprocessors": "open",
+    "dpa": "verified",
+    "encryption": "verified",
+    "subprocessors": "verified",
     "providerScope": "cloudflare-and-neon-postgresql-only",
     "unknownProvider": "fail-closed",
     "missingEvidence": "fail-closed",
@@ -185,7 +283,87 @@
         }
       ]
     },
-    "decisionBoundary": "Existing source documents are recognized, not re-requested. The m5 open fields and dataFlow evidenceStatus remain open until a source actually proves their exact claim and is tied to the production account; no invented contracts, timestamps, data flows or EU-only guarantees.",
+    "decisionBoundary": "Published provider DPA, encryption and subprocessor-list sources are bounded to named production accounts. Each of six M5 candidate flow paths now has distinct predeployment evidence/disposition; all actual runtime evidenceStatus values deliberately remain open until applicable T11 observations. Provider screenshot/Neon API source reads are outside the app runtime, and old Neon backup promotion is denied. No operator legal sign-off, EU-only promise or deployment authorization.",
     "noReleaseAuthorization": true
+  },
+  "productionEvidence": {
+    "dpa": [
+      {
+        "observedAt": "2026-11-27T14:23:32.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://www.cloudflare.com/cloudflare-customer-dpa/",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+      },
+      {
+        "observedAt": "2026-11-27T14:36:26.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://neon.com/platform-terms",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+      },
+      {
+        "observedAt": "2026-11-27T14:36:26.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://www.databricks.com/legal/mcsa",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+      }
+    ],
+    "encryption": [
+      {
+        "observedAt": "2026-11-27T14:23:32.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://developers.cloudflare.com/r2/reference/data-security/",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+      },
+      {
+        "observedAt": "2026-11-27T14:36:26.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://neon.com/security",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+      },
+      {
+        "observedAt": "2026-11-27T14:23:32.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://github.com/martinirrgeher-cloud/appbasis/actions/runs/45178485082",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+      }
+    ],
+    "subprocessors": [
+      {
+        "observedAt": "2026-11-27T14:23:32.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://www.cloudflare.com/gdpr/subprocessors/cloudflare-services/",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+      },
+      {
+        "observedAt": "2026-11-27T14:36:26.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://www.databricks.com/legal/databricks-subprocessors",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+      },
+      {
+        "observedAt": "2026-11-27T14:36:26.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://neon.com/platform-terms",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+      }
+    ]
+  },
+  "standardProviderEvidenceLimits": {
+    "assessedFor": "documented Cloudflare/Neon standard self-service plan and named ULC production accounts only",
+    "dpa": "Verified that Cloudflare and Neon/Databricks public standard service agreements incorporate their published DPA. Neon Schedule binds users by access (14 Oct 2026); Cloudflare account DPA link and self-service inclusion recorded in Issue #716. This is NOT an individual legal-operator signoff, negotiated contract search or new acceptance of terms.",
+    "encryption": "Verified public baseline encryption controls for Neon service (in transit and at rest), Cloudflare R2 (AES-256 at rest/TLS transport) and already tested application AES-GCM backup; NOT an end-to-end measurement of every predeployment HTTP/Worker/PostgreSQL route, private media or all exported copies.",
+    "subprocessors": "Verified relevant public Cloudflare and Databricks provider lists and Neon Schedule's additional Grafana Labs disclosure; NOT a claim that ULC sends data to every listed subprocessor or that every support transfer stays in the EU.",
+    "stillOpen": "Global Cloudflare Workers residency and the actual live-data-flow status remain open; predeployment architecture and STOP modes have source-backed evidence. Live ULC ingress, persistence and security logging remain for T11. Neither an out-of-app source read nor a quarantined historical recovery copy is claimed to be a productive application data flow.",
+    "legalApprovalNotIncluded": true,
+    "reviewedSourceDate": "2026-11-28"
   }
 }

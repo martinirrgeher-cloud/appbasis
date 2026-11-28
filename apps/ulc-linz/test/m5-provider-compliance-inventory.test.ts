@@ -54,6 +54,12 @@ type ProviderInventory = {
     purpose: string;
     evidenceStatus: ProviderEvidenceStatus;
     evidence?: EvidenceReceipt[];
+    predeployment?: {
+      evidenceStatus: ProviderEvidenceStatus;
+      operationalDisposition: string;
+      scope: string;
+      evidence?: EvidenceReceipt[];
+    };
   }>;
   productionEvidence?: Partial<Record<"dataRegion" | "dpa" | "encryption" | "subprocessors", EvidenceReceipt[]>>;
   freshnessPolicy: {
@@ -157,6 +163,54 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
       foreignEnvironmentEvidence: "fail-closed",
       baselineIsProductionEvidence: false,
     });
+  });
+
+  it("binds standard DPA, encryption and subprocessor evidence to both named production accounts without pretending legal or runtime GO", async () => {
+    const inventory = await readJson<ProviderInventory & {
+      standardProviderEvidenceLimits: {
+        assessedFor: string;
+        dpa: string;
+        encryption: string;
+        subprocessors: string;
+        stillOpen: string;
+        legalApprovalNotIncluded: boolean;
+        reviewedSourceDate: string;
+      };
+    }>(inventoryUrl);
+    const requiredDomains = ["dpa", "encryption", "subprocessors"] as const;
+    for (const domain of requiredDomains) {
+      expect(inventory.m5[domain], domain).toBe("verified");
+      const receipts = inventory.productionEvidence?.[domain] ?? [];
+      expect(hasCurrentEvidence(receipts), domain).toBe(true);
+      expect(receipts.some((r) => r.accountBindingReference.includes("7220724216")), domain).toBe(true);
+      expect(receipts.some((r) => r.accountBindingReference.includes("7220996997")), domain).toBe(true);
+    }
+    expect(inventory.standardProviderEvidenceLimits.legalApprovalNotIncluded).toBe(true);
+    expect(inventory.standardProviderEvidenceLimits.dpa).toContain("NOT an individual legal-operator signoff");
+    expect(inventory.standardProviderEvidenceLimits.encryption).toContain("NOT an end-to-end measurement");
+    expect(inventory.standardProviderEvidenceLimits.subprocessors).toContain("NOT a claim");
+    expect(inventory.standardProviderEvidenceLimits.stillOpen).toContain("remain open");
+    // Scope is intentionally not an unproved global EU-only or live data-flow attestation.
+    expect(inventory.m5.dataRegion).toBe("open");
+    expect(inventory.dataFlows.every((flow) => flow.evidenceStatus === "open")).toBe(true);
+  });
+
+  it("classifies six predeployment source/STOP flows without asserting real traffic", async () => {
+    const inventory = await readJson<ProviderInventory>(inventoryUrl);
+    const dispositions = [
+      "t11-first-live", "t11-first-live", "t11-first-live",
+      "out-of-app-runtime-read-only-source", "out-of-app-runtime-read-only-source",
+      "quarantine-no-promotion",
+    ];
+    expect(inventory.dataFlows).toHaveLength(dispositions.length);
+    for (const [i, flow] of inventory.dataFlows.entries()) {
+      // Real HTTP, data writes, log writes and backup recovery are NOT asserted pre-go.
+      expect(flow.evidenceStatus, flow.purpose).toBe("open");
+      expect(flow.predeployment?.evidenceStatus, flow.purpose).toBe("verified");
+      expect(flow.predeployment?.operationalDisposition, flow.purpose).toBe(dispositions[i]);
+      expect(flow.predeployment?.scope.length ?? 0, flow.purpose).toBeGreaterThan(20);
+      expect(hasCurrentEvidence(flow.predeployment?.evidence), flow.purpose).toBe(true);
+    }
   });
 
   it("tracks the approved production database region target without claiming region verification", async () => {
