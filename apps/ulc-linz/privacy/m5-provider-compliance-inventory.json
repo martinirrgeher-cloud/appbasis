@@ -96,5 +96,96 @@
     "missingEvidence": "fail-closed",
     "foreignEnvironmentEvidence": "fail-closed",
     "baselineIsProductionEvidence": false
+  },
+  "existingSourceCoverage": {
+    "reviewedOn": "2026-11-28",
+    "evidenceBasis": "Already reviewed operator screenshots, public provider terms and existing Issue #716 findings dated 2026-11-27. Source mapping ONLY, not new independent authenticated account verification.",
+    "reviewedScope": "ULC Linz, protected private six-module pilot; no private minor media and no promotion of historical restores",
+    "references": {
+      "accountBinding": [
+        {
+          "provider": "cloudflare",
+          "claim": "Production Worker/account link, Self-Serve DPA dashboard link and billing profile",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216",
+          "limit": "Billing profile alone does not establish the club as legal contract party."
+        },
+        {
+          "provider": "neon-postgresql",
+          "claim": "Production Neon project, organization and administrator",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997",
+          "limit": "Personal organization and Free billing do not establish account-specific contract acceptance."
+        }
+      ],
+      "dataRegion": [
+        {
+          "provider": "cloudflare",
+          "claim": "EU R2 backup-bucket jurisdiction and scoped 30-day object deletion configuration",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220882117",
+          "limit": "Only this backup prefix; no promise of EU-only Cloudflare edge, support, subprocessors or recovery copies."
+        },
+        {
+          "provider": "neon-postgresql",
+          "claim": "Production project AWS Frankfurt; 6-hour history",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220919708",
+          "limit": "Project region does not establish every support/transfer location or a complete recovery-copy expiry."
+        },
+        {
+          "provider": "neon-postgresql",
+          "claim": "Production snapshot and four-branch inventory",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220942153",
+          "limit": "Backup parent lacks displayed expiry; planned separate TTL follow-up unchanged."
+        }
+      ],
+      "dpa": [
+        {
+          "provider": "cloudflare",
+          "claim": "Self-Serve incorporated DPA v6.4 and standard contract mechanism",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220775604",
+          "limit": "No special negotiated account agreement or individually signed acceptance established."
+        },
+        {
+          "provider": "neon-postgresql",
+          "claim": "Published Neon/Databricks Product Schedule to MCSA to DPA chain",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997",
+          "limit": "Actual existing-account acceptance or any special terms not established from screenshots."
+        }
+      ],
+      "encryption": [
+        {
+          "provider": "cloudflare",
+          "claim": "Encrypted EU R2 daily backup validated in T09",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/actions/runs/45178485082",
+          "limit": "Backup encryption does not prove all application/Neon data paths or provider-managed copy encryption."
+        }
+      ],
+      "subprocessors": [
+        {
+          "provider": "cloudflare",
+          "claim": "Published Cloudflare Services subcontractor list and DPA transfer clauses",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220775604",
+          "limit": "Public list does not prove ULC content is sent to every listed subprocessor or stays EU-only."
+        },
+        {
+          "provider": "neon-postgresql",
+          "claim": "Published Databricks subprocessor list and Neon-specific terms",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997",
+          "limit": "Applicable service terms identified; actual provider-side routing/transfer and special account contract unconfirmed."
+        }
+      ],
+      "dataFlows": [
+        {
+          "claim": "Intended application and security-log persistence via protected Cloudflare/Neon configuration",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/pull/740",
+          "limit": "Static source and database permissions do not prove authorized T11 production traffic or every actual transfer."
+        },
+        {
+          "claim": "Existing provider read-only research and backup inventory",
+          "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220942153",
+          "limit": "Screenshot readback is not an end-to-end application transaction or complete provider copy inventory."
+        }
+      ]
+    },
+    "decisionBoundary": "Existing source documents are recognized, not re-requested. The m5 open fields and dataFlow evidenceStatus remain open until a source actually proves their exact claim and is tied to the production account; no invented contracts, timestamps, data flows or EU-only guarantees.",
+    "noReleaseAuthorization": true
   }
 }
