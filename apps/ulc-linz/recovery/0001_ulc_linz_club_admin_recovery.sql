@@ -13,7 +13,9 @@ CREATE TABLE ulc_linz_operations.club_admin_recovery_audit (
   actor_principal_id text NOT NULL
     CHECK (char_length(actor_principal_id) BETWEEN 1 AND 200
       AND actor_principal_id = btrim(actor_principal_id)),
-  target_identity_id text NOT NULL REFERENCES public."user"(id) ON DELETE RESTRICT,
+  target_identity_id text NOT NULL
+    CHECK (char_length(target_identity_id) BETWEEN 1 AND 200
+      AND target_identity_id = btrim(target_identity_id)),
   action text NOT NULL DEFAULT 'club-admin.first-login-password-recovery'
     CHECK (action = 'club-admin.first-login-password-recovery'),
   reason text NOT NULL
