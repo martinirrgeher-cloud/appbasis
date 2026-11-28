@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import { parseAppDefinition } from "./app-definition.mjs";
+import { verifyUlcScopedProductionLifecycle } from "./ulc-linz-scoped-production-lifecycle.mjs";
 import { createGeneratedDatabaseManifest } from "./generated-database-manifest.mjs";
 import {
   assertAppModuleCompatibility,
@@ -69,6 +70,11 @@ export async function evaluateAppProductionComposition(
     (canonicalDatabaseManifest?.owners ?? []).map((owner) => [owner.id, owner]),
   );
 
+  // Module contracts are global and MUST remain blocked for other apps using
+  // their unprotected defaults. The independently SHA-pinned, fail-closed ULC
+  // M6 entrypoint permits only a narrow app-scoped pilot lifecycle overlay.
+  const scoped = appDefinition.appId === "ulc-linz"
+    ? await verifyUlcScopedProductionLifecycle(root) : null;
   const modules = [];
   const blockers = [...appContract.blockers];
 
@@ -90,16 +96,30 @@ export async function evaluateAppProductionComposition(
     await verifyEvidenceBindings(root, contract.evidence);
     verifyDatabaseBinding(definition, contract, databaseOwners);
 
+    // Never mutate/upgrade the canonical global module contract. Only
+    // project its lifecycle as ready inside the EXACT protected ULC app.
+    const scopedReady = scoped?.verifiedModuleIds.includes(moduleId) &&
+      contract.status === "blocked" &&
+      contract.requirements.authorization === "verified" &&
+      contract.requirements.database === "verified" &&
+      contract.requirements.lifecycle === "blocked";
+    const effective = scopedReady ? Object.freeze({
+      authorization: contract.requirements.authorization,
+      database: contract.requirements.database,
+      lifecycle: "verified",
+    }) : contract.requirements;
     modules.push(
       Object.freeze({
         moduleId,
-        status: contract.status,
-        requirements: contract.requirements,
-        blockers: contract.blockers,
+        status: scopedReady ? "ready" : contract.status,
+        requirements: effective,
+        blockers: scopedReady ? Object.freeze([]) : contract.blockers,
       }),
     );
-    for (const blocker of contract.blockers) {
-      blockers.push(`${moduleId}: ${blocker}`);
+    if (!scopedReady) {
+      for (const blocker of contract.blockers) {
+        blockers.push(`${moduleId}: ${blocker}`);
+      }
     }
   }
 
