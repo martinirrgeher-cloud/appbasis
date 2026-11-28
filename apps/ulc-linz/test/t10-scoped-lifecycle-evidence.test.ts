@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { verifyUlcScopedProductionLifecycle } from
+  "../../../tooling/ulc-linz-scoped-production-lifecycle.mjs";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { protectedUlcProductionRuntimeOptions } from "../worker/production-protected";
@@ -28,21 +31,26 @@ async function matchesExactBlob(entry: { path: string; gitBlobSha: string }) {
 }
 
 describe("T10 protected six-module pilot – lifecycle and privacy boundaries", () => {
-  it("pins all six lifecycle evidence sources to exact file contents", async () => {
+  it("pins ULC-only lifecycle without upgrading the three generic modules", async () => {
+    const pilot = await verifyUlcScopedProductionLifecycle(fileURLToPath(root));
+    expect(pilot.verifiedModuleIds).toEqual([
+      "exercise-catalog", "training-blocks", "training-documentation",
+    ]);
+    expect(pilot.deploymentAuthorized).toBe(false);
+    expect(pilot.privateMediaAllowed).toBe(false);
+    const scoped = new Set(pilot.verifiedModuleIds);
     for (const module of pilotModules) {
       const contract = await json<Contract>(`modules/${module}/appbasis.production.json`);
-      expect(contract.status, module).toBe("ready");
-      expect(["verified", "not-applicable"]).toContain(contract.requirements?.lifecycle);
-      if (contract.requirements?.lifecycle === "verified") {
-        expect(contract.evidence.lifecycle?.length ?? 0, module).toBeGreaterThan(0);
-      } else {
-        // Countdown is intentionally stateless and has no lifecycle owner.
-        expect(module).toBe("countdown");
+      if (scoped.has(module)) {
+        expect(contract.status, module).toBe("blocked");
+        expect(contract.requirements?.lifecycle, module).toBe("blocked");
         expect(contract.evidence.lifecycle).toEqual([]);
-      }
-      for (const item of contract.evidence.lifecycle) {
-        expect(item.path.startsWith(`modules/${module}/`), item.path).toBe(true);
-        expect(await matchesExactBlob(item), item.path).toBe(true);
+      } else {
+        expect(contract.status, module).toBe("ready");
+        expect(["verified", "not-applicable"]).toContain(contract.requirements?.lifecycle);
+        for (const item of contract.evidence.lifecycle) {
+          expect(await matchesExactBlob(item), item.path).toBe(true);
+        }
       }
     }
   });
