@@ -73,7 +73,18 @@ export async function evaluateAppProductionComposition(
   // Module contracts are global and MUST remain blocked for other apps using
   // their unprotected defaults. The independently SHA-pinned, fail-closed ULC
   // M6 entrypoint permits only a narrow app-scoped pilot lifecycle overlay.
-  const scoped = appDefinition.appId === "ulc-linz"
+  // Only the exact six-module ULC production app can use this overlay.
+  // Synthetic/partial app definitions (e.g. canonical manifest fixture with
+  // module "selected") use ordinary module contracts, without a sidecar.
+  // Missing or invalid sidecar for the real six-module ULC app always fails
+  // closed; neither missing evidence nor a changed app scope is tolerated.
+  const protectedUlcComposition =
+    appDefinition.appId === "ulc-linz" &&
+    isDeepStrictEqual(appDefinition.modules, [
+      "countdown", "athletes", "exercise-catalog",
+      "training-blocks", "training-plans", "training-documentation",
+    ]);
+  const scoped = protectedUlcComposition
     ? await verifyUlcScopedProductionLifecycle(root) : null;
   const modules = [];
   const blockers = [...appContract.blockers];
