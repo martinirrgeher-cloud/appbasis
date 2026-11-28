@@ -30,13 +30,25 @@ async function matchesExactBlob(entry: { path: string; gitBlobSha: string }) {
 
 describe("T10 protected six-module pilot – lifecycle and privacy boundaries", () => {
   it("pins ULC-only lifecycle without upgrading the three generic modules", async () => {
-    const pilot = await verifyUlcScopedProductionLifecycle(fileURLToPath(root));
-    expect(pilot.verifiedModuleIds).toEqual([
+    const pilot = await json<{
+      moduleLifecycle: {moduleId:string; evidence:{path:string;gitBlobSha:string}[]}[];
+      productionEntrypoint: {path:string;gitBlobSha:string};
+      productionEntrypointTest: {path:string;gitBlobSha:string};
+      scopeLimitations: {privateMedia:string;unverifiedHistoricalRestore:string};
+    }>("apps/ulc-linz/production-scoped-module-lifecycle.json");
+    expect(pilot.moduleLifecycle.map(x=>x.moduleId)).toEqual([
       "exercise-catalog", "training-blocks", "training-documentation",
     ]);
-    expect(pilot.deploymentAuthorized).toBe(false);
-    expect(pilot.privateMediaAllowed).toBe(false);
-    const scoped = new Set(pilot.verifiedModuleIds);
+    expect(pilot.scopeLimitations.privateMedia).toBe("disabled");
+    expect(pilot.scopeLimitations.unverifiedHistoricalRestore).toBe("promotion-denied");
+    expect(await matchesExactBlob(pilot.productionEntrypoint)).toBe(true);
+    expect(await matchesExactBlob(pilot.productionEntrypointTest)).toBe(true);
+    for (const entry of pilot.moduleLifecycle) {
+      for (const proof of entry.evidence) {
+        expect(await matchesExactBlob(proof), proof.path).toBe(true);
+      }
+    }
+    const scoped = new Set(pilot.moduleLifecycle.map(x=>x.moduleId));
     for (const module of pilotModules) {
       const contract = await json<Contract>(`modules/${module}/appbasis.production.json`);
       if (scoped.has(module)) {
