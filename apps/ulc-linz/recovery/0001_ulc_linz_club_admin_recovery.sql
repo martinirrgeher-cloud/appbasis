@@ -51,7 +51,7 @@ BEGIN
     FROM ulc_linz_operations.club_admin_recovery_audit
     WHERE target_identity_id=NEW.user_id AND organization_id='ulc-linz'
     ORDER BY created_at DESC, operation_id DESC LIMIT 1;
-    IF deadline IS NOT NULL AND statement_timestamp() >= deadline THEN
+    IF deadline IS NOT NULL AND clock_timestamp() >= deadline THEN
       RAISE EXCEPTION 'ULC club admin one-time recovery credential expired.'
         USING ERRCODE='28000';
     END IF;
@@ -84,7 +84,7 @@ BEGIN
     FROM ulc_linz_operations.club_admin_recovery_audit
     WHERE target_identity_id=NEW.user_id AND organization_id='ulc-linz'
     ORDER BY created_at DESC, operation_id DESC LIMIT 1;
-    IF deadline IS NOT NULL AND statement_timestamp() >= deadline THEN
+    IF deadline IS NOT NULL AND clock_timestamp() >= deadline THEN
       RAISE EXCEPTION 'ULC club admin one-time recovery credential expired.'
         USING ERRCODE='28000';
     END IF;
