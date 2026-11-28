@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "moduleId": "training-documentation",
-  "status": "blocked",
+  "status": "ready",
   "requirements": {
     "authorization": "verified",
     "database": "verified",
-    "lifecycle": "blocked"
+    "lifecycle": "verified"
   },
   "evidence": {
     "authorization": [
@@ -28,9 +28,16 @@
         "gitBlobSha": "38837bc37e8eed647bf2a0d6c45bbc26ec48d676"
       }
     ],
-    "lifecycle": []
+    "lifecycle": [
+      {
+        "path": "modules/training-documentation/production-pilot-lifecycle-evidence-20261128.md",
+        "gitBlobSha": "53096bf86ec386cbfad9cdc94a5b57d2b84d30be"
+      },
+      {
+        "path": "modules/training-documentation/test/postgres-repository.postgres.e2e.ts",
+        "gitBlobSha": "38837bc37e8eed647bf2a0d6c45bbc26ec48d676"
+      }
+    ]
   },
-  "blockers": [
-    "Training documentation subject-lifecycle still needs reviewed free-text, historical revision and cross-owner restore evidence before personal-data release."
-  ]
+  "blockers": []
 }
