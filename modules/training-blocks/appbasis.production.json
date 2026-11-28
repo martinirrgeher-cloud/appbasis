@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "moduleId": "training-blocks",
-  "status": "ready",
+  "status": "blocked",
   "requirements": {
     "authorization": "verified",
     "database": "verified",
-    "lifecycle": "verified"
+    "lifecycle": "blocked"
   },
   "evidence": {
     "authorization": [
@@ -52,16 +52,9 @@
         "gitBlobSha": "c7c3d02eb46f5a320998d15f7156375a9051950a"
       }
     ],
-    "lifecycle": [
-      {
-        "path": "modules/training-blocks/production-pilot-lifecycle-evidence-20261128.md",
-        "gitBlobSha": "cc7a2c27eb92ae5f8d1f23fdfc162667b4420db4"
-      },
-      {
-        "path": "modules/training-blocks/test/postgres-repository.postgres.e2e.ts",
-        "gitBlobSha": "c7c3d02eb46f5a320998d15f7156375a9051950a"
-      }
-    ]
+    "lifecycle": []
   },
-  "blockers": []
+  "blockers": [
+    "Training-block revisions, favorites and usage lifecycle is not yet production-verified."
+  ]
 }
