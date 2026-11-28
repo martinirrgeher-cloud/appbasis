@@ -43,6 +43,26 @@ function t10LegalDecision(legalApproval) {
   };
 }
 
+const scopedFlowDescriptors = [
+  ["ulc-linz-user", "cloudflare", "application-request-processing", "t11-first-live"],
+  ["cloudflare", "neon-postgresql", "application-persistence", "t11-first-live"],
+  ["cloudflare", "neon-postgresql", "security-log-persistence", "t11-first-live"],
+  ["appbasis-control-plane", "cloudflare", "provider-evidence-read", "out-of-app-runtime-read-only-source"],
+  ["appbasis-control-plane", "neon-postgresql", "provider-evidence-read", "out-of-app-runtime-read-only-source"],
+  ["neon-postgresql", "neon-postgresql", "managed-backup-recovery", "quarantine-no-promotion"],
+];
+function predeploymentFlows() {
+  return scopedFlowDescriptors.map(([from, to, purpose, operationalDisposition]) => ({
+    from, to, purpose,
+    evidenceStatus: "open", // Live evidence intentionally not asserted ahead of T11.
+    predeployment: {
+      evidenceStatus: "verified", operationalDisposition,
+      scope: "Source-checked protected ULC pilot, outside live user ingress before T11.",
+      evidence: [currentReceipt()],
+    },
+  }));
+}
+
 function currentReceipt() {
   return {
     appEnvironment: "ulc-linz-production",
@@ -75,7 +95,7 @@ test("even fully synthetic ready contracts do not confer operator deployment app
       providerScope: ["cloudflare","neon-postgresql"].map(id => ({
         id, appSpecificProductionEvidence: "verified", evidence: [currentReceipt()],
       })),
-      dataFlows: [{ evidenceStatus: "verified", evidence: [currentReceipt()] }],
+      dataFlows: predeploymentFlows(),
       productionEvidence: Object.fromEntries(
         ["dataRegion","dpa","encryption","subprocessors"]
           .map(key => [key, [currentReceipt()]])),
@@ -93,6 +113,52 @@ test("even fully synthetic ready contracts do not confer operator deployment app
   assert.equal(result.personalDataActivationAuthorized, false);
   assert.equal(result.historicalRestorePromotionAuthorized, false);
   assert.equal(result.finalStatus, "NO-GO-until-separate-documented-T10-approval");
+});
+
+test("T10 predeployment flow gate is exact and cannot be satisfied by invented T11 traffic", () => {
+  function probe(dataFlows) {
+    const ids = ["countdown","athletes","exercise-catalog","training-blocks",
+      "training-plans","training-documentation"];
+    return evaluateUlcT10PilotDecision({
+      app: {schemaVersion:1,appId:"ulc-linz",modules:ids,status:"blocked",crossCutting:{}},
+      modules: Object.fromEntries(ids.map(moduleId => [moduleId,{
+        moduleId,status:"ready", requirements:{
+          authorization:"verified",database:"verified",lifecycle:"verified",
+        },
+      }])),
+      retention:t10LegalDecision(false),
+      provider:{
+        application:"ulc-linz",
+        providerScope:["cloudflare","neon-postgresql"].map(id=>({
+          id,appSpecificProductionEvidence:"open",
+        })),
+        dataFlows,m5:{},
+      },
+    }).checks.find(check=>check.id==="provider:data-flows")?.status;
+  }
+  const good = predeploymentFlows();
+  assert.equal(probe(good),"verified-in-repository");
+  assert.equal(good.every(x=>x.evidenceStatus==="open"),true);
+  const missing = structuredClone(good);
+  delete missing[0].predeployment;
+  assert.equal(probe(missing),"open");
+  const fakeLive = structuredClone(good);
+  fakeLive[0].evidenceStatus="verified";
+  assert.equal(probe(fakeLive),"open");
+  const wrongDisposition = structuredClone(good);
+  wrongDisposition[5].predeployment.operationalDisposition="t11-first-live";
+  assert.equal(probe(wrongDisposition),"open");
+  const unrelatedAccount = structuredClone(good);
+  unrelatedAccount[2].predeployment.evidence[0].appEnvironment="other-app";
+  assert.equal(probe(unrelatedAccount),"open");
+  const stale = structuredClone(good);
+  stale[1].predeployment.evidence[0].validUntilOrReviewAt =
+    new Date(Date.now()-60_000).toISOString();
+  assert.equal(probe(stale),"open");
+  const unexpected = structuredClone(good);
+  unexpected[3].to="unapproved-provider";
+  assert.equal(probe(unexpected),"open");
+  assert.throws(()=>probe(good.slice(1)),/flow scope changed/);
 });
 
 test("provider verification never passes with bare flags, stale or unbound proofs", () => {
