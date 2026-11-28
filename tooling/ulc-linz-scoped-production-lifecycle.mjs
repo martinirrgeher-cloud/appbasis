@@ -40,6 +40,18 @@ const REQUIRED = Object.freeze({
 });
 const ENTRY = "apps/ulc-linz/worker/production-protected.ts";
 const ENTRY_TEST = "apps/ulc-linz/test/production-protected.test.ts";
+const RUNTIME_WIRING = Object.freeze([
+  "apps/ulc-linz/worker/postgres.ts",
+  "apps/ulc-linz/worker/exercise-catalog-runtime.ts",
+  "apps/ulc-linz/worker/exercise-catalog-protected-runtime-readiness.ts",
+  "apps/ulc-linz/worker/training-block-verified-runtime-readiness.ts",
+  "apps/ulc-linz/worker/training-documentation-production-readiness.ts",
+  "apps/ulc-linz/worker/training-documentation-write-actor.ts",
+  "apps/ulc-linz/worker/training-plan-verified-usage-booking.ts",
+  "apps/ulc-linz/test/exercise-catalog-protected-runtime-readiness.test.ts",
+  "apps/ulc-linz/test/training-block-verified-runtime-readiness.test.ts",
+  "apps/ulc-linz/test/training-documentation-postgres-write-guard.test.ts",
+]);
 const stop = (msg) => { throw new Error("ULC scoped T10 lifecycle denied: " + msg); };
 const exact = (actual, desired) =>
   actual && typeof actual === "object" && !Array.isArray(actual) &&
@@ -80,7 +92,8 @@ export async function verifyUlcScopedProductionLifecycle(
     "apps/ulc-linz/production-scoped-module-lifecycle.json"),"utf8"));
   if (!exact(value,[
       "schemaVersion","appId","scope","scopeLimitations",
-      "productionEntrypoint","productionEntrypointTest","moduleLifecycle"
+      "productionEntrypoint","productionEntrypointTest",
+      "runtimeGuardEvidence","moduleLifecycle"
     ]) || value.schemaVersion!==1 || value.appId!=="ulc-linz" ||
       value.scope!==SCOPE) stop("app or scope mismatch");
   if (!exact(value.scopeLimitations,[
@@ -97,6 +110,21 @@ export async function verifyUlcScopedProductionLifecycle(
   }
   const source = await exactBlob(root,value.productionEntrypoint);
   await exactBlob(root,value.productionEntrypointTest);
+  if (!Array.isArray(value.runtimeGuardEvidence) ||
+      JSON.stringify(value.runtimeGuardEvidence.map(x=>x.path)) !==
+        JSON.stringify(RUNTIME_WIRING)) stop("protected runtime wiring reference set is incomplete");
+  const runtimeSources = new Map();
+  for(const ref of value.runtimeGuardEvidence) {
+    runtimeSources.set(ref.path, await exactBlob(root,ref));
+  }
+  const actualRuntime = runtimeSources.get("apps/ulc-linz/worker/postgres.ts");
+  if (!actualRuntime?.includes("assertUlcLiveTrainingDocumentationActor") ||
+      !actualRuntime.includes("writeGuard: assertUlcLiveTrainingDocumentationActor") ||
+      !actualRuntime.includes("assertUlcProtectedCatalogProductionReadiness") ||
+      !actualRuntime.includes("assertUlcVerifiedBlockUsageProductionReadiness") ||
+      !actualRuntime.includes("assertUlcTrainingDocumentationProductionReadiness")) {
+    stop("protected PostgreSQL runtime guard wiring is missing");
+  }
   for (const guarded of [
     'exerciseCatalogMediaStore: null',
     '"standard-module-protected-production"',
