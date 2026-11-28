@@ -28,7 +28,7 @@ const APP_DATABASE_OWNERS = Object.freeze({
   "ulc-linz": databaseOwner({
     id: "ulc-linz-lifecycle",
     root: "apps/ulc-linz",
-    schemaVersion: 20,
+    schemaVersion: 19,
     migrations: [
       "apps/ulc-linz/migrations/0000_ulc_linz_lifecycle_scope.sql",
       "apps/ulc-linz/migrations/0001_ulc_linz_retention_deletion_claim.sql",
@@ -49,7 +49,6 @@ const APP_DATABASE_OWNERS = Object.freeze({
       "apps/ulc-linz/migrations/0016_ulc_linz_registration_calendar.sql",
       "apps/ulc-linz/migrations/0017_ulc_linz_training_subject_write_fence.sql",
       "apps/ulc-linz/migrations/0018_ulc_linz_training_subject_isolation_reconciliation.sql",
-      "apps/ulc-linz/migrations/0019_ulc_linz_club_admin_recovery.sql",
     ],
   }),
 });
