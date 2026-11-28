@@ -159,6 +159,36 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
     });
   });
 
+  it("binds standard DPA, encryption and subprocessor evidence to both named production accounts without pretending legal or runtime GO", async () => {
+    const inventory = await readJson<ProviderInventory & {
+      standardProviderEvidenceLimits: {
+        assessedFor: string;
+        dpa: string;
+        encryption: string;
+        subprocessors: string;
+        stillOpen: string;
+        legalApprovalNotIncluded: boolean;
+        reviewedSourceDate: string;
+      };
+    }>(inventoryUrl);
+    const requiredDomains = ["dpa", "encryption", "subprocessors"] as const;
+    for (const domain of requiredDomains) {
+      expect(inventory.m5[domain], domain).toBe("verified");
+      const receipts = inventory.productionEvidence?.[domain] ?? [];
+      expect(hasCurrentEvidence(receipts), domain).toBe(true);
+      expect(receipts.some((r) => r.accountBindingReference.includes("7220724216")), domain).toBe(true);
+      expect(receipts.some((r) => r.accountBindingReference.includes("7220996997")), domain).toBe(true);
+    }
+    expect(inventory.standardProviderEvidenceLimits.legalApprovalNotIncluded).toBe(true);
+    expect(inventory.standardProviderEvidenceLimits.dpa).toContain("NOT an individual legal-operator signoff");
+    expect(inventory.standardProviderEvidenceLimits.encryption).toContain("NOT an end-to-end measurement");
+    expect(inventory.standardProviderEvidenceLimits.subprocessors).toContain("NOT a claim");
+    expect(inventory.standardProviderEvidenceLimits.stillOpen).toContain("remain open");
+    // Scope is intentionally not an unproved global EU-only or live data-flow attestation.
+    expect(inventory.m5.dataRegion).toBe("open");
+    expect(inventory.dataFlows.every((flow) => flow.evidenceStatus === "open")).toBe(true);
+  });
+
   it("tracks the approved production database region target without claiming region verification", async () => {
     const [inventory, targetPolicySource] = await Promise.all([
       readJson<ProviderInventory>(inventoryUrl),
