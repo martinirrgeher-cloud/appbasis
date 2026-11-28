@@ -261,7 +261,7 @@ test("real T10 operator GO is pinned to protected six-module privacy evidence wi
   for (const { path, gitBlobSha } of entries) {
     const bytes = await readFile(new URL("../" + path, import.meta.url));
     const digest = createHash("sha1")
-      .update("blob " + bytes.length + "\\0", "utf8")
+      .update("blob " + bytes.length + "\0", "utf8")
       .update(bytes)
       .digest("hex");
     assert.equal(gitBlobSha, digest, path);
