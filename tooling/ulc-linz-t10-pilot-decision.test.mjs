@@ -25,7 +25,10 @@ test("actual ULC T10 checks may become evidenced without authorizing production"
   assert.equal(result.deploymentAuthorized, false);
   assert.equal(result.personalDataActivationAuthorized, false);
   assert.equal(result.historicalRestorePromotionAuthorized, false);
-  assert.equal(result.finalStatus, "NO-GO-until-separate-documented-T10-approval");
+  assert.equal(result.finalStatus,
+    result.readyForOperatorReview && result.operatorT10DeclarationRecordedInRepository
+      ? "T10-REPOSITORY-READY-T11-SEPARATE-AUTHORIZATION-REQUIRED"
+      : "NO-GO-until-separate-documented-T10-approval");
 });
 
 function t10LegalDecision(legalApproval) {
@@ -114,7 +117,9 @@ test("even fully synthetic ready contracts do not confer operator deployment app
   assert.equal(result.deploymentAuthorized, false);
   assert.equal(result.personalDataActivationAuthorized, false);
   assert.equal(result.historicalRestorePromotionAuthorized, false);
-  assert.equal(result.finalStatus, "NO-GO-until-separate-documented-T10-approval");
+  assert.equal(result.operatorT10DeclarationRecordedInRepository, true);
+  assert.equal(result.finalStatus,
+    "T10-REPOSITORY-READY-T11-SEPARATE-AUTHORIZATION-REQUIRED");
 });
 
 test("T10 predeployment flow gate is exact and cannot be satisfied by invented T11 traffic", () => {
@@ -271,6 +276,13 @@ test("real T10 operator GO is pinned to protected six-module privacy evidence wi
   assert.equal(provider.dataFlows.every(x =>
     x.evidenceStatus === "open" && x.predeployment?.evidenceStatus === "verified"), true);
   assert.equal(current.checks.length, 19);
+  assert.equal(current.operatorT10DeclarationRecordedInRepository, true);
+  // Fresh account-bound evidence is required NOW, not a permanent claim
+  // after expiry of a provider proof or change in protected scoped files.
+  assert.equal(current.openChecks.length, 0, current.openChecks.join(", "));
+  assert.equal(current.readyForOperatorReview, true);
+  assert.equal(current.finalStatus,
+    "T10-REPOSITORY-READY-T11-SEPARATE-AUTHORIZATION-REQUIRED");
   for (const id of ["retention:legal", "app:privacy", "app:composition"]) {
     assert.equal(current.checks.find(x => x.id === id)?.status,
       "verified-in-repository", id);
