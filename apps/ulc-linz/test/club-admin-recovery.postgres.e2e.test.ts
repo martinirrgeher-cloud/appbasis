@@ -73,7 +73,7 @@ if (!adminUrl || !adminUrl.trim()) {
         ["too-late", "recovery-account"],
       )).rejects.toBeTruthy();
       const [failed] = await db.unsafe("SELECT password FROM public.account WHERE id=$1", ["recovery-account"]);
-      expect(failed.password).toBe("old-hash");
+      expect(failed?.password).toBe("old-hash");
       await db.unsafe("DELETE FROM ulc_linz_operations.club_admin_recovery_audit WHERE target_identity_id=$1", [id]);
       await db.unsafe(
         "INSERT INTO ulc_linz_operations.club_admin_recovery_audit " +
