@@ -172,6 +172,7 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
         dpa: string;
         encryption: string;
         subprocessors: string;
+        dataRegion: string;
         stillOpen: string;
         legalApprovalNotIncluded: boolean;
         reviewedSourceDate: string;
@@ -189,9 +190,16 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
     expect(inventory.standardProviderEvidenceLimits.dpa).toContain("NOT an individual legal-operator signoff");
     expect(inventory.standardProviderEvidenceLimits.encryption).toContain("NOT an end-to-end measurement");
     expect(inventory.standardProviderEvidenceLimits.subprocessors).toContain("NOT a claim");
-    expect(inventory.standardProviderEvidenceLimits.stillOpen).toContain("remain open");
-    // Scope is intentionally not an unproved global EU-only or live data-flow attestation.
-    expect(inventory.m5.dataRegion).toBe("open");
+    expect(inventory.standardProviderEvidenceLimits.stillOpen).toContain("remains OPEN");
+    // Region evidence identifies the EU primary database and EU backup AND
+    // acknowledges the globally distributed Worker; it is no EU-only guarantee.
+    expect(inventory.m5.dataRegion).toBe("verified");
+    expect(hasCurrentEvidence(inventory.productionEvidence?.dataRegion)).toBe(true);
+    const regionReceipts = inventory.productionEvidence?.dataRegion ?? [];
+    expect(regionReceipts.some(r => r.accountBindingReference.includes("7220724216"))).toBe(true);
+    expect(regionReceipts.some(r => r.accountBindingReference.includes("7220996997"))).toBe(true);
+    expect(inventory.standardProviderEvidenceLimits.dataRegion).toContain("globally distributed");
+    expect(inventory.standardProviderEvidenceLimits.dataRegion).toContain("does NOT mean all processing");
     expect(inventory.dataFlows.every((flow) => flow.evidenceStatus === "open")).toBe(true);
   });
 
@@ -213,7 +221,7 @@ describe("ULC Linz M5 G provider/compliance inventory", () => {
     }
   });
 
-  it("tracks the approved production database region target without claiming region verification", async () => {
+  it("tracks Frankfurt primary storage and explicitly non-EU-only global Worker execution", async () => {
     const [inventory, targetPolicySource] = await Promise.all([
       readJson<ProviderInventory>(inventoryUrl),
       readFile(targetPolicyUrl, "utf8"),
