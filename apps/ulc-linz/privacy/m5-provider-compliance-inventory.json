@@ -185,7 +185,7 @@
     "staleEvidence": "fail-closed"
   },
   "m5": {
-    "dataRegion": "open",
+    "dataRegion": "verified",
     "dpa": "verified",
     "encryption": "verified",
     "subprocessors": "verified",
@@ -283,7 +283,7 @@
         }
       ]
     },
-    "decisionBoundary": "Published provider DPA, encryption and subprocessor-list sources are bounded to named production accounts. Each of six M5 candidate flow paths now has distinct predeployment evidence/disposition; all actual runtime evidenceStatus values deliberately remain open until applicable T11 observations. Provider screenshot/Neon API source reads are outside the app runtime, and old Neon backup promotion is denied. No operator legal sign-off, EU-only promise or deployment authorization.",
+    "decisionBoundary": "Provider public DPA/crypto/subprocessor lists plus actual Frankfurt DB/EU R2/global Cloudflare architecture are now explicitly documented and account-bound. Data-region verified means disclosed global scope, NOT EU-exclusive processing. All six live evidenceStatus fields remain open until T11 where applicable. Neon old restore quarantined; no legalApproval, privacy release or deployment authorization.",
     "noReleaseAuthorization": true
   },
   "productionEvidence": {
@@ -355,6 +355,36 @@
         "reference": "https://neon.com/platform-terms",
         "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
       }
+    ],
+    "dataRegion": [
+      {
+        "observedAt": "2026-11-27T14:36:26.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220919708",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+      },
+      {
+        "observedAt": "2026-11-27T14:23:32.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220882117",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+      },
+      {
+        "observedAt": "2026-11-27T14:23:32.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://developers.cloudflare.com/workers/configuration/placement/",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+      },
+      {
+        "observedAt": "2026-11-27T14:23:32.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://www.cloudflare.com/cloudflare-customer-dpa/",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+      }
     ]
   },
   "standardProviderEvidenceLimits": {
@@ -362,8 +392,9 @@
     "dpa": "Verified that Cloudflare and Neon/Databricks public standard service agreements incorporate their published DPA. Neon Schedule binds users by access (14 Oct 2026); Cloudflare account DPA link and self-service inclusion recorded in Issue #716. This is NOT an individual legal-operator signoff, negotiated contract search or new acceptance of terms.",
     "encryption": "Verified public baseline encryption controls for Neon service (in transit and at rest), Cloudflare R2 (AES-256 at rest/TLS transport) and already tested application AES-GCM backup; NOT an end-to-end measurement of every predeployment HTTP/Worker/PostgreSQL route, private media or all exported copies.",
     "subprocessors": "Verified relevant public Cloudflare and Databricks provider lists and Neon Schedule's additional Grafana Labs disclosure; NOT a claim that ULC sends data to every listed subprocessor or that every support transfer stays in the EU.",
-    "stillOpen": "Global Cloudflare Workers residency and the actual live-data-flow status remain open; predeployment architecture and STOP modes have source-backed evidence. Live ULC ingress, persistence and security logging remain for T11. Neither an out-of-app source read nor a quarantined historical recovery copy is claimed to be a productive application data flow.",
+    "stillOpen": "Actual ULC user-to-Worker HTTP, Cloudflare-to-Neon persistence/security-log traffic remains OPEN until authorised T11. Historical Neon backup-parent expiry remains unproven; old restore promotion remains prohibited. App/club-specific legal acceptance of disclosed global Cloudflare and third-country subprocessors is still pending; no EU-only claim.",
     "legalApprovalNotIncluded": true,
-    "reviewedSourceDate": "2026-11-28"
+    "reviewedSourceDate": "2026-11-28",
+    "dataRegion": "Documented real architecture: Neon primary database aws-eu-central-1 Frankfurt (direct production Neon API and account-bound screenshot), Cloudflare R2 daily backup EU jurisdiction, and Cloudflare Workers executed on a globally distributed network. The status means truthful region/transfer disclosure ONLY; it does NOT mean all processing or support is confined to the EU, nor does it itself approve third-country transfers. Controller must explicitly accept international processing risk before legalApproval/privacy GO."
   }
 }
