@@ -50,13 +50,16 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
 
     // This operation must never run before the additive migration and DB guard.
     const [schema] = await connection.client.unsafe(
-      "SELECT to_regclass($1) AS audit_table, EXISTS (" +
-      "SELECT 1 FROM pg_catalog.pg_trigger " +
-      "WHERE tgrelid=$2::regclass AND tgname=$3 AND tgenabled=$4) AS guard_active",
-      ["public.ulc_linz_club_admin_recovery_audit", "public.account",
-       "ulc_linz_club_admin_recovery_expiry", "O"],
+      "SELECT to_regclass($1) AS audit_table, " +
+      "EXISTS (SELECT 1 FROM pg_catalog.pg_trigger " +
+      "WHERE tgrelid='public.account'::regclass AND tgname=$2 AND tgenabled='O') AS credential_guard, " +
+      "EXISTS (SELECT 1 FROM pg_catalog.pg_trigger " +
+      "WHERE tgrelid='public.session'::regclass AND tgname=$3 AND tgenabled='O') AS session_guard",
+      ["ulc_linz_operations.club_admin_recovery_audit",
+       "ulc_linz_club_admin_credential_expiry",
+       "ulc_linz_club_admin_session_expiry"],
     );
-    if (!schema?.audit_table || schema.guard_active !== true) {
+    if (!schema?.audit_table || schema.credential_guard !== true || schema.session_guard !== true) {
       throw new Error("Recovery schema or expiry trigger unavailable.");
     }
 
@@ -85,7 +88,7 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
           : null;
       const target = assertClubAdminRecoveryTarget(rows, permissions);
       const prior = await tx.unsafe(
-        "SELECT operation_id, expires_at FROM public.ulc_linz_club_admin_recovery_audit " +
+        "SELECT operation_id, expires_at FROM ulc_linz_operations.club_admin_recovery_audit " +
           "WHERE organization_id=$1 AND target_identity_id=$2 " +
           "ORDER BY created_at DESC, operation_id DESC LIMIT 1 FOR UPDATE",
         ["ulc-linz", target.identity_id],
@@ -94,7 +97,7 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
         throw new Error("A live first-login recovery is already pending.");
       }
       const audit = await tx.unsafe(
-        "INSERT INTO public.ulc_linz_club_admin_recovery_audit " +
+        "INSERT INTO ulc_linz_operations.club_admin_recovery_audit " +
           "(operation_id, organization_id, actor_principal_id, target_identity_id, " +
           "reason, created_at, expires_at, retained_until) " +
           "VALUES ($1,$2,$3,$4,$5,now(),now()+interval '2 hours'," +

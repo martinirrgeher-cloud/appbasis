@@ -42,7 +42,7 @@ export async function installUlcClubAdminRecovery(env = process.env) {
     );
     const statements = migration.split("--> statement-breakpoint")
       .map(part => part.trim()).filter(Boolean);
-    if (statements.length !== 12 ||
+    if (statements.length !== 11 ||
         !migration.includes("BEFORE INSERT ON public.session") ||
         !migration.includes("BEFORE UPDATE OF password ON public.account")) {
       throw new Error("Unrecognized one-time ULC recovery migration body.");
