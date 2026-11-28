@@ -17,7 +17,7 @@ export function readClubAdminRecoveryEnvironment(env) {
   if (
     authSecret.length < 32 ||
     rootPassword.length < 8 ||
-    temporaryPassword.length < 20 ||
+    temporaryPassword.length < 8 ||
     temporaryPassword.length > 128 ||
     /[\u0000-\u001f\u007f]/.test(temporaryPassword) ||
     temporaryPassword === rootPassword

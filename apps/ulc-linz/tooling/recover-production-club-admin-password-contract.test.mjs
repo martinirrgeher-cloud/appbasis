@@ -18,7 +18,9 @@ const row = {
 };
 const principal = { roleIds: ["ulc-linz:admin"], grants: [], revokes: [] };
 
-test("requires strong distinct protected reset secret", () => {
+test("requires an 8-character minimum and distinct protected reset secret", () => {
+  assert.equal(readClubAdminRecoveryEnvironment({ ...env, ULC_LINZ_CLUB_ADMIN_RESET_PASSWORD: "Abcd1234" }).temporaryPassword, "Abcd1234");
+  assert.throws(() => readClubAdminRecoveryEnvironment({ ...env, ULC_LINZ_CLUB_ADMIN_RESET_PASSWORD: "Abcd123" }));
   assert.equal(readClubAdminRecoveryEnvironment(env).temporaryPassword, env.ULC_LINZ_CLUB_ADMIN_RESET_PASSWORD);
   assert.throws(() => readClubAdminRecoveryEnvironment({ ...env, ULC_LINZ_CLUB_ADMIN_RESET_PASSWORD: "short" }));
   assert.throws(() => readClubAdminRecoveryEnvironment({ ...env, ULC_LINZ_CLUB_ADMIN_RESET_PASSWORD: env.ULC_LINZ_PRODUCTION_ADMIN_PASSWORD }));
