@@ -10,6 +10,36 @@ const MODULES = Object.freeze([
   "countdown", "athletes", "exercise-catalog", "training-blocks",
   "training-plans", "training-documentation",
 ]);
+/**
+ * T10 validates configuration and provider-account evidence, not live traffic.
+ * Genuine production ingress, app persistence and security logging can only
+ * be observed at the separately authorised T11 first run.
+ * Non-live provider evidence reads were observed in T10, while older Neon
+ * restore promotion remains denied and must never be exercised to satisfy T10.
+ */
+const PREDEPLOYMENT_FLOWS = Object.freeze([
+  ["ulc-linz-user", "cloudflare", "application-request-processing", "t11-first-live"],
+  ["cloudflare", "neon-postgresql", "application-persistence", "t11-first-live"],
+  ["cloudflare", "neon-postgresql", "security-log-persistence", "t11-first-live"],
+  ["appbasis-control-plane", "cloudflare", "provider-evidence-read", "read-only-observed"],
+  ["appbasis-control-plane", "neon-postgresql", "provider-evidence-read", "read-only-observed"],
+  ["neon-postgresql", "neon-postgresql", "managed-backup-recovery", "quarantine-no-promotion"],
+]);
+
+function hasVerifiedT10PredeploymentFlow(flow, expected) {
+  if (!flow || !expected ||
+      flow.from !== expected[0] || flow.to !== expected[1] ||
+      flow.purpose !== expected[2]) return false;
+  // A real traffic proof is not silently invented while production is blocked.
+  // The existing runtime evidenceStatus remains OPEN until T11 observation.
+  if (flow.evidenceStatus !== "open" ||
+      flow.predeployment?.evidenceStatus !== "verified" ||
+      flow.predeployment?.operationalDisposition !== expected[3] ||
+      typeof flow.predeployment?.scope !== "string" ||
+      flow.predeployment.scope.length < 20) return false;
+  return hasCurrentUlcProductionEvidence(flow.predeployment.evidence);
+}
+
 
 function validCanonicalUtc(value) {
   if (typeof value !== "string" || value.length !== 24 || !value.endsWith("Z")) return false;
@@ -145,12 +175,15 @@ export function evaluateUlcT10PilotDecision(input) {
       hasCurrentUlcProductionEvidence(item.evidence),
       "fresh account-bound app production evidence required; not a legal confirmation");
   }
-  checked(Array.isArray(provider.dataFlows) && provider.dataFlows.length > 0,
-    "T10 provider data-flow inventory missing.");
+  checked(Array.isArray(provider.dataFlows) &&
+    provider.dataFlows.length === PREDEPLOYMENT_FLOWS.length,
+    "T10 declared data-flow scope changed; explicit audit required.");
   add("provider:data-flows",
-    provider.dataFlows.every(flow => flow.evidenceStatus === "verified" &&
-      hasCurrentUlcProductionEvidence(flow.evidence)),
-    "all declared app-specific data flows need fresh account-bound evidence");
+    provider.dataFlows.every((flow, index) =>
+      hasVerifiedT10PredeploymentFlow(flow, PREDEPLOYMENT_FLOWS[index])),
+    "T10 requires all six exact provider paths to have fresh account-bound " +
+      "predeployment evidence and explicit T11/STOP disposition; real live " +
+      "traffic remains unverified until T11");
   for (const key of ["dataRegion","dpa","encryption","subprocessors"]) {
     add("provider:" + key, provider.m5?.[key] === "verified" &&
       hasCurrentUlcProductionEvidence(provider.productionEvidence?.[key]),
@@ -167,6 +200,13 @@ export function evaluateUlcT10PilotDecision(input) {
     readyForOperatorReview: open.length === 0,
     openChecks: open,
     checks: Object.freeze(checks),
+    providerDataFlowEvidencePhase: "predeployment-only",
+    pendingRealLiveChecksAtT11: Object.freeze([
+      "application-request-processing",
+      "application-persistence",
+      "security-log-persistence",
+    ]),
+    prohibitedHistoricalRestorePromotion: true,
     // Never synthesize approvals from JSON/CI/test flags.
     operatorApprovalRequired: true,
     operatorApproved: false,
