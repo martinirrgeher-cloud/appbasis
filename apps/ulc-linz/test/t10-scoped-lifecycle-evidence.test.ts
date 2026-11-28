@@ -35,6 +35,7 @@ describe("T10 protected six-module pilot – lifecycle and privacy boundaries", 
       productionEntrypoint: {path:string;gitBlobSha:string};
       productionEntrypointTest: {path:string;gitBlobSha:string};
       scopeLimitations: {privateMedia:string;unverifiedHistoricalRestore:string};
+      runtimeGuardEvidence: {path:string;gitBlobSha:string}[];
     }>("apps/ulc-linz/production-scoped-module-lifecycle.json");
     expect(pilot.moduleLifecycle.map(x=>x.moduleId)).toEqual([
       "exercise-catalog", "training-blocks", "training-documentation",
@@ -43,6 +44,10 @@ describe("T10 protected six-module pilot – lifecycle and privacy boundaries", 
     expect(pilot.scopeLimitations.unverifiedHistoricalRestore).toBe("promotion-denied");
     expect(await matchesExactBlob(pilot.productionEntrypoint)).toBe(true);
     expect(await matchesExactBlob(pilot.productionEntrypointTest)).toBe(true);
+    expect(pilot.runtimeGuardEvidence).toHaveLength(10);
+    for (const runtimeSource of pilot.runtimeGuardEvidence) {
+      expect(await matchesExactBlob(runtimeSource), runtimeSource.path).toBe(true);
+    }
     for (const entry of pilot.moduleLifecycle) {
       for (const proof of entry.evidence) {
         expect(await matchesExactBlob(proof), proof.path).toBe(true);
@@ -58,7 +63,7 @@ describe("T10 protected six-module pilot – lifecycle and privacy boundaries", 
       } else {
         expect(contract.status, module).toBe("ready");
         expect(["verified", "not-applicable"]).toContain(contract.requirements?.lifecycle);
-        for (const item of contract.evidence.lifecycle) {
+        for (const item of contract.evidence.lifecycle ?? []) {
           expect(await matchesExactBlob(item), item.path).toBe(true);
         }
       }
@@ -95,7 +100,8 @@ describe("T10 protected six-module pilot – lifecycle and privacy boundaries", 
       "apps/ulc-linz/privacy/t10-current-production-legal-decision.json",
     );
     expect(app.crossCutting?.applicationLifecycle).toBe("verified");
-    for (const entry of app.evidence.applicationLifecycle) {
+    expect((app.evidence.applicationLifecycle ?? []).length).toBeGreaterThan(0);
+    for (const entry of app.evidence.applicationLifecycle ?? []) {
       expect(await matchesExactBlob(entry), entry.path).toBe(true);
     }
     if (app.status === "ready") {
