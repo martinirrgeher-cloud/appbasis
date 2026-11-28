@@ -1,5 +1,6 @@
 import { pathToFileURL } from "node:url";
-import { hashPassword, verifyPassword } from "better-auth/crypto";
+import { randomUUID } from "node:crypto";
+import { hashPassword, verifyPassword } from "@appbasis/identity/credential-hashing";
 import { createPostgresDatabase } from "@appbasis/database/node-runtime";
 import { BetterAuthIdentityBackend } from "@appbasis/identity";
 import { createBetterAuthRuntime } from "@appbasis/identity/better-auth";
@@ -47,6 +48,18 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
       throw new Error("Authenticated technical production root proof failed.");
     }
 
+    // This operation must never run before the additive migration and DB guard.
+    const [schema] = await connection.client.unsafe(
+      "SELECT to_regclass($1) AS audit_table, EXISTS (" +
+      "SELECT 1 FROM pg_catalog.pg_trigger " +
+      "WHERE tgrelid=$2::regclass AND tgname=$3 AND tgenabled=$4) AS guard_active",
+      ["public.ulc_linz_club_admin_recovery_audit", "public.account",
+       "ulc_linz_club_admin_recovery_expiry", "O"],
+    );
+    if (!schema?.audit_table || schema.guard_active !== true) {
+      throw new Error("Recovery schema or expiry trigger unavailable.");
+    }
+
     const newHash = await hashPassword(config.temporaryPassword);
     if (!(await verifyPassword({ hash: newHash, password: config.temporaryPassword }))) {
       throw new Error("Password hashing self-check failed.");
@@ -71,6 +84,25 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
             }).findPrincipal(principalId(targetId))
           : null;
       const target = assertClubAdminRecoveryTarget(rows, permissions);
+      const prior = await tx.unsafe(
+        "SELECT operation_id, expires_at FROM public.ulc_linz_club_admin_recovery_audit " +
+          "WHERE organization_id=$1 AND target_identity_id=$2 " +
+          "ORDER BY created_at DESC, operation_id DESC LIMIT 1 FOR UPDATE",
+        ["ulc-linz", target.identity_id],
+      );
+      if (prior.length > 0 && new Date(prior[0].expires_at).getTime() > Date.now()) {
+        throw new Error("A live first-login recovery is already pending.");
+      }
+      const audit = await tx.unsafe(
+        "INSERT INTO public.ulc_linz_club_admin_recovery_audit " +
+          "(operation_id, organization_id, actor_principal_id, target_identity_id, " +
+          "reason, created_at, expires_at, retained_until) " +
+          "VALUES ($1,$2,$3,$4,$5,now(),now()+interval '2 hours'," +
+          "now()+interval '1 year') RETURNING operation_id",
+        [randomUUID(), "ulc-linz", rootSession.identityId, target.identity_id,
+         "Authorized existing ULC administrator first-login password recovery"],
+      );
+      if (audit.length !== 1) throw new Error("Recovery audit event was not unique.");
       const changed = await tx.unsafe(
         "UPDATE public.account SET password=$1, updated_at=now() " +
           "WHERE id=$2 AND user_id=$3 AND provider_id='credential' RETURNING id",
