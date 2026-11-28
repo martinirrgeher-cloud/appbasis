@@ -52,6 +52,11 @@ test("scoped overlay rejects changed code, removed fences and widened pilot",asy
       path:"apps/ulc-linz/worker/production-exercise-catalog-standard.ts"}},
     {...valid, productionEntrypointTest:{...valid.productionEntrypointTest,
       gitBlobSha:"f".repeat(40)}},
+    {...valid, runtimeGuardEvidence:valid.runtimeGuardEvidence.slice(1)},
+    {...valid, runtimeGuardEvidence:valid.runtimeGuardEvidence.map((ref,i)=>
+      i===0?{...ref,gitBlobSha:"f".repeat(40)}:ref)},
+    {...valid, runtimeGuardEvidence:valid.runtimeGuardEvidence.map((ref,i)=>
+      i===0?{...ref,path:"apps/ulc-linz/worker/production-exercise-catalog-standard.ts"}:ref)},
   ];
   for(const proposal of cases){
     await assert.rejects(verifyUlcScopedProductionLifecycle(root,proposal),
