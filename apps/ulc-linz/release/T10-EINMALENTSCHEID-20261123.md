@@ -11,7 +11,7 @@
 - `retention.runtimeActive=false` ist **korrekt für die Vorstartphase**, kein fehlender Produktivtest. Nur-lesender Neon-Iststand: 69 Tabellen, wirksame Datenbank-Schutztrigger; App-Rolle kann keine Quell-Löschmarker schreiben.
 - Cloudflare-Produktionskonto-/Worker-Zuordnung und Neon-Produktionsprojekt-/Kontozuordnung mit vorhandenen datierten Quellen nachgewiesen. EU-R2-Tagesbackup und 30-Tage-Präfixregel T09 PASS; Neon Frankfurt/6h History nachgewiesen. Alte Neon-Kopien bleiben gesperrt, Parent-TTL-Folgeauftrag am 20.12.2026 bleibt unverändert.
 
-**Stand der 19 internen Prüffelder nach PR #740:** **11 PASS / 8 offen** (sechs Module, zwei App-Querschnittsfelder, predeployment-safe, zwei Provider-Kontozuordnungen PASS). Diese 19 Prüffelder sind **keine Arbeitspakete**. Der Bericht ist eine Repository-Nachweiskontrolle, kein Betreiber-GO.
+**Die 19 internen Prüffelder sind keine Arbeitspakete.** Ihre aktuellen PASS-/OPEN-Zählwerte sind ausschließlich live in [Issue #716](https://github.com/martinirrgeher-cloud/appbasis/issues/716) und der Repository-Prüfung zu lesen, nicht als dauerhafter Status in diesem Dokument zu führen. Der Bericht ist eine Repository-Nachweiskontrolle, kein Betreiber-GO.
 
 ## Bereits vorhandene Datenschutz-/Anbieterbelege – nicht neu abfragen
 
