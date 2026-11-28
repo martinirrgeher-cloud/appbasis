@@ -88,9 +88,9 @@
   },
   "m5": {
     "dataRegion": "open",
-    "dpa": "open",
-    "encryption": "open",
-    "subprocessors": "open",
+    "dpa": "verified",
+    "encryption": "verified",
+    "subprocessors": "verified",
     "providerScope": "cloudflare-and-neon-postgresql-only",
     "unknownProvider": "fail-closed",
     "missingEvidence": "fail-closed",
@@ -185,7 +185,87 @@
         }
       ]
     },
-    "decisionBoundary": "Existing source documents are recognized, not re-requested. The m5 open fields and dataFlow evidenceStatus remain open until a source actually proves their exact claim and is tied to the production account; no invented contracts, timestamps, data flows or EU-only guarantees.",
+    "decisionBoundary": "Public standard provider DPA, encryption and relevant listed subprocessors verified for the named accounts only, without accepting new terms; remaining data-region/actual app data-flow routes stay open. No operator legal sign-off, EU-only assertion, historic restore grant or T11 release authorization. Missing production flow observations must not be faked before the genuine T11 first run.",
     "noReleaseAuthorization": true
+  },
+  "productionEvidence": {
+    "dpa": [
+      {
+        "observedAt": "2026-11-27T14:23:32.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://www.cloudflare.com/cloudflare-customer-dpa/",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+      },
+      {
+        "observedAt": "2026-11-27T14:36:26.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://neon.com/platform-terms",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+      },
+      {
+        "observedAt": "2026-11-27T14:36:26.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://www.databricks.com/legal/mcsa",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+      }
+    ],
+    "encryption": [
+      {
+        "observedAt": "2026-11-27T14:23:32.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://developers.cloudflare.com/r2/reference/data-security/",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+      },
+      {
+        "observedAt": "2026-11-27T14:36:26.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://neon.com/security",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+      },
+      {
+        "observedAt": "2026-11-27T14:23:32.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://github.com/martinirrgeher-cloud/appbasis/actions/runs/45178485082",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+      }
+    ],
+    "subprocessors": [
+      {
+        "observedAt": "2026-11-27T14:23:32.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://www.cloudflare.com/gdpr/subprocessors/cloudflare-services/",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220724216"
+      },
+      {
+        "observedAt": "2026-11-27T14:36:26.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://www.databricks.com/legal/databricks-subprocessors",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+      },
+      {
+        "observedAt": "2026-11-27T14:36:26.000Z",
+        "validUntilOrReviewAt": "2026-12-27T00:00:00.000Z",
+        "appEnvironment": "ulc-linz-production",
+        "reference": "https://neon.com/platform-terms",
+        "accountBindingReference": "https://github.com/martinirrgeher-cloud/appbasis/issues/716#issuecomment-7220996997"
+      }
+    ]
+  },
+  "standardProviderEvidenceLimits": {
+    "assessedFor": "documented Cloudflare/Neon standard self-service plan and named ULC production accounts only",
+    "dpa": "Verified that Cloudflare and Neon/Databricks public standard service agreements incorporate their published DPA. Neon Schedule binds users by access (14 Oct 2026); Cloudflare account DPA link and self-service inclusion recorded in Issue #716. This is NOT an individual legal-operator signoff, negotiated contract search or new acceptance of terms.",
+    "encryption": "Verified public baseline encryption controls for Neon service (in transit and at rest), Cloudflare R2 (AES-256 at rest/TLS transport) and already tested application AES-GCM backup; NOT an end-to-end measurement of every predeployment HTTP/Worker/PostgreSQL route, private media or all exported copies.",
+    "subprocessors": "Verified relevant public Cloudflare and Databricks provider lists and Neon Schedule's additional Grafana Labs disclosure; NOT a claim that ULC sends data to every listed subprocessor or that every support transfer stays in the EU.",
+    "stillOpen": "Data-region and all six app-specific data-flow attestations remain open: Cloudflare Workers operate on a global network, and first actual authorized HTTP/database traffic belongs to T11. Unobserved runtime traffic, transfer destinations and legacy Neon backup copy expiry are NOT marked verified; no deployment or restore promotion authorized.",
+    "legalApprovalNotIncluded": true,
+    "reviewedSourceDate": "2026-11-28"
   }
 }
