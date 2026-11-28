@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -40,4 +41,12 @@ test("accepts only the existing active first-login ULC administrator and exact r
   assert.throws(() => assertClubAdminRecoveryTarget([{ ...row, ended_at: new Date() }], principal));
   assert.throws(() => assertClubAdminRecoveryTarget([row], { ...principal, grants: ["extra"] }));
   assert.throws(() => assertClubAdminRecoveryTarget([row], { ...principal, roleIds: ["ulc-linz:trainer"] }));
+});
+
+test("recovery serializes on the target identity without UPDATE lock on append-only audit", () => {
+  const script = readFileSync(new URL("./recover-production-club-admin-password.mjs", import.meta.url), "utf8");
+  assert.match(script, /FOR UPDATE OF u,s,m,a/);
+  assert.match(script, /FROM ulc_linz_operations\.club_admin_recovery_audit/);
+  assert.match(script, /ORDER BY created_at DESC, operation_id DESC LIMIT 1/);
+  assert.doesNotMatch(script, /ORDER BY created_at DESC, operation_id DESC LIMIT 1 FOR UPDATE/);
 });
