@@ -44,7 +44,11 @@ test("P3-D current source gives exactly 69 tables, 47 migrations and eight owner
   assert.deepEqual(result.blockedCrossCutting,
     Object.entries(inputs.app.crossCutting)
       .filter(([,value])=>value!=="verified").map(([id])=>id).sort());
-  assert.equal(result.providerAccountEvidence,"open");
+  const expectedAccountEvidence = inputs.provider.providerScope.every(x =>
+    x.appSpecificProductionEvidence === "verified") &&
+    ["dpa", "dataRegion", "encryption", "subprocessors"].every(key =>
+      inputs.provider.m5?.[key] === "verified") ? "verified" : "open";
+  assert.equal(result.providerAccountEvidence, expectedAccountEvidence);
 });
 test("even an otherwise complete local report cannot issue deployment, production data or retention authorization",async()=>{
   const result=await evaluateUlcP3ReleaseFromRepository(root);
@@ -81,8 +85,11 @@ test("no silent reinterpretation of the old 66-table operator proposal as curren
 });
 test("missing provider scope, shortened source authority and introduced object storage never pass",async()=>{
   const a=await fixtures();
-  a.provider.providerScope[0].appSpecificProductionEvidence="verified";
+  a.provider.providerScope[0].appSpecificProductionEvidence="open";
   assert.equal(evaluateUlcP3ReleaseInventory(a).providerAccountEvidence,"open");
+  const d=await fixtures();
+  d.provider.m5.dataRegion="open";
+  assert.equal(evaluateUlcP3ReleaseInventory(d).providerAccountEvidence,"open");
   const bad=await fixtures();
   bad.provider.providerScope.pop();
   assert.throws(()=>evaluateUlcP3ReleaseInventory(bad),/provider account/);
