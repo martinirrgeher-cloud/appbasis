@@ -1,6 +1,6 @@
 # ULC Linz – T10 einmaliger Betreiberentscheid zum begrenzten Echtbetrieb
 
-**Technischer Stand 28.11.2026:** Ausgangs-`main` nach [PR #740](https://github.com/martinirrgeher-cloud/appbasis/pull/740) `2b2daec2e6cea29dac67667551df4cf1c70aa5a8`; [PR-CI](https://github.com/martinirrgeher-cloud/appbasis/actions/runs/46122660389) **3/3 PASS**, Codex **0 Findings**, [Main-CI](https://github.com/martinirrgeher-cloud/appbasis/actions/runs/46122947340) **3/3 PASS**. Vor einer echten Freigabe den aktuellen `main`-SHA erneut lesen. **T10 aktuell NO-GO; kein Deploy, Ingress oder neue Echtdatenfreigabe.**
+**Technischer Referenzumfang (28.11.2026):** [PR #740](https://github.com/martinirrgeher-cloud/appbasis/pull/740) führt den ausschließlich ULC-gebundenen geschützten sechsmoduligen App-Lifecycle-Nachweis ein. **Volatile PR-/Main-SHAs, CI-Ergebnisse und Reviews ausschließlich live in GitHub sowie im zentralen [Issue #716](https://github.com/martinirrgeher-cloud/appbasis/issues/716) prüfen**, nicht aus diesem Dokument übernehmen. **T10 weiterhin ohne Betreiber-GO; kein Deploy, Ingress oder neue Echtdatenfreigabe.**
 
 **Operative Quelle und Statushistorie:** [Issue #716](https://github.com/martinirrgeher-cloud/appbasis/issues/716). Es gibt **genau zwölf ursprüngliche Pakete**: T01–T09 PASS im vereinbarten begrenzten Pilot-Scope; T10 ist das einzige aktive Paket, danach T11 Echtbetriebsstart und T12 Betriebsübergabe. Keine neuen Projektpakete und keine Wiederholung bestandener T06/T07/T08/T09-/Handytests.
 
