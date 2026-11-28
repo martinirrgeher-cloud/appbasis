@@ -15,8 +15,11 @@ import {
 const ROOT_USERNAME = "ulc.production.admin";
 const TARGET_USERNAME = "ulc.admin";
 const ORIGIN = "https://app.ulc-linz.at";
+// Fixed, non-secret phase labels permit actionable diagnostics without credentials.
+let protectedRecoveryPhase = "configuration";
 
 export async function recoverProductionClubAdminPassword(env = process.env) {
+  protectedRecoveryPhase = "configuration";
   const config = readClubAdminRecoveryEnvironment(env);
   parseUlcLinzProductionDatabaseUrl(config.databaseUrl);
   const connection = createPostgresDatabase(config.databaseUrl);
@@ -32,10 +35,12 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
       sql: connection.client,
       baseURL: ORIGIN,
     });
+    protectedRecoveryPhase = "technical-root-authentication";
     rootSession = await backend.signInWithUsername({
       username: ROOT_USERNAME,
       password: config.rootPassword,
     });
+    protectedRecoveryPhase = "technical-root-authorization";
     const rootRows = await connection.client.unsafe(
       'SELECT id, username, role, banned FROM public."user" WHERE id=$1 AND username=$2',
       [rootSession.identityId, ROOT_USERNAME],
@@ -49,6 +54,7 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
     }
 
     // This operation must never run before the additive migration and DB guard.
+    protectedRecoveryPhase = "recovery-schema-validation";
     const [schema] = await connection.client.unsafe(
       "SELECT to_regclass($1) AS audit_table, " +
       "EXISTS (SELECT 1 FROM pg_catalog.pg_trigger " +
@@ -63,12 +69,14 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
       throw new Error("Recovery schema or expiry trigger unavailable.");
     }
 
+    protectedRecoveryPhase = "new-password-hashing";
     const newHash = await hashPassword(config.temporaryPassword);
     if (!(await verifyPassword({ hash: newHash, password: config.temporaryPassword }))) {
       throw new Error("Password hashing self-check failed.");
     }
 
     await connection.client.begin(async (tx) => {
+      protectedRecoveryPhase = "existing-admin-lock";
       const rows = await tx.unsafe(
         'SELECT u.id AS identity_id, u.username, u.role, u.banned, s.disabled_at, ' +
           's.must_change_password, m.source_role, m.active, m.ended_at, a.id AS credential_id ' +
@@ -86,7 +94,9 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
               unsafe: (query, parameters) => tx.unsafe(query, parameters),
             }).findPrincipal(principalId(targetId))
           : null;
+      protectedRecoveryPhase = "existing-admin-permissions";
       const target = assertClubAdminRecoveryTarget(rows, permissions);
+      protectedRecoveryPhase = "append-only-audit-read";
       const prior = await tx.unsafe(
         "SELECT operation_id, expires_at FROM ulc_linz_operations.club_admin_recovery_audit " +
           "WHERE organization_id=$1 AND target_identity_id=$2 " +
@@ -98,6 +108,7 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
       if (prior.length > 0 && new Date(prior[0].expires_at).getTime() > Date.now()) {
         throw new Error("A live first-login recovery is already pending.");
       }
+      protectedRecoveryPhase = "append-only-audit-insert";
       const audit = await tx.unsafe(
         "INSERT INTO ulc_linz_operations.club_admin_recovery_audit " +
           "(operation_id, organization_id, actor_principal_id, target_identity_id, " +
@@ -108,12 +119,14 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
          "Authorized existing ULC administrator first-login password recovery"],
       );
       if (audit.length !== 1) throw new Error("Recovery audit event was not unique.");
+      protectedRecoveryPhase = "credential-update";
       const changed = await tx.unsafe(
         "UPDATE public.account SET password=$1, updated_at=now() " +
           "WHERE id=$2 AND user_id=$3 AND provider_id='credential' RETURNING id",
         [newHash, target.credential_id, target.identity_id],
       );
       if (changed.length !== 1) throw new Error("Credential reset was not unique.");
+      protectedRecoveryPhase = "mandatory-password-change-state";
       const state = await tx.unsafe(
         "UPDATE public.appbasis_identity_security_state " +
           "SET must_change_password=true, password_changed_at=NULL, updated_at=now() " +
@@ -122,6 +135,7 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
         [target.identity_id],
       );
       if (state.length !== 1) throw new Error("First-login state changed during reset.");
+      protectedRecoveryPhase = "existing-session-revoke";
       await tx.unsafe('DELETE FROM public."session" WHERE user_id=$1', [
         target.identity_id,
       ]);
@@ -129,6 +143,7 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
   } finally {
     try {
       if (rootSession !== null) {
+        protectedRecoveryPhase = "technical-root-session-cleanup";
         const auth = createBetterAuthRuntime({
           database: connection.database,
           baseURL: ORIGIN,
@@ -151,7 +166,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     await recoverProductionClubAdminPassword();
     console.log("ULC club admin first-login password recovery PASS; mandatory change pending.");
   } catch {
-    console.error("ULC club admin password recovery FAIL; inspect protected status, never print credentials.");
+    console.error("ULC club admin password recovery FAIL at protected phase: " + protectedRecoveryPhase + "; credentials withheld.");
     process.exitCode = 1;
   }
 }
