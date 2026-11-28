@@ -16,7 +16,7 @@
   "status": "blocked",
   "crossCutting": {
     "dataExport": "verified",
-    "applicationLifecycle": "blocked",
+    "applicationLifecycle": "verified",
     "privacy": "blocked"
   },
   "evidence": {
@@ -30,12 +30,19 @@
         "gitBlobSha": "c4aa63173ff7aaed047d619425cae5bfb7269952"
       }
     ],
-    "applicationLifecycle": [],
+    "applicationLifecycle": [
+      {
+        "path": "apps/ulc-linz/privacy/T10-PILOT-APP-LIFECYCLE-EVIDENCE-20261128.md",
+        "gitBlobSha": "4630e78cb27040a11bb66b8f122fd8cf460379b9"
+      },
+      {
+        "path": "apps/ulc-linz/test/production-protected.test.ts",
+        "gitBlobSha": "53615553f5eb5d9499abad864bcaef65202950be"
+      }
+    ],
     "privacy": []
   },
   "blockers": [
-    "App-owned training, attendance and trainer-audit lifecycle is not yet production-verified.",
-    "The current privacy inventory intentionally remains fail-closed while selected-module lifecycle work is pending.",
-    "Training documentation v1 remains preview-only until its standard-module production evidence is complete."
+    "App privacy/legal/provider evidence is not yet bound to the current T10 release contract. Application lifecycle is verified only for the restricted private pilot."
   ]
 }

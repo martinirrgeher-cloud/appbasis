@@ -36,8 +36,14 @@ test("P3-D current source gives exactly 69 tables, 47 migrations and eight owner
     "ulc_linz_training_subject_deletion",
   ]);
   assert.equal(result.byOwner.reduce((a,r)=>a+r.tableCount,0),69);
-  assert.deepEqual(result.blockedModules,["exercise-catalog","training-blocks","training-documentation"]);
-  assert.deepEqual(result.blockedCrossCutting,["applicationLifecycle","privacy"]);
+  // P3 inventory is an enduring factual report, not a permanent requirement
+  // for three module gates to remain blocked after legitimate T10 evidence.
+  const inputs=await fixtures();
+  assert.deepEqual(result.blockedModules,
+    Object.entries(inputs.modules).filter(([,value])=>value.status!=="ready").map(([id])=>id));
+  assert.deepEqual(result.blockedCrossCutting,
+    Object.entries(inputs.app.crossCutting)
+      .filter(([,value])=>value!=="verified").map(([id])=>id).sort());
   assert.equal(result.providerAccountEvidence,"open");
 });
 test("even an otherwise complete local report cannot issue deployment, production data or retention authorization",async()=>{

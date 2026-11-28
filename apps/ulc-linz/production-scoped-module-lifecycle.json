@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "appId": "ulc-linz",
+  "scope": "private-members-only-six-module-pilot-no-private-minor-media",
+  "scopeLimitations": {
+    "privateMedia": "disabled",
+    "unverifiedHistoricalRestore": "promotion-denied",
+    "ambiguousFreeText": "manual-stop",
+    "actorAndAudit": "manual-stop"
+  },
+  "productionEntrypoint": {
+    "path": "apps/ulc-linz/worker/production-protected.ts",
+    "gitBlobSha": "ce613073a9f1f89bb80f6111c276aded88a02b83"
+  },
+  "productionEntrypointTest": {
+    "path": "apps/ulc-linz/test/production-protected.test.ts",
+    "gitBlobSha": "53615553f5eb5d9499abad864bcaef65202950be"
+  },
+  "moduleLifecycle": [
+    {
+      "moduleId": "exercise-catalog",
+      "evidence": [
+        {
+          "path": "modules/exercise-catalog/production-pilot-lifecycle-evidence-20261128.md",
+          "gitBlobSha": "aefa7a989f03d13c6cc64d99cacac4b44d28e9c0"
+        },
+        {
+          "path": "modules/exercise-catalog/src/postgres-repository.ts",
+          "gitBlobSha": "31c9deea11701532f65e65dc3b2c40df98cccd88"
+        },
+        {
+          "path": "modules/exercise-catalog/migrations/0004_appbasis_exercise_catalog_subject_lifecycle.sql",
+          "gitBlobSha": "82fe7b01914e6f3913a06cdc942a9d9258e6df8b"
+        },
+        {
+          "path": "modules/exercise-catalog/migrations/0005_appbasis_exercise_catalog_subject_deletion_write_fence.sql",
+          "gitBlobSha": "ecdc0fa631c35157b399c3123ac1ad541134b388"
+        },
+        {
+          "path": "modules/exercise-catalog/test/service.test.ts",
+          "gitBlobSha": "a2976247e262815372be5eb64470326657764427"
+        }
+      ]
+    },
+    {
+      "moduleId": "training-blocks",
+      "evidence": [
+        {
+          "path": "modules/training-blocks/production-pilot-lifecycle-evidence-20261128.md",
+          "gitBlobSha": "cc7a2c27eb92ae5f8d1f23fdfc162667b4420db4"
+        },
+        {
+          "path": "modules/training-blocks/src/lifecycle.ts",
+          "gitBlobSha": "a72b837174acbf1efdc78945cbaef9cec7d64194"
+        },
+        {
+          "path": "modules/training-blocks/src/postgres-repository.ts",
+          "gitBlobSha": "83cc6218f872951ceb0725007f3164a1072c3e5a"
+        },
+        {
+          "path": "modules/training-blocks/migrations/0004_appbasis_training_block_favorite_deletion.sql",
+          "gitBlobSha": "6216c999ae447063cb4641d758310f0f93351333"
+        },
+        {
+          "path": "modules/training-blocks/migrations/0005_appbasis_training_block_usage_subject.sql",
+          "gitBlobSha": "629697a68e9959fedecba7e68e1fa7939c636b49"
+        },
+        {
+          "path": "modules/training-blocks/migrations/0006_appbasis_training_block_usage_subject_tombstone_guard.sql",
+          "gitBlobSha": "0567249f237debb5653e790ba368771ef6d2f7f9"
+        },
+        {
+          "path": "modules/training-blocks/test/postgres-repository.postgres.e2e.ts",
+          "gitBlobSha": "c7c3d02eb46f5a320998d15f7156375a9051950a"
+        }
+      ]
+    },
+    {
+      "moduleId": "training-documentation",
+      "evidence": [
+        {
+          "path": "modules/training-documentation/production-pilot-lifecycle-evidence-20261128.md",
+          "gitBlobSha": "53096bf86ec386cbfad9cdc94a5b57d2b84d30be"
+        },
+        {
+          "path": "modules/training-documentation/src/postgres-repository.ts",
+          "gitBlobSha": "71b5bef12e3197d21d82751328115698ea36ae52"
+        },
+        {
+          "path": "modules/training-documentation/migrations/0001_appbasis_training_documentation_subject_deletion.sql",
+          "gitBlobSha": "de276921a7ae6bd0c3d046429f1520a97c92b573"
+        },
+        {
+          "path": "modules/training-documentation/test/postgres-repository.postgres.e2e.ts",
+          "gitBlobSha": "38837bc37e8eed647bf2a0d6c45bbc26ec48d676"
+        },
+        {
+          "path": "modules/training-documentation/test/subject-restore-reconciliation.test.ts",
+          "gitBlobSha": "fc8b939c4b94099d6bb7afbd98012364a8fdc84f"
+        }
+      ]
+    }
+  ],
+  "runtimeGuardEvidence": [
+    {
+      "path": "apps/ulc-linz/worker/postgres.ts",
+      "gitBlobSha": "47b8dd3204040bfbd20a317f973c6e1184178e13"
+    },
+    {
+      "path": "apps/ulc-linz/worker/exercise-catalog-runtime.ts",
+      "gitBlobSha": "5ac1494ae06852ffc1469103ec6ae056d70416ee"
+    },
+    {
+      "path": "apps/ulc-linz/worker/exercise-catalog-protected-runtime-readiness.ts",
+      "gitBlobSha": "f286a7c667558fbc0cbf18fa0b8ef8e6becee411"
+    },
+    {
+      "path": "apps/ulc-linz/worker/training-block-verified-runtime-readiness.ts",
+      "gitBlobSha": "f212d801eb0e8f2106537fd8a13ef6c243f3d48a"
+    },
+    {
+      "path": "apps/ulc-linz/worker/training-documentation-production-readiness.ts",
+      "gitBlobSha": "9002bfa03485014a548de3a76e3249f822a7d860"
+    },
+    {
+      "path": "apps/ulc-linz/worker/training-documentation-write-actor.ts",
+      "gitBlobSha": "05e4364872321880ba598e4449a90964a2fb1c7b"
+    },
+    {
+      "path": "apps/ulc-linz/worker/training-plan-verified-usage-booking.ts",
+      "gitBlobSha": "114bd6ec12dcd99d00c061ea0e66f6c1a6793b63"
+    },
+    {
+      "path": "apps/ulc-linz/test/exercise-catalog-protected-runtime-readiness.test.ts",
+      "gitBlobSha": "336072a9203de47f76a620759407045a669bfd51"
+    },
+    {
+      "path": "apps/ulc-linz/test/training-block-verified-runtime-readiness.test.ts",
+      "gitBlobSha": "88e0ece7e1377646f4d0e15fccbf919062112256"
+    },
+    {
+      "path": "apps/ulc-linz/test/training-documentation-postgres-write-guard.test.ts",
+      "gitBlobSha": "11696b2f3d567f641128392280c107eb0ab2db80"
+    }
+  ]
+}

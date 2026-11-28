@@ -3,6 +3,8 @@
 // Source: current Git working tree, not independently authenticated account
 // agreements or live runtime; those require a separate operator decision.
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { verifyUlcScopedProductionLifecycle } from "./ulc-linz-scoped-production-lifecycle.mjs";
 
 const MODULES = Object.freeze([
   "countdown", "athletes", "exercise-catalog", "training-blocks",
@@ -56,7 +58,7 @@ function checked(value, message) {
 export function evaluateUlcT10PilotDecision(input) {
   checked(input && typeof input === "object" && !Array.isArray(input),
     "Invalid T10 evidence input.");
-  const { app, modules, retention, provider } = input;
+  const { app, modules, retention, provider, scopedPilot } = input;
   checked(app?.appId === "ulc-linz" && app.schemaVersion === 1,
     "T10 app contract is not ULC Linz.");
   checked(Array.isArray(app.modules) &&
@@ -85,9 +87,24 @@ export function evaluateUlcT10PilotDecision(input) {
     const req = module.requirements || {};
     const allVerified = Object.values(req).length > 0 &&
       Object.values(req).every(value => value === "verified" || value === "not-applicable");
-    add("module:" + moduleId, module.status === "ready" && allVerified,
-      module.status === "ready" && allVerified
-        ? "ready with verified module requirements"
+    // Scoped ULC approval is not the global module "ready" bit. It is
+    // admitted only by the SHA-verifying protected-entrypoint sidecar reader.
+    const scopedReady = scopedPilot?.appId === "ulc-linz" &&
+      scopedPilot?.scope ===
+        "private-members-only-six-module-pilot-no-private-minor-media" &&
+      scopedPilot?.legalApproved === false &&
+      scopedPilot?.deploymentAuthorized === false &&
+      scopedPilot?.privateMediaAllowed === false &&
+      scopedPilot?.oldRestorePromotionAllowed === false &&
+      scopedPilot?.verifiedModuleIds?.includes(moduleId) === true &&
+      module.status === "blocked" &&
+      req.authorization === "verified" && req.database === "verified" &&
+      req.lifecycle === "blocked";
+    const verified = (module.status === "ready" && allVerified) || scopedReady;
+    add("module:" + moduleId, verified,
+      verified
+        ? scopedReady ? "app-scoped protected ULC pilot, source pinned"
+          : "ready with verified generic module requirements"
         : "module=" + module.status + "; requirements=" +
           Object.entries(req).map(([key,value]) => key + ":" + value).join(","));
   }
@@ -169,7 +186,8 @@ export async function readCurrentUlcT10PilotDecision(root = new URL("../", impor
   ));
   const retention = await json("apps/ulc-linz/privacy/t10-current-production-legal-decision.json");
   const provider = await json("apps/ulc-linz/privacy/m5-provider-compliance-inventory.json");
-  return evaluateUlcT10PilotDecision({app, modules, retention, provider});
+  const scopedPilot = await verifyUlcScopedProductionLifecycle(fileURLToPath(root));
+  return evaluateUlcT10PilotDecision({app, modules, retention, provider, scopedPilot});
 }
 
 if (process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href) {

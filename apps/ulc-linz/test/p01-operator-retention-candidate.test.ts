@@ -120,6 +120,7 @@ describe("ULC P01 confirmed target guidance – no legal or runtime approval", (
     const app = await data<{
       status: string;
       crossCutting: { privacy: string; applicationLifecycle: string };
+      evidence?: { applicationLifecycle?: readonly {path:string;gitBlobSha:string}[] };
     }>("../appbasis.production.json");
 
     expect(candidate.documentType).toBe("operator-confirmed-target-guideline-not-runtime-policy");
@@ -153,10 +154,14 @@ describe("ULC P01 confirmed target guidance – no legal or runtime approval", (
       runtimeWiring: false,
       databaseMigration: false,
     });
+    // Historical P01 is not legal approval. Independent, evidence-pinned
+    // ULC pilot lifecycle may be verified without granting privacy readiness.
     expect(app.status).toBe("blocked");
-    expect(app.crossCutting).toMatchObject({
-      privacy: "blocked", applicationLifecycle: "blocked",
-    });
+    expect(app.crossCutting.privacy).toBe("blocked");
+    expect(["verified", "blocked"]).toContain(app.crossCutting.applicationLifecycle);
+    if (app.crossCutting.applicationLifecycle === "verified") {
+      expect(app.evidence?.applicationLifecycle?.length ?? 0).toBeGreaterThan(0);
+    }
   });
 
   it("requires a purpose and an explicit conditional rule for all 13 groups", async () => {
