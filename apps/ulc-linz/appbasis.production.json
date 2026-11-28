@@ -13,11 +13,11 @@
     "identity",
     "permissions"
   ],
-  "status": "blocked",
+  "status": "ready",
   "crossCutting": {
     "dataExport": "verified",
     "applicationLifecycle": "verified",
-    "privacy": "blocked"
+    "privacy": "verified"
   },
   "evidence": {
     "dataExport": [
@@ -40,9 +40,36 @@
         "gitBlobSha": "53615553f5eb5d9499abad864bcaef65202950be"
       }
     ],
-    "privacy": []
+    "privacy": [
+      {
+        "path": "apps/ulc-linz/privacy/T10-PRIVACY-RELEASE-EVIDENCE-20261128.md",
+        "gitBlobSha": "0c56e467f154da4b552e10d1910c55b4058af62e"
+      },
+      {
+        "path": "apps/ulc-linz/privacy/t10-current-production-legal-decision.json",
+        "gitBlobSha": "cf823fd3e8fa8779a3e0b245158140f77d8d7a4a"
+      },
+      {
+        "path": "apps/ulc-linz/privacy/m5-provider-compliance-inventory.json",
+        "gitBlobSha": "1864e41e315f6f8c16ab76c2c33a4fe1b0f23a3d"
+      },
+      {
+        "path": "apps/ulc-linz/privacy/T02-APP-DATENSCHUTZINFORMATION-ENTWURF.md",
+        "gitBlobSha": "bc08b798dc52ae06b766ee70428fddb8180a8d9b"
+      },
+      {
+        "path": "apps/ulc-linz/privacy/T07-LOESCHPRAXIS-BETRIEBSANWEISUNG-20261127.md",
+        "gitBlobSha": "82235cd752fd2c1136cf11a4206c2ef9d19783c0"
+      },
+      {
+        "path": "apps/ulc-linz/worker/privacy-info-ui.ts",
+        "gitBlobSha": "62ea71f879f2403c200ab26563ec639fc8cfdad9"
+      },
+      {
+        "path": "apps/ulc-linz/worker/production-protected.ts",
+        "gitBlobSha": "ce613073a9f1f89bb80f6111c276aded88a02b83"
+      }
+    ]
   },
-  "blockers": [
-    "App privacy/legal/provider evidence is not yet bound to the current T10 release contract. Application lifecycle is verified only for the restricted private pilot."
-  ]
+  "blockers": []
 }

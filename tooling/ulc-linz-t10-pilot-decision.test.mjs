@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -23,7 +25,10 @@ test("actual ULC T10 checks may become evidenced without authorizing production"
   assert.equal(result.deploymentAuthorized, false);
   assert.equal(result.personalDataActivationAuthorized, false);
   assert.equal(result.historicalRestorePromotionAuthorized, false);
-  assert.equal(result.finalStatus, "NO-GO-until-separate-documented-T10-approval");
+  assert.equal(result.finalStatus,
+    result.readyForOperatorReview && result.operatorT10DeclarationRecordedInRepository
+      ? "T10-REPOSITORY-READY-T11-SEPARATE-AUTHORIZATION-REQUIRED"
+      : "NO-GO-until-separate-documented-T10-approval");
 });
 
 function t10LegalDecision(legalApproval) {
@@ -112,7 +117,9 @@ test("even fully synthetic ready contracts do not confer operator deployment app
   assert.equal(result.deploymentAuthorized, false);
   assert.equal(result.personalDataActivationAuthorized, false);
   assert.equal(result.historicalRestorePromotionAuthorized, false);
-  assert.equal(result.finalStatus, "NO-GO-until-separate-documented-T10-approval");
+  assert.equal(result.operatorT10DeclarationRecordedInRepository, true);
+  assert.equal(result.finalStatus,
+    "T10-REPOSITORY-READY-T11-SEPARATE-AUTHORIZATION-REQUIRED");
 });
 
 test("T10 predeployment flow gate is exact and cannot be satisfied by invented T11 traffic", () => {
@@ -210,4 +217,79 @@ test("denies mismatched selected modules, foreign app and provider scope drift",
   assert.throws(() => evaluateUlcT10PilotDecision({
     ...valid, provider: {...valid.provider, providerScope: valid.provider.providerScope.slice(1)},
   }), /provider list changed/);
+});
+
+test("real T10 operator GO is pinned to protected six-module privacy evidence without T11 deployment", async () => {
+  const read = async path => JSON.parse(await readFile(new URL("../" + path, import.meta.url), "utf8"));
+  const legal = await read("apps/ulc-linz/privacy/t10-current-production-legal-decision.json");
+  const app = await read("apps/ulc-linz/appbasis.production.json");
+  const provider = await read("apps/ulc-linz/privacy/m5-provider-compliance-inventory.json");
+  const current = await readCurrentUlcT10PilotDecision();
+
+  const approvedScope = "private-members-only-six-module-pilot-no-private-minor-media";
+  assert.equal(legal.legalApproval, true);
+  assert.equal(legal.runtimeActive, false);
+  assert.equal(legal.currentSchemaTableCount, 69);
+  assert.equal(legal.scope, approvedScope);
+  assert.equal(legal.decision?.privateRecordReference,
+    "private:ulc-linz/t10-operator-go-2026-11-28");
+  assert.equal(legal.decision?.decidedOn, "2026-11-28");
+  assert.equal(legal.decision?.approvedPilotScope, approvedScope);
+  assert.equal(legal.decision?.includesMinorsAndParents, true);
+  assert.equal(legal.decision?.responsibleRole, "authorised-ulc-linz-club-controller");
+  assert.deepEqual(legal.decision?.approvedProviderScope,
+    ["cloudflare", "neon-postgresql"]);
+  for (const k of ["t11DeploymentAuthorized", "t11IngressAuthorized",
+    "personalDataActivationAuthorized", "oldRestorePromotionAuthorized",
+    "privateMediaAuthorized"]) assert.equal(legal.decision?.[k], false);
+  assert.equal(legal.decision?.authorityBasis, "explicit-operator-chat-go-2026-11-28");
+
+  assert.equal(app.status, "ready");
+  assert.equal(app.crossCutting.privacy, "verified");
+  assert.equal(app.crossCutting.applicationLifecycle, "verified");
+  assert.deepEqual(app.blockers, []);
+  assert.deepEqual(app.modules, [
+    "countdown", "athletes", "exercise-catalog", "training-blocks",
+    "training-plans", "training-documentation",
+  ]);
+  const entries = app.evidence.privacy;
+  const paths = entries.map(e => e.path);
+  for (const path of [
+    "apps/ulc-linz/privacy/T10-PRIVACY-RELEASE-EVIDENCE-20261128.md",
+    "apps/ulc-linz/privacy/t10-current-production-legal-decision.json",
+    "apps/ulc-linz/privacy/m5-provider-compliance-inventory.json",
+    "apps/ulc-linz/privacy/T02-APP-DATENSCHUTZINFORMATION-ENTWURF.md",
+    "apps/ulc-linz/privacy/T07-LOESCHPRAXIS-BETRIEBSANWEISUNG-20261127.md",
+    "apps/ulc-linz/worker/privacy-info-ui.ts",
+    "apps/ulc-linz/worker/production-protected.ts",
+  ]) assert.ok(paths.includes(path), path);
+  for (const { path, gitBlobSha } of entries) {
+    const bytes = await readFile(new URL("../" + path, import.meta.url));
+    const digest = createHash("sha1")
+      .update("blob " + bytes.length + "\0", "utf8")
+      .update(bytes)
+      .digest("hex");
+    assert.equal(gitBlobSha, digest, path);
+  }
+  // No released private media, real traffic, old restore or automated retention.
+  assert.equal(provider.dataFlows.length, 6);
+  assert.equal(provider.dataFlows.every(x =>
+    x.evidenceStatus === "open" && x.predeployment?.evidenceStatus === "verified"), true);
+  assert.equal(current.checks.length, 19);
+  assert.equal(current.operatorT10DeclarationRecordedInRepository, true);
+  // Fresh account-bound evidence is required NOW, not a permanent claim
+  // after expiry of a provider proof or change in protected scoped files.
+  assert.equal(current.openChecks.length, 0, current.openChecks.join(", "));
+  assert.equal(current.readyForOperatorReview, true);
+  assert.equal(current.finalStatus,
+    "T10-REPOSITORY-READY-T11-SEPARATE-AUTHORIZATION-REQUIRED");
+  for (const id of ["retention:legal", "app:privacy", "app:composition"]) {
+    assert.equal(current.checks.find(x => x.id === id)?.status,
+      "verified-in-repository", id);
+  }
+  assert.equal(current.operatorApproved, false,
+    "Repository evaluator must not synthesize a separate live approval");
+  for (const key of ["deploymentAuthorized", "personalDataActivationAuthorized",
+    "historicalRestorePromotionAuthorized", "irreversibleActionsPerformed"])
+    assert.equal(current[key], false);
 });

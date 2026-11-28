@@ -5,14 +5,40 @@
   "environment": "production",
   "currentSchemaTableCount": 69,
   "scope": "private-members-only-six-module-pilot-no-private-minor-media",
-  "legalApproval": false,
+  "legalApproval": true,
   "runtimeActive": false,
-  "decision": null,
+  "decision": {
+    "privateRecordReference": "private:ulc-linz/t10-operator-go-2026-11-28",
+    "responsibleRole": "authorised-ulc-linz-club-controller",
+    "decidedOn": "2026-11-28",
+    "coveredPurposes": [
+      "members",
+      "parents-and-guardians",
+      "training-participation",
+      "training-planning-and-documentation",
+      "security-and-audit",
+      "privacy-rights-and-retention"
+    ],
+    "includesMinorsAndParents": true,
+    "approvedPilotScope": "private-members-only-six-module-pilot-no-private-minor-media",
+    "approvedProviderScope": [
+      "cloudflare",
+      "neon-postgresql"
+    ],
+    "dataProcessingGeographyAcknowledged": "Neon Frankfurt, EU R2 backup, global Cloudflare Workers and potential third-country support/subprocessors, no EU-only claim",
+    "limitedToPrelaunchT10Decision": true,
+    "t11DeploymentAuthorized": false,
+    "t11IngressAuthorized": false,
+    "personalDataActivationAuthorized": false,
+    "oldRestorePromotionAuthorized": false,
+    "privateMediaAuthorized": false,
+    "authorityBasis": "explicit-operator-chat-go-2026-11-28"
+  },
   "sourceReferences": [
     "apps/ulc-linz/privacy/p01-operator-retention-candidate.json",
     "apps/ulc-linz/privacy/p05-production-69-table-coverage-delta.json",
     "apps/ulc-linz/privacy/T02-APP-DATENSCHUTZINFORMATION-ENTWURF.md",
     "apps/ulc-linz/privacy/T07-LOESCHPRAXIS-BETRIEBSANWEISUNG-20261127.md"
   ],
-  "note": "Historical P01 (66 tables) remains an unapproved target snapshot. Only this separate 69-table T10 decision may carry a later explicit legal operator signoff, after actual scope, parent/child notice, account DPA and provider transfers are accepted. Current T07 pilot manually handles cases with STOP; not a universal deletion or live-purge grant."
+  "note": "ULC Linz operator explicitly declared T10-GO for the restricted six-module private membership pilot on 2026-11-28, including parent/minor data, global Cloudflare/possible third-country transfer risks and T07 manual erasure STOP. Documentary record kept separately in the non-public controller file; no signed/eIDAS signature or independent authority verification is claimed. Historical P01 remains an unapproved 66-table target. This 69-table T10 scope approval does NOT activate retention, production data, deployment, Cloudflare ingress, private media, or historical restore promotion, each requiring appropriate T11 authorization."
 }

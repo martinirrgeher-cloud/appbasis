@@ -102,7 +102,7 @@ describe("ULC P01 confirmed target guidance – no legal or runtime approval", (
       .toEqual(expect.arrayContaining(extra));
   });
 
-  it("records scoped operator target confirmation while keeping legal/provider/production gates unapproved", async () => {
+  it("keeps historical P01 unapproved independently of the newer T10 operator GO", async () => {
     const candidate = await data<Candidate>(
       "../privacy/p01-operator-retention-candidate.json",
     );
@@ -154,10 +154,34 @@ describe("ULC P01 confirmed target guidance – no legal or runtime approval", (
       runtimeWiring: false,
       databaseMigration: false,
     });
-    // Historical P01 is not legal approval. Independent, evidence-pinned
-    // ULC pilot lifecycle may be verified without granting privacy readiness.
-    expect(app.status).toBe("blocked");
-    expect(app.crossCutting.privacy).toBe("blocked");
+    // The historical 66-table P01 has NO legal authority, even after a
+    // separate, current 69-table T10 operator decision. Never reinterpret P01.
+    const t10 = await data<{
+      currentSchemaTableCount: number;
+      legalApproval: boolean;
+      runtimeActive: boolean;
+      decision: null | {
+        privateRecordReference: string;
+        approvedPilotScope: string;
+        t11DeploymentAuthorized: boolean;
+        personalDataActivationAuthorized: boolean;
+      };
+    }>("../privacy/t10-current-production-legal-decision.json");
+    expect(t10.currentSchemaTableCount).toBe(69);
+    expect(t10.runtimeActive).toBe(false);
+    if (t10.legalApproval) {
+      expect(t10.decision?.privateRecordReference)
+        .toBe("private:ulc-linz/t10-operator-go-2026-11-28");
+      expect(t10.decision?.approvedPilotScope)
+        .toBe("private-members-only-six-module-pilot-no-private-minor-media");
+      expect(t10.decision?.t11DeploymentAuthorized).toBe(false);
+      expect(t10.decision?.personalDataActivationAuthorized).toBe(false);
+      expect(app.status).toBe("ready");
+      expect(app.crossCutting.privacy).toBe("verified");
+    } else {
+      expect(app.status).toBe("blocked");
+      expect(app.crossCutting.privacy).toBe("blocked");
+    }
     expect(["verified", "blocked"]).toContain(app.crossCutting.applicationLifecycle);
     if (app.crossCutting.applicationLifecycle === "verified") {
       expect(app.evidence?.applicationLifecycle?.length ?? 0).toBeGreaterThan(0);

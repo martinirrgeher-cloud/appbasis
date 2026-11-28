@@ -157,7 +157,8 @@ export function evaluateUlcT10PilotDecision(input) {
     Array.isArray(legal.coveredPurposes) && legal.coveredPurposes.length >= 4 &&
     legal.includesMinorsAndParents === true &&
     legal.approvedPilotScope === retention.scope;
-  add("retention:legal", retention.legalApproval === true && !!validDecision,
+  const t10DeclarationRecorded = retention.legalApproval === true && !!validDecision;
+  add("retention:legal", t10DeclarationRecorded,
     "current 69-table operator legal decision with private scope/date/role evidence required");
 
   // runtimeActive must be FALSE before deployment. Do not use its absence
@@ -207,14 +208,19 @@ export function evaluateUlcT10PilotDecision(input) {
       "security-log-persistence",
     ]),
     prohibitedHistoricalRestorePromotion: true,
-    // Never synthesize approvals from JSON/CI/test flags.
+    // This indicates only that a dated scoped GO declaration is present
+    // in the repository, NOT that we authenticated the controller.
+    operatorT10DeclarationRecordedInRepository: t10DeclarationRecorded,
+    // Never synthesize live/Cloudflare permissions from legal JSON, CI or tests.
     operatorApprovalRequired: true,
     operatorApproved: false,
     deploymentAuthorized: false,
     personalDataActivationAuthorized: false,
     historicalRestorePromotionAuthorized: false,
     irreversibleActionsPerformed: false,
-    finalStatus: "NO-GO-until-separate-documented-T10-approval",
+    finalStatus: open.length === 0 && t10DeclarationRecorded
+      ? "T10-REPOSITORY-READY-T11-SEPARATE-AUTHORIZATION-REQUIRED"
+      : "NO-GO-until-separate-documented-T10-approval",
   });
 }
 
