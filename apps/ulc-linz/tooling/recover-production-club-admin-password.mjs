@@ -24,6 +24,7 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
   parseUlcLinzProductionDatabaseUrl(config.databaseUrl);
   const connection = createPostgresDatabase(config.databaseUrl);
   let rootSession = null;
+  let recoveryBodySucceeded = false;
   try {
     const auth = createBetterAuthRuntime({
       database: connection.database,
@@ -140,10 +141,11 @@ export async function recoverProductionClubAdminPassword(env = process.env) {
         target.identity_id,
       ]);
     });
+    recoveryBodySucceeded = true;
   } finally {
     try {
       if (rootSession !== null) {
-        protectedRecoveryPhase = "technical-root-session-cleanup";
+        if (recoveryBodySucceeded) protectedRecoveryPhase = "technical-root-session-cleanup";
         const auth = createBetterAuthRuntime({
           database: connection.database,
           baseURL: ORIGIN,
