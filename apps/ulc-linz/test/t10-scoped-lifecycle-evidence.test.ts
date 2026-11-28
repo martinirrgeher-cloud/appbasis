@@ -32,8 +32,14 @@ describe("T10 protected six-module pilot – lifecycle and privacy boundaries", 
     for (const module of pilotModules) {
       const contract = await json<Contract>(`modules/${module}/appbasis.production.json`);
       expect(contract.status, module).toBe("ready");
-      expect(contract.requirements?.lifecycle, module).toBe("verified");
-      expect(contract.evidence.lifecycle?.length ?? 0, module).toBeGreaterThan(0);
+      expect(["verified", "not-applicable"]).toContain(contract.requirements?.lifecycle);
+      if (contract.requirements?.lifecycle === "verified") {
+        expect(contract.evidence.lifecycle?.length ?? 0, module).toBeGreaterThan(0);
+      } else {
+        // Countdown is intentionally stateless and has no lifecycle owner.
+        expect(module).toBe("countdown");
+        expect(contract.evidence.lifecycle).toEqual([]);
+      }
       for (const item of contract.evidence.lifecycle) {
         expect(item.path.startsWith(`modules/${module}/`), item.path).toBe(true);
         expect(await matchesExactBlob(item), item.path).toBe(true);
