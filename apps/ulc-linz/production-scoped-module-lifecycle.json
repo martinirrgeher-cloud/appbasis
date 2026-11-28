@@ -100,5 +100,47 @@
         }
       ]
     }
+  ],
+  "runtimeGuardEvidence": [
+    {
+      "path": "apps/ulc-linz/worker/postgres.ts",
+      "gitBlobSha": "47b8dd3204040bfbd20a317f973c6e1184178e13"
+    },
+    {
+      "path": "apps/ulc-linz/worker/exercise-catalog-runtime.ts",
+      "gitBlobSha": "5ac1494ae06852ffc1469103ec6ae056d70416ee"
+    },
+    {
+      "path": "apps/ulc-linz/worker/exercise-catalog-protected-runtime-readiness.ts",
+      "gitBlobSha": "f286a7c667558fbc0cbf18fa0b8ef8e6becee411"
+    },
+    {
+      "path": "apps/ulc-linz/worker/training-block-verified-runtime-readiness.ts",
+      "gitBlobSha": "f212d801eb0e8f2106537fd8a13ef6c243f3d48a"
+    },
+    {
+      "path": "apps/ulc-linz/worker/training-documentation-production-readiness.ts",
+      "gitBlobSha": "9002bfa03485014a548de3a76e3249f822a7d860"
+    },
+    {
+      "path": "apps/ulc-linz/worker/training-documentation-write-actor.ts",
+      "gitBlobSha": "05e4364872321880ba598e4449a90964a2fb1c7b"
+    },
+    {
+      "path": "apps/ulc-linz/worker/training-plan-verified-usage-booking.ts",
+      "gitBlobSha": "114bd6ec12dcd99d00c061ea0e66f6c1a6793b63"
+    },
+    {
+      "path": "apps/ulc-linz/test/exercise-catalog-protected-runtime-readiness.test.ts",
+      "gitBlobSha": "336072a9203de47f76a620759407045a669bfd51"
+    },
+    {
+      "path": "apps/ulc-linz/test/training-block-verified-runtime-readiness.test.ts",
+      "gitBlobSha": "88e0ece7e1377646f4d0e15fccbf919062112256"
+    },
+    {
+      "path": "apps/ulc-linz/test/training-documentation-postgres-write-guard.test.ts",
+      "gitBlobSha": "11696b2f3d567f641128392280c107eb0ab2db80"
+    }
   ]
 }
