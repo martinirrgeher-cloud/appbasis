@@ -120,6 +120,7 @@ describe("ULC P01 confirmed target guidance – no legal or runtime approval", (
     const app = await data<{
       status: string;
       crossCutting: { privacy: string; applicationLifecycle: string };
+      evidence?: { applicationLifecycle?: readonly {path:string;gitBlobSha:string}[] };
     }>("../appbasis.production.json");
 
     expect(candidate.documentType).toBe("operator-confirmed-target-guideline-not-runtime-policy");
