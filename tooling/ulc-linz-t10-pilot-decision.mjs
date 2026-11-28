@@ -14,15 +14,15 @@ const MODULES = Object.freeze([
  * T10 validates configuration and provider-account evidence, not live traffic.
  * Genuine production ingress, app persistence and security logging can only
  * be observed at the separately authorised T11 first run.
- * Non-live provider evidence reads were observed in T10, while older Neon
+ * Provider screenshots/connector reads were observed outside app runtime, while older Neon
  * restore promotion remains denied and must never be exercised to satisfy T10.
  */
 const PREDEPLOYMENT_FLOWS = Object.freeze([
   ["ulc-linz-user", "cloudflare", "application-request-processing", "t11-first-live"],
   ["cloudflare", "neon-postgresql", "application-persistence", "t11-first-live"],
   ["cloudflare", "neon-postgresql", "security-log-persistence", "t11-first-live"],
-  ["appbasis-control-plane", "cloudflare", "provider-evidence-read", "read-only-observed"],
-  ["appbasis-control-plane", "neon-postgresql", "provider-evidence-read", "read-only-observed"],
+  ["appbasis-control-plane", "cloudflare", "provider-evidence-read", "out-of-app-runtime-read-only-source"],
+  ["appbasis-control-plane", "neon-postgresql", "provider-evidence-read", "out-of-app-runtime-read-only-source"],
   ["neon-postgresql", "neon-postgresql", "managed-backup-recovery", "quarantine-no-promotion"],
 ]);
 
