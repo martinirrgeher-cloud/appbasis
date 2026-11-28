@@ -8,6 +8,7 @@ import {
   type IdentityPostgresRuntimeSqlClient,
 } from "@appbasis/identity/postgres-runtime";
 import type { IdentityHttpService } from "@appbasis/identity/http";
+import { createUlcClubAdminRecoveryGuard } from "./club-admin-recovery-guard";
 import {
   PostgresPermissionStore,
   PostgresPrincipalAccessAdministration,
@@ -707,7 +708,7 @@ export async function createGeneratedPostgresApplicationRuntime(
       ),
     });
     return Object.freeze({
-      identity: identityRuntime.identity,
+      identity: createUlcClubAdminRecoveryGuard(identityRuntime.identity, applicationSql),
       permissions,
       countdownAccess,
       athletesAccess,

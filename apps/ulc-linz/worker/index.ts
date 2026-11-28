@@ -153,6 +153,12 @@ export function createGeneratedWorker(
       if (url.pathname === "/api/health") {
         return Response.json({ status: "ok", appId: "ulc-linz" });
       }
+      if (url.pathname === "/api/health/club-admin-recovery" && request.method === "GET") {
+        return Response.json(
+          { appId: "ulc-linz", recoveryGuardVersion: "club-admin-expiry-v1" },
+          { headers: { "cache-control": "no-store" } },
+        );
+      }
       if (url.pathname === "/api/health/b3-guard-preflight") {
         // This deliberately has no mutation, database connection or secret
         // disclosure. It is available only in our isolated preview when
