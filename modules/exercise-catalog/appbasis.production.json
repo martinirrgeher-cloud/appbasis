@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "moduleId": "exercise-catalog",
-  "status": "ready",
+  "status": "blocked",
   "requirements": {
     "authorization": "verified",
     "database": "verified",
-    "lifecycle": "verified"
+    "lifecycle": "blocked"
   },
   "evidence": {
     "authorization": [
@@ -36,16 +36,9 @@
         "gitBlobSha": "6af11023177c9e0fb5c1023f52d2d6b5c425b499"
       }
     ],
-    "lifecycle": [
-      {
-        "path": "modules/exercise-catalog/production-pilot-lifecycle-evidence-20261128.md",
-        "gitBlobSha": "aefa7a989f03d13c6cc64d99cacac4b44d28e9c0"
-      },
-      {
-        "path": "modules/exercise-catalog/test/service.test.ts",
-        "gitBlobSha": "a2976247e262815372be5eb64470326657764427"
-      }
-    ]
+    "lifecycle": []
   },
-  "blockers": []
+  "blockers": [
+    "Favorite, usage and private-media lifecycle is not yet production-verified."
+  ]
 }
