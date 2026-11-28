@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
-import { fileURLToPath } from "node:url";
-import { verifyUlcScopedProductionLifecycle } from
-  "../../../tooling/ulc-linz-scoped-production-lifecycle.mjs";
+
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { protectedUlcProductionRuntimeOptions } from "../worker/production-protected";
